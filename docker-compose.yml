@@ -1,0 +1,21 @@
+services:
+  api:
+    build: .
+    environment:
+      ConnectionStrings__WorkplaceDb: Host=postgres;Port=5432;Database=workplace;Username=workplace;Password=workplace
+    ports: ["8080:8080"]
+    depends_on:
+      postgres: { condition: service_healthy }
+  web:
+    build: { context: ., target: web }
+    command: ["npm", "run", "dev", "--", "--host", "0.0.0.0"]
+    environment:
+      VITE_API_PROXY_TARGET: http://api:8080
+    ports: ["5173:5173"]
+  postgres:
+    image: postgres:16-alpine
+    environment: { POSTGRES_DB: workplace, POSTGRES_USER: workplace, POSTGRES_PASSWORD: workplace }
+    ports: ["5432:5432"]
+    healthcheck: { test: ["CMD-SHELL", "pg_isready -U workplace -d workplace"], interval: 5s, timeout: 5s, retries: 10 }
+    volumes: [workplace-data:/var/lib/postgresql/data]
+volumes: { workplace-data: }
