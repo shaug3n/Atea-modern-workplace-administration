@@ -16,4 +16,4 @@ Run `docker compose up --build` for the reproducible API, web and PostgreSQL sta
 
 ## Tests
 
-Run `dotnet test` for API tests, `npm ci && npm run test --prefix src/Web` for web tests, and `docker compose config` to validate Compose.
+Run `dotnet test tests/Api.UnitTests/Api.UnitTests.csproj` and `dotnet test tests/Api.IntegrationTests/Api.IntegrationTests.csproj` for API tests. From `src/Web`, run `npm ci`; then run `npm run test --prefix ../../tests/Web.UnitTests` and `npm run test --prefix ../../tests/Web.E2E`. Run `docker compose config` to validate Compose.

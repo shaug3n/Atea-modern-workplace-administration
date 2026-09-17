@@ -1,0 +1,25 @@
+:root {
+  color-scheme: light;
+  --color-brand-primary: #005eb8;
+  --color-surface: #ffffff;
+  --color-text: #172b4d;
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --color-brand-primary: #75bfff;
+  --color-surface: #172b4d;
+  --color-text: #ffffff;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    color-scheme: dark;
+    --color-brand-primary: #75bfff;
+    --color-surface: #172b4d;
+    --color-text: #ffffff;
+  }
+}
+
+body { background: var(--color-surface); color: var(--color-text); font-family: system-ui, sans-serif; }
+button { color: var(--color-brand-primary); }

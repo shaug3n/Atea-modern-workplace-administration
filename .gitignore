@@ -3,3 +3,6 @@ obj/
 node_modules/
 dist/
 .env
+*.tsbuildinfo
+src/Web/vite.config.js
+src/Web/vite.config.d.ts

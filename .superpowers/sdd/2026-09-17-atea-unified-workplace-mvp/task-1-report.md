@@ -29,3 +29,22 @@ The baseline includes the solution, API, web shell, test projects/smoke tests, C
 - `/Users/sondre.haugen/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/fallback/git commit -m 'build: bootstrap local workplace solution'` created commit `b830436` with subject `build: bootstrap local workplace solution`.
 
 Concern: install .NET 9 SDK and Docker Compose v2 in a suitable development environment, then run the blocked native commands before deployment. No system tooling was installed and the Xcode license was not accepted.
+
+## Fix round 1
+
+Addressed reviewer findings with a typed message catalog, semantic light Atea theme tokens, user-controlled dark mode, and focused frontend tests. Added `Api.UnitTests` to the solution, changed the production web stage to `npm ci`, corrected README paths/commands, and ignored generated TypeScript/Vite outputs. The combined .NET 9 API/SPA image and exact unauthenticated `/health` contract remain intact.
+
+Available verification:
+
+- `npm ci` from `src/Web`: passed.
+- `npm run build` from `src/Web`: passed.
+- `npm run test --prefix tests/Web.UnitTests`: passed, 3 tests.
+- `npm run test --prefix tests/Web.E2E`: passed, 1 test.
+- `/Users/sondre.haugen/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/fallback/git diff --check`: passed with no output.
+
+Blocked native verification, recorded without claiming success:
+
+- `dotnet test tests/Api.UnitTests/Api.UnitTests.csproj`: `zsh:1: command not found: dotnet`.
+- `docker compose config`: `zsh:1: command not found: docker`.
+
+The previous baseline commit is `1bcc10a`. The fix is committed separately with subject `fix: harden task 1 baseline`.

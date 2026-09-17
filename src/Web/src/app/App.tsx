@@ -1,3 +1,8 @@
+import { useEffect, useState } from 'react';
+import { messages } from './messages';
+
 export function App() {
-  return <main><h1>Atea Unified Workplace</h1></main>;
+  const [darkMode, setDarkMode] = useState(false);
+  useEffect(() => { document.documentElement.dataset.theme = darkMode ? 'dark' : 'light'; }, [darkMode]);
+  return <main data-theme={darkMode ? 'dark' : 'light'}><h1>{messages.appTitle}</h1><button type="button" onClick={() => setDarkMode((enabled) => !enabled)}>{darkMode ? messages.disableDarkMode : messages.enableDarkMode}</button></main>;
 }
