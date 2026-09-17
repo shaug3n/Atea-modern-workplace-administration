@@ -1,5 +1,4 @@
 using System.Net;
-using System.Net.Http.Json;
 using FluentAssertions;
 using Microsoft.AspNetCore.Mvc.Testing;
 
@@ -15,11 +14,9 @@ public sealed class HealthEndpointTests : IClassFixture<WebApplicationFactory<Pr
     public async Task ApiStartsAndExposesHealthEndpoint()
     {
         var response = await client.GetAsync("/health");
-        var body = await response.Content.ReadFromJsonAsync<HealthResponse>();
+        var body = await response.Content.ReadAsStringAsync();
 
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
-        body.Should().BeEquivalentTo(new HealthResponse("ok"));
+        response.StatusCode.Should().Be(HttpStatusCode.OK, "response body was {0}", body);
+        body.Should().Be("{\"status\":\"ok\"}");
     }
-
-    private sealed record HealthResponse(string Status);
 }
