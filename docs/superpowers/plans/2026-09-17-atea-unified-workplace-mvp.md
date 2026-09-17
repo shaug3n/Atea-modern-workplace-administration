@@ -426,7 +426,10 @@ Files to create or update:
 - `src/Api/Features/Users/UserCommandEndpoints.cs`
 - `src/Api/Features/Groups/GroupMembershipService.cs`
 - `src/Api/Features/Licenses/LicenseAssignmentService.cs`
+- `src/Api/Infrastructure/Persistence/Entities/IdempotencyRecord.cs`
+- `src/Api/Infrastructure/Persistence/WorkplaceDbContext.cs`
 - `src/Api/Infrastructure/Security/IdempotencyService.cs`
+- `src/Api/Infrastructure/Observability/IAuditWriter.cs`
 - `src/Web/src/features/users/UserEditDialog.tsx`
 - `src/Web/src/features/users/UserCreateDialog.tsx`
 - `src/Web/src/features/users/GroupMembershipDialog.tsx`
@@ -443,6 +446,7 @@ Files to create or update:
 - [ ] Run the service tests; confirm they fail before command contracts and services exist.
 - [ ] Define command contracts with exact approved fields: `CreateUserCommand(displayName, givenName, surname, userPrincipalName, mailNickname, jobTitle, department, officeLocation, mobilePhone, usageLocation, accountEnabled)`, `UpdateUserCommand(...)`, `SetAccountEnabledCommand(enabled)`, `GroupMembershipCommand(groupObjectId)`, and `LicenseAssignmentCommand(skuId, disabledPlans)`.
 - [ ] Require `Idempotency-Key` on every POST/PATCH mutation, scope the key to workspace + actor + operation + target, persist only a safe request fingerprint and result metadata, and return the original result for an exact replay. Return `409 idempotency_key_reused` for a changed payload.
+- [ ] Add the `IdempotencyRecord` table and migration with a unique `(WorkspaceId, ActorObjectId, Operation, TargetId, Key)` constraint; store no request body, password, token or raw Graph response.
 - [ ] Implement API routes: `POST /api/users`, `PATCH /api/users/{id}`, `POST /api/users/{id}/disable`, `POST /api/users/{id}/reactivate`, `POST|DELETE /api/users/{id}/groups/{groupId}`, and `POST|DELETE /api/users/{id}/licenses/{skuId}`. Protect each route with its specific capability.
 - [ ] Implement user creation so a temporary password is generated only in memory for the one Graph request, `forceChangePasswordNextSignIn=true` is set, and the plaintext is returned once in a `TemporaryCredentialNotice` only after Graph success. Never persist, audit or log the password; return no credential on any failure.
 - [ ] Implement review/confirmation DTOs and frontend dialogs that show target, proposed change, required capability, source-of-authority/policy limitation, audit notice and a final confirmation control. Destructive disable must use a second explicit confirmation phrase.
@@ -490,6 +494,8 @@ Make every meaningful platform action explainable and traceable without creating
 Files to create or update:
 
 - `src/Api/Infrastructure/Persistence/Entities/AuditEvent.cs`
+- `src/Api/Infrastructure/Persistence/WorkplaceDbContext.cs`
+- `src/Api/Infrastructure/Observability/IAuditWriter.cs`
 - `src/Api/Infrastructure/Observability/AuditWriter.cs`
 - `src/Api/Infrastructure/Observability/CorrelationMiddleware.cs`
 - `src/Api/Infrastructure/Observability/RedactingLogEnricher.cs`
@@ -508,6 +514,7 @@ Files to create or update:
 - [ ] Add failing redaction tests that feed representative token, secret, password, MFA, cookie and authorization-header strings into logs and assert they are removed or replaced with `[REDACTED]`.
 - [ ] Run the tests; confirm they fail before the audit writer, redactor and problem-details factory exist.
 - [ ] Define `AuditEvent` with workspace ID, tenant ID, actor tenant/object IDs, action, target type/id, outcome, timestamp, correlation ID, optional Graph request ID, optional PIM request ID, failure category and safe JSON metadata. Add indexes for workspace/time and target/time.
+- [ ] Add the `AuditEvent` table and migration to the EF model without changing the existing workspace query boundary. Keep audit reads workspace-scoped.
 - [ ] Implement an audit writer that uses an outbox-like transaction boundary for platform intent/result metadata. Do not store raw request bodies for user creation or license/group actions.
 - [ ] Add correlation middleware that accepts a safe correlation ID or creates one, propagates it to Graph request headers and returns it in the response.
 - [ ] Implement RFC 7807-style problem responses for the error categories in the spec, including machine-readable `reasonCode`, `nextStep`, capability/PIM information and retry hints without raw Graph payloads.
@@ -598,7 +605,7 @@ Files to create or update:
 
 - [ ] Add an infrastructure validation test/script that asserts the Bicep parameter contract includes region, environment, image tag, PostgreSQL sizing, allowed ingress hostnames, Key Vault name, App Insights workspace and separate Entra app registration values.
 - [ ] Run the validation script before adding modules; confirm it fails because the Bicep files and parameter contract do not exist.
-- [ ] Define `main.bicep` modules for Azure Container Registry, Azure Database for PostgreSQL Flexible Server, Key Vault, Log Analytics/Application Insights, Container Apps environment and API/web container app. Use managed identity for secret access and private database networking where available in the selected region.
+- [ ] Define `main.bicep` modules for Azure Container Registry, Azure Database for PostgreSQL Flexible Server, Key Vault, Log Analytics/Application Insights, Container Apps environment and one combined API/SPA container app serving the already-built frontend from ASP.NET Core. Use managed identity for secret access and private database networking where available in the selected region.
 - [ ] Configure API secrets and connection strings through Key Vault references or managed identity; do not place secrets in container-app environment values, Bicep parameter files or CI logs.
 - [ ] Configure controlled HTTPS ingress, managed certificates, health probes to `/health`, revision-based deployment and minimum/maximum replicas. Keep the region a parameter with an Atea-approved EU/EEA default.
 - [ ] Configure the production Entra app registration redirect URIs and API audience separately from development; reject wildcard redirect URIs.
