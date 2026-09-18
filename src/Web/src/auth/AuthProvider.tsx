@@ -1,23 +1,20 @@
 import { InteractionRequiredAuthError, PublicClientApplication, type AccountInfo } from '@azure/msal-browser';
 import { MsalProvider, useIsAuthenticated, useMsal } from '@azure/msal-react';
 import { createContext, useContext, useMemo, useState, type ReactNode } from 'react';
+import { messages } from '../app/messages';
 import { apiScope, msalConfig } from './msalConfig';
 
 const msalInstance = new PublicClientApplication(msalConfig);
 type AuthContextValue = { account: AccountInfo | null; getApiToken: () => Promise<string>; signIn: () => Promise<void>; signOut: () => Promise<void> };
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-function AuthenticatedContent({ children }: { children: ReactNode }) {
-  const { instance, accounts } = useMsal();
-  const isAuthenticated = useIsAuthenticated();
-  const [error, setError] = useState<string | null>(null);
-  const account = accounts[0] ?? null;
-  const value = useMemo<AuthContextValue>(() => ({
+export function createAuthActions(instance: Pick<PublicClientApplication, 'loginRedirect' | 'logoutRedirect' | 'acquireTokenSilent' | 'acquireTokenRedirect'>, account: AccountInfo | null, setError: (error: string | null) => void): AuthContextValue {
+  return {
     account,
     signIn: async () => { setError(null); await instance.loginRedirect({ scopes: [apiScope] }); },
     signOut: async () => { setError(null); await instance.logoutRedirect(); },
     getApiToken: async () => {
-      if (!account) throw new Error('Sign-in is required');
+      if (!account) throw new Error(messages.authSignInRequired);
       try {
         return (await instance.acquireTokenSilent({ account, scopes: [apiScope] })).accessToken;
       } catch (acquisitionError) {
@@ -27,14 +24,22 @@ function AuthenticatedContent({ children }: { children: ReactNode }) {
         throw acquisitionError;
       }
     }
-  }), [account, instance]);
+  };
+}
 
-  if (!isAuthenticated) return <main role="main"><h1>Sign in to Atea Unified Workplace</h1><button type="button" onClick={() => value.signIn().catch(() => setError('Sign-in could not be started.'))}>Sign in</button>{error && <p role="alert">{error}</p>}</main>;
+function AuthenticatedContent({ children }: { children: ReactNode }) {
+  const { instance, accounts } = useMsal();
+  const isAuthenticated = useIsAuthenticated();
+  const [error, setError] = useState<string | null>(null);
+  const account = accounts[0] ?? null;
+  const value = useMemo(() => createAuthActions(instance, account, setError), [account, instance]);
+
+  if (!isAuthenticated) return <main role="main"><h1>{messages.authSignInTitle}</h1><button type="button" onClick={() => value.signIn().catch(() => setError(messages.authSignInError))}>{messages.authSignIn}</button>{error && <p role="alert">{error}</p>}</main>;
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
-export function AuthProvider({ children }: { children: ReactNode }) {
-  return <MsalProvider instance={msalInstance}><AuthenticatedContent>{children}</AuthenticatedContent></MsalProvider>;
+export function AuthProvider({ children, instance = msalInstance }: { children: ReactNode; instance?: PublicClientApplication }) {
+  return <MsalProvider instance={instance}><AuthenticatedContent>{children}</AuthenticatedContent></MsalProvider>;
 }
 
 export const useAuth = (): AuthContextValue => {

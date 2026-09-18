@@ -109,3 +109,51 @@ Additional checks:
 - The frontend build reports Vite's existing large-chunk advisory because MSAL increases the main bundle; this does not fail the build.
 - Test commands required escalated local runner/network access in this environment because sandboxed VSTest socket binding and initial NuGet restore were denied.
 
+## Fix round 1
+
+Reviewer findings addressed:
+
+- Resolver identity failures (`tid`, `oid`, and resolver-level audience failures) now produce structured `401 authentication_required`; only a verified identity with no membership produces `403 workspace_membership_required`.
+- The API has a fallback authorization policy, so `/api/ping` without endpoint metadata is still protected. `/health` remains explicitly anonymous.
+- Added deterministic tests through the actual Microsoft.Identity.Web `Bearer` scheme for valid tokens and wrong audience, wrong issuer, expired, and invalid-signature tokens. The test-only permissive scheme remains isolated to the existing membership/status tests.
+- AuthProvider visible strings now come from the typed message catalog. Added behavior tests using React Testing Library/Vitest for sign-in, sign-out, silent token acquisition, interaction-required redirect, sign-in error rendering, and API bearer header behavior.
+- Documented the concrete development redirect set (`http://localhost:5173/auth/callback`, `https://localhost:5173/auth/callback`) and production set (`https://workplace.atea.com/auth/callback`) without committing IDs or secrets.
+- Added assertions that workspace membership resolution receives the verified tenant and object IDs.
+
+### Fix-round RED evidence
+
+Focused unit run before the resolver classification change failed to compile because `WorkspaceContextResolution.IsAuthenticationFailure` did not exist.
+
+The initial integration run with the new tests failed as expected: malformed identity returned 403 instead of 401, the unannotated `/api/ping` returned 200, and the first valid JWT fixture required deterministic validation configuration.
+
+The first frontend behavior run failed before test collection because the Vitest path/dependency harness was not configured; subsequent runs exposed and fixed React cleanup and rejected-promise handling before reaching a clean pass.
+
+### Fix-round GREEN evidence
+
+```text
+DOTNET_CLI_HOME=/private/tmp/atea-dotnet-home NUGET_PACKAGES=/private/tmp/atea-nuget dotnet test tests/Api.UnitTests/Api.UnitTests.csproj --filter FullyQualifiedName~WorkspaceContextTests --disable-build-servers
+Passed!  - Failed:     0, Passed:     6, Skipped:     0, Total:     6
+
+DOTNET_CLI_HOME=/private/tmp/atea-dotnet-home NUGET_PACKAGES=/private/tmp/atea-nuget dotnet test tests/Api.IntegrationTests/Api.IntegrationTests.csproj --disable-build-servers
+Passed!  - Failed:     0, Passed:    11, Skipped:     0, Total:    11
+
+npm run test:behavior
+Test Files  1 passed (1)
+Tests       5 passed (5)
+
+npm run build
+✓ 174 modules transformed.
+✓ built in 493ms
+
+npm test --prefix ../../tests/Web.UnitTests
+ℹ tests 3
+ℹ pass 3
+ℹ fail 0
+
+npm test --prefix ../../tests/Web.E2E
+ℹ tests 1
+ℹ pass 1
+ℹ fail 0
+```
+
+Fix-round concerns: `npm install` reports two moderate development-dependency audit findings from the Vitest/jsdom harness, and Vite retains the non-failing MSAL bundle-size advisory. The empty production membership reader remains intentionally reserved for Task 3.

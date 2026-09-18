@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.Identity.Web;
 
 namespace Atea.UnifiedWorkplace.Api.Authorization;
@@ -10,7 +11,18 @@ public static class PlatformAuthorization
         services.AddHttpContextAccessor();
         services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             .AddMicrosoftIdentityWebApi(configuration.GetSection("AzureAd"));
-        services.AddAuthorization();
+        services.PostConfigure<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme, options =>
+        {
+            options.MapInboundClaims = false;
+            options.TokenValidationParameters.ValidateIssuer = true;
+            options.TokenValidationParameters.ValidAudience = configuration["AzureAd:Audience"];
+        });
+        services.AddAuthorization(options =>
+        {
+            options.FallbackPolicy = new AuthorizationPolicyBuilder()
+                .RequireAuthenticatedUser()
+                .Build();
+        });
         services.AddSingleton<IWorkspaceMembershipReader, EmptyWorkspaceMembershipReader>();
         services.AddScoped<WorkspaceContextResolver>(serviceProvider => new WorkspaceContextResolver(
             configuration["AzureAd:Audience"] ?? string.Empty,

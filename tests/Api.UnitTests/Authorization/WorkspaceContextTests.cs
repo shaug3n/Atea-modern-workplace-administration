@@ -52,11 +52,23 @@ public sealed class WorkspaceContextTests
     public async Task ValidCustomerTenantIdentityProducesVerifiedContext()
     {
         var membership = new WorkspaceMembership(Guid.Parse("44444444-4444-4444-4444-444444444444"), "Customer workspace");
-        var result = await Resolve(CreatePrincipal(), new StubMembershipReader(membership));
+        var reader = new StubMembershipReader(membership);
+        var result = await Resolve(CreatePrincipal(), reader);
 
         result.Succeeded.Should().BeTrue();
         result.Context!.User.Should().Be(FixtureUser);
         result.Context.Membership.Should().Be(membership);
+        reader.TenantId.Should().Be(TenantId);
+        reader.ObjectId.Should().Be(ObjectId);
+    }
+
+    [Fact]
+    public async Task IdentityValidationFailureIsNotAWorkspaceMembershipFailure()
+    {
+        var result = await Resolve(CreatePrincipal(oid: ObjectId.ToString()));
+
+        result.IsAuthenticationFailure.Should().BeTrue();
+        result.FailureReason.Should().NotBe(WorkspaceContextFailureReason.WorkspaceMembershipRequired);
     }
 
     private static Task<WorkspaceContextResolution> Resolve(ClaimsPrincipal principal, IWorkspaceMembershipReader? reader = null) =>
@@ -82,7 +94,17 @@ public sealed class WorkspaceContextTests
 
     private sealed class StubMembershipReader(WorkspaceMembership? membership) : IWorkspaceMembershipReader
     {
+        public Guid TenantId { get; private set; }
+        public Guid ObjectId { get; private set; }
+
         public Task<WorkspaceMembership?> FindMembershipAsync(Guid tenantId, Guid objectId, CancellationToken cancellationToken = default) =>
-            Task.FromResult(membership);
+            Task.FromResult(Record(tenantId, objectId));
+
+        private WorkspaceMembership? Record(Guid tenantId, Guid objectId)
+        {
+            TenantId = tenantId;
+            ObjectId = objectId;
+            return membership;
+        }
     }
 }

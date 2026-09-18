@@ -25,8 +25,9 @@ builder.Services.Configure<JwtBearerOptions>(JwtBearerDefaults.AuthenticationSch
 var app = builder.Build();
 app.UseDefaultFiles();
 app.UseStaticFiles();
-app.MapGet("/health", () => Results.Json(new { status = "ok" }));
+app.MapGet("/health", () => Results.Json(new { status = "ok" })).AllowAnonymous();
 app.UsePlatformAuthorization();
+app.MapGet("/api/ping", () => Results.Ok(new { status = "ok" }));
 app.MapGet("/api/session", (IWorkspaceContextAccessor accessor) =>
 {
     var context = accessor.Current!;

@@ -52,7 +52,28 @@ public sealed class AuthenticationTests
         body.Should().NotContain("Authorization: Bearer");
     }
 
-    private static WebApplicationFactory<Program> CreateFactory(bool includeMembership = false) =>
+    [Fact]
+    public async Task AuthenticatedIdentityWithoutTenantClaimReturnsStructured401()
+    {
+        using var client = CreateFactory(malformedIdentity: true).CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Test");
+        var response = await client.GetAsync("/api/session");
+
+        response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+        (await response.Content.ReadAsStringAsync()).Should().Be("{\"error\":\"authentication_required\"}");
+    }
+
+    [Fact]
+    public async Task UnauthenticatedApiEndpointWithoutExplicitMetadataReturnsStructured401()
+    {
+        using var client = CreateFactory().CreateClient();
+        var response = await client.GetAsync("/api/ping");
+
+        response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+        (await response.Content.ReadAsStringAsync()).Should().Be("{\"error\":\"authentication_required\"}");
+    }
+
+    private static WebApplicationFactory<Program> CreateFactory(bool includeMembership = false, bool malformedIdentity = false) =>
         new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
         {
             builder.ConfigureAppConfiguration((_, configuration) => configuration.AddInMemoryCollection(new Dictionary<string, string?>
@@ -69,6 +90,7 @@ public sealed class AuthenticationTests
             }).AddScheme<AuthenticationSchemeOptions, TestAuthenticationHandler>(TestAuthenticationHandler.Scheme, _ => { });
             services.RemoveAll<IWorkspaceMembershipReader>();
             services.AddSingleton<IWorkspaceMembershipReader>(new FixtureMembershipReader(includeMembership));
+            services.AddSingleton(typeof(TestAuthenticationMode), malformedIdentity ? TestAuthenticationMode.Malformed : TestAuthenticationMode.Valid);
             });
         });
 
@@ -78,7 +100,9 @@ public sealed class AuthenticationTests
             Task.FromResult(includeMembership ? new WorkspaceMembership(Guid.Parse("55555555-5555-5555-5555-555555555555"), "customer-workspace") : null);
     }
 
-    private sealed class TestAuthenticationHandler(IOptionsMonitor<AuthenticationSchemeOptions> options, ILoggerFactory logger, UrlEncoder encoder)
+    private enum TestAuthenticationMode { Valid, Malformed }
+
+    private sealed class TestAuthenticationHandler(IOptionsMonitor<AuthenticationSchemeOptions> options, ILoggerFactory logger, UrlEncoder encoder, TestAuthenticationMode mode)
         : AuthenticationHandler<AuthenticationSchemeOptions>(options, logger, encoder)
     {
         public new const string Scheme = "Test";
@@ -88,15 +112,16 @@ public sealed class AuthenticationTests
             if (!Request.Headers.ContainsKey("Authorization"))
                 return Task.FromResult(AuthenticateResult.NoResult());
 
-            var identity = new ClaimsIdentity(new[]
+            var claims = new List<Claim>
             {
-                new Claim("tid", "11111111-1111-1111-1111-111111111111"),
                 new Claim("oid", "22222222-2222-2222-2222-222222222222"),
                 new Claim("preferred_username", "alex@example.com"),
                 new Claim("name", "Alex Example"),
                 new Claim("userType", "Member"),
                 new Claim("aud", "api://atea-unified-workplace-api")
-            }, Scheme);
+            };
+            if (mode == TestAuthenticationMode.Valid) claims.Add(new Claim("tid", "11111111-1111-1111-1111-111111111111"));
+            var identity = new ClaimsIdentity(claims, Scheme);
             return Task.FromResult(AuthenticateResult.Success(new AuthenticationTicket(new ClaimsPrincipal(identity), Scheme)));
         }
 

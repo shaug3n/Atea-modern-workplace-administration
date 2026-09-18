@@ -15,9 +15,14 @@ public sealed class WorkspaceContextMiddleware(RequestDelegate next)
         var resolution = await resolver.ResolveAsync(httpContext.User, httpContext.RequestAborted);
         if (!resolution.Succeeded)
         {
-            httpContext.Response.StatusCode = StatusCodes.Status403Forbidden;
+            httpContext.Response.StatusCode = resolution.IsAuthenticationFailure
+                ? StatusCodes.Status401Unauthorized
+                : StatusCodes.Status403Forbidden;
             httpContext.Response.ContentType = "application/json";
-            await httpContext.Response.WriteAsJsonAsync(new { error = "workspace_membership_required" }, httpContext.RequestAborted);
+            await httpContext.Response.WriteAsJsonAsync(new
+            {
+                error = resolution.IsAuthenticationFailure ? "authentication_required" : "workspace_membership_required"
+            }, httpContext.RequestAborted);
             return;
         }
 

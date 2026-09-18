@@ -15,6 +15,7 @@ public sealed record WorkspaceContext(AuthenticatedUser User, WorkspaceMembershi
 public sealed record WorkspaceContextResolution(WorkspaceContext? Context, WorkspaceContextFailureReason? FailureReason)
 {
     public bool Succeeded => Context is not null;
+    public bool IsAuthenticationFailure => FailureReason is not null && FailureReason != WorkspaceContextFailureReason.WorkspaceMembershipRequired;
     public static WorkspaceContextResolution Failed(WorkspaceContextFailureReason reason) => new(null, reason);
     public static WorkspaceContextResolution Success(WorkspaceContext context) => new(context, null);
 }
