@@ -3,12 +3,13 @@ using Atea.UnifiedWorkplace.Api.Authorization;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Atea.UnifiedWorkplace.Api.Features.Workspaces;
 using Atea.UnifiedWorkplace.Api.Infrastructure.Persistence;
+using Atea.UnifiedWorkplace.Api.Infrastructure.Persistence.Repositories;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddDbContext<WorkplaceDbContext>(options => options.UseNpgsql(builder.Configuration.GetConnectionString("WorkplaceDb")));
 builder.Services.AddPlatformAuthorization(builder.Configuration);
-builder.Services.AddScoped<IWorkspaceProvisioningRepository, EfWorkspaceProvisioningRepository>();
+builder.Services.AddScoped<IWorkspaceProvisioningRepository, WorkspaceProvisioningRepository>();
 builder.Services.AddScoped<IWorkspaceProvisioningService, WorkspaceProvisioningService>();
 builder.Services.Configure<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme, options =>
 {

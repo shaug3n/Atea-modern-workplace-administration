@@ -18,10 +18,14 @@ public static class WorkspaceEndpoints
     {
         if (!authorization.IsAuthorized(httpContext.User)) return Results.Forbid();
         if (request.TenantId == Guid.Empty || string.IsNullOrWhiteSpace(request.DisplayName)) return Results.BadRequest(new { error = "invalid_workspace" });
-        var result = await provisioning.CreateWorkspaceAsync(request.TenantId, request.DisplayName.Trim(), cancellationToken);
-        if (result.IsConflict) return Results.Conflict(new { error = "workspace_already_exists" });
-        var workspace = result.Workspace!;
-        return Results.Created($"/api/platform/workspaces/{workspace.Id}", ToDto(workspace));
+        try
+        {
+            var result = await provisioning.CreateWorkspaceAsync(request.TenantId, request.DisplayName.Trim(), cancellationToken);
+            if (result.IsConflict) return Results.Conflict(new { error = "workspace_already_exists" });
+            var workspace = result.Workspace!;
+            return Results.Created($"/api/platform/workspaces/{workspace.Id}", ToDto(workspace));
+        }
+        catch (WorkspaceProvisioningUnavailableException) { return Results.Json(new { error = "workspace_database_unavailable" }, statusCode: StatusCodes.Status503ServiceUnavailable); }
     }
 
     private static async Task<IResult> AddMembershipAsync(Guid workspaceId, AddWorkspaceMembershipRequest request, HttpContext httpContext, IPlatformAuthorization authorization, IWorkspaceProvisioningService provisioning, CancellationToken cancellationToken)
