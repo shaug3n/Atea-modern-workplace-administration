@@ -28,7 +28,16 @@ public static class PlatformAuthorization
                 .Build();
         });
         services.AddScoped<IWorkspaceMembershipReader, EfWorkspaceMembershipReader>();
-        services.AddSingleton<IPlatformAuthorization>(_ => new AllowlistPlatformAuthorization(configuration.GetSection("PlatformAuthorization:AdminObjectIds").Get<string[]>() ?? []));
+        var scopes = configuration.GetSection("PlatformAuthorization:AdminWorkspaceScopes").GetChildren()
+            .Where(section => Guid.TryParse(section.Key, out _))
+            .ToDictionary(
+                section => Guid.Parse(section.Key),
+                section => (IReadOnlySet<Guid>)(section.Get<string[]>() ?? [])
+                    .Where(value => Guid.TryParse(value, out _))
+                    .Select(Guid.Parse)
+                    .ToHashSet());
+        services.AddSingleton<IPlatformAuthorization>(_ => new AllowlistPlatformAuthorization(
+            configuration.GetSection("PlatformAuthorization:AdminObjectIds").Get<string[]>() ?? [], scopes));
         services.AddScoped<WorkspaceContextResolver>(serviceProvider => new WorkspaceContextResolver(
             configuration["AzureAd:Audience"] ?? string.Empty,
             serviceProvider.GetRequiredService<IWorkspaceMembershipReader>()));
@@ -64,15 +73,24 @@ public static class PlatformAuthorization
 public interface IPlatformAuthorization
 {
     bool IsAuthorized(ClaimsPrincipal principal);
+    bool CanManageWorkspace(ClaimsPrincipal principal, Guid workspaceId);
 }
 
-public sealed class AllowlistPlatformAuthorization(IEnumerable<string> allowedObjectIds) : IPlatformAuthorization
+public sealed class AllowlistPlatformAuthorization(
+    IEnumerable<string> allowedObjectIds,
+    IReadOnlyDictionary<Guid, IReadOnlySet<Guid>> workspaceScopes) : IPlatformAuthorization
 {
     private readonly HashSet<Guid> allowedObjectIds = allowedObjectIds
         .Where(x => Guid.TryParse(x, out _))
         .Select(Guid.Parse)
         .ToHashSet();
+    private readonly IReadOnlyDictionary<Guid, IReadOnlySet<Guid>> workspaceScopes = workspaceScopes;
 
     public bool IsAuthorized(ClaimsPrincipal principal) =>
         Guid.TryParse(principal.FindFirstValue("oid"), out var objectId) && allowedObjectIds.Contains(objectId);
+
+    public bool CanManageWorkspace(ClaimsPrincipal principal, Guid workspaceId) =>
+        Guid.TryParse(principal.FindFirstValue("oid"), out var objectId) &&
+        allowedObjectIds.Contains(objectId) &&
+        workspaceScopes.TryGetValue(objectId, out var scopes) && scopes.Contains(workspaceId);
 }
