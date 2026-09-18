@@ -1,8 +1,12 @@
 using System.Text.Json;
 using Atea.UnifiedWorkplace.Api.Authorization;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Atea.UnifiedWorkplace.Api.Features.Workspaces;
+using Atea.UnifiedWorkplace.Api.Infrastructure.Persistence;
+using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
+builder.Services.AddDbContext<WorkplaceDbContext>(options => options.UseNpgsql(builder.Configuration.GetConnectionString("WorkplaceDb")));
 builder.Services.AddPlatformAuthorization(builder.Configuration);
 builder.Services.Configure<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme, options =>
 {
@@ -23,6 +27,11 @@ builder.Services.Configure<JwtBearerOptions>(JwtBearerDefaults.AuthenticationSch
 });
 
 var app = builder.Build();
+if (app.Environment.IsDevelopment() && !string.IsNullOrWhiteSpace(builder.Configuration.GetConnectionString("WorkplaceDb")))
+{
+    await using var scope = app.Services.CreateAsyncScope();
+    await scope.ServiceProvider.GetRequiredService<WorkplaceDbContext>().Database.MigrateAsync();
+}
 app.UseDefaultFiles();
 app.UseStaticFiles();
 app.MapGet("/health", () => Results.Json(new { status = "ok" })).AllowAnonymous();
@@ -45,6 +54,7 @@ app.MapGet("/api/session", (IWorkspaceContextAccessor accessor) =>
         workspace = new { id = context.Membership.WorkspaceId, name = context.Membership.WorkspaceName }
     });
 }).RequireAuthorization();
+app.MapWorkspaceEndpoints();
 app.MapFallbackToFile("index.html");
 
 app.Run();
