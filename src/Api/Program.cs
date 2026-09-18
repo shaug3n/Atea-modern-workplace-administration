@@ -5,12 +5,21 @@ using Atea.UnifiedWorkplace.Api.Features.Workspaces;
 using Atea.UnifiedWorkplace.Api.Infrastructure.Persistence;
 using Atea.UnifiedWorkplace.Api.Infrastructure.Persistence.Repositories;
 using Microsoft.EntityFrameworkCore;
+using Atea.UnifiedWorkplace.Api.Infrastructure.Graph;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddDbContext<WorkplaceDbContext>(options => options.UseNpgsql(builder.Configuration.GetConnectionString("WorkplaceDb")));
 builder.Services.AddPlatformAuthorization(builder.Configuration);
 builder.Services.AddScoped<IWorkspaceProvisioningRepository, WorkspaceProvisioningRepository>();
 builder.Services.AddScoped<IWorkspaceProvisioningService, WorkspaceProvisioningService>();
+builder.Services.AddScoped<WorkspaceOnboardingRepository>();
+builder.Services.AddScoped<IOnboardingRepository>(services => services.GetRequiredService<WorkspaceOnboardingRepository>());
+builder.Services.AddScoped<IInvitationRepository>(services => services.GetRequiredService<WorkspaceOnboardingRepository>());
+builder.Services.AddScoped<IOnboardingService, OnboardingService>();
+builder.Services.AddScoped<InvitationService>(services => new InvitationService(
+    services.GetRequiredService<IInvitationRepository>(), new Uri(builder.Configuration["Onboarding:PublicBaseUrl"] ?? "https://workplace.example")));
+builder.Services.AddScoped<IDelegatedConnectionProbe, UnconfiguredDelegatedConnectionProbe>();
+builder.Services.AddScoped<IConnectionHealthReader, ConnectionHealthReader>();
 builder.Services.Configure<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme, options =>
 {
     options.Events ??= new JwtBearerEvents();

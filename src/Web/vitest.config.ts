@@ -20,6 +20,6 @@ export default defineConfig({
   },
   test: {
     environment: 'jsdom',
-    include: ['../../tests/Web.UnitTests/auth/AuthProvider.test.tsx']
+    include: ['../../tests/Web.UnitTests/**/*.test.tsx']
   }
 });
