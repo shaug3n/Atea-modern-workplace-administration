@@ -45,10 +45,13 @@ public sealed class WorkspaceOnboardingRepository(WorkplaceDbContext db) : IOnbo
     public async Task<InvitationRedemption?> RedeemAsync(string nonceHash, Guid tenantId, Guid tenantObjectId, string email, string displayName, CancellationToken cancellationToken = default)
     {
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
-        var invitation = await db.PlatformInvitations.Include(x => x.Workspace).SingleOrDefaultAsync(x => x.NonceHash == nonceHash, cancellationToken);
-        if (invitation is null || invitation.RedeemedAt is not null || invitation.ExpiresAt <= DateTimeOffset.UtcNow || invitation.Workspace.TenantId != tenantId || !string.Equals(invitation.Email, email, StringComparison.OrdinalIgnoreCase)) return null;
+        var now = DateTimeOffset.UtcNow;
+        var claimed = await db.PlatformInvitations
+            .Where(x => x.NonceHash == nonceHash && x.RedeemedAt == null && x.ExpiresAt > now && x.Workspace.TenantId == tenantId && x.Email.ToLower() == email.ToLower())
+            .ExecuteUpdateAsync(updates => updates.SetProperty(x => x.RedeemedAt, now), cancellationToken);
+        if (claimed != 1) return null;
 
-        invitation.RedeemedAt = DateTimeOffset.UtcNow;
+        var invitation = await db.PlatformInvitations.Include(x => x.Workspace).SingleAsync(x => x.NonceHash == nonceHash, cancellationToken);
         var membership = await db.WorkspaceMemberships.SingleOrDefaultAsync(x => x.WorkspaceId == invitation.WorkspaceId && x.TenantObjectId == tenantObjectId, cancellationToken);
         if (membership is null)
         {
@@ -56,7 +59,7 @@ public sealed class WorkspaceOnboardingRepository(WorkplaceDbContext db) : IOnbo
             db.WorkspaceMemberships.Add(membership);
         }
         invitation.Workspace.ConnectionStatus = Atea.UnifiedWorkplace.Api.Features.Workspaces.ConnectionState.ConsentRequired;
-        invitation.Workspace.UpdatedAt = DateTimeOffset.UtcNow;
+        invitation.Workspace.UpdatedAt = now;
         await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         return new InvitationRedemption(invitation.Workspace, membership);

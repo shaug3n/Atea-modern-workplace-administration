@@ -42,6 +42,46 @@ public sealed class InvitationServiceTests
         repository.Workspace!.ConnectionStatus.Should().Be(ConnectionState.ConsentRequired);
     }
 
+    [Fact]
+    public async Task Rejects_expired_invitation_without_redeeming_it()
+    {
+        var repository = new RecordingInvitationRepository { Workspace = new Workspace { Id = Guid.NewGuid(), TenantId = Guid.NewGuid() } };
+        var service = new InvitationService(repository, new Uri("https://workplace.example"));
+        var created = await service.CreateAsync(repository.Workspace.Id, "admin@example.com", "Admin", DateTimeOffset.UtcNow.AddMinutes(-1));
+
+        (await service.RedeemAsync(created.InvitationUrl.Split('/').Last(), repository.Workspace.TenantId, Guid.NewGuid(), "admin@example.com", "Admin")).Should().BeFalse();
+        repository.Invitation!.RedeemedAt.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task Rejects_email_and_tenant_mismatch()
+    {
+        var repository = new RecordingInvitationRepository { Workspace = new Workspace { Id = Guid.NewGuid(), TenantId = Guid.NewGuid() } };
+        var service = new InvitationService(repository, new Uri("https://workplace.example"));
+        var created = await service.CreateAsync(repository.Workspace.Id, "admin@example.com", "Admin", DateTimeOffset.UtcNow.AddMinutes(1));
+        var nonce = created.InvitationUrl.Split('/').Last();
+
+        (await service.RedeemAsync(nonce, repository.Workspace.TenantId, Guid.NewGuid(), "other@example.com", "Other")).Should().BeFalse();
+        (await service.RedeemAsync(nonce, Guid.NewGuid(), Guid.NewGuid(), "admin@example.com", "Admin")).Should().BeFalse();
+        repository.Invitation!.RedeemedAt.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task Concurrent_replay_allows_only_one_redemption()
+    {
+        var repository = new ConcurrentInvitationRepository(Guid.NewGuid());
+        var service = new InvitationService(repository, new Uri("https://workplace.example"));
+        var created = await service.CreateAsync(repository.WorkspaceId, "admin@example.com", "Admin", DateTimeOffset.UtcNow.AddMinutes(1));
+        var nonce = created.InvitationUrl.Split('/').Last();
+
+        var results = await Task.WhenAll(
+            service.RedeemAsync(nonce, repository.TenantId, Guid.NewGuid(), "admin@example.com", "Admin"),
+            service.RedeemAsync(nonce, repository.TenantId, Guid.NewGuid(), "admin@example.com", "Admin"));
+
+        results.Count(result => result).Should().Be(1);
+        repository.MembershipCount.Should().Be(1);
+    }
+
     private sealed class RecordingInvitationRepository : IInvitationRepository
     {
         public PlatformInvitation? Invitation { get; set; }
@@ -51,11 +91,33 @@ public sealed class InvitationServiceTests
         public Task<PlatformInvitation> CreateAsync(PlatformInvitation invitation, CancellationToken cancellationToken = default) { Invitation = invitation; return Task.FromResult(invitation); }
         public Task<InvitationRedemption?> RedeemAsync(string nonceHash, Guid tenantId, Guid tenantObjectId, string email, string displayName, CancellationToken cancellationToken = default)
         {
-            if (Invitation is null || Invitation.NonceHash != nonceHash || Invitation.RedeemedAt is not null || Workspace is null || Workspace.TenantId != tenantId) return Task.FromResult<InvitationRedemption?>(null);
+            if (Invitation is null || Invitation.NonceHash != nonceHash || Invitation.RedeemedAt is not null || Invitation.ExpiresAt <= DateTimeOffset.UtcNow || Workspace is null || Workspace.TenantId != tenantId || !string.Equals(Invitation.Email, email, StringComparison.OrdinalIgnoreCase)) return Task.FromResult<InvitationRedemption?>(null);
             Invitation.RedeemedAt = DateTimeOffset.UtcNow;
             Membership = new WorkspaceMembership { WorkspaceId = Workspace.Id, TenantObjectId = tenantObjectId, Email = email, PlatformRole = "customer_admin" };
             Workspace.ConnectionStatus = ConnectionState.ConsentRequired;
             return Task.FromResult<InvitationRedemption?>(new InvitationRedemption(Workspace, Membership));
+        }
+    }
+
+    private sealed class ConcurrentInvitationRepository(Guid tenantId) : IInvitationRepository
+    {
+        private readonly object gate = new();
+        private PlatformInvitation? invitation;
+        public Guid WorkspaceId { get; } = Guid.NewGuid();
+        public Guid TenantId { get; } = tenantId;
+        public int MembershipCount { get; private set; }
+
+        public Task<PlatformInvitation> CreateAsync(PlatformInvitation value, CancellationToken cancellationToken = default) { invitation = value; return Task.FromResult(value); }
+        public async Task<InvitationRedemption?> RedeemAsync(string nonceHash, Guid tenant, Guid objectId, string email, string displayName, CancellationToken cancellationToken = default)
+        {
+            await Task.Yield();
+            lock (gate)
+            {
+                if (invitation is null || invitation.NonceHash != nonceHash || invitation.RedeemedAt is not null || tenant != TenantId || !string.Equals(email, invitation.Email, StringComparison.OrdinalIgnoreCase)) return null;
+                invitation.RedeemedAt = DateTimeOffset.UtcNow;
+                MembershipCount++;
+                return new InvitationRedemption(new Workspace { Id = WorkspaceId, TenantId = TenantId, ConnectionStatus = ConnectionState.ConsentRequired }, new WorkspaceMembership { WorkspaceId = WorkspaceId, TenantObjectId = objectId });
+            }
         }
     }
 }

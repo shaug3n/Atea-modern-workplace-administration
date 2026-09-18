@@ -109,15 +109,16 @@ public static class WorkspaceEndpoints
         return Results.Ok(new ConnectionHealthDto(context.Membership.WorkspaceId, status, DateTimeOffset.UtcNow, result.GrantedScopes, result.ProblemCategory, correlationId));
     }
 
-    private static IResult StartConsentAsync(IWorkspaceContextAccessor accessor, IConfiguration configuration)
+    private static IResult StartConsentAsync(IWorkspaceContextAccessor accessor, IConfiguration configuration, ConsentChallengeService challenges)
     {
         var context = accessor.Current;
         if (context is null) return Results.StatusCode(StatusCodes.Status403Forbidden);
         var clientId = configuration["AzureAd:ClientId"] ?? string.Empty;
         var redirectUri = configuration["Onboarding:ConsentRedirectUri"] ?? "/onboarding";
         var scopes = string.Join(' ', GraphScopeCatalog.V1DelegatedScopes);
-        var url = $"https://login.microsoftonline.com/{context.User.TenantId}/oauth2/v2.0/authorize?client_id={Uri.EscapeDataString(clientId)}&response_type=code&redirect_uri={Uri.EscapeDataString(redirectUri)}&response_mode=query&scope={Uri.EscapeDataString(scopes)}&state=connection-health";
-        return Results.Ok(new ConsentStartResponse(url, GraphScopeCatalog.V1DelegatedScopes, "delegated_consent_required"));
+        var challenge = challenges.Create(context.Membership.WorkspaceId, context.User.TenantId);
+        var url = $"https://login.microsoftonline.com/{context.User.TenantId}/oauth2/v2.0/authorize?client_id={Uri.EscapeDataString(clientId)}&response_type=code&redirect_uri={Uri.EscapeDataString(redirectUri)}&response_mode=query&scope={Uri.EscapeDataString(scopes)}&state={Uri.EscapeDataString(challenge.Challenge)}";
+        return Results.Ok(new ConsentStartResponse(url, GraphScopeCatalog.V1DelegatedScopes, challenge.Challenge, challenge.CorrelationId));
     }
 
     private static ConnectionHealthDto ToHealthDto(WorkspaceOnboardingState state, string? problem, string correlationId) => new(state.WorkspaceId, state.ConnectionStatus, state.LastVerifiedAt, state.ConsentScopes, problem ?? state.FailureCategory, correlationId);

@@ -2,7 +2,16 @@
 
 ## Status
 
-Implemented and committed as `feat: add tenant onboarding and connection health`.
+Implemented and committed as `feat: add tenant onboarding and connection health`; review fixes are pending the follow-up commit.
+
+## Review fixes
+
+- Invitation redemption now uses a PostgreSQL conditional `ExecuteUpdateAsync` claim inside the existing transaction. Only the request that changes `RedeemedAt` from null can continue to membership creation; concurrent replay requests return the safe invalid/expired result.
+- `ConnectionStatusCard` applies a 15-minute freshness policy and treats missing or stale verification timestamps as `Connection check is stale`, never as Connected.
+- The shipped overview now loads `/api/workspaces/current/connection-health` through a replaceable loader boundary and renders the returned state; loading and failure are safe typed UI states.
+- Consent start now creates an unpredictable correlation-bound, HMAC-verifiable challenge with a ten-minute expiry and includes it as OAuth state. The descriptor returns no token or verifier.
+- Task 4 consent is narrowed to `User.Read`; future user/group/directory/role scopes are explicitly deferred to Task 5.
+- Added focused expiry/email/tenant mismatch, concurrent replay, status mapping, challenge safety, stale UI and loader wiring tests.
 
 ## Implementation
 
@@ -38,6 +47,8 @@ Using `DOTNET_CLI_HOME=/private/tmp/atea-dotnet-home`, `NUGET_PACKAGES=/private/
 - API integration project build: **passed, 0 warnings, 0 errors**.
 - Frontend behavior tests: **12 passed, 0 failed**.
 - Frontend production build: **passed**. Vite emitted its existing bundle-size advisory for the main JavaScript chunk.
+- Review-fix API unit tests: **41 passed, 0 failed**.
+- Review-fix frontend behavior tests: **14 passed, 0 failed**.
 - Full API integration suite was attempted. **19 passed, 2 failed because Testcontainers could not connect to the unavailable Docker daemon**; no Docker daemon was started or installed. The two failures are the existing PostgreSQL repository tests that require Testcontainers.
 - `git diff --check`: passed.
 

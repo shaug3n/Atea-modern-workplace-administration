@@ -16,6 +16,7 @@ builder.Services.AddScoped<WorkspaceOnboardingRepository>();
 builder.Services.AddScoped<IOnboardingRepository>(services => services.GetRequiredService<WorkspaceOnboardingRepository>());
 builder.Services.AddScoped<IInvitationRepository>(services => services.GetRequiredService<WorkspaceOnboardingRepository>());
 builder.Services.AddScoped<IOnboardingService, OnboardingService>();
+builder.Services.AddSingleton<ConsentChallengeService>();
 builder.Services.AddScoped<InvitationService>(services => new InvitationService(
     services.GetRequiredService<IInvitationRepository>(), new Uri(builder.Configuration["Onboarding:PublicBaseUrl"] ?? "https://workplace.example")));
 builder.Services.AddScoped<IDelegatedConnectionProbe, UnconfiguredDelegatedConnectionProbe>();

@@ -3,7 +3,8 @@ export type ConnectionState = 'awaiting_invitation' | 'consent_required' | 'conn
 export const messages = {
   appTitle: 'Atea Unified Workplace', enableDarkMode: 'Enable dark mode', disableDarkMode: 'Disable dark mode',
   authSignInTitle: 'Sign in to Atea Unified Workplace', authSignIn: 'Sign in', authSignInError: 'Sign-in could not be started.', authSignInRequired: 'Sign-in is required',
-  connectionTitle: 'Microsoft 365 connection', connectionCheck: 'Check connection', connectionConsent: 'Start consent', connectionCopyInvitation: 'Copy invitation instruction',
+  connectionTitle: 'Microsoft 365 connection', connectionCheck: 'Check connection', connectionConsent: 'Start consent', connectionCopyInvitation: 'Copy invitation instruction', connectionLoading: 'Loading connection status…', connectionUnavailable: 'Connection status is unavailable.',
+  connectionStaleLabel: 'Connection check is stale', connectionStaleAction: 'Run a new connection check before using connected operations.',
   connectionState: {
     awaiting_invitation: { label: 'Invitation pending', action: 'Invite the customer administrator.' },
     consent_required: { label: 'Consent required', action: 'Ask the customer administrator to grant delegated consent.' },
