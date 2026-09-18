@@ -157,3 +157,40 @@ npm test --prefix ../../tests/Web.E2E
 ```
 
 Fix-round concerns: `npm install` reports two moderate development-dependency audit findings from the Vitest/jsdom harness, and Vite retains the non-failing MSAL bundle-size advisory. The empty production membership reader remains intentionally reserved for Task 3.
+
+## Fix round 2
+
+Added `RealEntraValidationTests` as an opt-in integration test that uses the production Microsoft.Identity.Web `Bearer` configuration and live OpenID Connect metadata. It reads only these process environment variables: `ATEA_REAL_ENTRA_AUTHORITY`, `ATEA_REAL_ENTRA_TENANT_ID`, `ATEA_REAL_ENTRA_CLIENT_ID`, `ATEA_REAL_ENTRA_AUDIENCE`, and `ATEA_REAL_ENTRA_ACCESS_TOKEN`.
+
+When all variables are present, the test calls `/api/ping` with the supplied real Entra access token and requires a non-401/200 response, then calls the same protected endpoint with an invalid bearer value and requires structured 401. The token is held in memory only and is never logged, persisted, or written into diagnostics. Synthetic JWT tests remain unchanged for deterministic issuer/audience/lifetime/signature coverage.
+
+With the variables absent, the test is skipped during xUnit discovery with the clear reason that all five `ATEA_REAL_ENTRA_*` variables must be set. The real tenant path was not executed in this environment because no test tenant token was supplied; no real Entra IDs, secrets, or tokens were added to the repository.
+
+### Fix-round-2 verification
+
+```text
+DOTNET_CLI_HOME=/private/tmp/atea-dotnet-home NUGET_PACKAGES=/private/tmp/atea-nuget dotnet test tests/Api.IntegrationTests/Api.IntegrationTests.csproj --filter FullyQualifiedName~RealEntraValidationTests --disable-build-servers
+Passed!  - Failed:     0, Passed:     0, Skipped:     1, Total:     1
+
+DOTNET_CLI_HOME=/private/tmp/atea-dotnet-home NUGET_PACKAGES=/private/tmp/atea-nuget dotnet test tests/Api.UnitTests/Api.UnitTests.csproj --disable-build-servers
+Passed!  - Failed:     0, Passed:     6, Skipped:     0, Total:     6
+
+DOTNET_CLI_HOME=/private/tmp/atea-dotnet-home NUGET_PACKAGES=/private/tmp/atea-nuget dotnet test tests/Api.IntegrationTests/Api.IntegrationTests.csproj --disable-build-servers
+Passed!  - Failed:     0, Passed:    11, Skipped:     1, Total:    12
+
+npm run test:behavior
+Test Files  1 passed (1)
+Tests       5 passed (5)
+
+npm run build
+✓ 174 modules transformed.
+✓ built in 74ms
+
+npm test --prefix ../../tests/Web.UnitTests
+ℹ tests 3
+ℹ pass 3
+
+npm test --prefix ../../tests/Web.E2E
+ℹ tests 1
+ℹ pass 1
+```
