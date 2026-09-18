@@ -194,3 +194,35 @@ npm test --prefix ../../tests/Web.E2E
 ℹ tests 1
 ℹ pass 1
 ```
+
+## Fix round 3
+
+The real-Entra integration test is now explicitly gated by `ATEA_REAL_ENTRA_RUN=true` in addition to the five documented `ATEA_REAL_ENTRA_*` configuration/token variables. If the boolean gate is absent or not `true`, xUnit skips during discovery with a network-dependency reason and does not start the API host or make metadata requests. If the gate is true but any required value is absent, it skips with the missing-variable reason. The token remains process-memory-only.
+
+### Fix-round-3 verification
+
+Focused opt-in test with the gate and all real-tenant variables absent:
+
+```text
+env -u ATEA_REAL_ENTRA_RUN -u ATEA_REAL_ENTRA_AUTHORITY -u ATEA_REAL_ENTRA_TENANT_ID -u ATEA_REAL_ENTRA_CLIENT_ID -u ATEA_REAL_ENTRA_AUDIENCE -u ATEA_REAL_ENTRA_ACCESS_TOKEN DOTNET_CLI_HOME=/private/tmp/atea-dotnet-home NUGET_PACKAGES=/private/tmp/atea-nuget dotnet test tests/Api.IntegrationTests/Api.IntegrationTests.csproj --filter FullyQualifiedName~RealEntraValidationTests --disable-build-servers
+Skipped! - Failed: 0, Passed: 0, Skipped: 1, Total: 1
+```
+
+Default API suite with no real-Entra opt-in:
+
+```text
+dotnet test tests/Api.UnitTests/Api.UnitTests.csproj --disable-build-servers
+Passed! - Failed: 0, Passed: 6, Skipped: 0, Total: 6
+
+dotnet test tests/Api.IntegrationTests/Api.IntegrationTests.csproj --disable-build-servers
+Passed! - Failed: 0, Passed: 11, Skipped: 1, Total: 12
+```
+
+Frontend checks:
+
+```text
+npm run test:behavior: 5 passed
+npm run build: ✓ 174 modules transformed; ✓ built in 342ms
+npm test --prefix ../../tests/Web.UnitTests: 3 passed
+npm test --prefix ../../tests/Web.E2E: 1 passed
+```

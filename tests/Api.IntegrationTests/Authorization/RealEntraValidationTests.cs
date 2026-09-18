@@ -11,6 +11,7 @@ namespace Atea.UnifiedWorkplace.Api.IntegrationTests.Authorization;
 
 public sealed class RealEntraValidationTests
 {
+    private const string RunVariable = "ATEA_REAL_ENTRA_RUN";
     private const string AuthorityVariable = "ATEA_REAL_ENTRA_AUTHORITY";
     private const string TenantVariable = "ATEA_REAL_ENTRA_TENANT_ID";
     private const string ClientVariable = "ATEA_REAL_ENTRA_CLIENT_ID";
@@ -48,10 +49,16 @@ public sealed class RealEntraValidationTests
     {
         public RealEntraFactAttribute()
         {
+            if (!string.Equals(Environment.GetEnvironmentVariable(RunVariable), "true", StringComparison.OrdinalIgnoreCase))
+            {
+                Skip = $"Skipped: set {RunVariable}=true to enable real Entra validation; it is network-dependent by design.";
+                return;
+            }
+
             if (new[] { AuthorityVariable, TenantVariable, ClientVariable, AudienceVariable, TokenVariable }
                 .Any(variable => string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(variable))))
             {
-                Skip = $"Skipped: set {AuthorityVariable}, {TenantVariable}, {ClientVariable}, {AudienceVariable}, and {TokenVariable} to run real Entra validation.";
+                Skip = $"Skipped: {RunVariable}=true is set, but {AuthorityVariable}, {TenantVariable}, {ClientVariable}, {AudienceVariable}, and {TokenVariable} are also required.";
             }
         }
     }

@@ -24,7 +24,9 @@ Do not add client secrets to the SPA, request Graph tokens in the browser, persi
 
 ## Opt-in real-Entra integration validation
 
-The API integration suite keeps synthetic JWT tests for deterministic local coverage and includes one opt-in test for real Microsoft Entra metadata. The real test is skipped with a clear reason, without starting the host or making a network call, unless all of these environment variables are set in the test process:
+The API integration suite keeps synthetic JWT tests for deterministic local coverage and includes one explicitly gated test for real Microsoft Entra metadata. The real test is skipped with a clear reason, without starting the host or making a network call, unless `ATEA_REAL_ENTRA_RUN=true` and all of these environment variables are set in the test process:
+
+- `ATEA_REAL_ENTRA_RUN`: must be exactly `true` (case-insensitive) to opt into network-dependent validation.
 
 - `ATEA_REAL_ENTRA_AUTHORITY`: the Entra authority instance, normally `https://login.microsoftonline.com/`.
 - `ATEA_REAL_ENTRA_TENANT_ID`: the dedicated non-production test tenant ID.
@@ -32,10 +34,10 @@ The API integration suite keeps synthetic JWT tests for deterministic local cove
 - `ATEA_REAL_ENTRA_AUDIENCE`: the exact API audience accepted by the registration, such as `api://<test-api-client-id>`.
 - `ATEA_REAL_ENTRA_ACCESS_TOKEN`: a short-lived access token issued for the API scope `access_as_user` by the dedicated test tenant.
 
-Run it explicitly with:
+Run it explicitly with `ATEA_REAL_ENTRA_RUN=true` and the five values above:
 
 ```text
-DOTNET_CLI_HOME=/private/tmp/atea-dotnet-home NUGET_PACKAGES=/private/tmp/atea-nuget dotnet test tests/Api.IntegrationTests/Api.IntegrationTests.csproj --filter FullyQualifiedName~RealEntraValidationTests --disable-build-servers
+ATEA_REAL_ENTRA_RUN=true DOTNET_CLI_HOME=/private/tmp/atea-dotnet-home NUGET_PACKAGES=/private/tmp/atea-nuget dotnet test tests/Api.IntegrationTests/Api.IntegrationTests.csproj --filter FullyQualifiedName~RealEntraValidationTests --disable-build-servers
 ```
 
 The test uses the production Microsoft.Identity.Web configuration and live OpenID Connect metadata. It calls `/api/ping` with the supplied token and then with an intentionally invalid bearer value, expecting the valid request not to be rejected as `401` and the invalid request to return structured `401`. The token is read into process memory only; it is never logged, persisted, or included in test output. Use a dedicated test tenant, test app registration, approved API scope, and a manually issued short-lived token. Never use production tokens or commit any tenant IDs, credentials, or token values.
