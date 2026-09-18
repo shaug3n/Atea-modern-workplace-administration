@@ -39,6 +39,7 @@ public static class WorkspaceEndpoints
         }
         catch (KeyNotFoundException) { return Results.NotFound(); }
         catch (WorkspaceAlreadyExistsException) { return Results.Conflict(new { error = "membership_already_exists" }); }
+        catch (WorkspaceProvisioningUnavailableException) { return Results.Json(new { error = "workspace_database_unavailable" }, statusCode: StatusCodes.Status503ServiceUnavailable); }
     }
 
     private static async Task<IResult> GetCurrentWorkspaceAsync(IWorkspaceContextAccessor accessor, IWorkspaceProvisioningService provisioning, CancellationToken cancellationToken)

@@ -1,6 +1,5 @@
 using Atea.UnifiedWorkplace.Api.Infrastructure.Persistence.Entities;
 using Atea.UnifiedWorkplace.Api.Infrastructure.Persistence.Repositories;
-using Microsoft.EntityFrameworkCore;
 
 namespace Atea.UnifiedWorkplace.Api.Features.Workspaces;
 
@@ -47,9 +46,13 @@ public sealed class WorkspaceProvisioningService(IWorkspaceProvisioningRepositor
         {
             return await repository.AddMembershipAsync(workspaceId, tenantObjectId, email, platformRole, isAteaOperator, cancellationToken);
         }
-        catch (DbUpdateException exception)
+        catch (WorkspaceUniqueConstraintException exception)
         {
             throw new WorkspaceAlreadyExistsException("Membership already exists.", exception);
+        }
+        catch (WorkspaceProvisioningDatabaseException exception)
+        {
+            throw new WorkspaceProvisioningUnavailableException("Workspace persistence is temporarily unavailable.", exception);
         }
     }
 

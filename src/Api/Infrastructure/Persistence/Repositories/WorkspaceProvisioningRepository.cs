@@ -38,8 +38,19 @@ public sealed class WorkspaceProvisioningRepository(WorkplaceDbContext db) : IWo
         if (!await db.Workspaces.AnyAsync(workspace => workspace.Id == workspaceId, cancellationToken)) throw new KeyNotFoundException("Workspace not found.");
         var membership = new WorkspaceMembership { Id = Guid.NewGuid(), WorkspaceId = workspaceId, TenantObjectId = tenantObjectId, Email = email, PlatformRole = platformRole, IsAteaOperator = isAteaOperator, CreatedAt = DateTimeOffset.UtcNow };
         db.WorkspaceMemberships.Add(membership);
-        await db.SaveChangesAsync(cancellationToken);
-        return membership;
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+            return membership;
+        }
+        catch (DbUpdateException exception) when (ContainsUniqueViolation(exception))
+        {
+            throw new WorkspaceUniqueConstraintException("Workspace membership already exists.", exception);
+        }
+        catch (DbUpdateException exception)
+        {
+            throw new WorkspaceProvisioningDatabaseException("Workspace persistence is temporarily unavailable.", exception);
+        }
     }
 
     private static bool ContainsUniqueViolation(Exception exception) =>

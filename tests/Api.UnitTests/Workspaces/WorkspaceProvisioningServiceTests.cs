@@ -43,12 +43,32 @@ public sealed class WorkspaceProvisioningServiceTests
         repository.LastTenantId.Should().Be(tenantId);
     }
 
+    [Fact]
+    public async Task Unique_membership_failure_is_translated_to_the_existing_conflict_exception()
+    {
+        var service = new WorkspaceProvisioningService(new UniqueMembershipRepository());
+
+        var action = () => service.AddMembershipAsync(Guid.NewGuid(), Guid.NewGuid(), "member@example.com", "member", false);
+
+        await action.Should().ThrowAsync<WorkspaceAlreadyExistsException>();
+    }
+
+    [Fact]
+    public async Task Non_unique_membership_failure_is_translated_to_unavailable()
+    {
+        var service = new WorkspaceProvisioningService(new FailingMembershipRepository());
+
+        var action = () => service.AddMembershipAsync(Guid.NewGuid(), Guid.NewGuid(), "member@example.com", "member", false);
+
+        await action.Should().ThrowAsync<WorkspaceProvisioningUnavailableException>();
+    }
+
     private class DuplicateProvisioningRepository : IWorkspaceProvisioningRepository
     {
         public Task<Workspace?> GetAsync(Guid workspaceId, CancellationToken cancellationToken = default) => Task.FromResult<Workspace?>(null);
         public Task<Workspace?> FindByTenantIdAsync(Guid tenantId, CancellationToken cancellationToken = default) => Task.FromResult<Workspace?>(null);
         public Task<Workspace> CreateAsync(Guid tenantId, string displayName, CancellationToken cancellationToken = default) => throw new WorkspaceUniqueConstraintException("duplicate tenant");
-        public Task<WorkspaceMembership> AddMembershipAsync(Guid workspaceId, Guid tenantObjectId, string email, string platformRole, bool isAteaOperator, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+        public virtual Task<WorkspaceMembership> AddMembershipAsync(Guid workspaceId, Guid tenantObjectId, string email, string platformRole, bool isAteaOperator, CancellationToken cancellationToken = default) => throw new NotImplementedException();
     }
 
     private sealed class FailingProvisioningRepository : IWorkspaceProvisioningRepository
@@ -68,5 +88,15 @@ public sealed class WorkspaceProvisioningServiceTests
         public Task<Workspace?> FindByTenantIdAsync(Guid tenantId, CancellationToken cancellationToken = default) { FindByTenantIdCalls++; LastTenantId = tenantId; return Task.FromResult<Workspace?>(null); }
         public Task<Workspace> CreateAsync(Guid tenantId, string displayName, CancellationToken cancellationToken = default) { CreateCalls++; LastTenantId = tenantId; return Task.FromResult(new Workspace { Id = Guid.NewGuid(), TenantId = tenantId, DisplayName = displayName }); }
         public Task<WorkspaceMembership> AddMembershipAsync(Guid workspaceId, Guid tenantObjectId, string email, string platformRole, bool isAteaOperator, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+    }
+
+    private sealed class UniqueMembershipRepository : DuplicateProvisioningRepository
+    {
+        public override Task<WorkspaceMembership> AddMembershipAsync(Guid workspaceId, Guid tenantObjectId, string email, string platformRole, bool isAteaOperator, CancellationToken cancellationToken = default) => throw new WorkspaceUniqueConstraintException("duplicate membership");
+    }
+
+    private sealed class FailingMembershipRepository : DuplicateProvisioningRepository
+    {
+        public override Task<WorkspaceMembership> AddMembershipAsync(Guid workspaceId, Guid tenantObjectId, string email, string platformRole, bool isAteaOperator, CancellationToken cancellationToken = default) => throw new WorkspaceProvisioningDatabaseException("database unavailable");
     }
 }

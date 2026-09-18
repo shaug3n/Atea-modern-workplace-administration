@@ -80,6 +80,19 @@ public sealed class WorkspaceEndpointsTests : IClassFixture<WebApplicationFactor
         (await response.Content.ReadAsStringAsync()).Should().Be("{\"error\":\"workspace_already_exists\"}");
     }
 
+    [Fact]
+    public async Task Membership_database_failure_is_returned_as_503()
+    {
+        using var factory = CreateFactory(new RecordingProvisioningService { MembershipUnavailable = true }, [WorkspaceId]);
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Test");
+
+        var response = await client.PostAsJsonAsync($"/api/platform/workspaces/{WorkspaceId}/memberships", new { tenantObjectId = ObjectId, email = "member@example.com", platformRole = "member", isAteaOperator = false });
+
+        response.StatusCode.Should().Be(HttpStatusCode.ServiceUnavailable);
+        (await response.Content.ReadAsStringAsync()).Should().Be("{\"error\":\"workspace_database_unavailable\"}");
+    }
+
     private static WebApplicationFactory<Program> CreateFactory(RecordingProvisioningService service, Guid[] scopedWorkspaces) =>
         new WebApplicationFactory<Program>().WithWebHostBuilder(builder => builder.ConfigureAppConfiguration((_, config) =>
         {
@@ -122,9 +135,10 @@ public sealed class WorkspaceEndpointsTests : IClassFixture<WebApplicationFactor
     private sealed class RecordingProvisioningService : IWorkspaceProvisioningService
     {
         public bool CreateConflict { get; init; }
+        public bool MembershipUnavailable { get; init; }
         public int AddMembershipCalls { get; private set; }
         public Task<WorkspaceProvisioningResult> CreateWorkspaceAsync(Guid tenantId, string displayName, CancellationToken cancellationToken = default) => Task.FromResult(CreateConflict ? WorkspaceProvisioningResult.Conflict() : WorkspaceProvisioningResult.Created(new Workspace { Id = Guid.NewGuid(), TenantId = tenantId, DisplayName = displayName, ConnectionStatus = "awaiting_invitation" }));
-        public Task<PersistenceWorkspaceMembership> AddMembershipAsync(Guid workspaceId, Guid tenantObjectId, string email, string platformRole, bool isAteaOperator, CancellationToken cancellationToken = default) { AddMembershipCalls++; return Task.FromResult(new PersistenceWorkspaceMembership { Id = Guid.NewGuid(), WorkspaceId = workspaceId, TenantObjectId = tenantObjectId, Email = email, PlatformRole = platformRole, IsAteaOperator = isAteaOperator }); }
+        public Task<PersistenceWorkspaceMembership> AddMembershipAsync(Guid workspaceId, Guid tenantObjectId, string email, string platformRole, bool isAteaOperator, CancellationToken cancellationToken = default) { if (MembershipUnavailable) throw new WorkspaceProvisioningUnavailableException("database unavailable"); AddMembershipCalls++; return Task.FromResult(new PersistenceWorkspaceMembership { Id = Guid.NewGuid(), WorkspaceId = workspaceId, TenantObjectId = tenantObjectId, Email = email, PlatformRole = platformRole, IsAteaOperator = isAteaOperator }); }
         public Task<Workspace?> GetAsync(Guid workspaceId, CancellationToken cancellationToken = default) => Task.FromResult<Workspace?>(null);
     }
 
