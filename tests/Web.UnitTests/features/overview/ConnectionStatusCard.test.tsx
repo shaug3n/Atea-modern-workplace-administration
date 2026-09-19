@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import React from 'react';
 import { afterEach, describe, expect, it } from 'vitest';
 import { ConnectionStatusCard } from '../../../../src/Web/src/components/ConnectionStatusCard';
@@ -23,5 +23,15 @@ describe('ConnectionStatusCard', () => {
   it('treats a missing or malformed verification timestamp as stale', () => {
     render(<ConnectionStatusCard state="connected" lastVerifiedAt="not-a-date" />);
     expect(screen.getByTestId('connection-state').textContent).toBe('Connection check is stale');
+  });
+
+  it('exposes check and consent actions for actionable states', () => {
+    let checked = false;
+    let consented = false;
+    render(<ConnectionStatusCard state="connection_failed" onCheck={() => { checked = true; }} onConsent={() => { consented = true; }} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Check connection' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Start consent' }));
+    expect(checked).toBe(true);
+    expect(consented).toBe(true);
   });
 });

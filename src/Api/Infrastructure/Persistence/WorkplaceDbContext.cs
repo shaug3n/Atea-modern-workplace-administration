@@ -53,6 +53,7 @@ public sealed class WorkplaceDbContext(DbContextOptions<WorkplaceDbContext> opti
             entity.HasKey(x => x.Id);
             entity.HasIndex(x => x.NonceHash).IsUnique();
             entity.Property(x => x.NonceHash).HasMaxLength(128).IsRequired();
+            entity.Property(x => x.ApprovedTenantObjectId);
             ConfigureUtc(entity.Property(x => x.ExpiresAt));
             ConfigureUtc(entity.Property(x => x.RedeemedAt));
             ConfigureUtc(entity.Property(x => x.CreatedAt));

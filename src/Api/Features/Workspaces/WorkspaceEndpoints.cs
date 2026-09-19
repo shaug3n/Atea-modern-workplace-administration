@@ -61,7 +61,7 @@ public static class WorkspaceEndpoints
     {
         if (!authorization.CanManageWorkspace(httpContext.User, workspaceId)) return Results.Forbid();
         if (string.IsNullOrWhiteSpace(request.Email) || string.IsNullOrWhiteSpace(request.DisplayName) || request.ExpiresAt <= DateTimeOffset.UtcNow) return Results.BadRequest(new { error = "invalid_invitation" });
-        var result = await invitations.CreateAsync(workspaceId, request.Email, request.DisplayName, request.ExpiresAt, cancellationToken);
+        var result = await invitations.CreateAsync(workspaceId, request.Email, request.DisplayName, request.ExpiresAt, request.ApprovedTenantObjectId, cancellationToken);
         return Results.Ok(new { result.InvitationId, result.InvitationUrl, result.ExpiresAt });
     }
 
@@ -113,6 +113,7 @@ public static class WorkspaceEndpoints
     {
         var context = accessor.Current;
         if (context is null) return Results.StatusCode(StatusCodes.Status403Forbidden);
+        if (!challenges.IsConfigured) return Results.Json(new { error = "consent_configuration_unavailable" }, statusCode: StatusCodes.Status503ServiceUnavailable);
         var clientId = configuration["AzureAd:ClientId"] ?? string.Empty;
         var redirectUri = configuration["Onboarding:ConsentRedirectUri"] ?? "/onboarding";
         var scopes = string.Join(' ', GraphScopeCatalog.V1DelegatedScopes);

@@ -4,6 +4,9 @@ using Atea.UnifiedWorkplace.Api.Infrastructure.Persistence.Repositories;
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
 using Testcontainers.PostgreSql;
+using DotNet.Testcontainers.Builders;
+using Xunit.Sdk;
+using Atea.UnifiedWorkplace.Api.Features.Workspaces;
 
 namespace Atea.UnifiedWorkplace.Api.IntegrationTests.Persistence;
 
@@ -14,7 +17,8 @@ public sealed class WorkspaceRepositoryTests : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
-        await postgres.StartAsync();
+        try { await postgres.StartAsync(); }
+        catch (DockerUnavailableException exception) { throw new SkipException($"Docker daemon unavailable: {exception.Message}"); }
         db = new WorkplaceDbContext(new DbContextOptionsBuilder<WorkplaceDbContext>()
             .UseNpgsql(postgres.GetConnectionString())
             .Options);
@@ -66,6 +70,33 @@ public sealed class WorkspaceRepositoryTests : IAsyncLifetime
         var repository = new WorkspaceRepository(db, workspaceA);
 
         (await repository.GetMembershipAsync(workspaceB, objectId)).Should().BeNull();
+    }
+
+    [Fact]
+    public async Task Invitation_redemption_is_atomic_under_concurrent_postgresql_replay()
+    {
+        var workspaceId = Guid.NewGuid();
+        var tenantId = Guid.NewGuid();
+        var workspace = NewWorkspace(workspaceId, tenantId, "Concurrent invitation");
+        await db.Workspaces.AddAsync(workspace);
+        await db.SaveChangesAsync();
+
+        var creator = new InvitationService(new WorkspaceOnboardingRepository(db), new Uri("https://workplace.example"));
+        var created = await creator.CreateAsync(workspaceId, "admin@example.com", "Admin", DateTimeOffset.UtcNow.AddMinutes(5));
+        var options = new DbContextOptionsBuilder<WorkplaceDbContext>().UseNpgsql(postgres.GetConnectionString()).Options;
+        await using var db2 = new WorkplaceDbContext(options);
+        await using var db3 = new WorkplaceDbContext(options);
+        var service2 = new InvitationService(new WorkspaceOnboardingRepository(db2), new Uri("https://workplace.example"));
+        var service3 = new InvitationService(new WorkspaceOnboardingRepository(db3), new Uri("https://workplace.example"));
+        var nonce = created.InvitationUrl.Split('/').Last();
+
+        var results = await Task.WhenAll(
+            service2.RedeemAsync(nonce, tenantId, Guid.NewGuid(), "admin@example.com", "Admin"),
+            service3.RedeemAsync(nonce, tenantId, Guid.NewGuid(), "admin@example.com", "Admin"));
+
+        results.Count(result => result).Should().Be(1);
+        (await db.WorkspaceMemberships.CountAsync(x => x.WorkspaceId == workspaceId)).Should().Be(1);
+        (await db.PlatformInvitations.SingleAsync(x => x.Id == created.InvitationId)).RedeemedAt.Should().NotBeNull();
     }
 
     private static Workspace NewWorkspace(Guid id, Guid tenantId, string name) => new()

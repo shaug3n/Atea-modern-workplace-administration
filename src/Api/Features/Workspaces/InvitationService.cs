@@ -9,12 +9,15 @@ public sealed record InvitationCreationResult(Guid InvitationId, string Invitati
 
 public sealed class InvitationService(IInvitationRepository repository, Uri publicBaseUri)
 {
-    public async Task<InvitationCreationResult> CreateAsync(Guid workspaceId, string email, string displayName, DateTimeOffset expiresAt, CancellationToken cancellationToken = default)
+    public Task<InvitationCreationResult> CreateAsync(Guid workspaceId, string email, string displayName, DateTimeOffset expiresAt, CancellationToken cancellationToken = default) =>
+        CreateAsync(workspaceId, email, displayName, expiresAt, null, cancellationToken);
+
+    public async Task<InvitationCreationResult> CreateAsync(Guid workspaceId, string email, string displayName, DateTimeOffset expiresAt, Guid? approvedTenantObjectId, CancellationToken cancellationToken = default)
     {
         var nonce = ToBase64Url(RandomNumberGenerator.GetBytes(32));
         var invitation = new PlatformInvitation
         {
-            Id = Guid.NewGuid(), WorkspaceId = workspaceId, Email = email.Trim(), DisplayName = displayName.Trim(),
+            Id = Guid.NewGuid(), WorkspaceId = workspaceId, Email = email.Trim(), DisplayName = displayName.Trim(), ApprovedTenantObjectId = approvedTenantObjectId,
             NonceHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(nonce))).ToLowerInvariant(),
             ExpiresAt = expiresAt, CreatedAt = DateTimeOffset.UtcNow
         };

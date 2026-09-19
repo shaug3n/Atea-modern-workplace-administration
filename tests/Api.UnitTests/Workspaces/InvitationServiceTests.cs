@@ -82,6 +82,17 @@ public sealed class InvitationServiceTests
         repository.MembershipCount.Should().Be(1);
     }
 
+    [Fact]
+    public async Task Redeems_when_approved_object_id_matches_even_if_email_differs()
+    {
+        var repository = new RecordingInvitationRepository { Workspace = new Workspace { Id = Guid.NewGuid(), TenantId = Guid.NewGuid() } };
+        var service = new InvitationService(repository, new Uri("https://workplace.example"));
+        var approvedObjectId = Guid.NewGuid();
+        var created = await service.CreateAsync(repository.Workspace.Id, "admin@example.com", "Admin", DateTimeOffset.UtcNow.AddMinutes(1), approvedObjectId);
+
+        (await service.RedeemAsync(created.InvitationUrl.Split('/').Last(), repository.Workspace.TenantId, approvedObjectId, "guest@example.com", "Guest")).Should().BeTrue();
+    }
+
     private sealed class RecordingInvitationRepository : IInvitationRepository
     {
         public PlatformInvitation? Invitation { get; set; }
@@ -91,7 +102,7 @@ public sealed class InvitationServiceTests
         public Task<PlatformInvitation> CreateAsync(PlatformInvitation invitation, CancellationToken cancellationToken = default) { Invitation = invitation; return Task.FromResult(invitation); }
         public Task<InvitationRedemption?> RedeemAsync(string nonceHash, Guid tenantId, Guid tenantObjectId, string email, string displayName, CancellationToken cancellationToken = default)
         {
-            if (Invitation is null || Invitation.NonceHash != nonceHash || Invitation.RedeemedAt is not null || Invitation.ExpiresAt <= DateTimeOffset.UtcNow || Workspace is null || Workspace.TenantId != tenantId || !string.Equals(Invitation.Email, email, StringComparison.OrdinalIgnoreCase)) return Task.FromResult<InvitationRedemption?>(null);
+            if (Invitation is null || Invitation.NonceHash != nonceHash || Invitation.RedeemedAt is not null || Invitation.ExpiresAt <= DateTimeOffset.UtcNow || Workspace is null || Workspace.TenantId != tenantId || (!string.Equals(Invitation.Email, email, StringComparison.OrdinalIgnoreCase) && Invitation.ApprovedTenantObjectId != tenantObjectId)) return Task.FromResult<InvitationRedemption?>(null);
             Invitation.RedeemedAt = DateTimeOffset.UtcNow;
             Membership = new WorkspaceMembership { WorkspaceId = Workspace.Id, TenantObjectId = tenantObjectId, Email = email, PlatformRole = "customer_admin" };
             Workspace.ConnectionStatus = ConnectionState.ConsentRequired;
