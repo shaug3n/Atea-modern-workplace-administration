@@ -25,7 +25,7 @@ public sealed class InvitationService(IInvitationRepository repository, Uri publ
         return new InvitationCreationResult(invitation.Id, new Uri(publicBaseUri, $"invitations/{nonce}").ToString(), invitation.ExpiresAt);
     }
 
-    public async Task<bool> RedeemAsync(string nonce, Guid tenantId, Guid tenantObjectId, string email, string displayName, CancellationToken cancellationToken = default)
+    public async Task<bool> RedeemAsync(string nonce, Guid tenantId, Guid tenantObjectId, string? email, string displayName, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(nonce)) return false;
         var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(nonce))).ToLowerInvariant();

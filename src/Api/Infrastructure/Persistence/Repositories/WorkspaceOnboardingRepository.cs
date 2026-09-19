@@ -42,12 +42,12 @@ public sealed class WorkspaceOnboardingRepository(WorkplaceDbContext db) : IOnbo
         return invitation;
     }
 
-    public async Task<InvitationRedemption?> RedeemAsync(string nonceHash, Guid tenantId, Guid tenantObjectId, string email, string displayName, CancellationToken cancellationToken = default)
+    public async Task<InvitationRedemption?> RedeemAsync(string nonceHash, Guid tenantId, Guid tenantObjectId, string? email, string displayName, CancellationToken cancellationToken = default)
     {
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
         var now = DateTimeOffset.UtcNow;
         var claimed = await db.PlatformInvitations
-            .Where(x => x.NonceHash == nonceHash && x.RedeemedAt == null && x.ExpiresAt > now && x.Workspace.TenantId == tenantId && (x.Email.ToLower() == email.ToLower() || x.ApprovedTenantObjectId == tenantObjectId))
+            .Where(x => x.NonceHash == nonceHash && x.RedeemedAt == null && x.ExpiresAt > now && x.Workspace.TenantId == tenantId && (x.ApprovedTenantObjectId == tenantObjectId || (email != null && x.Email.ToLower() == email.ToLower())))
             .ExecuteUpdateAsync(updates => updates.SetProperty(x => x.RedeemedAt, now), cancellationToken);
         if (claimed != 1) return null;
 
@@ -55,7 +55,7 @@ public sealed class WorkspaceOnboardingRepository(WorkplaceDbContext db) : IOnbo
         var membership = await db.WorkspaceMemberships.SingleOrDefaultAsync(x => x.WorkspaceId == invitation.WorkspaceId && x.TenantObjectId == tenantObjectId, cancellationToken);
         if (membership is null)
         {
-            membership = new WorkspaceMembership { Id = Guid.NewGuid(), WorkspaceId = invitation.WorkspaceId, TenantObjectId = tenantObjectId, Email = email, PlatformRole = "customer_admin", CreatedAt = DateTimeOffset.UtcNow };
+            membership = new WorkspaceMembership { Id = Guid.NewGuid(), WorkspaceId = invitation.WorkspaceId, TenantObjectId = tenantObjectId, Email = email ?? $"object:{tenantObjectId}", PlatformRole = "customer_admin", CreatedAt = DateTimeOffset.UtcNow };
             db.WorkspaceMemberships.Add(membership);
         }
         invitation.Workspace.ConnectionStatus = Atea.UnifiedWorkplace.Api.Features.Workspaces.ConnectionState.ConsentRequired;
