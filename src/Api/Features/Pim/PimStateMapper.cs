@@ -15,7 +15,7 @@ public static class PimStateMapper
     {
         if (string.IsNullOrWhiteSpace(graphStatus))
         {
-            return "activation_required";
+            return "temporarily_unavailable";
         }
 
         var normalized = graphStatus.Trim();

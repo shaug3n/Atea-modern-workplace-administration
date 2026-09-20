@@ -23,4 +23,14 @@ public sealed class PimStateMapperTests
     {
         PimStateMapper.ToCapabilityState("UnexpectedNewStatus").Should().Be("temporarily_unavailable");
     }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void Missing_or_blank_pim_status_fails_closed(string? graphStatus)
+    {
+        PimStateMapper.ToPimRequirement(graphStatus).Should().Be("temporarily_unavailable");
+        PimStateMapper.ToCapabilityState(graphStatus).Should().Be("temporarily_unavailable");
+    }
 }

@@ -100,7 +100,7 @@ public sealed class GraphAuthorizationSnapshotReader(IDelegatedGraphClientFactor
         {
             foreach (var element in Values(document))
             {
-                var status = OptionalString(element, "status") ?? "Eligible";
+                var status = OptionalString(element, "status");
                 roles.Add(MapRole(
                     element,
                     DirectoryRoleAssignmentState.Eligible,

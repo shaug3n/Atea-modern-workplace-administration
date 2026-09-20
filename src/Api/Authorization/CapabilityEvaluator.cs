@@ -123,9 +123,18 @@ public static class CapabilityEvaluator
             return new CapabilityDecision(capability, CapabilityState.ReadOnly, "directory_role_scope_not_tenant_wide", scopedMatchingRole.RoleTemplateId);
         }
 
-        var eligibleRole = snapshot.DirectoryRoles.FirstOrDefault(role =>
+        var eligibleRoles = snapshot.DirectoryRoles
+            .Where(role =>
             string.Equals(role.AssignmentState, DirectoryRoleAssignmentState.Eligible, StringComparison.OrdinalIgnoreCase)
-            && requirement.RoleTemplateIds.Contains(role.RoleTemplateId, StringComparer.OrdinalIgnoreCase));
+            && requirement.RoleTemplateIds.Contains(role.RoleTemplateId, StringComparer.OrdinalIgnoreCase))
+            .ToArray();
+        var eligibleRole = eligibleRoles.FirstOrDefault(IsTenantWide);
+        var scopedEligibleRole = eligibleRoles.FirstOrDefault(role => !IsTenantWide(role));
+        if (scopedEligibleRole is not null)
+        {
+            return new CapabilityDecision(capability, CapabilityState.ReadOnly, "directory_role_scope_not_tenant_wide", scopedEligibleRole.RoleTemplateId);
+        }
+
         if (eligibleRole is not null)
         {
             return HasAllScopes(snapshot.GrantedScopes, requirement.WriteScopes)
@@ -140,7 +149,7 @@ public static class CapabilityEvaluator
 
     private static CapabilityDecision PimDecision(string capability, DirectoryRoleSnapshot role)
     {
-        var pimState = role.Pim?.State ?? PimRequirement.ActivationRequired;
+        var pimState = role.Pim?.State ?? CapabilityState.TemporarilyUnavailable;
         var state = pimState switch
         {
             PimRequirement.ApprovalRequired => CapabilityState.PimApprovalRequired,

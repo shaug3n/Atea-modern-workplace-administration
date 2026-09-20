@@ -134,6 +134,20 @@ public sealed class CapabilityEvaluatorTests
     }
 
     [Fact]
+    public void Administrative_unit_scoped_eligible_role_does_not_produce_pim_activation_guidance()
+    {
+        var snapshot = AvailableSnapshot(
+            scopes: ["Directory.Read.All", "User.Create"],
+            roles: [EligibleRole(EntraRoleCatalog.UserAdministratorTemplateId, PimRequirement.ActivationRequired, "/administrativeUnits/au-1")]);
+
+        var capabilities = CapabilityEvaluator.Evaluate(snapshot, Member());
+
+        capabilities[Capability.UsersCreate].State.Should().Be(CapabilityState.ReadOnly);
+        capabilities[Capability.UsersCreate].ReasonCode.Should().Be("directory_role_scope_not_tenant_wide");
+        capabilities[Capability.UsersCreate].NextStep.Should().BeNull();
+    }
+
+    [Fact]
     public void Unknown_graph_snapshot_fails_closed_for_mutations()
     {
         var snapshot = GraphAuthorizationSnapshot.Unavailable("temporarily_unavailable");
@@ -157,8 +171,8 @@ public sealed class CapabilityEvaluatorTests
     private static DirectoryRoleSnapshot ActiveRole(string templateId, string directoryScopeId = "/") =>
         new(templateId, "presentation only", DirectoryRoleAssignmentState.Active, DirectoryScopeId: directoryScopeId);
 
-    private static DirectoryRoleSnapshot EligibleRole(string templateId, string pimRequirement) =>
-        new(templateId, "presentation only", DirectoryRoleAssignmentState.Eligible, DirectoryScopeId: "/", new PimStateSnapshot(pimRequirement, "https://entra.example/activate"));
+    private static DirectoryRoleSnapshot EligibleRole(string templateId, string pimRequirement, string directoryScopeId = "/") =>
+        new(templateId, "presentation only", DirectoryRoleAssignmentState.Eligible, DirectoryScopeId: directoryScopeId, new PimStateSnapshot(pimRequirement, "https://entra.example/activate"));
 
     private static WorkspaceMembership Member(string platformRole = "member") =>
         new(Guid.Parse("55555555-5555-5555-5555-555555555555"), "Customer workspace", platformRole);
