@@ -35,7 +35,8 @@ public sealed class GraphAdapterBoundaryTests
                 || method.GetParameters().Any(parameter => parameter.ParameterType.Name == "GraphMutation"));
             publicInstanceMethods.Should().OnlyContain(method =>
                 method.Name.EndsWith("Async", StringComparison.Ordinal)
-                && method.ReturnType == typeof(Task<GraphOperationResult>));
+                && (method.ReturnType == typeof(Task<GraphOperationResult>)
+                    || method.ReturnType == typeof(Task<PimActivationGraphResult>)));
         }
     }
 
@@ -105,6 +106,38 @@ public sealed class GraphAdapterBoundaryTests
         var request = transport.Requests.Single();
         request.Method.Should().Be(HttpMethod.Post);
         request.PathAndQuery.Should().Be("/v1.0/roleManagement/directory/roleAssignments");
+    }
+
+    [Fact]
+    public async Task Pim_activation_uses_role_management_scope_and_returns_only_graph_reported_status()
+    {
+        var transport = new RecordingGraphTransport(new GraphTransportResponse(
+            GraphOperationResult.Success("corr", "req"),
+            """{"id":"request-1","status":"PendingApproval"}""",
+            1,
+            new Dictionary<string, IReadOnlyCollection<string>>()));
+        var factory = new RecordingGraphClientFactory(transport);
+        var roles = new GraphRoleAndPimService(factory);
+
+        var result = await roles.ActivateDirectoryRoleAsync(
+            new PimActivationGraphRequest("principal-id", "role-definition-id", "role-template-id", "/", 60, "Need access"),
+            "idem-5",
+            CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        result.RequestId.Should().Be("request-1");
+        result.Status.Should().Be("PendingApproval");
+        factory.RequestedScopes.Single().Should().Equal(["RoleManagement.ReadWrite.Directory"]);
+        factory.RequestedScopes.Single().Should().NotContain("Directory.ReadWrite.All");
+        var request = transport.Requests.Single();
+        request.Method.Should().Be(HttpMethod.Post);
+        request.PathAndQuery.Should().Be("/v1.0/roleManagement/directory/roleAssignmentScheduleRequests");
+        request.Headers.Should().ContainKey("Idempotency-Key").WhoseValue.Should().Be("idem-5");
+        var body = (await ReadJsonAsync(request)).RootElement;
+        body.GetProperty("action").GetString().Should().Be("selfActivate");
+        body.GetProperty("principalId").GetString().Should().Be("principal-id");
+        body.GetProperty("roleDefinitionId").GetString().Should().Be("role-definition-id");
+        body.GetProperty("scheduleInfo").GetProperty("expiration").GetProperty("duration").GetString().Should().Be("PT60M");
     }
 
     [Theory]

@@ -77,7 +77,12 @@ public sealed record PimEligibility(
     bool RequiresMfa,
     bool RequiresJustification,
     int? MaximumDurationMinutes,
-    PimActivationAction? ActivationAction);
+    PimActivationAction? ActivationAction)
+{
+    public string? RoleDefinitionId { get; init; }
+    public string? DirectoryScopeId { get; init; }
+    public DateTimeOffset? ExpiresAt { get; init; }
+}
 
 public sealed record PimActivationAction(
     string Action,

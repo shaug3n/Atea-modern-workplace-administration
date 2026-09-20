@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import React from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { UserDetailPage } from '../../../../src/Web/src/features/users/UserDetailPage';
@@ -75,7 +75,8 @@ describe('UserDetailPage', () => {
     expect(screen.getByText('Approval required')).toBeTruthy();
     expect(screen.getByText('MFA required')).toBeTruthy();
     expect(screen.getByText('Justification required')).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Request activation for User Administrator' }).getAttribute('aria-disabled')).toBe('true');
+    fireEvent.click(screen.getByRole('button', { name: 'Request activation for User Administrator' }));
+    expect(screen.getByRole('dialog', { name: 'Request PIM activation' })).toBeTruthy();
     expect(screen.getByText(/synchronized from an on-premises directory/)).toBeTruthy();
     expect(screen.queryByRole('button', { name: /Edit user/i })).toBeNull();
   });

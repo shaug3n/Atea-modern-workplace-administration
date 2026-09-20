@@ -11,7 +11,36 @@ public interface IRoleAndPimReader
     Task<GraphReadResult<IReadOnlyList<PimEligibility>>> ReadUserPimEligibilityAsync(string userObjectId, CancellationToken cancellationToken);
 }
 
-public sealed class GraphRoleAndPimService(IDelegatedGraphClientFactory clientFactory) : IRoleAndPimReader, IGraphMutationExecutor
+public interface IPimActivationCommands
+{
+    Task<PimActivationGraphResult> ActivateDirectoryRoleAsync(PimActivationGraphRequest request, string idempotencyKey, CancellationToken cancellationToken);
+}
+
+public sealed record PimActivationGraphRequest(
+    string PrincipalId,
+    string RoleDefinitionId,
+    string RoleTemplateId,
+    string DirectoryScopeId,
+    int DurationMinutes,
+    string? Justification);
+
+public sealed record PimActivationGraphResult(
+    bool IsSuccess,
+    string Category,
+    string? RequestId = null,
+    string? Status = null,
+    int? StatusCode = null,
+    string? GraphCorrelationId = null,
+    string? GraphRequestId = null)
+{
+    public static PimActivationGraphResult Succeeded(string? requestId, string? status, string? graphCorrelationId = null, string? graphRequestId = null) =>
+        new(true, "success", requestId, status, GraphCorrelationId: graphCorrelationId, GraphRequestId: graphRequestId);
+
+    public static PimActivationGraphResult Failed(string category, int? statusCode = null, string? graphCorrelationId = null, string? graphRequestId = null) =>
+        new(false, category, StatusCode: statusCode, GraphCorrelationId: graphCorrelationId, GraphRequestId: graphRequestId);
+}
+
+public sealed class GraphRoleAndPimService(IDelegatedGraphClientFactory clientFactory) : IRoleAndPimReader, IPimActivationCommands, IGraphMutationExecutor
 {
     async Task<GraphReadResult<IReadOnlyList<DirectoryRoleAssignment>>> IRoleAndPimReader.ReadUserRoleAssignmentsAsync(string userObjectId, CancellationToken cancellationToken)
     {
@@ -57,6 +86,30 @@ public sealed class GraphRoleAndPimService(IDelegatedGraphClientFactory clientFa
         CancellationToken cancellationToken) =>
         ExecuteAsync(new AssignDirectoryRoleMutation(roleDefinitionId, principalId, directoryScopeId), idempotencyKey, cancellationToken);
 
+    public async Task<PimActivationGraphResult> ActivateDirectoryRoleAsync(
+        PimActivationGraphRequest request,
+        string idempotencyKey,
+        CancellationToken cancellationToken)
+    {
+        await using var lease = await clientFactory.CreateForCurrentUserAsync(GraphScopeCatalog.RoleAndPimScopes, cancellationToken);
+        var response = await lease.Transport.SendAsync(new ActivateDirectoryRoleMutation(request).CreateRequest(idempotencyKey), cancellationToken);
+        if (!response.Result.IsSuccess)
+        {
+            return PimActivationGraphResult.Failed(
+                ActivationFailureCategory(response.Result.Category, response.Content),
+                response.Result.StatusCode,
+                response.Result.CorrelationId,
+                response.Result.RequestId);
+        }
+
+        using var document = JsonDocument.Parse(string.IsNullOrWhiteSpace(response.Content) ? "{}" : response.Content);
+        return PimActivationGraphResult.Succeeded(
+            OptionalString(document.RootElement, "id"),
+            OptionalString(document.RootElement, "status") ?? OptionalString(document.RootElement, "requestStatus"),
+            response.Result.CorrelationId,
+            response.Result.RequestId);
+    }
+
     Task<GraphOperationResult> IGraphMutationExecutor.ExecuteAsync(GraphMutation mutation, string idempotencyKey, CancellationToken cancellationToken) =>
         ExecuteAsync(mutation, idempotencyKey, cancellationToken);
 
@@ -78,7 +131,8 @@ public sealed class GraphRoleAndPimService(IDelegatedGraphClientFactory clientFa
     private static PimEligibility MapPimEligibility(JsonElement element)
     {
         var roleDefinition = element.TryGetProperty("roleDefinition", out var role) && role.ValueKind == JsonValueKind.Object ? role : default;
-        var templateId = OptionalString(roleDefinition, "templateId") ?? OptionalString(element, "roleTemplateId") ?? OptionalString(element, "roleDefinitionId") ?? string.Empty;
+        var roleDefinitionId = OptionalString(element, "roleDefinitionId") ?? OptionalString(roleDefinition, "id");
+        var templateId = OptionalString(roleDefinition, "templateId") ?? OptionalString(element, "roleTemplateId") ?? roleDefinitionId ?? string.Empty;
         var requirement = PimStateMapper.ToPimRequirement(OptionalString(element, "status") ?? "Eligible");
         var status = requirement switch
         {
@@ -103,7 +157,12 @@ public sealed class GraphRoleAndPimService(IDelegatedGraphClientFactory clientFa
             OptionalInt(element, "maximumDurationMinutes"),
             activationAvailable
                 ? new PimActivationAction("request_activation", "/api/pim/activations", "POST", Capability.PimActivate, true)
-                : null);
+                : null)
+        {
+            RoleDefinitionId = roleDefinitionId,
+            DirectoryScopeId = OptionalString(element, "directoryScopeId"),
+            ExpiresAt = OptionalDateTimeOffset(element, "endDateTime")
+        };
     }
 
     private static string DisplayNameFor(string roleTemplateId) =>
@@ -121,10 +180,36 @@ public sealed class GraphRoleAndPimService(IDelegatedGraphClientFactory clientFa
     private static int? OptionalInt(JsonElement element, string property) =>
         element.ValueKind == JsonValueKind.Object && element.TryGetProperty(property, out var value) && value.TryGetInt32(out var number) ? number : null;
 
+    private static DateTimeOffset? OptionalDateTimeOffset(JsonElement element, string property) =>
+        element.ValueKind == JsonValueKind.Object
+        && element.TryGetProperty(property, out var value)
+        && value.ValueKind == JsonValueKind.String
+        && DateTimeOffset.TryParse(value.GetString(), out var date)
+            ? date
+            : null;
+
     private static string PrincipalFilter(string userObjectId) =>
         Uri.EscapeDataString($"principalId eq '{EscapeODataString(userObjectId)}'");
 
     private static string EscapeODataString(string value) => value.Trim().Replace("'", "''", StringComparison.Ordinal);
+
+    private static string ActivationFailureCategory(string fallback, string content)
+    {
+        if (content.Contains("RoleAssignmentRequestPolicyValidationFailed", StringComparison.OrdinalIgnoreCase)
+            || content.Contains("policy", StringComparison.OrdinalIgnoreCase)
+            || content.Contains("approval", StringComparison.OrdinalIgnoreCase))
+        {
+            return "policy_blocked";
+        }
+
+        if (content.Contains("Mfa", StringComparison.OrdinalIgnoreCase)
+            || content.Contains("interaction_required", StringComparison.OrdinalIgnoreCase))
+        {
+            return "mfa_required";
+        }
+
+        return fallback;
+    }
 }
 
 internal sealed record AssignDirectoryRoleMutation(
@@ -139,5 +224,28 @@ internal sealed record AssignDirectoryRoleMutation(
         roleDefinitionId = RoleDefinitionId,
         principalId = PrincipalId,
         directoryScopeId = DirectoryScopeId
+    };
+}
+
+internal sealed record ActivateDirectoryRoleMutation(PimActivationGraphRequest Request) : JsonGraphMutation(GraphScopeCatalog.RoleAndPimScopes)
+{
+    internal override HttpMethod Method => HttpMethod.Post;
+    internal override string PathAndQuery => "/v1.0/roleManagement/directory/roleAssignmentScheduleRequests";
+    internal override object Body => new
+    {
+        action = "selfActivate",
+        principalId = Request.PrincipalId,
+        roleDefinitionId = Request.RoleDefinitionId,
+        directoryScopeId = Request.DirectoryScopeId,
+        justification = Request.Justification,
+        scheduleInfo = new
+        {
+            startDateTime = DateTimeOffset.UtcNow,
+            expiration = new
+            {
+                type = "afterDuration",
+                duration = $"PT{Request.DurationMinutes}M"
+            }
+        }
     };
 }

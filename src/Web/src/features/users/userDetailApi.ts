@@ -52,6 +52,7 @@ export type PimActivationAction = {
 export type PimEligibility = {
   id: string;
   roleTemplateId: string;
+  roleDefinitionId?: string | null;
   displayName: string | null;
   status: string;
   requiredCapability: 'pim.activate';
@@ -60,6 +61,8 @@ export type PimEligibility = {
   requiresMfa: boolean;
   requiresJustification: boolean;
   maximumDurationMinutes: number | null;
+  directoryScopeId?: string | null;
+  expiresAt?: string | null;
   activationAction: PimActivationAction | null;
 };
 
