@@ -7,11 +7,14 @@ using Atea.UnifiedWorkplace.Api.Infrastructure.Persistence;
 using Atea.UnifiedWorkplace.Api.Infrastructure.Persistence.Repositories;
 using Microsoft.EntityFrameworkCore;
 using Atea.UnifiedWorkplace.Api.Infrastructure.Graph;
+using Atea.UnifiedWorkplace.Api.Features.UserPreferences;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddDbContext<WorkplaceDbContext>(options => options.UseNpgsql(builder.Configuration.GetConnectionString("WorkplaceDb")));
 builder.Services.AddPlatformAuthorization(builder.Configuration);
 builder.Services.AddScoped<IWorkspaceProvisioningRepository, WorkspaceProvisioningRepository>();
+builder.Services.AddScoped<IUserPreferenceRepository, UserPreferenceRepository>();
+builder.Services.AddScoped<IThemePreferenceService, ThemePreferenceService>();
 builder.Services.AddScoped<IWorkspaceProvisioningService, WorkspaceProvisioningService>();
 builder.Services.AddScoped<WorkspaceOnboardingRepository>();
 builder.Services.AddScoped<IOnboardingRepository>(services => services.GetRequiredService<WorkspaceOnboardingRepository>());
@@ -79,6 +82,7 @@ app.MapGet("/api/session", (IWorkspaceContextAccessor accessor) =>
 }).RequireAuthorization();
 app.MapWorkspaceEndpoints();
 app.MapCapabilityEndpoints();
+app.MapUserPreferenceEndpoints();
 app.MapFallbackToFile("index.html");
 
 app.Run();

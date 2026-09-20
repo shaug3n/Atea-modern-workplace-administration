@@ -6,7 +6,10 @@ public sealed class WorkspaceContextMiddleware(RequestDelegate next)
 
     public async Task InvokeAsync(HttpContext httpContext, WorkspaceContextResolver resolver)
     {
-        if (!httpContext.Request.Path.StartsWithSegments("/api") || httpContext.Request.Path.StartsWithSegments("/api/invitations") || httpContext.User.Identity?.IsAuthenticated != true)
+        if (!httpContext.Request.Path.StartsWithSegments("/api") ||
+            httpContext.Request.Path.StartsWithSegments("/api/invitations") ||
+            httpContext.Request.Path.StartsWithSegments("/api/user-preferences") ||
+            httpContext.User.Identity?.IsAuthenticated != true)
         {
             await next(httpContext);
             return;

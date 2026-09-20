@@ -11,6 +11,7 @@ public sealed class WorkplaceDbContext(DbContextOptions<WorkplaceDbContext> opti
     public DbSet<TenantConnection> TenantConnections => Set<TenantConnection>();
     public DbSet<WorkspaceSettings> WorkspaceSettings => Set<WorkspaceSettings>();
     public DbSet<PlatformInvitation> PlatformInvitations => Set<PlatformInvitation>();
+    public DbSet<UserPreference> UserPreferences => Set<UserPreference>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -58,6 +59,12 @@ public sealed class WorkplaceDbContext(DbContextOptions<WorkplaceDbContext> opti
             ConfigureUtc(entity.Property(x => x.RedeemedAt));
             ConfigureUtc(entity.Property(x => x.CreatedAt));
             entity.HasOne(x => x.Workspace).WithMany().HasForeignKey(x => x.WorkspaceId).OnDelete(DeleteBehavior.Cascade);
+        });
+        modelBuilder.Entity<UserPreference>(entity =>
+        {
+            entity.HasKey(x => new { x.TenantId, x.UserObjectId });
+            entity.Property(x => x.Theme).HasMaxLength(5).IsRequired();
+            ConfigureUtc(entity.Property(x => x.UpdatedAt));
         });
     }
 

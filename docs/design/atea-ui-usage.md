@@ -30,7 +30,7 @@ The app sets `document.documentElement.dataset.theme` to `light` or `dark`; comp
 
 ## Theme Preference
 
-`ThemeProvider` uses a `light | dark` preference. It falls back to the system colour scheme only before a saved user preference exists. In production it calls `/api/user-preferences/theme` through the existing authenticated API boundary and writes only `{ "theme": "light" | "dark" }`. If the endpoint is unavailable during local development, it falls back to in-memory storage for the theme value only. No tenant credentials or Microsoft Graph tokens are stored by the preference layer.
+`ThemeProvider` uses a `light | dark` preference. It falls back to the system colour scheme only before a saved user preference exists. In production it calls `/api/user-preferences/theme` through the existing authenticated API boundary and writes only `{ "theme": "light" | "dark" }`. The API stores the preference by verified tenant ID and user object ID claims, without requiring workspace membership. If the endpoint is unavailable during local development, the frontend falls back to in-memory storage for the theme value only. No tenant credentials or Microsoft Graph tokens are stored by the preference layer.
 
 ## Shell and Navigation
 
@@ -43,7 +43,7 @@ The app shell provides:
 - connection freshness badge with readable text
 - keyboard-accessible theme switch
 
-Navigation is capability-aware. It consumes the existing `/api/capabilities` contract and hides Workspace settings when `workspace.settings.manage` is not allowed. Direct access to `/workspace-settings` still renders an explicit permission state.
+Navigation is capability-aware. It consumes the existing `/api/capabilities` contract and hides Users when `users.view` is not allowed, Licenses when `licenses.assign` is not allowed, and Workspace settings when `workspace.settings.manage` is not allowed. Direct access to guarded routes still renders an explicit permission state.
 
 The Task 7 brief used the name `workspace.configure`, but the completed backend contract at `eb9ff3c` exposes `workspace.settings.manage`. The shell follows the existing contract to avoid a second permission system.
 

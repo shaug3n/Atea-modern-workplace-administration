@@ -11,15 +11,14 @@ type NavItem = {
 
 const navItems: NavItem[] = [
   { href: '/overview', label: messages.navOverview },
-  { href: '/users', label: messages.navUsers },
-  { href: '/licenses', label: messages.navLicenses },
+  { href: '/users', label: messages.navUsers, capability: 'users.view' },
+  { href: '/licenses', label: messages.navLicenses, capability: 'licenses.assign' },
   { href: '/audit', label: messages.navAudit },
   { href: '/workspace-settings', label: messages.navWorkspaceSettings, capability: workspaceSettingsCapability },
 ];
 
 export function PrimaryNav({ capabilities, currentPath, onNavigate }: { capabilities: CapabilitySnapshot; currentPath: string; onNavigate?: (path: string) => void }) {
-  const workspaceSettings = capabilities.capabilities.find((decision) => decision.capability === workspaceSettingsCapability);
-  const visibleItems = navItems.filter((item) => item.capability !== workspaceSettingsCapability || workspaceSettings?.state === 'allowed');
+  const visibleItems = navItems.filter((item) => !item.capability || capabilities.capabilities.find((decision) => decision.capability === item.capability)?.state === 'allowed');
 
   return (
     <nav className="primary-nav" aria-label={messages.primaryNavigationLabel}>

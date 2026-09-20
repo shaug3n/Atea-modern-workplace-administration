@@ -18,7 +18,7 @@ public sealed class WorkspaceRepositoryTests : IAsyncLifetime
     public async Task InitializeAsync()
     {
         try { await postgres.StartAsync(); }
-        catch (DockerUnavailableException exception) { throw new SkipException($"Docker daemon unavailable: {exception.Message}"); }
+        catch (DockerUnavailableException exception) { throw SkipException.ForSkip($"Docker daemon unavailable: {exception.Message}"); }
         db = new WorkplaceDbContext(new DbContextOptionsBuilder<WorkplaceDbContext>()
             .UseNpgsql(postgres.GetConnectionString())
             .Options);
@@ -97,6 +97,24 @@ public sealed class WorkspaceRepositoryTests : IAsyncLifetime
         results.Count(result => result).Should().Be(1);
         (await db.WorkspaceMemberships.CountAsync(x => x.WorkspaceId == workspaceId)).Should().Be(1);
         (await db.PlatformInvitations.SingleAsync(x => x.Id == created.InvitationId)).RedeemedAt.Should().NotBeNull();
+    }
+
+    [Fact]
+    public async Task Theme_preferences_are_isolated_by_tenant_and_user()
+    {
+        var tenantA = Guid.NewGuid();
+        var tenantB = Guid.NewGuid();
+        var userA = Guid.NewGuid();
+        var userB = Guid.NewGuid();
+        var repository = new UserPreferenceRepository(db);
+
+        await repository.SetThemeAsync(tenantA, userA, "dark");
+        await repository.SetThemeAsync(tenantB, userB, "light");
+
+        (await repository.GetThemeAsync(tenantA, userA)).Should().Be("dark");
+        (await repository.GetThemeAsync(tenantA, userB)).Should().BeNull();
+        (await repository.GetThemeAsync(tenantB, userA)).Should().BeNull();
+        (await repository.GetThemeAsync(tenantB, userB)).Should().Be("light");
     }
 
     private static Workspace NewWorkspace(Guid id, Guid tenantId, string name) => new()
