@@ -109,6 +109,47 @@ public sealed class UserDetailEndpointTests
         body.Should().Contain("\"retryAfterSeconds\":30");
     }
 
+    [Fact]
+    public async Task User_detail_endpoint_maps_directory_consent_failure_without_throwing()
+    {
+        var graph = DetailGraphFixture.Permitted();
+        graph.DirectoryReader.Error = new GraphOperationResult(false, "consent_required", 403);
+        using var factory = CreateFactory(graph);
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Test");
+
+        var response = await client.GetAsync("/api/users/user-1");
+        var body = await response.Content.ReadAsStringAsync();
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        body.Should().Contain("\"user\":null");
+        body.Should().Contain("\"freshness\":\"unavailable\"");
+        body.Should().Contain("\"partialData\":true");
+        body.Should().Contain("\"category\":\"consent_required\"");
+        body.Should().Contain("\"statusCode\":403");
+        body.Should().NotContain("raw graph");
+    }
+
+    [Fact]
+    public async Task Section_endpoint_maps_throttled_directory_verification_without_reading_section()
+    {
+        var graph = DetailGraphFixture.Permitted();
+        graph.DirectoryReader.Error = new GraphOperationResult(false, "throttled", 429, TimeSpan.FromSeconds(30));
+        using var factory = CreateFactory(graph);
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Test");
+
+        var response = await client.GetAsync("/api/users/user-1/licenses");
+        var body = await response.Content.ReadAsStringAsync();
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        body.Should().Contain("\"freshness\":\"stale\"");
+        body.Should().Contain("\"partialData\":true");
+        body.Should().Contain("\"category\":\"throttled\"");
+        body.Should().Contain("\"retryAfterSeconds\":30");
+        graph.LicenseReader.Calls.Should().Be(0);
+    }
+
     private static WebApplicationFactory<Program> CreateFactory(DetailGraphFixture graph) =>
         new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
         {
@@ -203,6 +244,7 @@ public sealed class UserDetailEndpointTests
     {
         public List<string> VerifiedUserIds { get; } = [];
         public UserDetails? User { get; set; }
+        public GraphOperationResult? Error { get; set; }
 
         public Task<PagedResult<UserSummary>> SearchAsync(WorkspaceContext context, UserSearchQuery query, CancellationToken cancellationToken) =>
             Task.FromResult(new PagedResult<UserSummary>([], [], null));
@@ -210,6 +252,11 @@ public sealed class UserDetailEndpointTests
         public Task<UserDetails?> GetAsync(string userObjectId, CancellationToken cancellationToken)
         {
             VerifiedUserIds.Add(userObjectId);
+            if (Error is not null)
+            {
+                throw new GraphAdapterException(Error);
+            }
+
             return Task.FromResult(User);
         }
     }

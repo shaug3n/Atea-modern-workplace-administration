@@ -41,7 +41,21 @@ public sealed class UserDetailService(
         }
 
         var user = await ReadUserAsync(userObjectId, cancellationToken);
-        if (user is null)
+        if (user.Error is not null)
+        {
+            var error = UserVerificationError(user.Error, usersView.State);
+            return new UserDetailResult(
+                UserDetailStatus.Found,
+                new UserDetailResponse(
+                    Access(usersView, FreshnessFor(user.Error.Category), true, error),
+                    null,
+                    EmptySection<AssignedLicense>(capabilities[Capability.LicensesAssign], UserVerificationError(user.Error, capabilities[Capability.LicensesAssign].State), FreshnessFor(user.Error.Category)),
+                    EmptySection<GroupMembership>(capabilities[Capability.GroupsManageMembers], UserVerificationError(user.Error, capabilities[Capability.GroupsManageMembers].State), FreshnessFor(user.Error.Category)),
+                    EmptySection<DirectoryRoleAssignment>(capabilities[Capability.RolesAssign], UserVerificationError(user.Error, capabilities[Capability.RolesAssign].State), FreshnessFor(user.Error.Category)),
+                    EmptySection<PimEligibility>(capabilities[Capability.PimActivate], UserVerificationError(user.Error, capabilities[Capability.PimActivate].State), FreshnessFor(user.Error.Category))));
+        }
+
+        if (user.Value is null)
         {
             return new UserDetailResult(UserDetailStatus.NotFound, Error: Error("user_not_found", "The user was removed or is no longer visible in the current tenant."));
         }
@@ -50,7 +64,7 @@ public sealed class UserDetailService(
             UserDetailStatus.Found,
             new UserDetailResponse(
                 Access(usersView),
-                user,
+                user.Value,
                 await ReadSectionAsync(userObjectId, capabilities[Capability.LicensesAssign], licenseReader.ReadUserLicensesAsync, cancellationToken),
                 await ReadSectionAsync(userObjectId, capabilities[Capability.GroupsManageMembers], groupReader.ReadUserGroupsAsync, cancellationToken),
                 await ReadSectionAsync(userObjectId, capabilities[Capability.RolesAssign], roleReader.ReadUserRoleAssignmentsAsync, cancellationToken),
@@ -85,7 +99,12 @@ public sealed class UserDetailService(
         }
 
         var user = await ReadUserAsync(userObjectId, cancellationToken);
-        if (user is null)
+        if (user.Error is not null)
+        {
+            return EmptySection<T>(capabilities[capability], UserVerificationError(user.Error, capabilities[capability].State), FreshnessFor(user.Error.Category));
+        }
+
+        if (user.Value is null)
         {
             return null;
         }
@@ -93,15 +112,19 @@ public sealed class UserDetailService(
         return await ReadSectionAsync(userObjectId, capabilities[capability], read, cancellationToken);
     }
 
-    private async Task<UserDetails?> ReadUserAsync(string userObjectId, CancellationToken cancellationToken)
+    private async Task<GraphReadResult<UserDetails?>> ReadUserAsync(string userObjectId, CancellationToken cancellationToken)
     {
         try
         {
-            return await directoryReader.GetAsync(userObjectId, cancellationToken);
+            return GraphReadResult<UserDetails?>.Succeeded(await directoryReader.GetAsync(userObjectId, cancellationToken));
         }
         catch (GraphAdapterException exception) when (exception.Result.Category == "not_found")
         {
-            return null;
+            return GraphReadResult<UserDetails?>.Succeeded(null);
+        }
+        catch (GraphAdapterException exception)
+        {
+            return GraphReadResult<UserDetails?>.Failed(exception.Result);
         }
     }
 
@@ -131,8 +154,11 @@ public sealed class UserDetailService(
             []);
     }
 
-    private UserDetailSection<T> EmptySection<T>(CapabilityDecision authorization, UserDirectoryError? error = null) =>
-        new(Access(authorization, UserDirectoryFreshness.Unavailable, true, error), []);
+    private UserDetailSection<T> EmptySection<T>(
+        CapabilityDecision authorization,
+        UserDirectoryError? error = null,
+        string freshness = UserDirectoryFreshness.Unavailable) =>
+        new(Access(authorization, freshness, true, error), []);
 
     private SectionAccessState Access(
         CapabilityDecision authorization,
@@ -149,6 +175,9 @@ public sealed class UserDetailService(
         TimeSpan? retryAfter = null) =>
         new(category, message, state, statusCode, retryAfter is null ? null : (int)Math.Ceiling(retryAfter.Value.TotalSeconds));
 
+    private static UserDirectoryError UserVerificationError(GraphOperationResult result, string state) =>
+        Error(result.Category, VerificationMessageFor(result.Category), state, result.StatusCode, result.RetryAfter);
+
     private static string FreshnessFor(string category) => category switch
     {
         "throttled" => UserDirectoryFreshness.Stale,
@@ -162,5 +191,13 @@ public sealed class UserDetailService(
         "throttled" => "Microsoft Graph throttled this section request.",
         "not_found" => "The section data could not be found.",
         _ => "This section is temporarily unavailable."
+    };
+
+    private static string VerificationMessageFor(string category) => category switch
+    {
+        "not_authorized" => "The signed-in user is not authorized to verify this user.",
+        "consent_required" => "Delegated Microsoft Graph consent is required to verify this user.",
+        "throttled" => "Microsoft Graph throttled user verification.",
+        _ => "User verification is temporarily unavailable."
     };
 }

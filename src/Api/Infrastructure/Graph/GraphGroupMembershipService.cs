@@ -10,7 +10,7 @@ public interface IGroupMembershipReader
 
 public sealed class GraphGroupMembershipService(IDelegatedGraphClientFactory clientFactory) : IGroupMembershipReader, IGraphMutationExecutor
 {
-    public async Task<GraphReadResult<IReadOnlyList<GroupMembership>>> ReadUserGroupsAsync(string userObjectId, CancellationToken cancellationToken)
+    async Task<GraphReadResult<IReadOnlyList<GroupMembership>>> IGroupMembershipReader.ReadUserGroupsAsync(string userObjectId, CancellationToken cancellationToken)
     {
         await using var lease = await clientFactory.CreateForCurrentUserAsync(GraphScopeCatalog.DirectoryReadScopes, cancellationToken);
         var response = await lease.Transport.SendAsync(

@@ -13,11 +13,11 @@ public interface IRoleAndPimReader
 
 public sealed class GraphRoleAndPimService(IDelegatedGraphClientFactory clientFactory) : IRoleAndPimReader, IGraphMutationExecutor
 {
-    public async Task<GraphReadResult<IReadOnlyList<DirectoryRoleAssignment>>> ReadUserRoleAssignmentsAsync(string userObjectId, CancellationToken cancellationToken)
+    async Task<GraphReadResult<IReadOnlyList<DirectoryRoleAssignment>>> IRoleAndPimReader.ReadUserRoleAssignmentsAsync(string userObjectId, CancellationToken cancellationToken)
     {
         await using var lease = await clientFactory.CreateForCurrentUserAsync(GraphScopeCatalog.AuthorizationReadScopes, cancellationToken);
         var response = await lease.Transport.SendAsync(
-            new GraphRequest(HttpMethod.Get, $"/v1.0/roleManagement/directory/roleAssignments?$filter=principalId eq '{EscapeODataString(userObjectId)}'&$expand=roleDefinition($select=id,templateId,displayName)&$select=id,roleDefinitionId,directoryScopeId"),
+            new GraphRequest(HttpMethod.Get, $"/v1.0/roleManagement/directory/roleAssignments?$filter={PrincipalFilter(userObjectId)}&$expand=roleDefinition($select=id,templateId,displayName)&$select=id,roleDefinitionId,directoryScopeId"),
             cancellationToken);
         if (!response.Result.IsSuccess)
         {
@@ -31,11 +31,11 @@ public sealed class GraphRoleAndPimService(IDelegatedGraphClientFactory clientFa
         return GraphReadResult<IReadOnlyList<DirectoryRoleAssignment>>.Succeeded(assignments);
     }
 
-    public async Task<GraphReadResult<IReadOnlyList<PimEligibility>>> ReadUserPimEligibilityAsync(string userObjectId, CancellationToken cancellationToken)
+    async Task<GraphReadResult<IReadOnlyList<PimEligibility>>> IRoleAndPimReader.ReadUserPimEligibilityAsync(string userObjectId, CancellationToken cancellationToken)
     {
         await using var lease = await clientFactory.CreateForCurrentUserAsync(GraphScopeCatalog.AuthorizationReadScopes, cancellationToken);
         var response = await lease.Transport.SendAsync(
-            new GraphRequest(HttpMethod.Get, $"/v1.0/roleManagement/directory/roleEligibilityScheduleInstances?$filter=principalId eq '{EscapeODataString(userObjectId)}'&$expand=roleDefinition($select=id,templateId,displayName)&$select=id,roleDefinitionId,directoryScopeId,status,memberType,endDateTime"),
+            new GraphRequest(HttpMethod.Get, $"/v1.0/roleManagement/directory/roleEligibilityScheduleInstances?$filter={PrincipalFilter(userObjectId)}&$expand=roleDefinition($select=id,templateId,displayName)&$select=id,roleDefinitionId,directoryScopeId,status,memberType,endDateTime"),
             cancellationToken);
         if (!response.Result.IsSuccess)
         {
@@ -121,7 +121,10 @@ public sealed class GraphRoleAndPimService(IDelegatedGraphClientFactory clientFa
     private static int? OptionalInt(JsonElement element, string property) =>
         element.ValueKind == JsonValueKind.Object && element.TryGetProperty(property, out var value) && value.TryGetInt32(out var number) ? number : null;
 
-    private static string EscapeODataString(string value) => value.Replace("'", "''", StringComparison.Ordinal);
+    private static string PrincipalFilter(string userObjectId) =>
+        Uri.EscapeDataString($"principalId eq '{EscapeODataString(userObjectId)}'");
+
+    private static string EscapeODataString(string value) => value.Trim().Replace("'", "''", StringComparison.Ordinal);
 }
 
 internal sealed record AssignDirectoryRoleMutation(

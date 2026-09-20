@@ -10,7 +10,7 @@ public interface IUserLicenseReader
 
 public sealed class GraphLicenseService(IDelegatedGraphClientFactory clientFactory) : IUserLicenseReader, IGraphMutationExecutor
 {
-    public async Task<GraphReadResult<IReadOnlyList<AssignedLicense>>> ReadUserLicensesAsync(string userObjectId, CancellationToken cancellationToken)
+    async Task<GraphReadResult<IReadOnlyList<AssignedLicense>>> IUserLicenseReader.ReadUserLicensesAsync(string userObjectId, CancellationToken cancellationToken)
     {
         await using var lease = await clientFactory.CreateForCurrentUserAsync(GraphScopeCatalog.DirectoryReadScopes, cancellationToken);
         var response = await lease.Transport.SendAsync(

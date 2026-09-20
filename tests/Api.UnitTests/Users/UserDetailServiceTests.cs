@@ -49,6 +49,7 @@ public sealed class UserDetailServiceTests
 
         directory.VerifiedUserIds.Should().Equal("user-1");
         licenses.Calls.Should().Be(1);
+        section.Should().NotBeNull();
         section.Items.Should().ContainSingle(license => license.SkuPartNumber == "ENTERPRISEPACK");
         section.Access.Authorization.Capability.Should().Be(Capability.LicensesAssign);
         section.Access.Authorization.State.Should().Be(CapabilityState.ReadOnly);
@@ -74,6 +75,60 @@ public sealed class UserDetailServiceTests
         licenses.Calls.Should().Be(0);
     }
 
+    [Fact]
+    public async Task Detail_maps_directory_consent_failure_to_safe_access_error()
+    {
+        var service = new UserDetailService(
+            new RecordingDirectoryReader { Error = new GraphOperationResult(false, "consent_required", 403) },
+            new RecordingLicenseReader(),
+            new EmptyGroupReader(),
+            new EmptyRoleReader(),
+            new StaticCapabilityReader(AllowedSnapshot),
+            () => DateTimeOffset.Parse("2026-09-21T08:00:00Z"));
+
+        var detail = await service.GetDetailAsync(Workspace, "user-1", CancellationToken.None);
+
+        detail.Status.Should().Be(UserDetailStatus.Found);
+        detail.Detail!.User.Should().BeNull();
+        detail.Detail.Access.Freshness.Should().Be(UserDirectoryFreshness.Unavailable);
+        detail.Detail.Access.PartialData.Should().BeTrue();
+        detail.Detail.Access.Error.Should().BeEquivalentTo(new UserDirectoryError(
+            "consent_required",
+            "Delegated Microsoft Graph consent is required to verify this user.",
+            CapabilityState.Allowed,
+            403,
+            null));
+        detail.Detail.Licenses.Items.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task Section_verification_throttle_returns_stale_error_without_reading_section()
+    {
+        var licenses = new RecordingLicenseReader();
+        var service = new UserDetailService(
+            new RecordingDirectoryReader { Error = new GraphOperationResult(false, "throttled", 429, TimeSpan.FromSeconds(30)) },
+            licenses,
+            new EmptyGroupReader(),
+            new EmptyRoleReader(),
+            new StaticCapabilityReader(AllowedSnapshot),
+            () => DateTimeOffset.Parse("2026-09-21T08:00:00Z"));
+
+        var section = await service.GetLicensesAsync(Workspace, "user-1", CancellationToken.None);
+
+        section.Should().NotBeNull();
+        section!.Items.Should().BeEmpty();
+        section.Access.Authorization.Capability.Should().Be(Capability.LicensesAssign);
+        section.Access.Freshness.Should().Be(UserDirectoryFreshness.Stale);
+        section.Access.PartialData.Should().BeTrue();
+        section.Access.Error.Should().BeEquivalentTo(new UserDirectoryError(
+            "throttled",
+            "Microsoft Graph throttled user verification.",
+            CapabilityState.Allowed,
+            429,
+            30));
+        licenses.Calls.Should().Be(0);
+    }
+
     private static readonly WorkspaceContext Workspace = new(
         new AuthenticatedUser(
             Guid.Parse("11111111-1111-1111-1111-111111111111"),
@@ -95,6 +150,7 @@ public sealed class UserDetailServiceTests
     {
         public List<string> VerifiedUserIds { get; } = [];
         public UserDetails? User { get; set; }
+        public GraphOperationResult? Error { get; set; }
 
         public Task<PagedResult<UserSummary>> SearchAsync(WorkspaceContext context, UserSearchQuery query, CancellationToken cancellationToken) =>
             Task.FromResult(new PagedResult<UserSummary>([], [], null));
@@ -102,6 +158,11 @@ public sealed class UserDetailServiceTests
         public Task<UserDetails?> GetAsync(string userObjectId, CancellationToken cancellationToken)
         {
             VerifiedUserIds.Add(userObjectId);
+            if (Error is not null)
+            {
+                throw new GraphAdapterException(Error);
+            }
+
             return Task.FromResult(User);
         }
     }
