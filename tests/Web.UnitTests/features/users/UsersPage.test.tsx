@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import React from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { CapabilityDecision } from '../../../../src/Web/src/capabilities/capabilityTypes';
@@ -12,7 +12,10 @@ vi.mock('../../../../src/Web/src/auth/useApi', () => ({
 }));
 
 const usersResponse: UsersDirectoryResponse = {
-  items: [{ id: 'user-1', displayName: 'Ada Lovelace', userPrincipalName: 'ada@example.com', mail: 'ada@example.com', accountEnabled: true, userType: 'Member' }],
+  items: [
+    { id: 'user-1', displayName: 'Ada Lovelace', userPrincipalName: 'ada@example.com', mail: 'ada@example.com', accountEnabled: true, userType: 'Member' },
+    { id: 'user-2', displayName: 'Grace Hopper', userPrincipalName: 'grace@example.com', mail: 'grace@example.com', accountEnabled: true, userType: 'Member' },
+  ],
   continuationToken: null,
   fetchedAt: '2026-09-21T08:00:00Z',
   freshness: 'fresh',
@@ -89,7 +92,44 @@ describe('UsersPage', () => {
 
     expect(screen.queryByRole('dialog', { name: 'Disable user' })).toBeNull();
     expect(apiMock).not.toHaveBeenCalled();
-    expect(screen.getByText('This action is read-only for your current Entra role.')).toBeTruthy();
+    expect(screen.getAllByText('This action is read-only for your current Entra role.')).toHaveLength(2);
+  });
+
+  it('resets disable confirmation when the target user changes', async () => {
+    render(<UsersPage capabilities={allowedCapabilities} loadUsers={async () => usersResponse} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Disable Ada Lovelace' }));
+    fireEvent.click(screen.getByLabelText('I reviewed the target, change and required capability.'));
+    fireEvent.change(screen.getByLabelText('Type DISABLE to confirm'), { target: { value: 'DISABLE' } });
+    expect((screen.getByRole('button', { name: 'Confirm action' }) as HTMLButtonElement).disabled).toBe(false);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Disable Grace Hopper' }));
+
+    expect(within(screen.getByRole('dialog', { name: 'Disable user' })).getByText('Grace Hopper')).toBeTruthy();
+    expect((screen.getByLabelText('I reviewed the target, change and required capability.') as HTMLInputElement).checked).toBe(false);
+    expect((screen.getByLabelText('Type DISABLE to confirm') as HTMLInputElement).value).toBe('');
+    expect((screen.getByRole('button', { name: 'Confirm action' }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('closes disable confirmation with permission guidance when disable capability is revoked before submit', async () => {
+    const loadUsers = vi.fn(async (_filters: UserFiltersState, _continuationToken: string | null) => usersResponse);
+    const { rerender } = render(<UsersPage capabilities={allowedCapabilities} loadUsers={loadUsers} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Disable Ada Lovelace' }));
+    fireEvent.click(screen.getByLabelText('I reviewed the target, change and required capability.'));
+    fireEvent.change(screen.getByLabelText('Type DISABLE to confirm'), { target: { value: 'DISABLE' } });
+
+    rerender(<UsersPage capabilities={[
+      decision('users.view', 'allowed'),
+      decision('users.create', 'hidden'),
+      decision('users.update', 'allowed'),
+      decision('users.disable', 'read_only'),
+    ]} loadUsers={loadUsers} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm action' }));
+
+    expect(screen.queryByRole('dialog', { name: 'Disable user' })).toBeNull();
+    expect(screen.getByRole('alert').textContent).toContain('cannot disable this user');
+    expect(apiMock).not.toHaveBeenCalled();
   });
 
   it('keeps the disable dialog open with friendly guidance when mutation fails', async () => {

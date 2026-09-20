@@ -109,6 +109,11 @@ export function UsersPage({ capabilities, onNavigate, loadUsers }: { capabilitie
 
   const submitDisable = useCallback(async () => {
     if (!disableTarget) return;
+    if (usersDisable.state !== 'allowed') {
+      setDisableTarget(null);
+      setDisableError(messages.userDisablePermissionDenied);
+      return;
+    }
 
     setDisablePending(true);
     setDisableError(null);
@@ -132,7 +137,7 @@ export function UsersPage({ capabilities, onNavigate, loadUsers }: { capabilitie
     } finally {
       setDisablePending(false);
     }
-  }, [api, disableTarget]);
+  }, [api, disableTarget, usersDisable.state]);
 
   const state = loading ? 'loading' : loadFailed ? 'error' : result && result.items.length === 0 ? 'empty' : 'ready';
 

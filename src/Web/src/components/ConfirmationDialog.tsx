@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { messages } from '../app/messages';
 
 export type ConfirmationDialogProps = {
@@ -30,6 +30,11 @@ export function ConfirmationDialog({
   const [phrase, setPhrase] = useState('');
   const phraseMatches = !destructivePhrase || phrase === destructivePhrase;
   const canConfirm = reviewed && phraseMatches && !busy && !sourceLimitation;
+
+  useEffect(() => {
+    setReviewed(false);
+    setPhrase('');
+  }, [target]);
 
   return (
     <section className="mutation-dialog" role="dialog" aria-modal="true" aria-labelledby="mutation-dialog-title">
