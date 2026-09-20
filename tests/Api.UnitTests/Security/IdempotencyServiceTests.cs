@@ -76,4 +76,35 @@ public sealed class IdempotencyServiceTests
         record.SafeResultJson.Should().NotContain("Secret-123");
         record.SafeResultJson.Should().NotContain("raw graph");
     }
+
+    [Fact]
+    public async Task Concurrent_same_scope_and_key_runs_mutation_once()
+    {
+        var service = new MemoryIdempotencyService();
+        var scope = new IdempotencyScope(
+            Guid.Parse("55555555-5555-5555-5555-555555555555"),
+            Guid.Parse("22222222-2222-2222-2222-222222222222"),
+            "users.update",
+            "user-1",
+            "same-key");
+        var releaseMutation = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var calls = 0;
+
+        Task<IdempotencyOutcome> Execute() => service.ExecuteAsync(scope, new { displayName = "Ada" }, async () =>
+        {
+            Interlocked.Increment(ref calls);
+            await releaseMutation.Task;
+            return new IdempotentOperationResult(200, "succeeded", """{"status":"succeeded"}""");
+        }, CancellationToken.None);
+
+        var first = Execute();
+        var second = Execute();
+        await Task.Delay(50);
+        releaseMutation.SetResult();
+        var results = await Task.WhenAll(first, second);
+
+        calls.Should().Be(1);
+        results.Should().ContainSingle(result => result.Kind == IdempotencyOutcomeKind.Created);
+        results.Should().ContainSingle(result => result.Kind == IdempotencyOutcomeKind.Replayed);
+    }
 }

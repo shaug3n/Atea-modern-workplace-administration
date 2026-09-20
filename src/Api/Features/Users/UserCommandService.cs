@@ -228,6 +228,14 @@ public sealed class UserCommandService(
                 Error: "idempotency_key_reused");
         }
 
+        if (outcome.Kind == IdempotencyOutcomeKind.InProgress)
+        {
+            return new UserCommandResult(
+                UserCommandStatus.TemporarilyUnavailable,
+                capability,
+                Error: "idempotency_in_progress");
+        }
+
         if (outcome.Kind == IdempotencyOutcomeKind.Replayed)
         {
             var replayed = JsonSerializer.Deserialize<UserCommandResult>(outcome.Result.SafeResultJson, JsonOptions)

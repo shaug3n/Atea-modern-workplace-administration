@@ -68,4 +68,40 @@ describe('UsersTable', () => {
 
     expect(onNavigate).toHaveBeenCalledWith('/users/user-1');
   });
+
+  it('keeps the visible disable action inert unless a caller wires the flow', () => {
+    render(
+      <UsersTable
+        users={users}
+        capabilities={[
+          decision('users.update', 'allowed'),
+          decision('users.disable', 'allowed'),
+          decision('users.create', 'allowed'),
+        ]}
+      />
+    );
+
+    const disableButton = screen.getByRole('button', { name: 'Disable Ada Lovelace' }) as HTMLButtonElement;
+    expect(disableButton.disabled).toBe(true);
+    expect(disableButton.title).toContain('Open user details');
+  });
+
+  it('calls the supplied disable handler when the table flow is wired', () => {
+    const onDisable = vi.fn();
+    render(
+      <UsersTable
+        users={users}
+        capabilities={[
+          decision('users.update', 'allowed'),
+          decision('users.disable', 'allowed'),
+          decision('users.create', 'allowed'),
+        ]}
+        onDisable={onDisable}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Disable Ada Lovelace' }));
+
+    expect(onDisable).toHaveBeenCalledWith(users[0]);
+  });
 });

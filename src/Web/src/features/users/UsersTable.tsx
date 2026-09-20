@@ -6,7 +6,17 @@ import type { UserSummary as ApiUserSummary } from './usersApi';
 
 export type UserSummary = ApiUserSummary;
 
-export function UsersTable({ users, capabilities, onNavigate }: { users: UserSummary[]; capabilities: CapabilityDecision[]; onNavigate?: (path: string) => void }) {
+export function UsersTable({
+  users,
+  capabilities,
+  onNavigate,
+  onDisable,
+}: {
+  users: UserSummary[];
+  capabilities: CapabilityDecision[];
+  onNavigate?: (path: string) => void;
+  onDisable?: (user: UserSummary) => void;
+}) {
   const updateDecision = findDecision(capabilities, 'users.update');
   const disableDecision = findDecision(capabilities, 'users.disable');
   const showAccountStatus = updateDecision.state !== 'hidden' || disableDecision.state !== 'hidden';
@@ -44,7 +54,14 @@ export function UsersTable({ users, capabilities, onNavigate }: { users: UserSum
                 {showActions && (
                   <td>
                     <PermissionState decision={disableDecision}>
-                      <button type="button" className="table-action" aria-label={`${messages.usersDisableAction} ${displayName}`}>
+                      <button
+                        type="button"
+                        className="table-action"
+                        aria-label={`${messages.usersDisableAction} ${displayName}`}
+                        disabled={!onDisable}
+                        title={!onDisable ? messages.usersDisableDeferredAction : undefined}
+                        onClick={() => onDisable?.(user)}
+                      >
                         {messages.usersDisableAction}
                       </button>
                     </PermissionState>

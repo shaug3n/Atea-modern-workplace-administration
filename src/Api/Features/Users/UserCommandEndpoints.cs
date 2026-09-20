@@ -1,4 +1,5 @@
 using Atea.UnifiedWorkplace.Api.Authorization;
+using Microsoft.AspNetCore.Mvc;
 
 namespace Atea.UnifiedWorkplace.Api.Features.Users;
 
@@ -98,11 +99,22 @@ public static class UserCommandEndpoints
     private static async Task<IResult> AddGroupAsync(
         string userObjectId,
         string groupObjectId,
+        [FromBody] GroupMembershipCommand? command,
         IWorkspaceContextAccessor accessor,
         IUserCommandService service,
         HttpRequest request,
         CancellationToken cancellationToken)
     {
+        if (!TryValidatedTarget(groupObjectId, "groupObjectId", out var routeGroupObjectId, out var invalidTarget))
+        {
+            return invalidTarget;
+        }
+
+        if (!TryMatchRouteTarget(command?.GroupObjectId, routeGroupObjectId, "groupObjectId", out var mismatch))
+        {
+            return mismatch;
+        }
+
         if (!TryContext(accessor, out var context, out var missingContext))
         {
             return missingContext;
@@ -113,17 +125,28 @@ public static class UserCommandEndpoints
             return missingKey;
         }
 
-        return ToResult(await service.AddGroupAsync(context, userObjectId, new GroupMembershipCommand(groupObjectId), idempotencyKey, cancellationToken));
+        return ToResult(await service.AddGroupAsync(context, userObjectId, new GroupMembershipCommand(routeGroupObjectId), idempotencyKey, cancellationToken));
     }
 
     private static async Task<IResult> RemoveGroupAsync(
         string userObjectId,
         string groupObjectId,
+        [FromBody] GroupMembershipCommand? command,
         IWorkspaceContextAccessor accessor,
         IUserCommandService service,
         HttpRequest request,
         CancellationToken cancellationToken)
     {
+        if (!TryValidatedTarget(groupObjectId, "groupObjectId", out var routeGroupObjectId, out var invalidTarget))
+        {
+            return invalidTarget;
+        }
+
+        if (!TryMatchRouteTarget(command?.GroupObjectId, routeGroupObjectId, "groupObjectId", out var mismatch))
+        {
+            return mismatch;
+        }
+
         if (!TryContext(accessor, out var context, out var missingContext))
         {
             return missingContext;
@@ -134,7 +157,7 @@ public static class UserCommandEndpoints
             return missingKey;
         }
 
-        return ToResult(await service.RemoveGroupAsync(context, userObjectId, new GroupMembershipCommand(groupObjectId), idempotencyKey, cancellationToken));
+        return ToResult(await service.RemoveGroupAsync(context, userObjectId, new GroupMembershipCommand(routeGroupObjectId), idempotencyKey, cancellationToken));
     }
 
     private static async Task<IResult> AssignLicenseAsync(
@@ -146,6 +169,16 @@ public static class UserCommandEndpoints
         HttpRequest request,
         CancellationToken cancellationToken)
     {
+        if (!TryValidatedTarget(skuId, "skuId", out var routeSkuId, out var invalidTarget))
+        {
+            return invalidTarget;
+        }
+
+        if (!TryMatchRouteTarget(command?.SkuId, routeSkuId, "skuId", out var mismatch))
+        {
+            return mismatch;
+        }
+
         if (!TryContext(accessor, out var context, out var missingContext))
         {
             return missingContext;
@@ -156,17 +189,33 @@ public static class UserCommandEndpoints
             return missingKey;
         }
 
-        return ToResult(await service.AssignLicenseAsync(context, userObjectId, command ?? new LicenseAssignmentCommand(skuId, []), idempotencyKey, cancellationToken));
+        return ToResult(await service.AssignLicenseAsync(
+            context,
+            userObjectId,
+            new LicenseAssignmentCommand(routeSkuId, command?.DisabledPlans ?? []),
+            idempotencyKey,
+            cancellationToken));
     }
 
     private static async Task<IResult> RemoveLicenseAsync(
         string userObjectId,
         string skuId,
+        [FromBody] LicenseAssignmentCommand? command,
         IWorkspaceContextAccessor accessor,
         IUserCommandService service,
         HttpRequest request,
         CancellationToken cancellationToken)
     {
+        if (!TryValidatedTarget(skuId, "skuId", out var routeSkuId, out var invalidTarget))
+        {
+            return invalidTarget;
+        }
+
+        if (!TryMatchRouteTarget(command?.SkuId, routeSkuId, "skuId", out var mismatch))
+        {
+            return mismatch;
+        }
+
         if (!TryContext(accessor, out var context, out var missingContext))
         {
             return missingContext;
@@ -177,7 +226,7 @@ public static class UserCommandEndpoints
             return missingKey;
         }
 
-        return ToResult(await service.RemoveLicenseAsync(context, userObjectId, new LicenseAssignmentCommand(skuId, []), idempotencyKey, cancellationToken));
+        return ToResult(await service.RemoveLicenseAsync(context, userObjectId, new LicenseAssignmentCommand(routeSkuId, []), idempotencyKey, cancellationToken));
     }
 
     private static bool TryContext(IWorkspaceContextAccessor accessor, out WorkspaceContext context, out IResult result)
@@ -217,4 +266,34 @@ public static class UserCommandEndpoints
         UserCommandStatus.NotFound => Results.Json(result, statusCode: StatusCodes.Status404NotFound),
         _ => Results.Json(result, statusCode: StatusCodes.Status503ServiceUnavailable)
     };
+
+    private static bool TryValidatedTarget(string targetId, string fieldName, out string validTargetId, out IResult result)
+    {
+        validTargetId = targetId;
+        if (!IsSafeTargetId(targetId))
+        {
+            result = Results.BadRequest(new { error = "invalid_target", target = fieldName });
+            return false;
+        }
+
+        result = Results.Empty;
+        return true;
+    }
+
+    private static bool TryMatchRouteTarget(string? bodyTargetId, string routeTargetId, string fieldName, out IResult result)
+    {
+        if (bodyTargetId is null || string.Equals(bodyTargetId, routeTargetId, StringComparison.Ordinal))
+        {
+            result = Results.Empty;
+            return true;
+        }
+
+        result = Results.BadRequest(new { error = "target_mismatch", target = fieldName });
+        return false;
+    }
+
+    private static bool IsSafeTargetId(string targetId) =>
+        !string.IsNullOrWhiteSpace(targetId)
+        && targetId.Length <= 256
+        && !targetId.Any(character => char.IsControl(character) || character is '/' or '\\');
 }

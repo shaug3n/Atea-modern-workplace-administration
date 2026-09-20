@@ -92,6 +92,76 @@ public sealed class UserMutationEndpointTests
         body.Should().Contain("idempotency_key_required");
     }
 
+    [Fact]
+    public async Task License_route_rejects_body_sku_mismatch_without_graph_mutation()
+    {
+        var licenses = new RecordingLicenseCommands();
+        using var factory = CreateFactory(new RecordingUserCommands(), licenseCommands: licenses);
+        using var client = AuthenticatedClient(factory);
+
+        var response = await client.PostAsync(
+            "/api/users/user-1/licenses/route-sku",
+            Json("""{"skuId":"body-sku","disabledPlans":[]}""", "license-mismatch-key"));
+        var body = await response.Content.ReadAsStringAsync();
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        body.Should().Contain("target_mismatch");
+        licenses.Assignments.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task License_route_without_body_sends_route_sku_to_graph()
+    {
+        var licenses = new RecordingLicenseCommands();
+        using var factory = CreateFactory(new RecordingUserCommands(), licenseCommands: licenses);
+        using var client = AuthenticatedClient(factory);
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/users/user-1/licenses/route-sku");
+        request.Headers.Add("Idempotency-Key", "license-route-key");
+
+        var response = await client.SendAsync(request);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        licenses.Assignments.Should().ContainSingle().Which.Should().Be(("user-1", "route-sku", true));
+    }
+
+    [Fact]
+    public async Task Group_route_rejects_body_target_mismatch_without_graph_mutation()
+    {
+        var groups = new RecordingGroupCommands();
+        using var factory = CreateFactory(new RecordingUserCommands(), groupCommands: groups);
+        using var client = AuthenticatedClient(factory);
+
+        var response = await client.PostAsync(
+            "/api/users/user-1/groups/route-group",
+            Json("""{"groupObjectId":"body-group"}""", "group-mismatch-key"));
+        var body = await response.Content.ReadAsStringAsync();
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        body.Should().Contain("target_mismatch");
+        groups.Added.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task Malformed_secondary_target_is_rejected_without_graph_mutation()
+    {
+        var groups = new RecordingGroupCommands();
+        var licenses = new RecordingLicenseCommands();
+        using var factory = CreateFactory(new RecordingUserCommands(), groupCommands: groups, licenseCommands: licenses);
+        using var client = AuthenticatedClient(factory);
+
+        var groupResponse = await client.PostAsync(
+            "/api/users/user-1/groups/%20",
+            Json("""{"groupObjectId":" "}""", "bad-group-key"));
+        var licenseResponse = await client.PostAsync(
+            "/api/users/user-1/licenses/%20",
+            Json("""{"skuId":" ","disabledPlans":[]}""", "bad-license-key"));
+
+        groupResponse.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        licenseResponse.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        groups.Added.Should().BeEmpty();
+        licenses.Assignments.Should().BeEmpty();
+    }
+
     private static HttpClient AuthenticatedClient(WebApplicationFactory<Program> factory)
     {
         var client = factory.CreateClient();
@@ -116,7 +186,11 @@ public sealed class UserMutationEndpointTests
         return request;
     }
 
-    private static WebApplicationFactory<Program> CreateFactory(RecordingUserCommands commands, GraphAuthorizationSnapshot? snapshot = null) =>
+    private static WebApplicationFactory<Program> CreateFactory(
+        RecordingUserCommands commands,
+        GraphAuthorizationSnapshot? snapshot = null,
+        RecordingGroupCommands? groupCommands = null,
+        RecordingLicenseCommands? licenseCommands = null) =>
         new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
         {
             builder.ConfigureAppConfiguration((_, config) =>
@@ -144,9 +218,9 @@ public sealed class UserMutationEndpointTests
                 services.RemoveAll<IUserLifecycleCommands>();
                 services.AddSingleton<IUserLifecycleCommands>(commands);
                 services.RemoveAll<IGroupMembershipCommands>();
-                services.AddSingleton<IGroupMembershipCommands>(new RecordingGroupCommands());
+                services.AddSingleton<IGroupMembershipCommands>(groupCommands ?? new RecordingGroupCommands());
                 services.RemoveAll<ILicenseAssignmentCommands>();
-                services.AddSingleton<ILicenseAssignmentCommands>(new RecordingLicenseCommands());
+                services.AddSingleton<ILicenseAssignmentCommands>(licenseCommands ?? new RecordingLicenseCommands());
                 services.RemoveAll<IIdempotencyService>();
                 services.AddSingleton<IIdempotencyService>(new MemoryIdempotencyService());
                 services.RemoveAll<IAuditWriter>();
@@ -157,7 +231,11 @@ public sealed class UserMutationEndpointTests
     private static readonly GraphAuthorizationSnapshot AdminSnapshot = GraphAuthorizationSnapshot.Available(
         "actor-1",
         ["Directory.Read.All", "User.Read.All", "User.Create", "User.ReadWrite.All", "User.EnableDisableAccount.All", "Group.Read.All", "GroupMember.ReadWrite.All", "LicenseAssignment.ReadWrite.All"],
-        [new DirectoryRoleSnapshot(EntraRoleCatalog.UserAdministratorTemplateId, "User Administrator", DirectoryRoleAssignmentState.Active, "/")]);
+        [
+            new DirectoryRoleSnapshot(EntraRoleCatalog.UserAdministratorTemplateId, "User Administrator", DirectoryRoleAssignmentState.Active, "/"),
+            new DirectoryRoleSnapshot(EntraRoleCatalog.GroupsAdministratorTemplateId, "Groups Administrator", DirectoryRoleAssignmentState.Active, "/"),
+            new DirectoryRoleSnapshot(EntraRoleCatalog.LicenseAdministratorTemplateId, "License Administrator", DirectoryRoleAssignmentState.Active, "/")
+        ]);
 
     private static readonly GraphAuthorizationSnapshot ReaderSnapshot = GraphAuthorizationSnapshot.Available(
         "actor-1",
@@ -207,20 +285,37 @@ public sealed class UserMutationEndpointTests
 
     private sealed class RecordingGroupCommands : IGroupMembershipCommands
     {
-        public Task<GraphOperationResult> AddMemberAsync(string groupObjectId, string memberObjectId, string idempotencyKey, CancellationToken cancellationToken) =>
-            Task.FromResult(GraphOperationResult.Success());
+        public List<(string GroupId, string UserId)> Added { get; } = [];
+        public List<(string GroupId, string UserId)> Removed { get; } = [];
 
-        public Task<GraphOperationResult> RemoveMemberAsync(string groupObjectId, string memberObjectId, string idempotencyKey, CancellationToken cancellationToken) =>
-            Task.FromResult(GraphOperationResult.Success());
+        public Task<GraphOperationResult> AddMemberAsync(string groupObjectId, string memberObjectId, string idempotencyKey, CancellationToken cancellationToken)
+        {
+            Added.Add((groupObjectId, memberObjectId));
+            return Task.FromResult(GraphOperationResult.Success());
+        }
+
+        public Task<GraphOperationResult> RemoveMemberAsync(string groupObjectId, string memberObjectId, string idempotencyKey, CancellationToken cancellationToken)
+        {
+            Removed.Add((groupObjectId, memberObjectId));
+            return Task.FromResult(GraphOperationResult.Success());
+        }
     }
 
     private sealed class RecordingLicenseCommands : ILicenseAssignmentCommands
     {
-        public Task<GraphOperationResult> AssignLicenseAsync(string userObjectId, LicenseAssignmentCommand command, string idempotencyKey, CancellationToken cancellationToken) =>
-            Task.FromResult(GraphOperationResult.Success());
+        public List<(string UserId, string SkuId, bool Add)> Assignments { get; } = [];
 
-        public Task<GraphOperationResult> RemoveLicenseAsync(string userObjectId, string skuId, string idempotencyKey, CancellationToken cancellationToken) =>
-            Task.FromResult(GraphOperationResult.Success());
+        public Task<GraphOperationResult> AssignLicenseAsync(string userObjectId, LicenseAssignmentCommand command, string idempotencyKey, CancellationToken cancellationToken)
+        {
+            Assignments.Add((userObjectId, command.SkuId, true));
+            return Task.FromResult(GraphOperationResult.Success());
+        }
+
+        public Task<GraphOperationResult> RemoveLicenseAsync(string userObjectId, string skuId, string idempotencyKey, CancellationToken cancellationToken)
+        {
+            Assignments.Add((userObjectId, skuId, false));
+            return Task.FromResult(GraphOperationResult.Success());
+        }
     }
 
     private sealed class TestAuthenticationHandler(IOptionsMonitor<AuthenticationSchemeOptions> options, ILoggerFactory logger, UrlEncoder encoder)

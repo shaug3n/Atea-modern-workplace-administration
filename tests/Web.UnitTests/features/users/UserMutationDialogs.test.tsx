@@ -31,12 +31,12 @@ describe('UserMutationDialogs', () => {
       />,
     );
 
-    const confirm = screen.getByRole('button', { name: 'Confirm action' });
-    expect(confirm).toBeDisabled();
+    const confirm = screen.getByRole('button', { name: 'Confirm action' }) as HTMLButtonElement;
+    expect(confirm.disabled).toBe(true);
     fireEvent.click(screen.getByLabelText('I reviewed the target, change and required capability.'));
-    expect(confirm).toBeDisabled();
+    expect(confirm.disabled).toBe(true);
     fireEvent.change(screen.getByLabelText('Type DISABLE to confirm'), { target: { value: 'DISABLE' } });
-    expect(confirm).not.toBeDisabled();
+    expect(confirm.disabled).toBe(false);
     fireEvent.click(confirm);
     expect(onConfirm).toHaveBeenCalledTimes(1);
   });
@@ -58,7 +58,7 @@ describe('UserMutationDialogs', () => {
 
     expect(screen.getByRole('alert').textContent).toContain('synchronized from an on-premises directory');
     fireEvent.click(screen.getByLabelText('I reviewed the target, change and required capability.'));
-    expect(screen.getByRole('button', { name: 'Confirm action' })).toBeDisabled();
+    expect((screen.getByRole('button', { name: 'Confirm action' }) as HTMLButtonElement).disabled).toBe(true);
   });
 
   it('posts create mutations to the BFF with an idempotency key and displays the temporary password once', async () => {
