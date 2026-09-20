@@ -41,6 +41,7 @@ public sealed class FakeGraphTransport(IReadOnlyCollection<string>? scopes = nul
         HttpStatusCode.NotFound => "not_found",
         HttpStatusCode.Conflict => "conflict",
         (HttpStatusCode)429 => "throttled",
+        HttpStatusCode.Unauthorized => "unauthenticated",
         >= HttpStatusCode.InternalServerError => "temporarily_unavailable",
         _ => "temporarily_unavailable"
     };

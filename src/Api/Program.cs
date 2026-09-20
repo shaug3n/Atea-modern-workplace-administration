@@ -19,7 +19,7 @@ builder.Services.AddScoped<IOnboardingService, OnboardingService>();
 builder.Services.AddSingleton<ConsentChallengeService>(_ => new ConsentChallengeService(builder.Configuration["Onboarding:ConsentSigningKey"]));
 builder.Services.AddScoped<InvitationService>(services => new InvitationService(
     services.GetRequiredService<IInvitationRepository>(), new Uri(builder.Configuration["Onboarding:PublicBaseUrl"] ?? "https://workplace.example")));
-builder.Services.AddScoped<IDelegatedConnectionProbe, UnconfiguredDelegatedConnectionProbe>();
+builder.Services.AddScoped<IDelegatedConnectionProbe, DelegatedGraphConnectionProbe>();
 builder.Services.AddScoped<IConnectionHealthReader, ConnectionHealthReader>();
 builder.Services.AddHttpClient("MicrosoftGraph", client => client.BaseAddress = new Uri("https://graph.microsoft.com"));
 builder.Services.AddScoped<IGraphTokenProvider, MicrosoftIdentityGraphTokenProvider>();

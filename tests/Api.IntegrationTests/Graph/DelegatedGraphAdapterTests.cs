@@ -53,19 +53,36 @@ public sealed class DelegatedGraphAdapterTests
     }
 
     [Fact]
-    public async Task Mutation_executor_sends_idempotency_key_and_returns_mapped_result()
+    public async Task User_lifecycle_adapter_owns_disable_request_details_and_returns_mapped_result()
     {
-        var transport = new FakeGraphTransport(GraphScopeCatalog.UserLifecycleWriteScopes);
+        var transport = new FakeGraphTransport(GraphScopeCatalog.UserAccountWriteScopes);
         transport.EnqueueJson(HttpStatusCode.Conflict, "{\"error\":{\"code\":\"Directory_ConcurrencyViolation\"}}", "corr", "req");
         var lifecycle = new GraphUserLifecycle(new FakeDelegatedGraphClientFactory(transport));
 
-        var result = await lifecycle.ExecuteAsync(
-            new GraphMutation(HttpMethod.Patch, "/v1.0/users/user-1", "{\"accountEnabled\":false}", GraphScopeCatalog.UserLifecycleWriteScopes),
-            "idempotency-key",
-            CancellationToken.None);
+        var result = await lifecycle.SetAccountEnabledAsync("user-1", false, "idempotency-key", CancellationToken.None);
 
         result.Category.Should().Be("conflict");
         transport.Requests.Should().ContainSingle();
-        transport.Requests.Single().Headers.Should().ContainKey("Idempotency-Key").WhoseValue.Should().Be("idempotency-key");
+        var request = transport.Requests.Single();
+        request.PathAndQuery.Should().Be("/v1.0/users/user-1");
+        request.Headers.Should().ContainKey("Idempotency-Key").WhoseValue.Should().Be("idempotency-key");
+    }
+
+    [Theory]
+    [InlineData(HttpStatusCode.Forbidden, "not_authorized")]
+    [InlineData(HttpStatusCode.NotFound, "not_found")]
+    [InlineData((HttpStatusCode)429, "throttled")]
+    [InlineData(HttpStatusCode.ServiceUnavailable, "temporarily_unavailable")]
+    public async Task Directory_search_returns_safe_error_mapping(HttpStatusCode statusCode, string expectedCategory)
+    {
+        var transport = new FakeGraphTransport(GraphScopeCatalog.DirectoryReadScopes);
+        transport.EnqueueJson(statusCode, "{\"error\":{\"message\":\"raw graph detail\"}}", "corr", "req");
+        var reader = new GraphDirectoryReader(new FakeDelegatedGraphClientFactory(transport));
+
+        var result = await reader.SearchAsync(new UserSearchQuery("blocked"), CancellationToken.None);
+
+        result.Error.Should().NotBeNull();
+        result.Error!.Category.Should().Be(expectedCategory);
+        result.Items.Should().BeEmpty();
     }
 }
