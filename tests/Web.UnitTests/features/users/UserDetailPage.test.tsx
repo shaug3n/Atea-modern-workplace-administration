@@ -1,8 +1,14 @@
 import { cleanup, render, screen } from '@testing-library/react';
 import React from 'react';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { UserDetailPage } from '../../../../src/Web/src/features/users/UserDetailPage';
 import type { UserDetailResponse } from '../../../../src/Web/src/features/users/userDetailApi';
+
+const apiMock = vi.hoisted(() => vi.fn());
+
+vi.mock('../../../../src/Web/src/auth/useApi', () => ({
+  useApi: () => apiMock,
+}));
 
 const detail: UserDetailResponse = {
   access: { authorization: { capability: 'users.view', state: 'allowed', reasonCode: 'active_role' }, fetchedAt: '2026-09-21T08:00:00Z', freshness: 'fresh', partialData: false },
@@ -87,6 +93,6 @@ describe('UserDetailPage', () => {
 
     expect(await screen.findByRole('heading', { name: 'Ada Lovelace' })).toBeTruthy();
     expect(screen.getByText('Directory data may be stale')).toBeTruthy();
-    expect(screen.getByText('Microsoft Graph throttled this section request.')).toBeTruthy();
+    expect(screen.getAllByText('Microsoft Graph throttled this section request.')).toHaveLength(2);
   });
 });

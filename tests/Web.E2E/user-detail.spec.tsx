@@ -3,8 +3,10 @@ import { cleanup, render, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { UserDetailPage } from '../../src/Web/src/features/users/UserDetailPage';
 
+const apiMock = vi.hoisted(() => vi.fn((path: string, init?: RequestInit) => window.fetch(path, init)));
+
 vi.mock('../../src/Web/src/auth/useApi', () => ({
-  useApi: () => async (path: string, init?: RequestInit) => window.fetch(path, init),
+  useApi: () => apiMock,
 }));
 
 describe('user detail browser boundary', () => {
