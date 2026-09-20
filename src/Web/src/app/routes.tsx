@@ -2,13 +2,14 @@ import React from 'react';
 import type { ReactNode } from 'react';
 import { workspaceSettingsCapability, type Capability, type CapabilityDecision } from '../capabilities/capabilityTypes';
 import { OverviewPage, type ConnectionHealthLoader } from '../features/overview/OverviewPage';
+import { UsersPage } from '../features/users/UsersPage';
 import { messages } from './messages';
 
 export type AppRoute = {
   path: string;
   label: string;
   capability?: Capability;
-  render: (options?: { loadConnectionHealth?: ConnectionHealthLoader }) => ReactNode;
+  render: (options?: { loadConnectionHealth?: ConnectionHealthLoader; capabilities?: CapabilityDecision[]; navigate?: (path: string) => void }) => ReactNode;
 };
 
 function WorkInProgressPage({ title, description }: { title: string; description: string }) {
@@ -31,7 +32,7 @@ export const appRoutes: AppRoute[] = [
     path: '/users',
     label: messages.navUsers,
     capability: 'users.view',
-    render: () => <WorkInProgressPage title={messages.usersTitle} description={messages.usersDescription} />,
+    render: (options) => <UsersPage capabilities={options?.capabilities ?? []} onNavigate={options?.navigate} />,
   },
   {
     path: '/users/:userId',

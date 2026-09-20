@@ -8,6 +8,7 @@ using Atea.UnifiedWorkplace.Api.Infrastructure.Persistence.Repositories;
 using Microsoft.EntityFrameworkCore;
 using Atea.UnifiedWorkplace.Api.Infrastructure.Graph;
 using Atea.UnifiedWorkplace.Api.Features.UserPreferences;
+using Atea.UnifiedWorkplace.Api.Features.Users;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddDbContext<WorkplaceDbContext>(options => options.UseNpgsql(builder.Configuration.GetConnectionString("WorkplaceDb")));
@@ -30,6 +31,8 @@ builder.Services.AddHttpClient("MicrosoftGraph", client => client.BaseAddress = 
 builder.Services.AddScoped<IGraphTokenProvider, MicrosoftIdentityGraphTokenProvider>();
 builder.Services.AddScoped<IDelegatedGraphClientFactory, DelegatedGraphClientFactory>();
 builder.Services.AddScoped<IUserDirectoryReader, GraphDirectoryReader>();
+builder.Services.AddScoped<IUserQueryService, UserQueryService>();
+builder.Services.AddSingleton(_ => new UserContinuationTokenProtector(builder.Configuration["Users:ContinuationSigningKey"]));
 builder.Services.AddScoped<GraphUserLifecycle>();
 builder.Services.AddScoped<GraphGroupMembershipService>();
 builder.Services.AddScoped<GraphLicenseService>();
@@ -83,6 +86,7 @@ app.MapGet("/api/session", (IWorkspaceContextAccessor accessor) =>
 app.MapWorkspaceEndpoints();
 app.MapCapabilityEndpoints();
 app.MapUserPreferenceEndpoints();
+app.MapUserEndpoints();
 app.MapFallbackToFile("index.html");
 
 app.Run();

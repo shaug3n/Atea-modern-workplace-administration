@@ -1,0 +1,52 @@
+using Atea.UnifiedWorkplace.Api.Authorization;
+
+namespace Atea.UnifiedWorkplace.Api.Features.Users;
+
+public static class UserEndpoints
+{
+    public static IEndpointRouteBuilder MapUserEndpoints(this IEndpointRouteBuilder endpoints)
+    {
+        endpoints.MapGet("/api/users", SearchUsersAsync).RequireAuthorization();
+        return endpoints;
+    }
+
+    private static async Task<IResult> SearchUsersAsync(
+        IWorkspaceContextAccessor accessor,
+        IUserQueryService service,
+        HttpRequest httpRequest,
+        CancellationToken cancellationToken)
+    {
+        var context = accessor.Current;
+        if (context is null)
+        {
+            return Results.Json(new { error = "workspace_membership_required" }, statusCode: StatusCodes.Status403Forbidden);
+        }
+
+        var request = new UserSearchRequest(
+            Query(httpRequest, "search"),
+            PageSize(httpRequest),
+            Query(httpRequest, "continuationToken"),
+            Query(httpRequest, "accountStatus"),
+            Query(httpRequest, "tenantRole"),
+            Query(httpRequest, "license"),
+            Query(httpRequest, "userType"));
+
+        try
+        {
+            return Results.Ok(await service.SearchAsync(context, request, cancellationToken));
+        }
+        catch (UserSearchValidationException exception)
+        {
+            return Results.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["query"] = [exception.Message]
+            });
+        }
+    }
+
+    private static string? Query(HttpRequest request, string name) =>
+        request.Query.TryGetValue(name, out var value) ? value.ToString() : null;
+
+    private static int PageSize(HttpRequest request) =>
+        int.TryParse(Query(request, "pageSize"), out var pageSize) ? pageSize : 25;
+}

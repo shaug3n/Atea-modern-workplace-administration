@@ -90,7 +90,7 @@ function LoadedAppExperience({ capabilities, capabilitiesLoading, capabilitiesEr
   const decision = capabilityDecisionFor(route, capabilities.capabilities);
   const routeContent = decision && decision.state !== 'allowed'
     ? <RoutePermissionState decision={decision} />
-    : route.render({ loadConnectionHealth });
+    : route.render({ loadConnectionHealth, capabilities: capabilities.capabilities, navigate });
 
   return (
     <AppShell capabilities={capabilities} currentPath={path} session={session} onNavigate={navigate}>
