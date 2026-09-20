@@ -14,7 +14,9 @@ public static class PlatformAuthorization
     {
         services.AddHttpContextAccessor();
         services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-            .AddMicrosoftIdentityWebApi(configuration.GetSection("AzureAd"));
+            .AddMicrosoftIdentityWebApi(configuration.GetSection("AzureAd"))
+            .EnableTokenAcquisitionToCallDownstreamApi()
+            .AddInMemoryTokenCaches();
         services.PostConfigure<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme, options =>
         {
             options.MapInboundClaims = false;
