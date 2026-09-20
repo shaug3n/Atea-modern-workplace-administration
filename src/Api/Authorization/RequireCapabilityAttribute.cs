@@ -1,4 +1,5 @@
 using Atea.UnifiedWorkplace.Api.Infrastructure.Graph;
+using Microsoft.AspNetCore.Mvc;
 
 namespace Atea.UnifiedWorkplace.Api.Authorization;
 
@@ -32,23 +33,37 @@ internal sealed class CapabilityEndpointFilter(string capability) : IEndpointFil
             return Results.Json(new { error = "workspace_membership_required" }, statusCode: StatusCodes.Status403Forbidden);
         }
 
-        var reader = context.HttpContext.RequestServices.GetRequiredService<IGraphAuthorizationSnapshotReader>();
-        var snapshot = await reader.ReadAsync(workspaceContext, context.HttpContext.RequestAborted);
-        var capabilities = CapabilityEvaluator.Evaluate(snapshot, workspaceContext.Membership);
-        var decision = capabilities[capability];
+        var decision = CapabilityEvaluator.IsPlatformOnly(capability)
+            ? CapabilityEvaluator.EvaluatePlatformCapability(capability, workspaceContext.Membership)
+            : await EvaluateGraphCapabilityAsync(context.HttpContext, workspaceContext);
+
         if (decision.State == CapabilityState.Allowed)
         {
             return await next(context);
         }
 
-        return Results.Json(new
+        return Results.Problem(new ProblemDetails
         {
-            error = "capability_required",
-            decision.Capability,
-            decision.State,
-            decision.ReasonCode,
-            requiredRole = decision.RequiredRoleTemplateId,
-            nextStep = decision.NextStep
-        }, statusCode: StatusCodes.Status403Forbidden);
+            Status = StatusCodes.Status403Forbidden,
+            Title = "Capability required",
+            Type = "https://httpstatuses.com/403",
+            Extensions =
+            {
+                ["error"] = "capability_required",
+                ["capability"] = decision.Capability,
+                ["state"] = decision.State,
+                ["reasonCode"] = decision.ReasonCode,
+                ["requiredRole"] = decision.RequiredRoleTemplateId,
+                ["nextStep"] = decision.NextStep
+            }
+        });
+    }
+
+    private async Task<CapabilityDecision> EvaluateGraphCapabilityAsync(HttpContext httpContext, WorkspaceContext workspaceContext)
+    {
+        var reader = httpContext.RequestServices.GetRequiredService<IGraphAuthorizationSnapshotReader>();
+        var snapshot = await reader.ReadAsync(workspaceContext, httpContext.RequestAborted);
+        var capabilities = CapabilityEvaluator.Evaluate(snapshot, workspaceContext.Membership);
+        return capabilities[capability];
     }
 }

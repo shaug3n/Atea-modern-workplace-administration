@@ -48,3 +48,38 @@ Status: implemented, self-reviewed, and committed.
 ## Commit
 
 - Subject: `feat: enforce tenant capabilities and pim states`
+
+## Fix Round 1
+
+Status: implemented; verification captured below.
+
+Reviewer findings addressed:
+
+- Unknown PIM/role status now fails closed. `CapabilityEvaluator` maps unknown or `temporarily_unavailable` PIM requirements to capability state `temporarily_unavailable`, reason `pim_status_unavailable`, and a non-actionable retry next step instead of an activation prompt.
+- Platform-only capability guards no longer read delegated Graph authorization snapshots. `workspace.settings.manage` is evaluated from the resolved workspace membership/platform role before any Graph-backed flow is invoked.
+- Administrative-unit-scoped active roles no longer satisfy tenant-wide mutation capabilities. A scoped role returns `read_only` with reason `directory_role_scope_not_tenant_wide`.
+- Capability guard 403 responses now use `ProblemDetails` while retaining `error`, `capability`, `state`, `reasonCode`, `requiredRole`, and `nextStep` as extensions.
+
+Fix Round 1 TDD evidence:
+
+- Red: `dotnet test tests/Api.UnitTests/Api.UnitTests.csproj --filter CapabilityEvaluatorTests` failed for:
+  - `Unknown_pim_status_fails_closed_without_actionable_activation_prompt`
+  - `Administrative_unit_scoped_active_role_does_not_allow_tenant_wide_mutation`
+- Green: same focused evaluator command passed, 11/11.
+- Direct endpoint/guard regressions were added to `tests/Api.IntegrationTests/Authorization/CapabilityEndpointTests.cs`, but the integration project still fails to compile before those tests can execute because of the pre-existing `SkipException` blocker below.
+
+Fix Round 1 verification:
+
+- `dotnet test tests/Api.UnitTests/Api.UnitTests.csproj` -> passed, 93/93.
+- `dotnet build src/Api/Atea.UnifiedWorkplace.Api.csproj` -> passed, 0 warnings, 0 errors.
+- `npm run test:behavior` from `src/Web` -> passed, 26/26. Existing test intentionally logs a handled sign-in redirect error to stderr.
+- `npm run build` from `src/Web` -> passed. Vite emitted its existing large-chunk warning for a 512.46 kB minified JS chunk.
+- `npm test` from `src/Web` -> passed, 0 tests discovered.
+
+Fix Round 1 blocked/known failing verification:
+
+- `dotnet test tests/Api.IntegrationTests/Api.IntegrationTests.csproj --no-restore` is still blocked before Task 6 integration tests run:
+  - `tests/Api.IntegrationTests/Persistence/WorkspaceRepositoryTests.cs(21,66): error CS1729: 'SkipException' does not contain a constructor that takes 1 arguments`
+- `npm test` from `tests/Web.UnitTests` still has the unrelated legacy catalog failure:
+  - `tests/Web.UnitTests/theme-and-catalog.test.mjs`
+  - assertion expects `/export type MessageKey/` in `src/Web/src/app/messages.ts`, but that file currently only re-exports `messages`.

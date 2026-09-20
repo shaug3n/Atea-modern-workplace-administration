@@ -60,13 +60,26 @@ public static class CapabilityEvaluator
             snapshot.ProblemCategory);
     }
 
+    public static bool IsPlatformOnly(string capability) =>
+        string.Equals(capability, Capability.WorkspaceSettingsManage, StringComparison.OrdinalIgnoreCase);
+
+    public static CapabilityDecision EvaluatePlatformCapability(string capability, WorkspaceMembership workspaceMembership)
+    {
+        if (!IsPlatformOnly(capability))
+        {
+            throw new ArgumentException($"Capability '{capability}' is not platform-only.", nameof(capability));
+        }
+
+        return IsWorkspaceManager(workspaceMembership)
+            ? new CapabilityDecision(capability, CapabilityState.Allowed, "workspace_platform_role")
+            : new CapabilityDecision(capability, CapabilityState.Hidden, "workspace_platform_role_required");
+    }
+
     private static CapabilityDecision EvaluateCapability(string capability, GraphAuthorizationSnapshot snapshot, WorkspaceMembership workspaceMembership)
     {
-        if (capability == Capability.WorkspaceSettingsManage)
+        if (IsPlatformOnly(capability))
         {
-            return IsWorkspaceManager(workspaceMembership)
-                ? new CapabilityDecision(capability, CapabilityState.Allowed, "workspace_platform_role")
-                : new CapabilityDecision(capability, CapabilityState.Hidden, "workspace_platform_role_required");
+            return EvaluatePlatformCapability(capability, workspaceMembership);
         }
 
         if (!snapshot.IsAvailable)
@@ -82,23 +95,32 @@ public static class CapabilityEvaluator
             return new CapabilityDecision(capability, requirement.MissingReadState, "directory_read_required");
         }
 
-        var activeTemplates = snapshot.DirectoryRoles
+        var activeRoles = snapshot.DirectoryRoles
             .Where(role => string.Equals(role.AssignmentState, DirectoryRoleAssignmentState.Active, StringComparison.OrdinalIgnoreCase))
+            .ToArray();
+        var tenantWideActiveTemplates = activeRoles
+            .Where(IsTenantWide)
             .Select(role => role.RoleTemplateId)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         if (capability == Capability.UsersView)
         {
-            return activeTemplates.Overlaps(requirement.RoleTemplateIds)
+            return tenantWideActiveTemplates.Overlaps(requirement.RoleTemplateIds)
                 ? new CapabilityDecision(capability, CapabilityState.Allowed, "active_role")
                 : new CapabilityDecision(capability, CapabilityState.Hidden, "directory_role_required", requirement.RoleTemplateIds.First());
         }
 
-        if (activeTemplates.Overlaps(requirement.RoleTemplateIds))
+        if (tenantWideActiveTemplates.Overlaps(requirement.RoleTemplateIds))
         {
             return HasAllScopes(snapshot.GrantedScopes, requirement.WriteScopes)
                 ? new CapabilityDecision(capability, CapabilityState.Allowed, "active_role")
                 : new CapabilityDecision(capability, CapabilityState.ConsentRequired, "delegated_scope_required", requirement.RoleTemplateIds.First(), NextStep: new CapabilityNextStep("Grant delegated consent", "/api/workspaces/current/consent/start"));
+        }
+
+        var scopedMatchingRole = activeRoles.FirstOrDefault(role => requirement.RoleTemplateIds.Contains(role.RoleTemplateId, StringComparer.OrdinalIgnoreCase));
+        if (scopedMatchingRole is not null)
+        {
+            return new CapabilityDecision(capability, CapabilityState.ReadOnly, "directory_role_scope_not_tenant_wide", scopedMatchingRole.RoleTemplateId);
         }
 
         var eligibleRole = snapshot.DirectoryRoles.FirstOrDefault(role =>
@@ -111,7 +133,7 @@ public static class CapabilityEvaluator
                 : new CapabilityDecision(capability, CapabilityState.ConsentRequired, "delegated_scope_required", requirement.RoleTemplateIds.First(), NextStep: new CapabilityNextStep("Grant delegated consent", "/api/workspaces/current/consent/start"));
         }
 
-        return activeTemplates.Overlaps(ReaderRoles)
+        return tenantWideActiveTemplates.Overlaps(ReaderRoles)
             ? new CapabilityDecision(capability, CapabilityState.ReadOnly, "role_read_only", requirement.RoleTemplateIds.First())
             : new CapabilityDecision(capability, CapabilityState.Hidden, "directory_role_required", requirement.RoleTemplateIds.First());
     }
@@ -124,8 +146,20 @@ public static class CapabilityEvaluator
             PimRequirement.ApprovalRequired => CapabilityState.PimApprovalRequired,
             PimRequirement.MfaRequired => CapabilityState.PimMfaRequired,
             PimRequirement.EligibilityExpired => CapabilityState.PimEligibilityExpired,
-            _ => CapabilityState.PimActivationRequired
+            PimRequirement.ActivationRequired => CapabilityState.PimActivationRequired,
+            _ => CapabilityState.TemporarilyUnavailable
         };
+        if (state == CapabilityState.TemporarilyUnavailable)
+        {
+            return new CapabilityDecision(
+                capability,
+                CapabilityState.TemporarilyUnavailable,
+                "pim_status_unavailable",
+                role.RoleTemplateId,
+                new CapabilityPimState(pimState),
+                new CapabilityNextStep("Retry after PIM status is available"));
+        }
+
         return new CapabilityDecision(
             capability,
             state,
@@ -153,6 +187,10 @@ public static class CapabilityEvaluator
 
     private static bool HasAllScopes(IReadOnlyCollection<string> grantedScopes, IReadOnlyCollection<string> requiredScopes) =>
         requiredScopes.All(scope => grantedScopes.Contains(scope, StringComparer.OrdinalIgnoreCase));
+
+    private static bool IsTenantWide(DirectoryRoleSnapshot role) =>
+        string.IsNullOrWhiteSpace(role.DirectoryScopeId)
+        || string.Equals(role.DirectoryScopeId, "/", StringComparison.Ordinal);
 
     private sealed record CapabilityRequirement(
         IReadOnlyCollection<string> ReadScopes,

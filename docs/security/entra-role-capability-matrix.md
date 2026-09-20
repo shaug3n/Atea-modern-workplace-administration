@@ -39,7 +39,9 @@ Display names are presentation data only. Capability evaluation keys only on sta
 | Approval required or pending approval | `pim_approval_required` |
 | MFA required for activation | `pim_mfa_required` |
 | Eligibility expired | `pim_eligibility_expired` |
-| Unknown PIM status | `temporarily_unavailable` |
+| Unknown PIM status | `temporarily_unavailable` with non-actionable retry guidance |
+
+Tenant-wide mutation capabilities require tenant-wide role assignments. Active role assignments scoped to an administrative unit, such as `/administrativeUnits/{id}`, are not treated as sufficient for tenant-wide mutations and return `read_only` with `directory_role_scope_not_tenant_wide`.
 
 ## Test Tenant Assignments
 

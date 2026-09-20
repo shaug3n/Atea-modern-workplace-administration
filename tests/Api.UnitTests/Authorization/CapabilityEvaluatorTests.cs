@@ -101,6 +101,39 @@ public sealed class CapabilityEvaluatorTests
     }
 
     [Fact]
+    public void Unknown_pim_status_fails_closed_without_actionable_activation_prompt()
+    {
+        var snapshot = AvailableSnapshot(
+            scopes: ["Directory.Read.All", "User.Create"],
+            roles:
+            [
+                ActiveRole(EntraRoleCatalog.GlobalReaderTemplateId),
+                EligibleRole(EntraRoleCatalog.UserAdministratorTemplateId, CapabilityState.TemporarilyUnavailable)
+            ]);
+
+        var capabilities = CapabilityEvaluator.Evaluate(snapshot, Member());
+
+        capabilities[Capability.UsersCreate].State.Should().Be(CapabilityState.TemporarilyUnavailable);
+        capabilities[Capability.UsersCreate].ReasonCode.Should().Be("pim_status_unavailable");
+        capabilities[Capability.UsersCreate].NextStep!.Label.Should().Be("Retry after PIM status is available");
+        capabilities[Capability.UsersCreate].NextStep!.Href.Should().BeNull();
+    }
+
+    [Fact]
+    public void Administrative_unit_scoped_active_role_does_not_allow_tenant_wide_mutation()
+    {
+        var snapshot = AvailableSnapshot(
+            scopes: ["Directory.Read.All", "User.Create"],
+            roles: [ActiveRole(EntraRoleCatalog.UserAdministratorTemplateId, directoryScopeId: "/administrativeUnits/au-1")]);
+
+        var capabilities = CapabilityEvaluator.Evaluate(snapshot, Member());
+
+        capabilities[Capability.UsersCreate].State.Should().Be(CapabilityState.ReadOnly);
+        capabilities[Capability.UsersCreate].ReasonCode.Should().Be("directory_role_scope_not_tenant_wide");
+        capabilities[Capability.UsersCreate].RequiredRoleTemplateId.Should().Be(EntraRoleCatalog.UserAdministratorTemplateId);
+    }
+
+    [Fact]
     public void Unknown_graph_snapshot_fails_closed_for_mutations()
     {
         var snapshot = GraphAuthorizationSnapshot.Unavailable("temporarily_unavailable");
@@ -121,8 +154,8 @@ public sealed class CapabilityEvaluatorTests
             AdministrativeUnitScopeIds: [],
             TenantPolicyFlags: new Dictionary<string, bool>());
 
-    private static DirectoryRoleSnapshot ActiveRole(string templateId) =>
-        new(templateId, "presentation only", DirectoryRoleAssignmentState.Active, DirectoryScopeId: "/");
+    private static DirectoryRoleSnapshot ActiveRole(string templateId, string directoryScopeId = "/") =>
+        new(templateId, "presentation only", DirectoryRoleAssignmentState.Active, DirectoryScopeId: directoryScopeId);
 
     private static DirectoryRoleSnapshot EligibleRole(string templateId, string pimRequirement) =>
         new(templateId, "presentation only", DirectoryRoleAssignmentState.Eligible, DirectoryScopeId: "/", new PimStateSnapshot(pimRequirement, "https://entra.example/activate"));

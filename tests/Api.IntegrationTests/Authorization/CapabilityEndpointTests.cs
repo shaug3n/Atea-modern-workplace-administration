@@ -55,7 +55,7 @@ public sealed class CapabilityEndpointTests
     }
 
     [Fact]
-    public async Task Guard_denies_direct_endpoint_call_when_workspace_settings_capability_is_hidden()
+    public async Task Guard_denies_direct_endpoint_call_when_workspace_settings_capability_is_hidden_without_reading_graph()
     {
         var reader = new RecordingSnapshotReader(GraphAuthorizationSnapshot.Available("user-1", ["Directory.Read.All"], []));
         using var factory = CreateFactory(reader: reader, platformRole: "member");
@@ -66,10 +66,27 @@ public sealed class CapabilityEndpointTests
         var body = await response.Content.ReadAsStringAsync();
 
         response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        response.Content.Headers.ContentType!.MediaType.Should().Be("application/problem+json");
         body.Should().Contain("\"capability\":\"workspace.settings.manage\"");
         body.Should().Contain("\"state\":\"hidden\"");
         body.Should().Contain("\"reasonCode\":\"workspace_platform_role_required\"");
-        reader.Calls.Should().Be(1);
+        reader.Calls.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task Platform_only_guard_allows_workspace_admin_without_delegated_graph_availability()
+    {
+        var reader = new RecordingSnapshotReader(GraphAuthorizationSnapshot.Unavailable("temporarily_unavailable"));
+        using var factory = CreateFactory(reader: reader, platformRole: "admin");
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Test");
+
+        var response = await client.PostAsync("/api/workspaces/current/consent/start", null);
+        var body = await response.Content.ReadAsStringAsync();
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        body.Should().Contain("\"authorizationUrl\"");
+        reader.Calls.Should().Be(0);
     }
 
     private static WebApplicationFactory<Program> CreateFactory(
