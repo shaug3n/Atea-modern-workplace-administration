@@ -1,0 +1,147 @@
+/* Atea digital values checked 2026-09-08; see ../references/sources.md.
+   Prefixes and semantic mappings are local, not official package APIs.
+   Copy the fonts directory beside this file, including its licence. */
+@font-face {
+  font-family: "Inter";
+  src: url("./fonts/InterVariable.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Inter";
+  src: url("./fonts/InterVariable-Italic.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: italic;
+  font-display: swap;
+}
+:root {
+  /* Verified digital foundation palette. */
+  --atea-white: #FFFFFF;
+  --atea-green-700: #005300;
+  --atea-green-600: #006E00;
+  --atea-green-500: #008A00;
+  --atea-green-400: #33A133;
+  --atea-green-200: #99D099;
+  --atea-grey-800: #1F2325;
+  --atea-grey-700: #2E3438;
+  --atea-grey-600: #3E464A;
+  --atea-grey-500: #4D575D;
+  --atea-grey-400: #71797D;
+  --atea-grey-300: #949A9E;
+  --atea-grey-200: #B8BCBE;
+  --atea-grey-100: #DBDDDF;
+  --atea-grey-50: #EDEEEE;
+  --atea-grey-25: #F7F7F7;
+  --atea-teal-700: #054452;
+  --atea-teal-600: #075B6D;
+  --atea-teal-500: #097288;
+  --atea-teal-400: #3A8EA0;
+  --atea-teal-200: #9DC7CF;
+  --atea-red-700: #801619;
+  --atea-red-600: #AB1D21;
+  --atea-red-500: #D62429;
+  --atea-red-400: #DE5054;
+  --atea-red-200: #EFA7A9;
+  --atea-yellow-700: #94710E;
+  --atea-yellow-600: #C59713;
+  --atea-yellow-500: #F6BD18;
+  --atea-yellow-400: #F8CA46;
+  --atea-yellow-200: #FBE5A3;
+  --atea-blue-700: #053D6A;
+  --atea-blue-600: #07518E;
+  --atea-blue-500: #0965B1;
+  --atea-blue-400: #3A84C1;
+  --atea-blue-200: #9DC1E0;
+  --atea-orange-700: #8E491C;
+  --atea-orange-600: #BD6225;
+  --atea-orange-500: #EC7A2E;
+  --atea-orange-400: #F09558;
+  --atea-orange-200: #F7CAAB;
+  --atea-cvi-purple: #483D7C; /* Supplied CVI secondary, no invented weight. */
+
+  /* Verified foundation spacing, radius and border values. */
+  --atea-space-1: 0.125rem;
+  --atea-space-2: 0.25rem;
+  --atea-space-3: 0.5rem;
+  --atea-space-4: 1rem;
+  --atea-space-5: 1.5rem;
+  --atea-space-6: 2rem;
+  --atea-space-7: 2.5rem;
+  --atea-space-8: 3rem;
+  --atea-space-9: 3.5rem;
+  --atea-space-10: 4rem;
+  --atea-space-11: 4.5rem;
+  --atea-space-12: 5rem;
+  --atea-space-13: 5.5rem;
+  --atea-space-14: 6rem;
+  --atea-radius-none: 0;
+  --atea-radius-sm: 0.25rem;
+  --atea-radius-md: 0.5rem;
+  --atea-radius-lg: 1rem;
+  --atea-radius-xl: 2rem;
+  --atea-radius-round: 100%;
+  --atea-border-thin: 1px;
+  --atea-border-regular: 2px;
+  --atea-border-strong: 3px;
+
+  /* Verified type sizes, rem at 16px root; line heights are unitless. */
+  --atea-content-xl: 4rem;
+  --atea-content-xl-lh: 1.3125;
+  --atea-content-l: 2.875rem;
+  --atea-content-l-lh: 1.347826;
+  --atea-content-m: 2rem;
+  --atea-content-m-lh: 1.4375;
+  --atea-content-s: 1.5rem;
+  --atea-content-s-lh: 1.583333;
+  --atea-content-xs: 1rem;
+  --atea-content-xs-lh: 1.75;
+  --atea-ui-xxxl: 2.5rem;
+  --atea-ui-xxxl-lh: 1.35;
+  --atea-ui-xxl: 2.125rem;
+  --atea-ui-xxl-lh: 1.352941;
+  --atea-ui-xl: 1.75rem;
+  --atea-ui-xl-lh: 1.357143;
+  --atea-ui-l: 1.5rem;
+  --atea-ui-l-lh: 1.416667;
+  --atea-ui-m: 1.25rem;
+  --atea-ui-m-lh: 1.4;
+  --atea-text-intro: 1.125rem;
+  --atea-text-intro-lh: 1.777778;
+  --atea-text-standard: 1rem;
+  --atea-text-standard-lh: 1.75;
+  --atea-text-m: 0.875rem;
+  --atea-text-m-lh: 1.714286;
+  --atea-text-s: 0.75rem;
+  --atea-text-s-lh: 1.833333;
+
+  /* Local light-theme aliases. Adapt these for the actual product. */
+  --atea-font: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --atea-surface: var(--atea-white);
+  --atea-canvas: var(--atea-grey-25);
+  --atea-surface-subtle: var(--atea-grey-50);
+  --atea-heading: var(--atea-grey-800);
+  --atea-text: var(--atea-grey-600);
+  --atea-muted: var(--atea-grey-500);
+  --atea-divider: var(--atea-grey-100);
+  --atea-control-border: var(--atea-grey-500);
+  --atea-link: var(--atea-teal-500);
+  --atea-link-hover: var(--atea-teal-700);
+  --atea-action: var(--atea-green-500);
+  --atea-action-hover: var(--atea-green-600);
+  --atea-action-pressed: var(--atea-green-700);
+  --atea-on-action: var(--atea-white);
+  --atea-focus: var(--atea-grey-800);
+  --atea-focus-gap: var(--atea-white);
+  --atea-error: var(--atea-red-600);
+  --atea-success-bg: var(--atea-green-200);
+  --atea-success-text: var(--atea-green-700);
+  --atea-warning-bg: var(--atea-yellow-200);
+  --atea-warning-text: var(--atea-grey-800);
+  --atea-info-bg: var(--atea-blue-200);
+  --atea-info-text: var(--atea-blue-700);
+  --atea-danger-bg: var(--atea-red-200);
+  --atea-danger-text: var(--atea-red-700);
+  --atea-control-height: 3rem;
+  --atea-motion-fast: 160ms;
+}

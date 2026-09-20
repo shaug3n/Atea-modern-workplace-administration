@@ -9,6 +9,8 @@ export type Capability =
   | 'roles.assign'
   | 'workspace.settings.manage';
 
+export const workspaceSettingsCapability: Capability = 'workspace.settings.manage';
+
 export type CapabilityState =
   | 'allowed'
   | 'read_only'

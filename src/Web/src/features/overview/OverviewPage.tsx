@@ -44,9 +44,9 @@ function LoadedOverview({ loadConnectionHealth, actions }: { loadConnectionHealt
   useEffect(() => {
     loadConnectionHealth().then(setHealth).catch(() => setFailed(true));
   }, [loadConnectionHealth]);
-  if (failed) return <main><p role="alert">{messages.connectionUnavailable}</p></main>;
-  if (!health) return <main><p>{messages.connectionLoading}</p></main>;
+  if (failed) return <section className="content-panel"><p role="alert">{messages.connectionUnavailable}</p></section>;
+  if (!health) return <section className="content-panel"><p>{messages.connectionLoading}</p></section>;
   const runCheck = actions ? async () => { setActionPending(true); setActionError(null); try { setHealth(await actions.check()); } catch { setActionError(messages.connectionActionFailed); } finally { setActionPending(false); } } : undefined;
   const startConsent = actions ? async () => { setActionPending(true); setActionError(null); try { setConsentUrl((await actions.startConsent()).authorizationUrl); } catch { setActionError(messages.connectionActionFailed); } finally { setActionPending(false); } } : undefined;
-  return <main><ConnectionStatusCard state={health.status} lastVerifiedAt={health.lastVerifiedAt} onCheck={runCheck} onConsent={startConsent} consentUrl={consentUrl} actionPending={actionPending} actionError={actionError} /></main>;
+  return <ConnectionStatusCard state={health.status} lastVerifiedAt={health.lastVerifiedAt} onCheck={runCheck} onConsent={startConsent} consentUrl={consentUrl} actionPending={actionPending} actionError={actionError} />;
 }

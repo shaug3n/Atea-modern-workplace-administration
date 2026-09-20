@@ -2,5 +2,5 @@ import { ConnectionStatusCard } from '../../components/ConnectionStatusCard';
 import type { ConnectionState } from '../../messages/en';
 
 export function OnboardingPage({ state = 'awaiting_invitation' as ConnectionState }: { state?: ConnectionState }) {
-  return <main><ConnectionStatusCard state={state} /></main>;
+  return <ConnectionStatusCard state={state} />;
 }
