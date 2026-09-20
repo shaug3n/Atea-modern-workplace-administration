@@ -61,16 +61,12 @@ public sealed class UserQueryServiceTests
             Search: "ada",
             PageSize: 25,
             AccountStatus: "enabled",
-            TenantRole: "Global Reader",
-            License: "ENTERPRISEPACK",
             UserType: "Member"), CancellationToken.None);
 
         reader.Query.Should().NotBeNull();
         reader.Query!.Search.Should().Be("ada");
         reader.Query.PageSize.Should().Be(25);
         reader.Query.AccountStatus.Should().Be("enabled");
-        reader.Query.TenantRole.Should().Be("Global Reader");
-        reader.Query.License.Should().Be("ENTERPRISEPACK");
         reader.Query.UserType.Should().Be("Member");
         response.Items.Should().ContainSingle(user => user.Id == "user-1");
         response.FetchedAt.Should().Be(DateTimeOffset.Parse("2026-09-20T12:00:00Z"));
@@ -84,21 +80,141 @@ public sealed class UserQueryServiceTests
     [Fact]
     public async Task Search_decodes_opaque_continuation_server_side()
     {
-        var protector = new UserContinuationTokenProtector("0123456789abcdef0123456789abcdef");
-        var token = protector.Protect("/v1.0/users?$skiptoken=raw-page-two");
-        var reader = new RecordingDirectoryReader();
-        var service = new UserQueryService(
-            reader,
-            new StaticCapabilityReader(GraphAuthorizationSnapshot.Available(
-                "user-1",
-                ["Directory.Read.All"],
-                [new DirectoryRoleSnapshot(EntraRoleCatalog.GlobalReaderTemplateId, "Global Reader", DirectoryRoleAssignmentState.Active, "/")])),
-            protector);
+        var reader = new RecordingDirectoryReader
+        {
+            Result = new PagedResult<UserSummary>([], [], "/v1.0/users?$skiptoken=raw-page-two")
+        };
+        var service = CreateService(reader);
+        var firstPage = await service.SearchAsync(Workspace, new UserSearchRequest(), CancellationToken.None);
 
-        await service.SearchAsync(Workspace, new UserSearchRequest(ContinuationToken: token), CancellationToken.None);
+        await service.SearchAsync(Workspace, new UserSearchRequest(ContinuationToken: firstPage.ContinuationToken), CancellationToken.None);
 
         reader.Query.Should().NotBeNull();
         reader.Query!.ContinuationPath.Should().Be("/v1.0/users?$skiptoken=raw-page-two");
+    }
+
+    [Fact]
+    public async Task Search_rejects_a_tampered_continuation_token()
+    {
+        var reader = new RecordingDirectoryReader
+        {
+            Result = new PagedResult<UserSummary>([], [], "/v1.0/users?$skiptoken=raw-page-two")
+        };
+        var service = CreateService(reader);
+        var firstPage = await service.SearchAsync(Workspace, new UserSearchRequest(), CancellationToken.None);
+
+        var act = () => service.SearchAsync(
+            Workspace,
+            new UserSearchRequest(ContinuationToken: $"{firstPage.ContinuationToken}x"),
+            CancellationToken.None);
+
+        await act.Should().ThrowAsync<UserSearchValidationException>()
+            .WithMessage("continuationToken is invalid or expired.");
+    }
+
+    [Fact]
+    public async Task Search_rejects_a_continuation_token_reused_with_different_filters()
+    {
+        var reader = new RecordingDirectoryReader
+        {
+            Result = new PagedResult<UserSummary>([], [], "/v1.0/users?$skiptoken=raw-page-two")
+        };
+        var service = CreateService(reader);
+
+        var firstPage = await service.SearchAsync(Workspace, new UserSearchRequest(Search: "ada"), CancellationToken.None);
+
+        var act = () => service.SearchAsync(
+            Workspace,
+            new UserSearchRequest(Search: "grace", ContinuationToken: firstPage.ContinuationToken),
+            CancellationToken.None);
+
+        await act.Should().ThrowAsync<UserSearchValidationException>()
+            .WithMessage("continuationToken is invalid or expired.");
+    }
+
+    [Fact]
+    public async Task Search_rejects_a_continuation_token_reused_by_another_actor()
+    {
+        var reader = new RecordingDirectoryReader
+        {
+            Result = new PagedResult<UserSummary>([], [], "/v1.0/users?$skiptoken=raw-page-two")
+        };
+        var service = CreateService(reader);
+        var firstPage = await service.SearchAsync(Workspace, new UserSearchRequest(), CancellationToken.None);
+        var otherActor = Workspace with
+        {
+            User = Workspace.User with { ObjectId = Guid.Parse("33333333-3333-3333-3333-333333333333") }
+        };
+
+        var act = () => service.SearchAsync(
+            otherActor,
+            new UserSearchRequest(ContinuationToken: firstPage.ContinuationToken),
+            CancellationToken.None);
+
+        await act.Should().ThrowAsync<UserSearchValidationException>()
+            .WithMessage("continuationToken is invalid or expired.");
+    }
+
+    [Fact]
+    public async Task Search_rejects_a_continuation_token_reused_in_another_workspace_or_tenant()
+    {
+        var reader = new RecordingDirectoryReader
+        {
+            Result = new PagedResult<UserSummary>([], [], "/v1.0/users?$skiptoken=raw-page-two")
+        };
+        var service = CreateService(reader);
+        var firstPage = await service.SearchAsync(Workspace, new UserSearchRequest(), CancellationToken.None);
+        var otherScope = Workspace with
+        {
+            User = Workspace.User with { TenantId = Guid.Parse("44444444-4444-4444-4444-444444444444") },
+            Membership = Workspace.Membership with { WorkspaceId = Guid.Parse("66666666-6666-6666-6666-666666666666") }
+        };
+
+        var act = () => service.SearchAsync(
+            otherScope,
+            new UserSearchRequest(ContinuationToken: firstPage.ContinuationToken),
+            CancellationToken.None);
+
+        await act.Should().ThrowAsync<UserSearchValidationException>()
+            .WithMessage("continuationToken is invalid or expired.");
+    }
+
+    [Fact]
+    public async Task Search_rejects_an_expired_continuation_token()
+    {
+        var now = DateTimeOffset.Parse("2026-09-20T12:00:00Z");
+        var reader = new RecordingDirectoryReader
+        {
+            Result = new PagedResult<UserSummary>([], [], "/v1.0/users?$skiptoken=raw-page-two")
+        };
+        var service = CreateService(reader, () => now);
+        var firstPage = await service.SearchAsync(Workspace, new UserSearchRequest(), CancellationToken.None);
+        now = now.AddMinutes(11);
+
+        var act = () => service.SearchAsync(
+            Workspace,
+            new UserSearchRequest(ContinuationToken: firstPage.ContinuationToken),
+            CancellationToken.None);
+
+        await act.Should().ThrowAsync<UserSearchValidationException>()
+            .WithMessage("continuationToken is invalid or expired.");
+    }
+
+    [Theory]
+    [InlineData("bogus", null, null, null)]
+    [InlineData(null, "Other", null, null)]
+    [InlineData(null, null, "ENTERPRISEPACK' or 1 eq 1", null)]
+    [InlineData(null, null, null, "Member' or 1 eq 1")]
+    public async Task Search_rejects_unsupported_or_unsafe_filter_values(string? accountStatus, string? tenantRole, string? license, string? userType)
+    {
+        var service = CreateService(new RecordingDirectoryReader());
+        var act = () => service.SearchAsync(
+            Workspace,
+            new UserSearchRequest(AccountStatus: accountStatus, TenantRole: tenantRole, License: license, UserType: userType),
+            CancellationToken.None);
+
+        await act.Should().ThrowAsync<UserSearchValidationException>()
+            .WithMessage("*filter*");
     }
 
     [Theory]
@@ -170,4 +286,14 @@ public sealed class UserQueryServiceTests
     {
         public Task<GraphAuthorizationSnapshot> ReadAsync(WorkspaceContext context, CancellationToken cancellationToken = default) => Task.FromResult(snapshot);
     }
+
+    private static UserQueryService CreateService(RecordingDirectoryReader reader, Func<DateTimeOffset>? utcNow = null) =>
+        new(
+            reader,
+            new StaticCapabilityReader(GraphAuthorizationSnapshot.Available(
+                "user-1",
+                ["Directory.Read.All"],
+                [new DirectoryRoleSnapshot(EntraRoleCatalog.GlobalReaderTemplateId, "Global Reader", DirectoryRoleAssignmentState.Active, "/")])),
+            new UserContinuationTokenProtector("0123456789abcdef0123456789abcdef"),
+            utcNow);
 }

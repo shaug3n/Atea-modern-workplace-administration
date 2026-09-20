@@ -6,21 +6,22 @@ import { UserFilters } from '../../../../src/Web/src/features/users/UserFilters'
 describe('UserFilters', () => {
   afterEach(() => cleanup());
 
-  it('emits supported directory filters without using Graph-facing names', () => {
+  it('emits supported directory filters and clearly disables unsupported filters', () => {
     const onChange = vi.fn();
     render(<UserFilters filters={{ search: '', accountStatus: '', tenantRole: '', license: '', userType: '' }} onChange={onChange} />);
 
     fireEvent.change(screen.getByRole('searchbox', { name: 'Search users' }), { target: { value: 'ada' } });
     fireEvent.change(screen.getByLabelText('Account status'), { target: { value: 'enabled' } });
-    fireEvent.change(screen.getByLabelText('Tenant role'), { target: { value: 'Global Reader' } });
-    fireEvent.change(screen.getByLabelText('License'), { target: { value: 'ENTERPRISEPACK' } });
     fireEvent.change(screen.getByLabelText('User type'), { target: { value: 'Member' } });
+
+    expect(screen.getByLabelText('Tenant role')).toHaveProperty('disabled', true);
+    expect(screen.getByLabelText('License')).toHaveProperty('disabled', true);
 
     expect(onChange).toHaveBeenLastCalledWith({
       search: 'ada',
       accountStatus: 'enabled',
-      tenantRole: 'Global Reader',
-      license: 'ENTERPRISEPACK',
+      tenantRole: '',
+      license: '',
       userType: 'Member',
     });
   });

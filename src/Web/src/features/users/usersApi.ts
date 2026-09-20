@@ -38,8 +38,6 @@ export async function fetchUsers(api: ApiFetch, filters: UserFiltersState, conti
   if (continuationToken) parameters.set('continuationToken', continuationToken);
   if (filters.search.trim()) parameters.set('search', filters.search.trim());
   if (filters.accountStatus) parameters.set('accountStatus', filters.accountStatus);
-  if (filters.tenantRole.trim()) parameters.set('tenantRole', filters.tenantRole.trim());
-  if (filters.license.trim()) parameters.set('license', filters.license.trim());
   if (filters.userType) parameters.set('userType', filters.userType);
 
   const response = await api(`/api/users?${parameters.toString()}`);

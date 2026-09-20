@@ -46,11 +46,13 @@ export function UserFilters({ filters, onChange }: { filters: UserFiltersState; 
       </label>
       <label>
         <span>{messages.usersTenantRoleLabel}</span>
-        <input value={draft.tenantRole} onChange={(event) => update({ tenantRole: event.currentTarget.value })} placeholder={messages.usersTenantRolePlaceholder} />
+        <input aria-label={messages.usersTenantRoleLabel} value="" disabled placeholder={messages.usersTenantRolePlaceholder} aria-describedby="users-tenant-role-unavailable" />
+        <small id="users-tenant-role-unavailable">{messages.usersUnsupportedFilterNotice}</small>
       </label>
       <label>
         <span>{messages.usersLicenseLabel}</span>
-        <input value={draft.license} onChange={(event) => update({ license: event.currentTarget.value })} placeholder={messages.usersLicensePlaceholder} />
+        <input aria-label={messages.usersLicenseLabel} value="" disabled placeholder={messages.usersLicensePlaceholder} aria-describedby="users-license-unavailable" />
+        <small id="users-license-unavailable">{messages.usersUnsupportedFilterNotice}</small>
       </label>
       <label>
         <span>{messages.usersUserTypeLabel}</span>

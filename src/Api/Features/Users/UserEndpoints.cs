@@ -1,3 +1,4 @@
+using System.Globalization;
 using Atea.UnifiedWorkplace.Api.Authorization;
 
 namespace Atea.UnifiedWorkplace.Api.Features.Users;
@@ -22,21 +23,29 @@ public static class UserEndpoints
             return Results.Json(new { error = "workspace_membership_required" }, statusCode: StatusCodes.Status403Forbidden);
         }
 
-        var request = new UserSearchRequest(
-            Query(httpRequest, "search"),
-            PageSize(httpRequest),
-            Query(httpRequest, "continuationToken"),
-            Query(httpRequest, "accountStatus"),
-            Query(httpRequest, "tenantRole"),
-            Query(httpRequest, "license"),
-            Query(httpRequest, "userType"));
-
         try
         {
+            var request = new UserSearchRequest(
+                Query(httpRequest, "search"),
+                PageSize(httpRequest),
+                Query(httpRequest, "continuationToken"),
+                Query(httpRequest, "accountStatus"),
+                Query(httpRequest, "tenantRole"),
+                Query(httpRequest, "license"),
+                Query(httpRequest, "userType"));
+
             return Results.Ok(await service.SearchAsync(context, request, cancellationToken));
         }
         catch (UserSearchValidationException exception)
         {
+            if (exception.Category == "unsupported_filter")
+            {
+                return Results.BadRequest(new
+                {
+                    error = new UserDirectoryError(exception.Category, exception.Message, Field: exception.Field)
+                });
+            }
+
             return Results.ValidationProblem(new Dictionary<string, string[]>
             {
                 ["query"] = [exception.Message]
@@ -47,6 +56,19 @@ public static class UserEndpoints
     private static string? Query(HttpRequest request, string name) =>
         request.Query.TryGetValue(name, out var value) ? value.ToString() : null;
 
-    private static int PageSize(HttpRequest request) =>
-        int.TryParse(Query(request, "pageSize"), out var pageSize) ? pageSize : 25;
+    private static int PageSize(HttpRequest request)
+    {
+        var value = Query(request, "pageSize");
+        if (string.IsNullOrEmpty(value))
+        {
+            return 25;
+        }
+
+        if (!int.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out var pageSize))
+        {
+            throw new UserSearchValidationException("pageSize must be an integer between 1 and 100.", field: "pageSize");
+        }
+
+        return pageSize;
+    }
 }

@@ -114,21 +114,11 @@ public sealed class GraphDirectoryReader(IDelegatedGraphClientFactory clientFact
             filters.Add($"userType eq '{EscapeODataString(query.UserType)}'");
         }
 
-        if (!string.IsNullOrWhiteSpace(query.License))
-        {
-            filters.Add($"assignedLicenses/any(l:l/skuId eq '{EscapeODataString(query.License)}')");
-        }
-
-        if (!string.IsNullOrWhiteSpace(query.TenantRole))
-        {
-            filters.Add($"appRoleAssignments/any(r:r/displayName eq '{EscapeODataString(query.TenantRole)}')");
-        }
-
         return filters;
     }
 
     private static IReadOnlyDictionary<string, string>? HeadersFor(UserSearchQuery query) =>
-        string.IsNullOrWhiteSpace(query.Search) && string.IsNullOrWhiteSpace(query.TenantRole) && string.IsNullOrWhiteSpace(query.License)
+        string.IsNullOrWhiteSpace(query.Search)
             ? null
             : new Dictionary<string, string> { ["ConsistencyLevel"] = "eventual" };
 

@@ -30,7 +30,7 @@ public sealed class UserEndpointsTests
         using var client = factory.CreateClient();
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Test");
 
-        var response = await client.GetAsync("/api/users?search=ada&pageSize=50&accountStatus=enabled&tenantRole=Global%20Reader&license=ENTERPRISEPACK&userType=Member");
+        var response = await client.GetAsync("/api/users?search=ada&pageSize=50&accountStatus=enabled&userType=Member");
         var body = await response.Content.ReadAsStringAsync();
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
@@ -46,8 +46,6 @@ public sealed class UserEndpointsTests
         reader.Query!.Search.Should().Be("ada");
         reader.Query.PageSize.Should().Be(50);
         reader.Query.AccountStatus.Should().Be("enabled");
-        reader.Query.TenantRole.Should().Be("Global Reader");
-        reader.Query.License.Should().Be("ENTERPRISEPACK");
         reader.Query.UserType.Should().Be("Member");
         reader.Context.Should().NotBeNull();
         reader.Context!.Membership.WorkspaceId.Should().Be(WorkspaceId);
@@ -97,6 +95,58 @@ public sealed class UserEndpointsTests
         body.Should().Contain("\"partialData\":true");
         body.Should().Contain("\"category\":\"capability_required\"");
         body.Should().Contain("\"state\":\"hidden\"");
+    }
+
+    [Fact]
+    public async Task Users_endpoint_rejects_non_numeric_page_size_without_calling_graph()
+    {
+        var reader = new RecordingDirectoryReader();
+        using var factory = CreateFactory(reader);
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Test");
+
+        var response = await client.GetAsync("/api/users?pageSize=not-a-number");
+        var body = await response.Content.ReadAsStringAsync();
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        body.Should().Contain("pageSize");
+        reader.Calls.Should().Be(0);
+    }
+
+    [Theory]
+    [InlineData("license", "License filter is not supported by the users directory yet.")]
+    [InlineData("tenantRole", "Tenant role filter is not supported by the users directory yet.")]
+    public async Task Users_endpoint_returns_structured_unsupported_filter_errors(string field, string message)
+    {
+        var reader = new RecordingDirectoryReader();
+        using var factory = CreateFactory(reader);
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Test");
+
+        var response = await client.GetAsync($"/api/users?{field}=unsupported");
+        var body = await response.Content.ReadAsStringAsync();
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        body.Should().Contain("\"category\":\"unsupported_filter\"");
+        body.Should().Contain($"\"field\":\"{field}\"");
+        body.Should().Contain(message);
+        reader.Calls.Should().Be(0);
+    }
+
+    [Theory]
+    [InlineData("accountStatus=unknown")]
+    [InlineData("userType=Member%27%20or%201%20eq%201")]
+    public async Task Users_endpoint_rejects_unsupported_or_unsafe_filters(string query)
+    {
+        var reader = new RecordingDirectoryReader();
+        using var factory = CreateFactory(reader);
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Test");
+
+        var response = await client.GetAsync($"/api/users?{query}");
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        reader.Calls.Should().Be(0);
     }
 
     private static WebApplicationFactory<Program> CreateFactory(

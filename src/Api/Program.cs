@@ -32,7 +32,8 @@ builder.Services.AddScoped<IGraphTokenProvider, MicrosoftIdentityGraphTokenProvi
 builder.Services.AddScoped<IDelegatedGraphClientFactory, DelegatedGraphClientFactory>();
 builder.Services.AddScoped<IUserDirectoryReader, GraphDirectoryReader>();
 builder.Services.AddScoped<IUserQueryService, UserQueryService>();
-builder.Services.AddSingleton(_ => new UserContinuationTokenProtector(builder.Configuration["Users:ContinuationSigningKey"]));
+builder.Services.AddSingleton(_ => new UserContinuationTokenProtector(
+    UserContinuationConfiguration.ResolveSigningKey(builder.Configuration, builder.Environment.IsDevelopment())));
 builder.Services.AddScoped<GraphUserLifecycle>();
 builder.Services.AddScoped<GraphGroupMembershipService>();
 builder.Services.AddScoped<GraphLicenseService>();

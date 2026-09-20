@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using Atea.UnifiedWorkplace.Api.Authorization;
 using Atea.UnifiedWorkplace.Api.Infrastructure.Graph;
 
@@ -20,7 +21,8 @@ public sealed class UserQueryService(
 
     public async Task<UserDirectoryResponse> SearchAsync(WorkspaceContext context, UserSearchRequest request, CancellationToken cancellationToken)
     {
-        Validate(request);
+        var normalizedQuery = UserSearchFilterContract.Normalize(request);
+        var now = utcNow();
 
         var snapshot = await authorizationSnapshotReader.ReadAsync(context, cancellationToken);
         var decision = CapabilityEvaluator.Evaluate(snapshot, context.Membership)[Capability.UsersView];
@@ -40,20 +42,13 @@ public sealed class UserQueryService(
 
         var continuationPath = string.IsNullOrWhiteSpace(request.ContinuationToken)
             ? null
-            : continuationProtector.Unprotect(request.ContinuationToken);
+            : continuationProtector.Unprotect(request.ContinuationToken, context, normalizedQuery, now);
 
-        var query = new UserSearchQuery(
-            Clean(request.Search),
-            request.PageSize,
-            continuationPath,
-            Clean(request.AccountStatus),
-            Clean(request.TenantRole),
-            Clean(request.License),
-            Clean(request.UserType));
+        var query = normalizedQuery with { ContinuationPath = continuationPath };
         var result = await directoryReader.SearchAsync(context, query, cancellationToken);
         var continuationToken = string.IsNullOrWhiteSpace(result.ContinuationLink)
             ? null
-            : continuationProtector.Protect(result.ContinuationLink);
+            : continuationProtector.Protect(result.ContinuationLink, context, normalizedQuery, now);
 
         if (result.Error is null)
         {
@@ -73,16 +68,6 @@ public sealed class UserQueryService(
                 result.Error.StatusCode,
                 result.Error.RetryAfter is null ? null : (int)Math.Ceiling(result.Error.RetryAfter.Value.TotalSeconds)));
     }
-
-    private static void Validate(UserSearchRequest request)
-    {
-        if (request.PageSize is < 1 or > 100)
-        {
-            throw new UserSearchValidationException("pageSize must be between 1 and 100.");
-        }
-    }
-
-    private static string? Clean(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
     private static string FreshnessFor(string category) => category switch
     {
@@ -105,10 +90,18 @@ public sealed class UserContinuationTokenProtector
     private const byte Version = 1;
     private const int NonceSize = 12;
     private const int TagSize = 16;
+    private static readonly TimeSpan DefaultLifetime = TimeSpan.FromMinutes(10);
     private readonly byte[] key;
+    private readonly TimeSpan lifetime;
 
-    public UserContinuationTokenProtector(string? signingKey)
+    public UserContinuationTokenProtector(string? signingKey, TimeSpan? lifetime = null)
     {
+        this.lifetime = lifetime ?? DefaultLifetime;
+        if (this.lifetime <= TimeSpan.Zero)
+        {
+            throw new ArgumentOutOfRangeException(nameof(lifetime), "Continuation token lifetime must be positive.");
+        }
+
         if (string.IsNullOrWhiteSpace(signingKey))
         {
             key = RandomNumberGenerator.GetBytes(32);
@@ -118,11 +111,23 @@ public sealed class UserContinuationTokenProtector
         key = SHA256.HashData(Encoding.UTF8.GetBytes(signingKey));
     }
 
-    public string Protect(string continuationPath)
+    public string Protect(string continuationPath, WorkspaceContext context, UserSearchQuery query, DateTimeOffset issuedAt)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(continuationPath);
+        if (!IsUserContinuationPath(continuationPath))
+        {
+            throw new ArgumentException("Continuation path must be a users collection path.", nameof(continuationPath));
+        }
 
-        var plaintext = Encoding.UTF8.GetBytes(continuationPath);
+        var issuedAtUnixSeconds = issuedAt.ToUnixTimeSeconds();
+        var payload = new UserContinuationPayload(
+            continuationPath,
+            context.Membership.WorkspaceId,
+            context.User.TenantId,
+            context.User.ObjectId,
+            UserSearchQueryFingerprint.Create(query),
+            issuedAtUnixSeconds,
+            issuedAt.Add(lifetime).ToUnixTimeSeconds());
+        var plaintext = JsonSerializer.SerializeToUtf8Bytes(payload);
         var nonce = RandomNumberGenerator.GetBytes(NonceSize);
         var ciphertext = new byte[plaintext.Length];
         var tag = new byte[TagSize];
@@ -138,14 +143,14 @@ public sealed class UserContinuationTokenProtector
         return Base64UrlEncode(token);
     }
 
-    public string Unprotect(string token)
+    public string Unprotect(string token, WorkspaceContext context, UserSearchQuery query, DateTimeOffset now)
     {
         try
         {
             var protectedBytes = Base64UrlDecode(token);
             if (protectedBytes.Length <= 1 + NonceSize + TagSize || protectedBytes[0] != Version)
             {
-                throw new UserSearchValidationException("continuationToken is invalid.");
+                throw InvalidToken();
             }
 
             var nonce = protectedBytes.AsSpan(1, NonceSize).ToArray();
@@ -155,23 +160,50 @@ public sealed class UserContinuationTokenProtector
             var associatedData = new[] { Version };
             using var aes = new AesGcm(key, TagSize);
             aes.Decrypt(nonce.AsSpan(), ciphertext.AsSpan(), tag.AsSpan(), plaintext.AsSpan(), associatedData.AsSpan());
-            var path = Encoding.UTF8.GetString(plaintext);
-            if (!path.StartsWith("/v1.0/users", StringComparison.Ordinal))
+            var payload = JsonSerializer.Deserialize<UserContinuationPayload>(plaintext);
+            var nowUnixSeconds = now.ToUnixTimeSeconds();
+            if (payload is null ||
+                !IsUserContinuationPath(payload.Path) ||
+                payload.WorkspaceId != context.Membership.WorkspaceId ||
+                payload.TenantId != context.User.TenantId ||
+                payload.ActorId != context.User.ObjectId ||
+                !CryptographicOperations.FixedTimeEquals(
+                    Encoding.UTF8.GetBytes(payload.QueryFingerprint),
+                    Encoding.UTF8.GetBytes(UserSearchQueryFingerprint.Create(query))) ||
+                payload.IssuedAtUnixSeconds > nowUnixSeconds + 30 ||
+                payload.ExpiresAtUnixSeconds <= nowUnixSeconds)
             {
-                throw new UserSearchValidationException("continuationToken is invalid.");
+                throw InvalidToken();
             }
 
-            return path;
+            return payload.Path;
         }
         catch (CryptographicException exception)
         {
-            throw new UserSearchValidationException("continuationToken is invalid.", exception);
+            throw InvalidToken(exception);
         }
         catch (FormatException exception)
         {
-            throw new UserSearchValidationException("continuationToken is invalid.", exception);
+            throw InvalidToken(exception);
+        }
+        catch (JsonException exception)
+        {
+            throw InvalidToken(exception);
+        }
+        catch (ArgumentException exception)
+        {
+            throw InvalidToken(exception);
         }
     }
+
+    private static UserSearchValidationException InvalidToken(Exception? innerException = null) =>
+        innerException is null
+            ? new UserSearchValidationException("continuationToken is invalid or expired.")
+            : new UserSearchValidationException("continuationToken is invalid or expired.", innerException);
+
+    private static bool IsUserContinuationPath(string path) =>
+        path.Equals("/v1.0/users", StringComparison.Ordinal) ||
+        path.StartsWith("/v1.0/users?", StringComparison.Ordinal);
 
     private static string Base64UrlEncode(byte[] bytes) =>
         Convert.ToBase64String(bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_');
@@ -183,3 +215,28 @@ public sealed class UserContinuationTokenProtector
         return Convert.FromBase64String(padded);
     }
 }
+
+internal static class UserSearchQueryFingerprint
+{
+    public static string Create(UserSearchQuery query)
+    {
+        var canonical = string.Join("\n", [
+            query.Search ?? string.Empty,
+            query.PageSize.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            query.AccountStatus ?? string.Empty,
+            query.TenantRole ?? string.Empty,
+            query.License ?? string.Empty,
+            query.UserType ?? string.Empty
+        ]);
+        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(canonical)));
+    }
+}
+
+internal sealed record UserContinuationPayload(
+    string Path,
+    Guid WorkspaceId,
+    Guid TenantId,
+    Guid ActorId,
+    string QueryFingerprint,
+    long IssuedAtUnixSeconds,
+    long ExpiresAtUnixSeconds);

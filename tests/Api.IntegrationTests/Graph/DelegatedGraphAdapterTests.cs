@@ -24,7 +24,7 @@ public sealed class DelegatedGraphAdapterTests
 
         var result = await reader.SearchAsync(
             GraphContextFixture.Workspace,
-            new UserSearchQuery(Search: "engineer", PageSize: 25, AccountStatus: "enabled", TenantRole: "Global Reader", License: "ENTERPRISEPACK", UserType: "Member"),
+            new UserSearchQuery(Search: "engineer", PageSize: 25, AccountStatus: "enabled", UserType: "Member"),
             CancellationToken.None);
 
         result.Items.Should().ContainSingle(user => user.Id == "user-1");
@@ -36,8 +36,6 @@ public sealed class DelegatedGraphAdapterTests
         transport.Requests[0].PathAndQuery.Should().Contain("$search=");
         transport.Requests[0].PathAndQuery.Should().Contain("accountEnabled%20eq%20true");
         transport.Requests[0].PathAndQuery.Should().Contain("userType%20eq%20%27Member%27");
-        transport.Requests[0].PathAndQuery.Should().Contain("assignedLicenses%2Fany");
-        transport.Requests[0].PathAndQuery.Should().Contain("Global%20Reader");
         transport.Requests.Should().ContainSingle();
     }
 
