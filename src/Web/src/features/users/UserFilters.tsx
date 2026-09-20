@@ -82,8 +82,6 @@ function activeChips(filters: UserFiltersState) {
   return [
     filters.search.trim() && { key: 'search' as const, label: `${messages.usersSearchChip}: ${filters.search.trim()}`, clearLabel: messages.usersClearSearchFilter },
     filters.accountStatus && { key: 'accountStatus' as const, label: `${messages.usersStatusChip}: ${labelAccountStatus(filters.accountStatus)}`, clearLabel: messages.usersClearStatusFilter },
-    filters.tenantRole.trim() && { key: 'tenantRole' as const, label: `${messages.usersTenantRoleChip}: ${filters.tenantRole.trim()}`, clearLabel: messages.usersClearTenantRoleFilter },
-    filters.license.trim() && { key: 'license' as const, label: `${messages.usersLicenseChip}: ${filters.license.trim()}`, clearLabel: messages.usersClearLicenseFilter },
     filters.userType && { key: 'userType' as const, label: `${messages.usersUserTypeChip}: ${filters.userType}`, clearLabel: messages.usersClearUserTypeFilter },
   ].filter(Boolean) as Array<{ key: keyof UserFiltersState; label: string; clearLabel: string }>;
 }

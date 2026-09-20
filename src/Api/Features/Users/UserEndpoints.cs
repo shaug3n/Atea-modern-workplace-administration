@@ -48,7 +48,7 @@ public static class UserEndpoints
 
             return Results.ValidationProblem(new Dictionary<string, string[]>
             {
-                ["query"] = [exception.Message]
+                [exception.Field ?? "query"] = [exception.Message]
             });
         }
     }
@@ -58,12 +58,12 @@ public static class UserEndpoints
 
     private static int PageSize(HttpRequest request)
     {
-        var value = Query(request, "pageSize");
-        if (string.IsNullOrEmpty(value))
+        if (!request.Query.TryGetValue("pageSize", out var values))
         {
             return 25;
         }
 
+        var value = values.ToString();
         if (!int.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out var pageSize))
         {
             throw new UserSearchValidationException("pageSize must be an integer between 1 and 100.", field: "pageSize");

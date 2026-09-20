@@ -113,6 +113,22 @@ public sealed class UserEndpointsTests
         reader.Calls.Should().Be(0);
     }
 
+    [Fact]
+    public async Task Users_endpoint_rejects_an_explicitly_empty_page_size_without_calling_graph()
+    {
+        var reader = new RecordingDirectoryReader();
+        using var factory = CreateFactory(reader);
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Test");
+
+        var response = await client.GetAsync("/api/users?pageSize=");
+        var body = await response.Content.ReadAsStringAsync();
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        body.Should().Contain("pageSize");
+        reader.Calls.Should().Be(0);
+    }
+
     [Theory]
     [InlineData("license", "License filter is not supported by the users directory yet.")]
     [InlineData("tenantRole", "Tenant role filter is not supported by the users directory yet.")]

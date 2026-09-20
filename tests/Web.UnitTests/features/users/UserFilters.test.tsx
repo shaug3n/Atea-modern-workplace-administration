@@ -44,4 +44,12 @@ describe('UserFilters', () => {
       userType: 'Member',
     });
   });
+
+  it('does not render chips for unsupported tenant role or license values', () => {
+    render(<UserFilters filters={{ search: '', accountStatus: '', tenantRole: 'Global Reader', license: 'ENTERPRISEPACK', userType: '' }} onChange={vi.fn()} />);
+
+    expect(screen.queryByText('Tenant role: Global Reader')).toBeNull();
+    expect(screen.queryByText('License: ENTERPRISEPACK')).toBeNull();
+    expect(screen.getAllByText('This filter is not available yet.')).toHaveLength(2);
+  });
 });
