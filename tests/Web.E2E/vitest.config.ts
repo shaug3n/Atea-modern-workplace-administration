@@ -19,6 +19,6 @@ export default defineConfig({
   },
   test: {
     environment: 'jsdom',
-    include: ['users-directory.spec.tsx']
+    include: ['users-directory.spec.tsx', 'user-detail.spec.tsx']
   }
 });

@@ -1,3 +1,4 @@
+using Atea.UnifiedWorkplace.Api.Authorization;
 using Microsoft.Extensions.Configuration;
 
 namespace Atea.UnifiedWorkplace.Api.Features.Users;
@@ -34,7 +35,87 @@ public sealed record UserDetails(
     string? UserPrincipalName,
     string? Mail,
     bool? AccountEnabled,
-    string? UserType);
+    string? UserType,
+    string? GivenName = null,
+    string? Surname = null,
+    string? JobTitle = null,
+    string? Department = null,
+    string? OfficeLocation = null,
+    string? MobilePhone = null,
+    string? UsageLocation = null,
+    bool IsReadOnly = false,
+    string SourceOfAuthority = "cloud",
+    string? SourceOfAuthorityReason = null);
+
+public sealed record AssignedLicense(
+    string SkuId,
+    string? SkuPartNumber,
+    string? DisplayName = null);
+
+public sealed record GroupMembership(
+    string Id,
+    string? DisplayName,
+    string? MailNickname,
+    bool? SecurityEnabled,
+    IReadOnlyList<string> GroupTypes);
+
+public sealed record DirectoryRoleAssignment(
+    string Id,
+    string RoleTemplateId,
+    string? DisplayName,
+    string AssignmentState,
+    string? DirectoryScopeId);
+
+public sealed record PimEligibility(
+    string Id,
+    string RoleTemplateId,
+    string? DisplayName,
+    string Status,
+    string RequiredCapability,
+    bool ActivationAvailable,
+    bool RequiresApproval,
+    bool RequiresMfa,
+    bool RequiresJustification,
+    int? MaximumDurationMinutes,
+    PimActivationAction? ActivationAction);
+
+public sealed record PimActivationAction(
+    string Action,
+    string Href,
+    string Method,
+    string RequiredCapability,
+    bool RequiresConfirmation);
+
+public sealed record SectionAccessState(
+    CapabilityDecision Authorization,
+    DateTimeOffset FetchedAt,
+    string Freshness,
+    bool PartialData,
+    UserDirectoryError? Error = null);
+
+public sealed record UserDetailSection<T>(
+    SectionAccessState Access,
+    IReadOnlyList<T> Items);
+
+public sealed record UserDetailResponse(
+    SectionAccessState Access,
+    UserDetails? User,
+    UserDetailSection<AssignedLicense> Licenses,
+    UserDetailSection<GroupMembership> Groups,
+    UserDetailSection<DirectoryRoleAssignment> Roles,
+    UserDetailSection<PimEligibility> Pim);
+
+public sealed record UserDetailResult(
+    string Status,
+    UserDetailResponse? Detail = null,
+    UserDirectoryError? Error = null);
+
+public static class UserDetailStatus
+{
+    public const string Found = "found";
+    public const string NotFound = "not_found";
+    public const string NotAccessible = "not_accessible";
+}
 
 public sealed record UserDirectoryResponse(
     IReadOnlyList<UserSummary> Items,

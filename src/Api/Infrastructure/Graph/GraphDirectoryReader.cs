@@ -22,7 +22,7 @@ public sealed record PagedResult<T>(
 
 public sealed class GraphDirectoryReader(IDelegatedGraphClientFactory clientFactory) : IUserDirectoryReader
 {
-    private const string UserSelect = "id,displayName,userPrincipalName,mail,accountEnabled,userType";
+    private const string UserSelect = "id,displayName,userPrincipalName,mail,accountEnabled,userType,givenName,surname,jobTitle,department,officeLocation,mobilePhone,usageLocation,onPremisesSyncEnabled,creationType";
 
     public async Task<PagedResult<UserSummary>> SearchAsync(WorkspaceContext context, UserSearchQuery query, CancellationToken cancellationToken)
     {
@@ -65,8 +65,7 @@ public sealed class GraphDirectoryReader(IDelegatedGraphClientFactory clientFact
         }
 
         using var document = JsonDocument.Parse(response.Content);
-        var user = MapUserSummary(document.RootElement);
-        return new UserDetails(user.Id, user.DisplayName, user.UserPrincipalName, user.Mail, user.AccountEnabled, user.UserType);
+        return MapUserDetails(document.RootElement);
     }
 
     private static string BuildSearchPath(UserSearchQuery query)
@@ -143,6 +142,37 @@ public sealed class GraphDirectoryReader(IDelegatedGraphClientFactory clientFact
         OptionalString(element, "mail"),
         OptionalBool(element, "accountEnabled"),
         OptionalString(element, "userType"));
+
+    private static UserDetails MapUserDetails(JsonElement element)
+    {
+        var syncEnabled = OptionalBool(element, "onPremisesSyncEnabled") == true;
+        var creationType = OptionalString(element, "creationType");
+        var source = syncEnabled ? "on_premises_sync" : string.Equals(creationType, "Invitation", StringComparison.OrdinalIgnoreCase) ? "external" : "cloud";
+        var reason = source switch
+        {
+            "on_premises_sync" => "This user is synchronized from an on-premises directory and must be edited at the source.",
+            "external" => "This user is externally managed and cannot be edited here.",
+            _ => null
+        };
+
+        return new UserDetails(
+            RequiredString(element, "id"),
+            OptionalString(element, "displayName"),
+            OptionalString(element, "userPrincipalName"),
+            OptionalString(element, "mail"),
+            OptionalBool(element, "accountEnabled"),
+            OptionalString(element, "userType"),
+            OptionalString(element, "givenName"),
+            OptionalString(element, "surname"),
+            OptionalString(element, "jobTitle"),
+            OptionalString(element, "department"),
+            OptionalString(element, "officeLocation"),
+            OptionalString(element, "mobilePhone"),
+            OptionalString(element, "usageLocation"),
+            source != "cloud",
+            source,
+            reason);
+    }
 
     private static string RequiredString(JsonElement element, string property) =>
         element.TryGetProperty(property, out var value) ? value.GetString() ?? string.Empty : string.Empty;

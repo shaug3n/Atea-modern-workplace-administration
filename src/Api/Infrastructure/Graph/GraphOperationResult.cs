@@ -11,3 +11,9 @@ public sealed record GraphOperationResult(
     public static GraphOperationResult Success(string? correlationId = null, string? requestId = null) =>
         new(true, "success", CorrelationId: correlationId, RequestId: requestId);
 }
+
+public sealed record GraphReadResult<T>(T Value, GraphOperationResult? Error)
+{
+    public static GraphReadResult<T> Succeeded(T value) => new(value, null);
+    public static GraphReadResult<T> Failed(GraphOperationResult error) => new(default!, error);
+}

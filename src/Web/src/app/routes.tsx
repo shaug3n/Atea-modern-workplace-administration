@@ -2,6 +2,7 @@ import React from 'react';
 import type { ReactNode } from 'react';
 import { workspaceSettingsCapability, type Capability, type CapabilityDecision } from '../capabilities/capabilityTypes';
 import { OverviewPage, type ConnectionHealthLoader } from '../features/overview/OverviewPage';
+import { UserDetailPage } from '../features/users/UserDetailPage';
 import { UsersPage } from '../features/users/UsersPage';
 import { messages } from './messages';
 
@@ -38,7 +39,7 @@ export const appRoutes: AppRoute[] = [
     path: '/users/:userId',
     label: messages.navUsers,
     capability: 'users.view',
-    render: () => <WorkInProgressPage title={messages.userDetailTitle} description={messages.userDetailDescription} />,
+    render: () => <UserDetailPage />,
   },
   {
     path: '/licenses',

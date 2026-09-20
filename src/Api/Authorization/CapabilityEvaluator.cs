@@ -44,6 +44,13 @@ public static class CapabilityEvaluator
         [Capability.RolesAssign] = new(
             ReadScopes: ["Directory.Read.All"],
             WriteScopes: GraphScopeCatalog.RoleAndPimScopes,
+            RoleTemplateIds: [EntraRoleCatalog.GlobalAdministratorTemplateId, EntraRoleCatalog.PrivilegedRoleAdministratorTemplateId]),
+        [Capability.PimView] = new(
+            ReadScopes: GraphScopeCatalog.AuthorizationReadScopes,
+            RoleTemplateIds: ReaderRoles),
+        [Capability.PimActivate] = new(
+            ReadScopes: GraphScopeCatalog.AuthorizationReadScopes,
+            WriteScopes: GraphScopeCatalog.RoleAndPimScopes,
             RoleTemplateIds: [EntraRoleCatalog.GlobalAdministratorTemplateId, EntraRoleCatalog.PrivilegedRoleAdministratorTemplateId])
     };
 

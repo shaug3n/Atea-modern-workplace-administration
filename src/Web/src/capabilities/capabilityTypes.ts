@@ -7,6 +7,8 @@ export type Capability =
   | 'groups.manage_members'
   | 'licenses.assign'
   | 'roles.assign'
+  | 'pim.view'
+  | 'pim.activate'
   | 'workspace.settings.manage';
 
 export const workspaceSettingsCapability: Capability = 'workspace.settings.manage';

@@ -7,6 +7,10 @@ using Atea.UnifiedWorkplace.Api.Infrastructure.Persistence;
 using Atea.UnifiedWorkplace.Api.Infrastructure.Persistence.Repositories;
 using Microsoft.EntityFrameworkCore;
 using Atea.UnifiedWorkplace.Api.Infrastructure.Graph;
+using Atea.UnifiedWorkplace.Api.Features.Groups;
+using Atea.UnifiedWorkplace.Api.Features.Licenses;
+using Atea.UnifiedWorkplace.Api.Features.Pim;
+using Atea.UnifiedWorkplace.Api.Features.Roles;
 using Atea.UnifiedWorkplace.Api.Features.UserPreferences;
 using Atea.UnifiedWorkplace.Api.Features.Users;
 
@@ -32,12 +36,16 @@ builder.Services.AddScoped<IGraphTokenProvider, MicrosoftIdentityGraphTokenProvi
 builder.Services.AddScoped<IDelegatedGraphClientFactory, DelegatedGraphClientFactory>();
 builder.Services.AddScoped<IUserDirectoryReader, GraphDirectoryReader>();
 builder.Services.AddScoped<IUserQueryService, UserQueryService>();
+builder.Services.AddScoped<IUserDetailService, UserDetailService>();
 builder.Services.AddSingleton(_ => new UserContinuationTokenProtector(
     UserContinuationConfiguration.ResolveSigningKey(builder.Configuration, builder.Environment.IsDevelopment())));
 builder.Services.AddScoped<GraphUserLifecycle>();
 builder.Services.AddScoped<GraphGroupMembershipService>();
+builder.Services.AddScoped<IGroupMembershipReader>(services => services.GetRequiredService<GraphGroupMembershipService>());
 builder.Services.AddScoped<GraphLicenseService>();
+builder.Services.AddScoped<IUserLicenseReader>(services => services.GetRequiredService<GraphLicenseService>());
 builder.Services.AddScoped<GraphRoleAndPimService>();
+builder.Services.AddScoped<IRoleAndPimReader>(services => services.GetRequiredService<GraphRoleAndPimService>());
 builder.Services.Configure<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme, options =>
 {
     options.Events ??= new JwtBearerEvents();
@@ -88,6 +96,11 @@ app.MapWorkspaceEndpoints();
 app.MapCapabilityEndpoints();
 app.MapUserPreferenceEndpoints();
 app.MapUserEndpoints();
+app.MapUserDetailEndpoints();
+app.MapLicenseEndpoints();
+app.MapGroupEndpoints();
+app.MapRoleEndpoints();
+app.MapPimEndpoints();
 app.MapFallbackToFile("index.html");
 
 app.Run();
