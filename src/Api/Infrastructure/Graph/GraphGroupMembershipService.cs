@@ -8,7 +8,10 @@ public sealed class GraphGroupMembershipService(IDelegatedGraphClientFactory cli
     public Task<GraphOperationResult> RemoveMemberAsync(string groupObjectId, string memberObjectId, string idempotencyKey, CancellationToken cancellationToken) =>
         ExecuteAsync(new RemoveGroupMemberMutation(groupObjectId, memberObjectId), idempotencyKey, cancellationToken);
 
-    public Task<GraphOperationResult> ExecuteAsync(GraphMutation mutation, string idempotencyKey, CancellationToken cancellationToken) =>
+    Task<GraphOperationResult> IGraphMutationExecutor.ExecuteAsync(GraphMutation mutation, string idempotencyKey, CancellationToken cancellationToken) =>
+        ExecuteAsync(mutation, idempotencyKey, cancellationToken);
+
+    private Task<GraphOperationResult> ExecuteAsync(GraphMutation mutation, string idempotencyKey, CancellationToken cancellationToken) =>
         GraphMutationExecutor.ExecuteAsync(clientFactory, mutation, idempotencyKey, cancellationToken);
 }
 

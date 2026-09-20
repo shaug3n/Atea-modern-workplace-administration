@@ -3,7 +3,7 @@ using System.Text.Json;
 
 namespace Atea.UnifiedWorkplace.Api.Infrastructure.Graph;
 
-public interface IGraphMutationExecutor
+internal interface IGraphMutationExecutor
 {
     Task<GraphOperationResult> ExecuteAsync(
         GraphMutation mutation,
@@ -11,7 +11,7 @@ public interface IGraphMutationExecutor
         CancellationToken cancellationToken);
 }
 
-public abstract record GraphMutation(IReadOnlyCollection<string> Scopes)
+internal abstract record GraphMutation(IReadOnlyCollection<string> Scopes)
 {
     internal abstract GraphRequest CreateRequest(string idempotencyKey);
 }
@@ -30,7 +30,10 @@ public sealed class GraphUserLifecycle(IDelegatedGraphClientFactory clientFactor
     public Task<GraphOperationResult> ResetPasswordAsync(string userObjectId, TemporaryPasswordProfile passwordProfile, string idempotencyKey, CancellationToken cancellationToken) =>
         ExecuteAsync(new ResetPasswordMutation(userObjectId, passwordProfile), idempotencyKey, cancellationToken);
 
-    public Task<GraphOperationResult> ExecuteAsync(GraphMutation mutation, string idempotencyKey, CancellationToken cancellationToken) =>
+    Task<GraphOperationResult> IGraphMutationExecutor.ExecuteAsync(GraphMutation mutation, string idempotencyKey, CancellationToken cancellationToken) =>
+        ExecuteAsync(mutation, idempotencyKey, cancellationToken);
+
+    private Task<GraphOperationResult> ExecuteAsync(GraphMutation mutation, string idempotencyKey, CancellationToken cancellationToken) =>
         GraphMutationExecutor.ExecuteAsync(clientFactory, mutation, idempotencyKey, cancellationToken);
 }
 

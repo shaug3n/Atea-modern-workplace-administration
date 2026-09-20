@@ -10,7 +10,10 @@ public sealed class GraphLicenseService(IDelegatedGraphClientFactory clientFacto
         CancellationToken cancellationToken) =>
         ExecuteAsync(new AssignUserLicensesMutation(userObjectId, addSkuIds, removeSkuIds), idempotencyKey, cancellationToken);
 
-    public Task<GraphOperationResult> ExecuteAsync(GraphMutation mutation, string idempotencyKey, CancellationToken cancellationToken) =>
+    Task<GraphOperationResult> IGraphMutationExecutor.ExecuteAsync(GraphMutation mutation, string idempotencyKey, CancellationToken cancellationToken) =>
+        ExecuteAsync(mutation, idempotencyKey, cancellationToken);
+
+    private Task<GraphOperationResult> ExecuteAsync(GraphMutation mutation, string idempotencyKey, CancellationToken cancellationToken) =>
         GraphMutationExecutor.ExecuteAsync(clientFactory, mutation, idempotencyKey, cancellationToken);
 }
 

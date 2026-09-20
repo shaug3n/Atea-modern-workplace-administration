@@ -10,7 +10,10 @@ public sealed class GraphRoleAndPimService(IDelegatedGraphClientFactory clientFa
         CancellationToken cancellationToken) =>
         ExecuteAsync(new AssignDirectoryRoleMutation(roleDefinitionId, principalId, directoryScopeId), idempotencyKey, cancellationToken);
 
-    public Task<GraphOperationResult> ExecuteAsync(GraphMutation mutation, string idempotencyKey, CancellationToken cancellationToken) =>
+    Task<GraphOperationResult> IGraphMutationExecutor.ExecuteAsync(GraphMutation mutation, string idempotencyKey, CancellationToken cancellationToken) =>
+        ExecuteAsync(mutation, idempotencyKey, cancellationToken);
+
+    private Task<GraphOperationResult> ExecuteAsync(GraphMutation mutation, string idempotencyKey, CancellationToken cancellationToken) =>
         GraphMutationExecutor.ExecuteAsync(clientFactory, mutation, idempotencyKey, cancellationToken);
 }
 

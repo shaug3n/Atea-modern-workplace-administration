@@ -1,4 +1,5 @@
 using System.Net;
+using System.Reflection;
 using System.Text.Json;
 using Atea.UnifiedWorkplace.Api.Infrastructure.Graph;
 using FluentAssertions;
@@ -7,6 +8,37 @@ namespace Atea.UnifiedWorkplace.Api.UnitTests.Graph;
 
 public sealed class GraphAdapterBoundaryTests
 {
+    [Fact]
+    public void Public_mutation_adapters_expose_only_typed_operation_methods()
+    {
+        var publicGraphTypes = typeof(GraphUserLifecycle).Assembly.GetExportedTypes()
+            .Where(type => type.Namespace == "Atea.UnifiedWorkplace.Api.Infrastructure.Graph")
+            .Select(type => type.Name)
+            .ToArray();
+
+        publicGraphTypes.Should().NotContain(["IGraphMutationExecutor", "GraphMutation"]);
+
+        var mutationServices = new[]
+        {
+            typeof(GraphUserLifecycle),
+            typeof(GraphGroupMembershipService),
+            typeof(GraphLicenseService),
+            typeof(GraphRoleAndPimService)
+        };
+
+        foreach (var service in mutationServices)
+        {
+            var publicInstanceMethods = service.GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.DeclaredOnly);
+
+            publicInstanceMethods.Should().NotContain(method =>
+                method.Name == "ExecuteAsync"
+                || method.GetParameters().Any(parameter => parameter.ParameterType.Name == "GraphMutation"));
+            publicInstanceMethods.Should().OnlyContain(method =>
+                method.Name.EndsWith("Async", StringComparison.Ordinal)
+                && method.ReturnType == typeof(Task<GraphOperationResult>));
+        }
+    }
+
     [Fact]
     public async Task User_lifecycle_disables_account_with_internal_path_body_and_least_privilege_scopes()
     {
