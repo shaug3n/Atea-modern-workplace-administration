@@ -11,4 +11,5 @@ public static class GraphScopeCatalog
     public static readonly IReadOnlyList<string> GroupMembershipWriteScopes = ["GroupMember.ReadWrite.All"];
     public static readonly IReadOnlyList<string> LicenseWriteScopes = ["LicenseAssignment.ReadWrite.All"];
     public static readonly IReadOnlyList<string> RoleAndPimScopes = ["RoleManagement.ReadWrite.Directory"];
+    public static readonly IReadOnlyList<string> AuthorizationReadScopes = ["Directory.Read.All", "RoleManagement.Read.Directory"];
 }

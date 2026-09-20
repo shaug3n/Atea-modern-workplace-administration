@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Atea.UnifiedWorkplace.Api.Authorization;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Atea.UnifiedWorkplace.Api.Features.Authorization;
 using Atea.UnifiedWorkplace.Api.Features.Workspaces;
 using Atea.UnifiedWorkplace.Api.Infrastructure.Persistence;
 using Atea.UnifiedWorkplace.Api.Infrastructure.Persistence.Repositories;
@@ -21,6 +22,7 @@ builder.Services.AddScoped<InvitationService>(services => new InvitationService(
     services.GetRequiredService<IInvitationRepository>(), new Uri(builder.Configuration["Onboarding:PublicBaseUrl"] ?? "https://workplace.example")));
 builder.Services.AddScoped<IDelegatedConnectionProbe, DelegatedGraphConnectionProbe>();
 builder.Services.AddScoped<IConnectionHealthReader, ConnectionHealthReader>();
+builder.Services.AddScoped<IGraphAuthorizationSnapshotReader, GraphAuthorizationSnapshotReader>();
 builder.Services.AddHttpClient("MicrosoftGraph", client => client.BaseAddress = new Uri("https://graph.microsoft.com"));
 builder.Services.AddScoped<IGraphTokenProvider, MicrosoftIdentityGraphTokenProvider>();
 builder.Services.AddScoped<IDelegatedGraphClientFactory, DelegatedGraphClientFactory>();
@@ -76,6 +78,7 @@ app.MapGet("/api/session", (IWorkspaceContextAccessor accessor) =>
     });
 }).RequireAuthorization();
 app.MapWorkspaceEndpoints();
+app.MapCapabilityEndpoints();
 app.MapFallbackToFile("index.html");
 
 app.Run();

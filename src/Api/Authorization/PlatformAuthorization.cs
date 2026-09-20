@@ -65,9 +65,9 @@ public static class PlatformAuthorization
         {
             var membership = await db.WorkspaceMemberships.AsNoTracking()
                 .Where(x => x.TenantObjectId == objectId && x.Workspace.TenantId == tenantId)
-                .Select(x => new { x.WorkspaceId, x.Workspace.DisplayName })
+                .Select(x => new { x.WorkspaceId, x.Workspace.DisplayName, x.PlatformRole, x.IsAteaOperator })
                 .SingleOrDefaultAsync(cancellationToken);
-            return membership is null ? null : new WorkspaceMembership(membership.WorkspaceId, membership.DisplayName);
+            return membership is null ? null : new WorkspaceMembership(membership.WorkspaceId, membership.DisplayName, membership.PlatformRole, membership.IsAteaOperator);
         }
     }
 }

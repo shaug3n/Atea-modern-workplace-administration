@@ -13,4 +13,8 @@ public interface IWorkspaceMembershipReader
     Task<WorkspaceMembership?> FindMembershipAsync(Guid tenantId, Guid objectId, CancellationToken cancellationToken = default);
 }
 
-public sealed record WorkspaceMembership(Guid WorkspaceId, string WorkspaceName);
+public sealed record WorkspaceMembership(
+    Guid WorkspaceId,
+    string WorkspaceName,
+    string PlatformRole = "member",
+    bool IsAteaOperator = false);

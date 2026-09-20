@@ -16,7 +16,7 @@ public static class WorkspaceEndpoints
         endpoints.MapGet("/api/workspaces/current", GetCurrentWorkspaceAsync).RequireAuthorization();
         endpoints.MapGet("/api/workspaces/current/connection-health", GetConnectionHealthAsync).RequireAuthorization();
         endpoints.MapPost("/api/workspaces/current/connection-health/check", CheckConnectionHealthAsync).RequireAuthorization();
-        endpoints.MapPost("/api/workspaces/current/consent/start", StartConsentAsync).RequireAuthorization();
+        endpoints.MapPost("/api/workspaces/current/consent/start", StartConsentAsync).RequireAuthorization().RequireCapability(Capability.WorkspaceSettingsManage);
         endpoints.MapPost("/api/invitations/{nonce}/redeem", RedeemInvitationAsync).RequireAuthorization();
         return endpoints;
     }
