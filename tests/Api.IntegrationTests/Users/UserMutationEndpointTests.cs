@@ -1,0 +1,256 @@
+using System.Net;
+using System.Net.Http.Headers;
+using System.Security.Claims;
+using System.Text;
+using Atea.UnifiedWorkplace.Api.Authorization;
+using Atea.UnifiedWorkplace.Api.Features.Groups;
+using Atea.UnifiedWorkplace.Api.Features.Licenses;
+using Atea.UnifiedWorkplace.Api.Features.Users;
+using Atea.UnifiedWorkplace.Api.Infrastructure.Graph;
+using Atea.UnifiedWorkplace.Api.Infrastructure.Observability;
+using Atea.UnifiedWorkplace.Api.Infrastructure.Security;
+using FluentAssertions;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Options;
+using System.Text.Encodings.Web;
+
+namespace Atea.UnifiedWorkplace.Api.IntegrationTests.Users;
+
+public sealed class UserMutationEndpointTests
+{
+    [Fact]
+    public async Task Global_reader_receives_structured_read_only_without_graph_mutation()
+    {
+        var commands = new RecordingUserCommands();
+        using var factory = CreateFactory(commands, snapshot: ReaderSnapshot);
+        using var client = AuthenticatedClient(factory);
+
+        var request = JsonPatch("/api/users/user-1", """{"displayName":"Ada Updated"}""", "edit-key");
+        var response = await client.SendAsync(request);
+        var body = await response.Content.ReadAsStringAsync();
+
+        response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        body.Should().Contain("\"error\":\"capability_required\"");
+        body.Should().Contain("\"state\":\"read_only\"");
+        body.Should().Contain("\"capability\":\"users.update\"");
+        commands.UpdateCalls.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task User_administrator_can_create_user_and_receives_temporary_credential_once()
+    {
+        var commands = new RecordingUserCommands();
+        using var factory = CreateFactory(commands);
+        using var client = AuthenticatedClient(factory);
+
+        var response = await client.PostAsync("/api/users", Json("""{"displayName":"Ada Lovelace","givenName":"Ada","surname":"Lovelace","userPrincipalName":"ada@example.com","mailNickname":"ada","jobTitle":"Principal Engineer","department":"Digital Workplace","officeLocation":"Oslo","mobilePhone":"+47 22 00 00 00","usageLocation":"NO","accountEnabled":true}""", "create-key"));
+        var body = await response.Content.ReadAsStringAsync();
+
+        response.StatusCode.Should().Be(HttpStatusCode.Created);
+        body.Should().Contain("\"status\":\"succeeded\"");
+        body.Should().Contain("\"temporaryPassword\"");
+        body.Should().Contain("\"forceChangePasswordNextSignIn\":true");
+        commands.CreateCalls.Should().Be(1);
+        body.Should().NotContain("access_token");
+        body.Should().NotContain("raw graph");
+    }
+
+    [Fact]
+    public async Task Duplicate_browser_submission_performs_one_graph_mutation_and_returns_success_for_replay()
+    {
+        var commands = new RecordingUserCommands();
+        using var factory = CreateFactory(commands);
+        using var client = AuthenticatedClient(factory);
+
+        var first = await client.SendAsync(JsonPatch("/api/users/user-1", """{"displayName":"Ada Updated"}""", "same-edit-key"));
+        var replay = await client.SendAsync(JsonPatch("/api/users/user-1", """{"displayName":"Ada Updated"}""", "same-edit-key"));
+        var changed = await client.SendAsync(JsonPatch("/api/users/user-1", """{"displayName":"Grace Hopper"}""", "same-edit-key"));
+        var replayBody = await replay.Content.ReadAsStringAsync();
+        var changedBody = await changed.Content.ReadAsStringAsync();
+
+        first.StatusCode.Should().Be(HttpStatusCode.OK);
+        replay.StatusCode.Should().Be(HttpStatusCode.OK);
+        replayBody.Should().Contain("\"replayed\":true");
+        changed.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        changedBody.Should().Contain("idempotency_key_reused");
+        commands.UpdateCalls.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Mutation_requires_idempotency_key()
+    {
+        using var factory = CreateFactory(new RecordingUserCommands());
+        using var client = AuthenticatedClient(factory);
+
+        var response = await client.PatchAsync("/api/users/user-1", new StringContent("""{"displayName":"Ada"}""", Encoding.UTF8, "application/json"));
+        var body = await response.Content.ReadAsStringAsync();
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        body.Should().Contain("idempotency_key_required");
+    }
+
+    private static HttpClient AuthenticatedClient(WebApplicationFactory<Program> factory)
+    {
+        var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Test");
+        return client;
+    }
+
+    private static StringContent Json(string payload, string key)
+    {
+        var content = new StringContent(payload, Encoding.UTF8, "application/json");
+        content.Headers.Add("Idempotency-Key", key);
+        return content;
+    }
+
+    private static HttpRequestMessage JsonPatch(string path, string payload, string key)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Patch, path)
+        {
+            Content = new StringContent(payload, Encoding.UTF8, "application/json")
+        };
+        request.Headers.Add("Idempotency-Key", key);
+        return request;
+    }
+
+    private static WebApplicationFactory<Program> CreateFactory(RecordingUserCommands commands, GraphAuthorizationSnapshot? snapshot = null) =>
+        new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
+        {
+            builder.ConfigureAppConfiguration((_, config) =>
+            {
+                config.AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    ["AzureAd:Audience"] = "api://atea-unified-workplace-api",
+                    ["AzureAd:ClientId"] = "test-client-id",
+                    ["Users:ContinuationSigningKey"] = "0123456789abcdef0123456789abcdef"
+                });
+            });
+            builder.ConfigureServices(services =>
+            {
+                services.AddAuthentication(options =>
+                {
+                    options.DefaultAuthenticateScheme = TestAuthenticationHandler.Scheme;
+                    options.DefaultChallengeScheme = TestAuthenticationHandler.Scheme;
+                }).AddScheme<AuthenticationSchemeOptions, TestAuthenticationHandler>(TestAuthenticationHandler.Scheme, _ => { });
+                services.RemoveAll<IWorkspaceMembershipReader>();
+                services.AddSingleton<IWorkspaceMembershipReader>(new FixtureMembershipReader());
+                services.RemoveAll<IGraphAuthorizationSnapshotReader>();
+                services.AddSingleton<IGraphAuthorizationSnapshotReader>(new StaticCapabilityReader(snapshot ?? AdminSnapshot));
+                services.RemoveAll<IUserDirectoryReader>();
+                services.AddSingleton<IUserDirectoryReader>(new RecordingDirectoryReader());
+                services.RemoveAll<IUserLifecycleCommands>();
+                services.AddSingleton<IUserLifecycleCommands>(commands);
+                services.RemoveAll<IGroupMembershipCommands>();
+                services.AddSingleton<IGroupMembershipCommands>(new RecordingGroupCommands());
+                services.RemoveAll<ILicenseAssignmentCommands>();
+                services.AddSingleton<ILicenseAssignmentCommands>(new RecordingLicenseCommands());
+                services.RemoveAll<IIdempotencyService>();
+                services.AddSingleton<IIdempotencyService>(new MemoryIdempotencyService());
+                services.RemoveAll<IAuditWriter>();
+                services.AddSingleton<IAuditWriter, NoOpAuditWriter>();
+            });
+        });
+
+    private static readonly GraphAuthorizationSnapshot AdminSnapshot = GraphAuthorizationSnapshot.Available(
+        "actor-1",
+        ["Directory.Read.All", "User.Read.All", "User.Create", "User.ReadWrite.All", "User.EnableDisableAccount.All", "Group.Read.All", "GroupMember.ReadWrite.All", "LicenseAssignment.ReadWrite.All"],
+        [new DirectoryRoleSnapshot(EntraRoleCatalog.UserAdministratorTemplateId, "User Administrator", DirectoryRoleAssignmentState.Active, "/")]);
+
+    private static readonly GraphAuthorizationSnapshot ReaderSnapshot = GraphAuthorizationSnapshot.Available(
+        "actor-1",
+        ["Directory.Read.All", "User.Read.All"],
+        [new DirectoryRoleSnapshot(EntraRoleCatalog.GlobalReaderTemplateId, "Global Reader", DirectoryRoleAssignmentState.Active, "/")]);
+
+    private sealed class StaticCapabilityReader(GraphAuthorizationSnapshot snapshot) : IGraphAuthorizationSnapshotReader
+    {
+        public Task<GraphAuthorizationSnapshot> ReadAsync(WorkspaceContext context, CancellationToken cancellationToken = default) => Task.FromResult(snapshot);
+    }
+
+    private sealed class FixtureMembershipReader : IWorkspaceMembershipReader
+    {
+        public Task<WorkspaceMembership?> FindMembershipAsync(Guid tenantId, Guid objectId, CancellationToken cancellationToken = default) =>
+            Task.FromResult<WorkspaceMembership?>(new WorkspaceMembership(Guid.Parse("55555555-5555-5555-5555-555555555555"), "Contoso Workplace", "member"));
+    }
+
+    private sealed class RecordingDirectoryReader : IUserDirectoryReader
+    {
+        public Task<PagedResult<UserSummary>> SearchAsync(WorkspaceContext context, UserSearchQuery query, CancellationToken cancellationToken) =>
+            Task.FromResult(new PagedResult<UserSummary>([], [], null));
+
+        public Task<UserDetails?> GetAsync(string userObjectId, CancellationToken cancellationToken) =>
+            Task.FromResult<UserDetails?>(new UserDetails(userObjectId, "Ada Lovelace", "ada@example.com", "ada@example.com", true, "Member", IsReadOnly: false, SourceOfAuthority: "cloud"));
+    }
+
+    private sealed class RecordingUserCommands : IUserLifecycleCommands
+    {
+        public int CreateCalls { get; private set; }
+        public int UpdateCalls { get; private set; }
+
+        public Task<GraphOperationResult> CreateUserAsync(GraphUserCreateRequest request, string idempotencyKey, CancellationToken cancellationToken)
+        {
+            CreateCalls++;
+            return Task.FromResult(GraphOperationResult.Success("corr-1", "req-1"));
+        }
+
+        public Task<GraphOperationResult> UpdateProfileAsync(string userObjectId, GraphUserProfileUpdate update, string idempotencyKey, CancellationToken cancellationToken)
+        {
+            UpdateCalls++;
+            return Task.FromResult(GraphOperationResult.Success("corr-1", "req-1"));
+        }
+
+        public Task<GraphOperationResult> SetAccountEnabledAsync(string userObjectId, bool accountEnabled, string idempotencyKey, CancellationToken cancellationToken) =>
+            Task.FromResult(GraphOperationResult.Success("corr-1", "req-1"));
+    }
+
+    private sealed class RecordingGroupCommands : IGroupMembershipCommands
+    {
+        public Task<GraphOperationResult> AddMemberAsync(string groupObjectId, string memberObjectId, string idempotencyKey, CancellationToken cancellationToken) =>
+            Task.FromResult(GraphOperationResult.Success());
+
+        public Task<GraphOperationResult> RemoveMemberAsync(string groupObjectId, string memberObjectId, string idempotencyKey, CancellationToken cancellationToken) =>
+            Task.FromResult(GraphOperationResult.Success());
+    }
+
+    private sealed class RecordingLicenseCommands : ILicenseAssignmentCommands
+    {
+        public Task<GraphOperationResult> AssignLicenseAsync(string userObjectId, LicenseAssignmentCommand command, string idempotencyKey, CancellationToken cancellationToken) =>
+            Task.FromResult(GraphOperationResult.Success());
+
+        public Task<GraphOperationResult> RemoveLicenseAsync(string userObjectId, string skuId, string idempotencyKey, CancellationToken cancellationToken) =>
+            Task.FromResult(GraphOperationResult.Success());
+    }
+
+    private sealed class TestAuthenticationHandler(IOptionsMonitor<AuthenticationSchemeOptions> options, ILoggerFactory logger, UrlEncoder encoder)
+        : AuthenticationHandler<AuthenticationSchemeOptions>(options, logger, encoder)
+    {
+        public new const string Scheme = "Test";
+
+        protected override Task<AuthenticateResult> HandleAuthenticateAsync()
+        {
+            if (!Request.Headers.ContainsKey("Authorization"))
+            {
+                return Task.FromResult(AuthenticateResult.NoResult());
+            }
+
+            var claims = new[]
+            {
+                new Claim("oid", "22222222-2222-2222-2222-222222222222"),
+                new Claim("tid", "11111111-1111-1111-1111-111111111111"),
+                new Claim("preferred_username", "alex@example.com"),
+                new Claim("name", "Alex Example"),
+                new Claim("aud", "api://atea-unified-workplace-api")
+            };
+            return Task.FromResult(AuthenticateResult.Success(new AuthenticationTicket(new ClaimsPrincipal(new ClaimsIdentity(claims, Scheme)), Scheme)));
+        }
+
+        protected override Task HandleChallengeAsync(AuthenticationProperties properties)
+        {
+            Response.StatusCode = StatusCodes.Status401Unauthorized;
+            Response.ContentType = "application/json";
+            return Response.WriteAsync("{\"error\":\"authentication_required\"}");
+        }
+    }
+}

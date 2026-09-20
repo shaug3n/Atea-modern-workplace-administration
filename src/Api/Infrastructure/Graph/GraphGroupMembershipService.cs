@@ -8,7 +8,13 @@ public interface IGroupMembershipReader
     Task<GraphReadResult<IReadOnlyList<GroupMembership>>> ReadUserGroupsAsync(string userObjectId, CancellationToken cancellationToken);
 }
 
-public sealed class GraphGroupMembershipService(IDelegatedGraphClientFactory clientFactory) : IGroupMembershipReader, IGraphMutationExecutor
+public interface IGroupMembershipCommands
+{
+    Task<GraphOperationResult> AddMemberAsync(string groupObjectId, string memberObjectId, string idempotencyKey, CancellationToken cancellationToken);
+    Task<GraphOperationResult> RemoveMemberAsync(string groupObjectId, string memberObjectId, string idempotencyKey, CancellationToken cancellationToken);
+}
+
+public sealed class GraphGroupMembershipService(IDelegatedGraphClientFactory clientFactory) : IGroupMembershipReader, IGroupMembershipCommands, IGraphMutationExecutor
 {
     async Task<GraphReadResult<IReadOnlyList<GroupMembership>>> IGroupMembershipReader.ReadUserGroupsAsync(string userObjectId, CancellationToken cancellationToken)
     {

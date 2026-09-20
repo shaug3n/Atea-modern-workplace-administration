@@ -16,7 +16,14 @@ internal abstract record GraphMutation(IReadOnlyCollection<string> Scopes)
     internal abstract GraphRequest CreateRequest(string idempotencyKey);
 }
 
-public sealed class GraphUserLifecycle(IDelegatedGraphClientFactory clientFactory) : IGraphMutationExecutor
+public interface IUserLifecycleCommands
+{
+    Task<GraphOperationResult> CreateUserAsync(GraphUserCreateRequest request, string idempotencyKey, CancellationToken cancellationToken);
+    Task<GraphOperationResult> UpdateProfileAsync(string userObjectId, GraphUserProfileUpdate update, string idempotencyKey, CancellationToken cancellationToken);
+    Task<GraphOperationResult> SetAccountEnabledAsync(string userObjectId, bool accountEnabled, string idempotencyKey, CancellationToken cancellationToken);
+}
+
+public sealed class GraphUserLifecycle(IDelegatedGraphClientFactory clientFactory) : IUserLifecycleCommands, IGraphMutationExecutor
 {
     public Task<GraphOperationResult> CreateUserAsync(GraphUserCreateRequest request, string idempotencyKey, CancellationToken cancellationToken) =>
         ExecuteAsync(new CreateUserMutation(request), idempotencyKey, cancellationToken);
@@ -39,12 +46,28 @@ public sealed class GraphUserLifecycle(IDelegatedGraphClientFactory clientFactor
 
 public sealed record GraphUserCreateRequest(
     string DisplayName,
+    string GivenName,
+    string Surname,
     string UserPrincipalName,
     string MailNickname,
+    string? JobTitle,
+    string? Department,
+    string? OfficeLocation,
+    string? MobilePhone,
+    string UsageLocation,
     TemporaryPasswordProfile PasswordProfile,
     bool AccountEnabled = true);
 
-public sealed record GraphUserProfileUpdate(string? DisplayName = null, string? Mail = null, string? Department = null, string? JobTitle = null);
+public sealed record GraphUserProfileUpdate(
+    string? DisplayName = null,
+    string? GivenName = null,
+    string? Surname = null,
+    string? JobTitle = null,
+    string? Department = null,
+    string? OfficeLocation = null,
+    string? MobilePhone = null,
+    string? UsageLocation = null,
+    bool? AccountEnabled = null);
 
 public sealed record TemporaryPasswordProfile(string TemporaryPassword, bool ForceChangePasswordNextSignIn = true);
 
@@ -91,8 +114,15 @@ internal sealed record CreateUserMutation(GraphUserCreateRequest Request) : Json
     {
         accountEnabled = Request.AccountEnabled,
         displayName = Request.DisplayName,
+        givenName = Request.GivenName,
+        surname = Request.Surname,
         mailNickname = Request.MailNickname,
         userPrincipalName = Request.UserPrincipalName,
+        jobTitle = Request.JobTitle,
+        department = Request.Department,
+        officeLocation = Request.OfficeLocation,
+        mobilePhone = Request.MobilePhone,
+        usageLocation = Request.UsageLocation,
         passwordProfile = new
         {
             password = Request.PasswordProfile.TemporaryPassword,
@@ -108,9 +138,14 @@ internal sealed record UpdateUserProfileMutation(string UserObjectId, GraphUserP
     internal override object Body => new
     {
         displayName = Update.DisplayName,
-        mail = Update.Mail,
+        givenName = Update.GivenName,
+        surname = Update.Surname,
         department = Update.Department,
-        jobTitle = Update.JobTitle
+        jobTitle = Update.JobTitle,
+        officeLocation = Update.OfficeLocation,
+        mobilePhone = Update.MobilePhone,
+        usageLocation = Update.UsageLocation,
+        accountEnabled = Update.AccountEnabled
     };
 }
 

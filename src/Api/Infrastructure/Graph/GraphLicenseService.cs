@@ -8,7 +8,13 @@ public interface IUserLicenseReader
     Task<GraphReadResult<IReadOnlyList<AssignedLicense>>> ReadUserLicensesAsync(string userObjectId, CancellationToken cancellationToken);
 }
 
-public sealed class GraphLicenseService(IDelegatedGraphClientFactory clientFactory) : IUserLicenseReader, IGraphMutationExecutor
+public interface ILicenseAssignmentCommands
+{
+    Task<GraphOperationResult> AssignLicenseAsync(string userObjectId, LicenseAssignmentCommand command, string idempotencyKey, CancellationToken cancellationToken);
+    Task<GraphOperationResult> RemoveLicenseAsync(string userObjectId, string skuId, string idempotencyKey, CancellationToken cancellationToken);
+}
+
+public sealed class GraphLicenseService(IDelegatedGraphClientFactory clientFactory) : IUserLicenseReader, ILicenseAssignmentCommands, IGraphMutationExecutor
 {
     async Task<GraphReadResult<IReadOnlyList<AssignedLicense>>> IUserLicenseReader.ReadUserLicensesAsync(string userObjectId, CancellationToken cancellationToken)
     {
@@ -35,6 +41,12 @@ public sealed class GraphLicenseService(IDelegatedGraphClientFactory clientFacto
         string idempotencyKey,
         CancellationToken cancellationToken) =>
         ExecuteAsync(new AssignUserLicensesMutation(userObjectId, addSkuIds, removeSkuIds), idempotencyKey, cancellationToken);
+
+    public Task<GraphOperationResult> AssignLicenseAsync(string userObjectId, LicenseAssignmentCommand command, string idempotencyKey, CancellationToken cancellationToken) =>
+        ExecuteAsync(new AssignUserLicensesMutation(userObjectId, [command.SkuId], []), idempotencyKey, cancellationToken);
+
+    public Task<GraphOperationResult> RemoveLicenseAsync(string userObjectId, string skuId, string idempotencyKey, CancellationToken cancellationToken) =>
+        ExecuteAsync(new AssignUserLicensesMutation(userObjectId, [], [skuId]), idempotencyKey, cancellationToken);
 
     Task<GraphOperationResult> IGraphMutationExecutor.ExecuteAsync(GraphMutation mutation, string idempotencyKey, CancellationToken cancellationToken) =>
         ExecuteAsync(mutation, idempotencyKey, cancellationToken);

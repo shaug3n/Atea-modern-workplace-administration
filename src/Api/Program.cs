@@ -13,6 +13,8 @@ using Atea.UnifiedWorkplace.Api.Features.Pim;
 using Atea.UnifiedWorkplace.Api.Features.Roles;
 using Atea.UnifiedWorkplace.Api.Features.UserPreferences;
 using Atea.UnifiedWorkplace.Api.Features.Users;
+using Atea.UnifiedWorkplace.Api.Infrastructure.Observability;
+using Atea.UnifiedWorkplace.Api.Infrastructure.Security;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddDbContext<WorkplaceDbContext>(options => options.UseNpgsql(builder.Configuration.GetConnectionString("WorkplaceDb")));
@@ -37,13 +39,19 @@ builder.Services.AddScoped<IDelegatedGraphClientFactory, DelegatedGraphClientFac
 builder.Services.AddScoped<IUserDirectoryReader, GraphDirectoryReader>();
 builder.Services.AddScoped<IUserQueryService, UserQueryService>();
 builder.Services.AddScoped<IUserDetailService, UserDetailService>();
+builder.Services.AddScoped<IUserCommandService, UserCommandService>();
+builder.Services.AddScoped<IIdempotencyService, IdempotencyService>();
+builder.Services.AddSingleton<IAuditWriter, NoOpAuditWriter>();
 builder.Services.AddSingleton(_ => new UserContinuationTokenProtector(
     UserContinuationConfiguration.ResolveSigningKey(builder.Configuration, builder.Environment.IsDevelopment())));
 builder.Services.AddScoped<GraphUserLifecycle>();
+builder.Services.AddScoped<IUserLifecycleCommands>(services => services.GetRequiredService<GraphUserLifecycle>());
 builder.Services.AddScoped<GraphGroupMembershipService>();
 builder.Services.AddScoped<IGroupMembershipReader>(services => services.GetRequiredService<GraphGroupMembershipService>());
+builder.Services.AddScoped<IGroupMembershipCommands>(services => services.GetRequiredService<GraphGroupMembershipService>());
 builder.Services.AddScoped<GraphLicenseService>();
 builder.Services.AddScoped<IUserLicenseReader>(services => services.GetRequiredService<GraphLicenseService>());
+builder.Services.AddScoped<ILicenseAssignmentCommands>(services => services.GetRequiredService<GraphLicenseService>());
 builder.Services.AddScoped<GraphRoleAndPimService>();
 builder.Services.AddScoped<IRoleAndPimReader>(services => services.GetRequiredService<GraphRoleAndPimService>());
 builder.Services.Configure<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme, options =>
@@ -97,6 +105,7 @@ app.MapCapabilityEndpoints();
 app.MapUserPreferenceEndpoints();
 app.MapUserEndpoints();
 app.MapUserDetailEndpoints();
+app.MapUserCommandEndpoints();
 app.MapLicenseEndpoints();
 app.MapGroupEndpoints();
 app.MapRoleEndpoints();

@@ -12,6 +12,7 @@ public sealed class WorkplaceDbContext(DbContextOptions<WorkplaceDbContext> opti
     public DbSet<WorkspaceSettings> WorkspaceSettings => Set<WorkspaceSettings>();
     public DbSet<PlatformInvitation> PlatformInvitations => Set<PlatformInvitation>();
     public DbSet<UserPreference> UserPreferences => Set<UserPreference>();
+    public DbSet<IdempotencyRecord> IdempotencyRecords => Set<IdempotencyRecord>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -65,6 +66,18 @@ public sealed class WorkplaceDbContext(DbContextOptions<WorkplaceDbContext> opti
             entity.HasKey(x => new { x.TenantId, x.UserObjectId });
             entity.Property(x => x.Theme).HasMaxLength(5).IsRequired();
             ConfigureUtc(entity.Property(x => x.UpdatedAt));
+        });
+        modelBuilder.Entity<IdempotencyRecord>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.HasIndex(x => new { x.WorkspaceId, x.ActorObjectId, x.Operation, x.TargetId, x.Key }).IsUnique();
+            entity.Property(x => x.Operation).HasMaxLength(128).IsRequired();
+            entity.Property(x => x.TargetId).HasMaxLength(256).IsRequired();
+            entity.Property(x => x.Key).HasMaxLength(200).IsRequired();
+            entity.Property(x => x.RequestFingerprint).HasMaxLength(128).IsRequired();
+            entity.Property(x => x.ResultCategory).HasMaxLength(100).IsRequired();
+            entity.Property(x => x.SafeResultJson).HasColumnType("jsonb").IsRequired();
+            ConfigureUtc(entity.Property(x => x.CreatedAt));
         });
     }
 
