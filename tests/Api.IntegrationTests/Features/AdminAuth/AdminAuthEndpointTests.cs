@@ -41,6 +41,18 @@ public sealed class AdminAuthEndpointTests
         (await response.Content.ReadAsStringAsync()).Should().NotContain("wrong").And.NotContain("secret");
     }
 
+    [Fact]
+    public async Task Local_cookie_can_use_platform_route_but_not_customer_session()
+    {
+        using var factory = CreateFactory();
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions { HandleCookies = true });
+        (await client.PostAsJsonAsync("/api/admin-auth/login", new { username = "admin", password = "secret" })).StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var platform = await client.PostAsJsonAsync("/api/platform/workspaces", new { tenantId = "00000000-0000-0000-0000-000000000000", displayName = "" });
+        platform.StatusCode.Should().NotBe(HttpStatusCode.Unauthorized);
+        (await client.GetAsync("/api/session")).StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+    }
+
     private static WebApplicationFactory<Program> CreateFactory() => new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
     {
         builder.UseEnvironment("Development");

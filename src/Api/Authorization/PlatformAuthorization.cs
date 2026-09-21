@@ -21,13 +21,10 @@ public static class PlatformAuthorization
             .AddInMemoryTokenCaches();
         services.Configure<LocalAdminOptions>(configuration.GetSection("AteaAdmin:LocalDevelopment"));
         var localOptions = configuration.GetSection("AteaAdmin:LocalDevelopment").Get<LocalAdminOptions>() ?? new();
+        LocalAdminAuthentication.ValidateEnvironment(environment, localOptions);
         if (environment.IsDevelopment())
         {
-            services.AddAuthentication(options =>
-            {
-                if (LocalAdminAuthentication.IsConfigured(environment, localOptions))
-                    options.DefaultAuthenticateScheme = LocalAdminAuthentication.Scheme;
-            }).AddCookie(LocalAdminAuthentication.Scheme, options =>
+            services.AddAuthentication().AddCookie(LocalAdminAuthentication.Scheme, options =>
             {
                 options.Cookie.Name = "atea-local-admin";
                 options.Cookie.HttpOnly = true;
@@ -46,13 +43,10 @@ public static class PlatformAuthorization
             var fallbackPolicy = new AuthorizationPolicyBuilder(JwtBearerDefaults.AuthenticationScheme)
                 .RequireAuthenticatedUser()
                 .Build();
-            if (LocalAdminAuthentication.IsConfigured(environment, localOptions))
-                fallbackPolicy = new AuthorizationPolicyBuilder(JwtBearerDefaults.AuthenticationScheme, LocalAdminAuthentication.Scheme)
-                    .RequireAuthenticatedUser().Build();
             options.FallbackPolicy = fallbackPolicy;
             var platformPolicy = new AuthorizationPolicyBuilder(JwtBearerDefaults.AuthenticationScheme)
                 .RequireAuthenticatedUser();
-            if (LocalAdminAuthentication.IsConfigured(environment, localOptions))
+            if (environment.IsDevelopment())
                 platformPolicy.AddAuthenticationSchemes(LocalAdminAuthentication.Scheme);
             options.AddPolicy("PlatformAdminPolicy", platformPolicy.RequireClaim("oid").Build());
         });

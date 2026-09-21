@@ -8,7 +8,7 @@ public static class WorkspaceEndpoints
 {
     public static IEndpointRouteBuilder MapWorkspaceEndpoints(this IEndpointRouteBuilder endpoints)
     {
-        var platform = endpoints.MapGroup("/api/platform").RequireAuthorization();
+        var platform = endpoints.MapGroup("/api/platform").RequireAuthorization("PlatformAdminPolicy");
         platform.MapPost("/workspaces", CreateWorkspaceAsync);
         platform.MapPost("/workspaces/{workspaceId:guid}/memberships", AddMembershipAsync);
         platform.MapPost("/workspaces/{workspaceId:guid}/invitations", CreateInvitationAsync);

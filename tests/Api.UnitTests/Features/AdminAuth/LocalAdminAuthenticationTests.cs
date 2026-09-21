@@ -53,6 +53,22 @@ public sealed class LocalAdminAuthenticationTests
         LocalAdminAuthentication.IsConfigured(Development(), Options(enabled: false)).Should().BeFalse();
     }
 
+    [Fact]
+    public void Enabled_local_authentication_is_rejected_outside_development()
+    {
+        var act = () => LocalAdminAuthentication.ValidateEnvironment(new TestHostEnvironment("Production"), Options());
+
+        act.Should().Throw<InvalidOperationException>().WithMessage("*Development*");
+    }
+
+    [Fact]
+    public void Any_local_authentication_settings_are_rejected_outside_development()
+    {
+        var act = () => LocalAdminAuthentication.ValidateEnvironment(new TestHostEnvironment("Production"), Options(enabled: false, password: "configured"));
+
+        act.Should().Throw<InvalidOperationException>();
+    }
+
     private static LocalAdminOptions Options(string username = "admin", string password = "secret", string objectId = "22222222-2222-2222-2222-222222222222", bool enabled = true, bool allowAllWorkspaces = false) => new()
     {
         Enabled = enabled,

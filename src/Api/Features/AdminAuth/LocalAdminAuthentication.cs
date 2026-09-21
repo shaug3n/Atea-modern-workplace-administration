@@ -38,4 +38,15 @@ public static class LocalAdminAuthentication
 
     public static bool IsAllWorkspacesAllowed(IHostEnvironment environment, LocalAdminOptions options) =>
         environment.IsDevelopment() && options.AllowAllWorkspaces && IsConfigured(environment, options);
+
+    public static void ValidateEnvironment(IHostEnvironment environment, LocalAdminOptions options)
+    {
+        if (!environment.IsDevelopment() &&
+            (options.Enabled || options.AllowAllWorkspaces ||
+             !string.IsNullOrWhiteSpace(options.Username) ||
+             !string.IsNullOrWhiteSpace(options.Password) ||
+             !string.IsNullOrWhiteSpace(options.ObjectId) ||
+             !string.IsNullOrWhiteSpace(options.DisplayName)))
+            throw new InvalidOperationException("AteaAdmin:LocalDevelopment is only supported in the Development environment.");
+    }
 }
