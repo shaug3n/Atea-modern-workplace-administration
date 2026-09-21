@@ -11,7 +11,15 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 export function createAuthActions(instance: Pick<PublicClientApplication, 'loginRedirect' | 'logoutRedirect' | 'acquireTokenSilent' | 'acquireTokenRedirect'>, account: AccountInfo | null, setError: (error: string | null) => void): AuthContextValue {
   return {
     account,
-    signIn: async () => { setError(null); await instance.loginRedirect({ scopes: [apiScope] }); },
+    signIn: async () => {
+      setError(null);
+      const request: Parameters<typeof instance.loginRedirect>[0] = { scopes: [apiScope] };
+      if (/^\/invitations\/[^/]+$/.test(window.location.pathname)) {
+        request.redirectStartPage = window.location.href;
+        request.state = window.crypto.randomUUID();
+      }
+      await instance.loginRedirect(request);
+    },
     signOut: async () => { setError(null); await instance.logoutRedirect(); },
     getApiToken: async () => {
       if (!account) throw new Error(messages.authSignInRequired);
