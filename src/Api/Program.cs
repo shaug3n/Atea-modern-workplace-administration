@@ -18,12 +18,17 @@ using Atea.UnifiedWorkplace.Api.Features.Audit;
 using Atea.UnifiedWorkplace.Api.Features.Overview;
 using Atea.UnifiedWorkplace.Api.Features.AdminAuth;
 using Atea.UnifiedWorkplace.Api.Infrastructure.Http;
+using Microsoft.Extensions.Options;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddOptions<OnboardingOptions>()
-    .Bind(builder.Configuration.GetSection("Onboarding"));
-var onboardingOptions = builder.Configuration.GetSection("Onboarding").Get<OnboardingOptions>() ?? new OnboardingOptions();
-var publicBaseUri = onboardingOptions.Validate(builder.Environment);
+    .Bind(builder.Configuration.GetSection("Onboarding"))
+    .Validate(options =>
+    {
+        options.Validate(builder.Environment);
+        return true;
+    }, "Onboarding configuration is invalid.")
+    .ValidateOnStart();
 builder.Services.AddDbContext<WorkplaceDbContext>(options => options.UseNpgsql(builder.Configuration.GetConnectionString("WorkplaceDb")));
 builder.Services.AddPlatformAuthorization(builder.Configuration, builder.Environment);
 builder.Services.AddScoped<IWorkspaceProvisioningRepository, WorkspaceProvisioningRepository>();
@@ -35,9 +40,13 @@ builder.Services.AddScoped<WorkspaceOnboardingRepository>();
 builder.Services.AddScoped<IOnboardingRepository>(services => services.GetRequiredService<WorkspaceOnboardingRepository>());
 builder.Services.AddScoped<IInvitationRepository>(services => services.GetRequiredService<WorkspaceOnboardingRepository>());
 builder.Services.AddScoped<IOnboardingService, OnboardingService>();
-builder.Services.AddSingleton<ConsentChallengeService>(_ => new ConsentChallengeService(onboardingOptions.ConsentSigningKey));
-builder.Services.AddScoped<InvitationService>(services => new InvitationService(
-    services.GetRequiredService<IInvitationRepository>(), publicBaseUri));
+builder.Services.AddSingleton<ConsentChallengeService>(services => new ConsentChallengeService(
+    services.GetRequiredService<IOptions<OnboardingOptions>>().Value.ConsentSigningKey));
+builder.Services.AddScoped<InvitationService>(services =>
+{
+    var options = services.GetRequiredService<IOptions<OnboardingOptions>>().Value;
+    return new InvitationService(services.GetRequiredService<IInvitationRepository>(), new Uri(options.PublicBaseUrl, UriKind.Absolute));
+});
 builder.Services.AddScoped<IDelegatedConnectionProbe, DelegatedGraphConnectionProbe>();
 builder.Services.AddScoped<IConnectionHealthReader, ConnectionHealthReader>();
 builder.Services.AddScoped<IGraphAuthorizationSnapshotReader, GraphAuthorizationSnapshotReader>();

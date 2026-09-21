@@ -22,7 +22,7 @@ Configure the local onboarding URLs and development signing key in the API envir
 ```text
 Onboarding__PublicBaseUrl=http://localhost:5173
 Onboarding__ConsentRedirectUri=http://localhost:5173/onboarding/consent/callback
-Onboarding__ConsentSigningKey=<base64-encoded-32-byte-development-key>
+Onboarding__ConsentSigningKey=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
 ```
 
 Start the local stack in this order:

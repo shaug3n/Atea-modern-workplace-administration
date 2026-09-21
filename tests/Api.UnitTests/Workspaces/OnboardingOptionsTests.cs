@@ -49,6 +49,51 @@ public sealed class OnboardingOptionsTests
         action.Should().Throw<InvalidOperationException>();
     }
 
+    [Fact]
+    public void Rejects_missing_consent_signing_key_when_consent_redirect_is_configured()
+    {
+        var options = new OnboardingOptions
+        {
+            PublicBaseUrl = "http://localhost:5173",
+            ConsentRedirectUri = "http://localhost:5173/onboarding/consent/callback"
+        };
+
+        var action = () => options.Validate(new TestHostEnvironment("Development"));
+
+        action.Should().Throw<InvalidOperationException>();
+    }
+
+    [Theory]
+    [InlineData("not-base64")]
+    [InlineData("AQIDBA==")]
+    public void Rejects_malformed_or_short_consent_signing_key(string signingKey)
+    {
+        var options = new OnboardingOptions
+        {
+            PublicBaseUrl = "http://localhost:5173",
+            ConsentRedirectUri = "http://localhost:5173/onboarding/consent/callback",
+            ConsentSigningKey = signingKey
+        };
+
+        var action = () => options.Validate(new TestHostEnvironment("Development"));
+
+        action.Should().Throw<InvalidOperationException>();
+    }
+
+    [Fact]
+    public void Rejects_missing_consent_redirect_when_consent_signing_key_is_configured()
+    {
+        var options = new OnboardingOptions
+        {
+            PublicBaseUrl = "http://localhost:5173",
+            ConsentSigningKey = Convert.ToBase64String(new byte[32])
+        };
+
+        var action = () => options.Validate(new TestHostEnvironment("Development"));
+
+        action.Should().Throw<InvalidOperationException>();
+    }
+
     private sealed class TestHostEnvironment(string environmentName) : IHostEnvironment
     {
         public string EnvironmentName { get; set; } = environmentName;

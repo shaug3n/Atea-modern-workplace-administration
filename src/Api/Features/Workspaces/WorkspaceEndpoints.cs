@@ -1,5 +1,6 @@
 using Atea.UnifiedWorkplace.Api.Authorization;
 using Atea.UnifiedWorkplace.Api.Infrastructure.Graph;
+using Microsoft.Extensions.Options;
 using System.Security.Claims;
 
 namespace Atea.UnifiedWorkplace.Api.Features.Workspaces;
@@ -127,13 +128,13 @@ public static class WorkspaceEndpoints
         return Results.Ok(new ConnectionHealthDto(context.Membership.WorkspaceId, status, DateTimeOffset.UtcNow, result.GrantedScopes, result.ProblemCategory, correlationId));
     }
 
-    private static IResult StartConsentAsync(IWorkspaceContextAccessor accessor, IConfiguration configuration, ConsentChallengeService challenges)
+    private static IResult StartConsentAsync(IWorkspaceContextAccessor accessor, IOptions<OnboardingOptions> onboardingOptions, ConsentChallengeService challenges, IConfiguration configuration)
     {
         var context = accessor.Current;
         if (context is null) return Results.StatusCode(StatusCodes.Status403Forbidden);
         if (!challenges.IsConfigured) return Results.Json(new { error = "consent_configuration_unavailable" }, statusCode: StatusCodes.Status503ServiceUnavailable);
         var clientId = configuration["AzureAd:ClientId"] ?? string.Empty;
-        var redirectUri = configuration["Onboarding:ConsentRedirectUri"] ?? "/onboarding";
+        var redirectUri = onboardingOptions.Value.ConsentRedirectUri;
         var scopes = string.Join(' ', GraphScopeCatalog.V1DelegatedScopes);
         var challenge = challenges.Create(context.Membership.WorkspaceId, context.User.TenantId);
         var url = $"https://login.microsoftonline.com/{context.User.TenantId}/oauth2/v2.0/authorize?client_id={Uri.EscapeDataString(clientId)}&response_type=code&redirect_uri={Uri.EscapeDataString(redirectUri)}&response_mode=query&scope={Uri.EscapeDataString(scopes)}&state={Uri.EscapeDataString(challenge.Challenge)}";

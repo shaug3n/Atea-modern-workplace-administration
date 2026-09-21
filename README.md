@@ -26,7 +26,7 @@ The local onboarding configuration must also be present in `.env`:
 ```text
 Onboarding__PublicBaseUrl=http://localhost:5173
 Onboarding__ConsentRedirectUri=http://localhost:5173/onboarding/consent/callback
-Onboarding__ConsentSigningKey=<base64-encoded-32-byte-development-key>
+Onboarding__ConsentSigningKey=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
 ```
 
 Start PostgreSQL first, then run the API and Vite in separate terminals:

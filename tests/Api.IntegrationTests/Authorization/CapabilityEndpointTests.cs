@@ -89,10 +89,26 @@ public sealed class CapabilityEndpointTests
         reader.Calls.Should().Be(0);
     }
 
+    [Fact]
+    public async Task Consent_start_uses_the_validated_configured_redirect_uri()
+    {
+        using var factory = CreateFactory(consentRedirectUri: "http://localhost:5173/consent-callback");
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Test");
+
+        var response = await client.PostAsync("/api/workspaces/current/consent/start", null);
+        var body = await response.Content.ReadAsStringAsync();
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        body.Should().Contain(Uri.EscapeDataString("http://localhost:5173/consent-callback"));
+        body.Should().NotContain("%2Fonboarding%2F");
+    }
+
     private static WebApplicationFactory<Program> CreateFactory(
         GraphAuthorizationSnapshot? snapshot = null,
         RecordingSnapshotReader? reader = null,
-        string platformRole = "admin") =>
+        string platformRole = "admin",
+        string consentRedirectUri = "http://localhost:5173/onboarding/consent/callback") =>
         new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
         {
             builder.ConfigureAppConfiguration((_, config) =>
@@ -101,7 +117,8 @@ public sealed class CapabilityEndpointTests
                 {
                     ["AzureAd:Audience"] = "api://atea-unified-workplace-api",
                     ["AzureAd:ClientId"] = "test-client-id",
-                    ["Onboarding:ConsentSigningKey"] = Convert.ToBase64String(new byte[32])
+                    ["Onboarding:ConsentSigningKey"] = Convert.ToBase64String(new byte[32]),
+                    ["Onboarding:ConsentRedirectUri"] = consentRedirectUri
                 });
             });
             builder.ConfigureServices(services =>

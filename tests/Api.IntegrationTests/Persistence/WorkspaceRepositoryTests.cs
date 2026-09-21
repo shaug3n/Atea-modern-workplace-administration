@@ -81,13 +81,13 @@ public sealed class WorkspaceRepositoryTests : IAsyncLifetime
         await db.Workspaces.AddAsync(workspace);
         await db.SaveChangesAsync();
 
-        var creator = new InvitationService(new WorkspaceOnboardingRepository(db), new Uri("https://workplace.example"));
+        var creator = new InvitationService(new WorkspaceOnboardingRepository(db), new Uri("http://localhost:5173"));
         var created = await creator.CreateAsync(workspaceId, "admin@example.com", "Admin", DateTimeOffset.UtcNow.AddMinutes(5));
         var options = new DbContextOptionsBuilder<WorkplaceDbContext>().UseNpgsql(postgres.GetConnectionString()).Options;
         await using var db2 = new WorkplaceDbContext(options);
         await using var db3 = new WorkplaceDbContext(options);
-        var service2 = new InvitationService(new WorkspaceOnboardingRepository(db2), new Uri("https://workplace.example"));
-        var service3 = new InvitationService(new WorkspaceOnboardingRepository(db3), new Uri("https://workplace.example"));
+        var service2 = new InvitationService(new WorkspaceOnboardingRepository(db2), new Uri("http://localhost:5173"));
+        var service3 = new InvitationService(new WorkspaceOnboardingRepository(db3), new Uri("http://localhost:5173"));
         var nonce = created.InvitationUrl.Split('/').Last();
 
         var results = await Task.WhenAll(

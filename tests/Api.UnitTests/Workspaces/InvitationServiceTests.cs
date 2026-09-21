@@ -11,11 +11,11 @@ public sealed class InvitationServiceTests
     public async Task Creates_a_copyable_url_but_persists_only_the_hash()
     {
         var repository = new RecordingInvitationRepository();
-        var service = new InvitationService(repository, new Uri("https://workplace.example"));
+        var service = new InvitationService(repository, new Uri("http://localhost:5173"));
 
         var result = await service.CreateAsync(Guid.NewGuid(), "admin@example.com", "Admin", DateTimeOffset.UtcNow.AddHours(1));
 
-        result.InvitationUrl.Should().StartWith("https://workplace.example/invitations/");
+        result.InvitationUrl.Should().StartWith("http://localhost:5173/invitations/");
         repository.Invitation!.NonceHash.Should().NotBe(result.InvitationUrl.Split('/').Last());
         repository.Invitation.NonceHash.Should().HaveLength(64);
         result.InvitationUrl.Should().NotContain(repository.Invitation.NonceHash);
@@ -31,7 +31,7 @@ public sealed class InvitationServiceTests
         {
             Workspace = new Workspace { Id = workspaceId, TenantId = tenantId, ConnectionStatus = ConnectionState.AwaitingInvitation }
         };
-        var service = new InvitationService(repository, new Uri("https://workplace.example"));
+        var service = new InvitationService(repository, new Uri("http://localhost:5173"));
         var created = await service.CreateAsync(workspaceId, "admin@example.com", "Admin", DateTimeOffset.UtcNow.AddHours(1));
 
         var redeemed = await service.RedeemAsync(created.InvitationUrl.Split('/').Last(), tenantId, objectId, "admin@example.com", "Admin", CancellationToken.None);
@@ -46,7 +46,7 @@ public sealed class InvitationServiceTests
     public async Task Rejects_expired_invitation_without_redeeming_it()
     {
         var repository = new RecordingInvitationRepository { Workspace = new Workspace { Id = Guid.NewGuid(), TenantId = Guid.NewGuid() } };
-        var service = new InvitationService(repository, new Uri("https://workplace.example"));
+        var service = new InvitationService(repository, new Uri("http://localhost:5173"));
         var created = await service.CreateAsync(repository.Workspace.Id, "admin@example.com", "Admin", DateTimeOffset.UtcNow.AddMinutes(-1));
 
         (await service.RedeemAsync(created.InvitationUrl.Split('/').Last(), repository.Workspace.TenantId, Guid.NewGuid(), "admin@example.com", "Admin")).Should().BeFalse();
@@ -57,7 +57,7 @@ public sealed class InvitationServiceTests
     public async Task Rejects_email_and_tenant_mismatch()
     {
         var repository = new RecordingInvitationRepository { Workspace = new Workspace { Id = Guid.NewGuid(), TenantId = Guid.NewGuid() } };
-        var service = new InvitationService(repository, new Uri("https://workplace.example"));
+        var service = new InvitationService(repository, new Uri("http://localhost:5173"));
         var created = await service.CreateAsync(repository.Workspace.Id, "admin@example.com", "Admin", DateTimeOffset.UtcNow.AddMinutes(1));
         var nonce = created.InvitationUrl.Split('/').Last();
 
@@ -70,7 +70,7 @@ public sealed class InvitationServiceTests
     public async Task Concurrent_replay_allows_only_one_redemption()
     {
         var repository = new ConcurrentInvitationRepository(Guid.NewGuid());
-        var service = new InvitationService(repository, new Uri("https://workplace.example"));
+        var service = new InvitationService(repository, new Uri("http://localhost:5173"));
         var created = await service.CreateAsync(repository.WorkspaceId, "admin@example.com", "Admin", DateTimeOffset.UtcNow.AddMinutes(1));
         var nonce = created.InvitationUrl.Split('/').Last();
 
@@ -86,7 +86,7 @@ public sealed class InvitationServiceTests
     public async Task Redeems_when_approved_object_id_matches_even_if_email_differs()
     {
         var repository = new RecordingInvitationRepository { Workspace = new Workspace { Id = Guid.NewGuid(), TenantId = Guid.NewGuid() } };
-        var service = new InvitationService(repository, new Uri("https://workplace.example"));
+        var service = new InvitationService(repository, new Uri("http://localhost:5173"));
         var approvedObjectId = Guid.NewGuid();
         var created = await service.CreateAsync(repository.Workspace.Id, "admin@example.com", "Admin", DateTimeOffset.UtcNow.AddMinutes(1), approvedObjectId);
 
@@ -97,7 +97,7 @@ public sealed class InvitationServiceTests
     public async Task Redeems_by_approved_object_id_without_an_email_claim()
     {
         var repository = new RecordingInvitationRepository { Workspace = new Workspace { Id = Guid.NewGuid(), TenantId = Guid.NewGuid() } };
-        var service = new InvitationService(repository, new Uri("https://workplace.example"));
+        var service = new InvitationService(repository, new Uri("http://localhost:5173"));
         var approvedObjectId = Guid.NewGuid();
         var created = await service.CreateAsync(repository.Workspace.Id, "admin@example.com", "Admin", DateTimeOffset.UtcNow.AddMinutes(1), approvedObjectId);
 

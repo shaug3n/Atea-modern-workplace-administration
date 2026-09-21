@@ -25,16 +25,37 @@ public sealed class OnboardingOptions
             throw new InvalidOperationException("Onboarding:PublicBaseUrl must use HTTPS outside Development.");
         }
 
-        if (!string.IsNullOrWhiteSpace(ConsentRedirectUri) &&
+        var consentConfigured = !string.IsNullOrWhiteSpace(ConsentRedirectUri) || !string.IsNullOrWhiteSpace(ConsentSigningKey);
+        if (consentConfigured && string.IsNullOrWhiteSpace(ConsentRedirectUri))
+        {
+            throw new InvalidOperationException("Onboarding:ConsentRedirectUri is required when consent is configured.");
+        }
+
+        if (consentConfigured &&
             (!Uri.TryCreate(ConsentRedirectUri, UriKind.Absolute, out var redirectUri) || redirectUri is null ||
              (redirectUri.Scheme != Uri.UriSchemeHttp && redirectUri.Scheme != Uri.UriSchemeHttps)))
         {
             throw new InvalidOperationException("Onboarding:ConsentRedirectUri must be an absolute HTTP(S) URL.");
         }
 
-        if (!string.IsNullOrWhiteSpace(ConsentRedirectUri) && string.IsNullOrWhiteSpace(ConsentSigningKey))
+        if (consentConfigured && string.IsNullOrWhiteSpace(ConsentSigningKey))
         {
             throw new InvalidOperationException("Onboarding:ConsentSigningKey is required when consent is configured.");
+        }
+
+        if (consentConfigured)
+        {
+            try
+            {
+                if (Convert.FromBase64String(ConsentSigningKey).Length < 32)
+                {
+                    throw new InvalidOperationException("Onboarding:ConsentSigningKey must decode to at least 32 bytes.");
+                }
+            }
+            catch (FormatException exception)
+            {
+                throw new InvalidOperationException("Onboarding:ConsentSigningKey must be valid Base64.", exception);
+            }
         }
 
         return publicUri;
