@@ -21,6 +21,14 @@ AteaAdmin__LocalDevelopment__AllowAllWorkspaces=true
 
 This local provider is accepted only when the API environment is `Development`. It is a development convenience, not an Atea production login, and `AllowAllWorkspaces=true` must never be carried into a deployed environment.
 
+The local onboarding configuration must also be present in `.env`:
+
+```text
+Onboarding__PublicBaseUrl=http://localhost:5173
+Onboarding__ConsentRedirectUri=http://localhost:5173/onboarding/consent/callback
+Onboarding__ConsentSigningKey=<base64-encoded-32-byte-development-key>
+```
+
 Start PostgreSQL first, then run the API and Vite in separate terminals:
 
 ```bash

@@ -17,6 +17,14 @@ AteaAdmin__LocalDevelopment__AllowAllWorkspaces=true
 
 `AllowAllWorkspaces` is intentionally a local limitation for the demo. Production and future Atea Entra federation require explicit workspace scope; never reuse the sample password or enable this gate in a deployed environment.
 
+Configure the local onboarding URLs and development signing key in the API environment:
+
+```text
+Onboarding__PublicBaseUrl=http://localhost:5173
+Onboarding__ConsentRedirectUri=http://localhost:5173/onboarding/consent/callback
+Onboarding__ConsentSigningKey=<base64-encoded-32-byte-development-key>
+```
+
 Start the local stack in this order:
 
 ```bash

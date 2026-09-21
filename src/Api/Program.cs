@@ -20,6 +20,10 @@ using Atea.UnifiedWorkplace.Api.Features.AdminAuth;
 using Atea.UnifiedWorkplace.Api.Infrastructure.Http;
 
 var builder = WebApplication.CreateBuilder(args);
+builder.Services.AddOptions<OnboardingOptions>()
+    .Bind(builder.Configuration.GetSection("Onboarding"));
+var onboardingOptions = builder.Configuration.GetSection("Onboarding").Get<OnboardingOptions>() ?? new OnboardingOptions();
+var publicBaseUri = onboardingOptions.Validate(builder.Environment);
 builder.Services.AddDbContext<WorkplaceDbContext>(options => options.UseNpgsql(builder.Configuration.GetConnectionString("WorkplaceDb")));
 builder.Services.AddPlatformAuthorization(builder.Configuration, builder.Environment);
 builder.Services.AddScoped<IWorkspaceProvisioningRepository, WorkspaceProvisioningRepository>();
@@ -31,9 +35,9 @@ builder.Services.AddScoped<WorkspaceOnboardingRepository>();
 builder.Services.AddScoped<IOnboardingRepository>(services => services.GetRequiredService<WorkspaceOnboardingRepository>());
 builder.Services.AddScoped<IInvitationRepository>(services => services.GetRequiredService<WorkspaceOnboardingRepository>());
 builder.Services.AddScoped<IOnboardingService, OnboardingService>();
-builder.Services.AddSingleton<ConsentChallengeService>(_ => new ConsentChallengeService(builder.Configuration["Onboarding:ConsentSigningKey"]));
+builder.Services.AddSingleton<ConsentChallengeService>(_ => new ConsentChallengeService(onboardingOptions.ConsentSigningKey));
 builder.Services.AddScoped<InvitationService>(services => new InvitationService(
-    services.GetRequiredService<IInvitationRepository>(), new Uri(builder.Configuration["Onboarding:PublicBaseUrl"] ?? "https://workplace.example")));
+    services.GetRequiredService<IInvitationRepository>(), publicBaseUri));
 builder.Services.AddScoped<IDelegatedConnectionProbe, DelegatedGraphConnectionProbe>();
 builder.Services.AddScoped<IConnectionHealthReader, ConnectionHealthReader>();
 builder.Services.AddScoped<IGraphAuthorizationSnapshotReader, GraphAuthorizationSnapshotReader>();
