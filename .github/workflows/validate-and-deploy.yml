@@ -1,0 +1,148 @@
+name: Validate and deploy
+
+on:
+  pull_request:
+    paths:
+      - 'Dockerfile'
+      - 'src/**'
+      - 'infra/**'
+      - '.github/workflows/validate-and-deploy.yml'
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Non-production deployment target'
+        required: true
+        default: dev
+        type: choice
+        options: [dev]
+
+permissions:
+  contents: read
+
+env:
+  IMAGE_REPOSITORY: atea-unified-workplace
+  IMAGE_TAG: ${{ github.sha }}
+  AZURE_CORE_OUTPUT: none
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.x'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+          cache: npm
+          cache-dependency-path: src/Web/package-lock.json
+      - name: API tests
+        run: dotnet test Atea.UnifiedWorkplace.sln --configuration Release
+      - name: Frontend tests and build
+        run: |
+          npm ci --prefix src/Web
+          npm run test:behavior --prefix src/Web -- --run
+          npm run build --prefix src/Web
+      - name: Compose contract and image build
+        run: |
+          docker compose config --quiet
+          docker compose build
+
+  dependency-security:
+    needs: build-test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.x'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+      - name: Node dependency audit
+        run: npm ci --prefix src/Web && npm audit --prefix src/Web --omit=dev --audit-level=high
+      - name: .NET vulnerable package audit
+        run: dotnet list src/Api/Atea.UnifiedWorkplace.Api.csproj package --vulnerable --include-transitive
+      - name: Filesystem scan
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: '1'
+
+  validate-infra:
+    needs: build-test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Local infrastructure contract validation
+        run: python3 infra/tests/validate_contract.py
+      - name: Bicep compile
+        run: az bicep build --file infra/main.bicep --outfile /tmp/atea-unified-workplace-main.json
+
+  deploy-nonproduction:
+    if: github.event_name == 'workflow_dispatch'
+    needs: [build-test, dependency-security, validate-infra]
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment || 'dev' }}
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+      AZURE_ACR_NAME: ${{ vars.AZURE_ACR_NAME }}
+      AZURE_CONTAINER_APP_NAME: ${{ vars.AZURE_CONTAINER_APP_NAME }}
+      AZURE_MIGRATION_JOB_NAME: ${{ vars.AZURE_MIGRATION_JOB_NAME }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - name: Push immutable image
+        run: az acr build --registry "$AZURE_ACR_NAME" --image "$IMAGE_REPOSITORY:$IMAGE_TAG" .
+      - name: Bicep what-if against non-production resource group
+        env:
+          POSTGRES_ADMIN_PASSWORD: ${{ secrets.POSTGRES_ADMIN_PASSWORD }}
+        run: |
+          az deployment group what-if \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --template-file infra/main.bicep \
+            --parameters @infra/parameters/dev.json \
+            imageTag="$IMAGE_TAG" \
+            postgresAdminPassword="$POSTGRES_ADMIN_PASSWORD" \
+            --no-pretty-print
+      - name: Database migration job
+        run: |
+          test -n "$AZURE_MIGRATION_JOB_NAME"
+          az containerapp job start --name "$AZURE_MIGRATION_JOB_NAME" --resource-group "$AZURE_RESOURCE_GROUP"
+      - name: Deploy revision
+        run: |
+          az containerapp update \
+            --name "$AZURE_CONTAINER_APP_NAME" \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --image "$AZURE_ACR_NAME.azurecr.io/$IMAGE_REPOSITORY:$IMAGE_TAG" \
+            --revision-suffix "$IMAGE_TAG" \
+            --revisions-mode multiple \
+            --output none
+      - name: Smoke test new revision
+        id: smoke
+        run: |
+          fqdn="$(az containerapp show --name "$AZURE_CONTAINER_APP_NAME" --resource-group "$AZURE_RESOURCE_GROUP" --query properties.latestRevisionFqdn -o tsv)"
+          curl --fail --silent --show-error "https://$fqdn/health" >/dev/null
+      - name: Route customer traffic only after smoke test
+        if: steps.smoke.outcome == 'success'
+        run: |
+          revision="$(az containerapp revision list --name "$AZURE_CONTAINER_APP_NAME" --resource-group "$AZURE_RESOURCE_GROUP" --query "[?properties.template.revisionSuffix=='$IMAGE_TAG'].name | [0]" -o tsv)"
+          test -n "$revision"
+          az containerapp ingress traffic set \
+            --name "$AZURE_CONTAINER_APP_NAME" \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --revision-weight "$revision=100" \
+            --output none

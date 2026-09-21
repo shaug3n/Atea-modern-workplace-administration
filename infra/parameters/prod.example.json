@@ -1,0 +1,31 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "location": { "value": "westeurope" },
+    "environment": { "value": "prod" },
+    "imageTag": { "value": "replace-with-immutable-git-sha" },
+    "imageRepository": { "value": "atea-unified-workplace" },
+    "containerRegistryName": { "value": "replacewithprodacr" },
+    "containerAppEnvironmentName": { "value": "atea-uw-prod-env" },
+    "containerAppName": { "value": "atea-uw-prod-app" },
+    "workloadIdentityName": { "value": "atea-uw-prod-workload" },
+    "keyVaultName": { "value": "replace-with-prod-key-vault" },
+    "logAnalyticsWorkspaceName": { "value": "atea-uw-prod-logs" },
+    "applicationInsightsName": { "value": "atea-uw-prod-insights" },
+    "postgresServerName": { "value": "atea-uw-prod-postgres" },
+    "postgresDatabaseName": { "value": "workplace" },
+    "postgresAdminLogin": { "value": "workplaceadmin" },
+    "postgresSkuName": { "value": "Standard_D2s_v5" },
+    "postgresStorageSizeGb": { "value": 128 },
+    "postgresVersion": { "value": "16" },
+    "virtualNetworkName": { "value": "atea-uw-prod-vnet" },
+    "allowedIngressHostnames": { "value": ["workplace.atea.com"] },
+    "entraDevelopmentClientId": { "value": "replace-with-development-app-client-id" },
+    "entraDevelopmentAudience": { "value": "api://replace-with-development-api-id" },
+    "entraDevelopmentRedirectUris": { "value": ["http://localhost:5173/auth/callback"] },
+    "entraProductionClientId": { "value": "replace-with-production-app-client-id" },
+    "entraProductionAudience": { "value": "api://replace-with-production-api-id" },
+    "entraProductionRedirectUris": { "value": ["https://workplace.atea.com/auth/callback"] }
+  }
+}
