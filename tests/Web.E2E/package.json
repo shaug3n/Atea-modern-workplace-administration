@@ -1,1 +1,1 @@
-{"name":"atea-unified-workplace-web-e2e","private":true,"scripts":{"test":"node --test smoke.test.mjs && node ../../src/Web/node_modules/vitest/vitest.mjs run --config vitest.config.ts"},"devDependencies":{}}
+{"name":"atea-unified-workplace-web-e2e","private":true,"scripts":{"test":"node --test smoke.test.mjs local-compose-contract.test.mjs && node ../../src/Web/node_modules/vitest/vitest.mjs run --config vitest.config.ts"},"devDependencies":{}}
