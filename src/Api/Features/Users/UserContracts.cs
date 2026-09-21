@@ -183,16 +183,16 @@ public static class UserSearchFilterContract
         var accountStatus = NormalizeEnum(request.AccountStatus, "accountStatus", ["enabled", "disabled"]);
         var userType = NormalizeEnum(request.UserType, "userType", SupportedUserTypes);
 
-        RejectUnsupported(request.TenantRole, "tenantRole", "Tenant role filter is not supported by the users directory yet.");
-        RejectUnsupported(request.License, "license", "License filter is not supported by the users directory yet.");
+        var tenantRole = NormalizeText(request.TenantRole, "tenantRole");
+        var license = NormalizeText(request.License, "license");
 
         return new UserSearchQuery(
             search,
             request.PageSize,
             null,
             accountStatus,
-            null,
-            null,
+            tenantRole,
+            license,
             userType);
     }
 
@@ -202,6 +202,17 @@ public static class UserSearchFilterContract
         if (normalized is not null && (normalized.Length > 200 || normalized.Any(char.IsControl)))
         {
             throw new UserSearchValidationException("search filter is invalid.", field: "search");
+        }
+
+        return normalized;
+    }
+
+    private static string? NormalizeText(string? value, string field)
+    {
+        var normalized = Clean(value);
+        if (normalized is not null && (normalized.Length > 200 || normalized.Any(char.IsControl) || normalized.Contains('\'')))
+        {
+            throw new UserSearchValidationException($"{field} filter is invalid.", field: field);
         }
 
         return normalized;

@@ -32,7 +32,7 @@ export function UserCreateDialog({ onCompleted }: { onCompleted?: (result: UserC
   };
 
   return (
-    <div>
+    <div role="dialog" aria-modal="true" aria-labelledby="user-create-dialog-title">
       <label>{messages.usersNameColumn}<input value={displayName} onChange={(event) => setDisplayName(event.target.value)} /></label>
       <label>{messages.usersUpnColumn}<input value={userPrincipalName} onChange={(event) => setUserPrincipalName(event.target.value)} /></label>
       <label>{messages.userUsageLocation}<input value={usageLocation} onChange={(event) => setUsageLocation(event.target.value.toUpperCase())} /></label>

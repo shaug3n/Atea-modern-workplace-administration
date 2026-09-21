@@ -46,13 +46,11 @@ export function UserFilters({ filters, onChange }: { filters: UserFiltersState; 
       </label>
       <label>
         <span>{messages.usersTenantRoleLabel}</span>
-        <input aria-label={messages.usersTenantRoleLabel} value="" disabled placeholder={messages.usersTenantRolePlaceholder} aria-describedby="users-tenant-role-unavailable" />
-        <small id="users-tenant-role-unavailable">{messages.usersUnsupportedFilterNotice}</small>
+        <input aria-label={messages.usersTenantRoleLabel} value={draft.tenantRole} onChange={(event) => update({ tenantRole: event.currentTarget.value })} placeholder={messages.usersTenantRolePlaceholder} />
       </label>
       <label>
         <span>{messages.usersLicenseLabel}</span>
-        <input aria-label={messages.usersLicenseLabel} value="" disabled placeholder={messages.usersLicensePlaceholder} aria-describedby="users-license-unavailable" />
-        <small id="users-license-unavailable">{messages.usersUnsupportedFilterNotice}</small>
+        <input aria-label={messages.usersLicenseLabel} value={draft.license} onChange={(event) => update({ license: event.currentTarget.value })} placeholder={messages.usersLicensePlaceholder} />
       </label>
       <label>
         <span>{messages.usersUserTypeLabel}</span>
@@ -83,6 +81,8 @@ function activeChips(filters: UserFiltersState) {
     filters.search.trim() && { key: 'search' as const, label: `${messages.usersSearchChip}: ${filters.search.trim()}`, clearLabel: messages.usersClearSearchFilter },
     filters.accountStatus && { key: 'accountStatus' as const, label: `${messages.usersStatusChip}: ${labelAccountStatus(filters.accountStatus)}`, clearLabel: messages.usersClearStatusFilter },
     filters.userType && { key: 'userType' as const, label: `${messages.usersUserTypeChip}: ${filters.userType}`, clearLabel: messages.usersClearUserTypeFilter },
+    filters.tenantRole && { key: 'tenantRole' as const, label: `${messages.usersTenantRoleChip}: ${filters.tenantRole}`, clearLabel: messages.usersClearTenantRoleFilter },
+    filters.license && { key: 'license' as const, label: `${messages.usersLicenseChip}: ${filters.license}`, clearLabel: messages.usersClearLicenseFilter },
   ].filter(Boolean) as Array<{ key: keyof UserFiltersState; label: string; clearLabel: string }>;
 }
 

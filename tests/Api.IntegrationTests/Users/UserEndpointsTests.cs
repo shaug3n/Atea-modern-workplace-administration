@@ -130,9 +130,9 @@ public sealed class UserEndpointsTests
     }
 
     [Theory]
-    [InlineData("license", "License filter is not supported by the users directory yet.")]
-    [InlineData("tenantRole", "Tenant role filter is not supported by the users directory yet.")]
-    public async Task Users_endpoint_returns_structured_unsupported_filter_errors(string field, string message)
+    [InlineData("license")]
+    [InlineData("tenantRole")]
+    public async Task Users_endpoint_forwards_supported_directory_filters(string field)
     {
         var reader = new RecordingDirectoryReader();
         using var factory = CreateFactory(reader);
@@ -142,11 +142,8 @@ public sealed class UserEndpointsTests
         var response = await client.GetAsync($"/api/users?{field}=unsupported");
         var body = await response.Content.ReadAsStringAsync();
 
-        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
-        body.Should().Contain("\"category\":\"unsupported_filter\"");
-        body.Should().Contain($"\"field\":\"{field}\"");
-        body.Should().Contain(message);
-        reader.Calls.Should().Be(0);
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        reader.Calls.Should().Be(1);
     }
 
     [Theory]

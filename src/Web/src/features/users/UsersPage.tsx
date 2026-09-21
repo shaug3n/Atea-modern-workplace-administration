@@ -7,6 +7,7 @@ import { PermissionState } from '../../components/PermissionState';
 import { useApi } from '../../auth/useApi';
 import { messages } from '../../app/messages';
 import { UserFilters } from './UserFilters';
+import { UserCreateDialog } from './UserCreateDialog';
 import { UsersTable } from './UsersTable';
 import { mutateUser, type UserCommandResponse } from './userMutationApi';
 import { fetchUsers, type ApiFetch, type UserFiltersState, type UsersDirectoryResponse, type UserSummary } from './usersApi';
@@ -33,6 +34,7 @@ export function UsersPage({ capabilities, onNavigate, loadUsers }: { capabilitie
   const [disablePending, setDisablePending] = useState(false);
   const [disableError, setDisableError] = useState<string | null>(null);
   const [disableStatus, setDisableStatus] = useState<string | null>(null);
+  const [createOpen, setCreateOpen] = useState(false);
 
   const usersView = findDecision(capabilities, 'users.view');
   const usersCreate = findDecision(capabilities, 'users.create');
@@ -151,7 +153,7 @@ export function UsersPage({ capabilities, onNavigate, loadUsers }: { capabilitie
         </div>
         <div className="users-page__actions">
           <PermissionState decision={usersCreate}>
-            <button type="button">{messages.usersCreateAction}</button>
+            <button type="button" onClick={() => setCreateOpen(true)}>{messages.usersCreateAction}</button>
           </PermissionState>
           <button type="button" onClick={() => setRefreshVersion((version) => version + 1)}>{messages.usersRefreshAction}</button>
         </div>
@@ -200,6 +202,12 @@ export function UsersPage({ capabilities, onNavigate, loadUsers }: { capabilitie
         />
       )}
       {disableError && <p role="alert">{disableError}</p>}
+      {createOpen && <UserCreateDialog onCompleted={(response) => {
+        if (response.status === 'succeeded') {
+          setCreateOpen(false);
+          setRefreshVersion((version) => version + 1);
+        }
+      }} />}
 
       <div className="pagination-controls" aria-label={messages.usersPaginationLabel}>
         <button type="button" onClick={goPrevious} disabled={previousTokens.length === 0}>{messages.usersPreviousPage}</button>

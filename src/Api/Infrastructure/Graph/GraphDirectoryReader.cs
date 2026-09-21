@@ -113,6 +113,11 @@ public sealed class GraphDirectoryReader(IDelegatedGraphClientFactory clientFact
             filters.Add($"userType eq '{EscapeODataString(query.UserType)}'");
         }
 
+        if (!string.IsNullOrWhiteSpace(query.License))
+        {
+            filters.Add($"assignedLicenses/any(a:a/skuId eq {EscapeODataGuidOrText(query.License)})");
+        }
+
         return filters;
     }
 
@@ -122,6 +127,10 @@ public sealed class GraphDirectoryReader(IDelegatedGraphClientFactory clientFact
             : new Dictionary<string, string> { ["ConsistencyLevel"] = "eventual" };
 
     private static string EscapeODataString(string value) => value.Trim().Replace("'", "''", StringComparison.Ordinal);
+
+    private static string EscapeODataGuidOrText(string value) => Guid.TryParse(value.Trim(), out var guid)
+        ? guid.ToString()
+        : $"'{EscapeODataString(value)}'";
 
     private static string? NormalizeGraphPath(string? nextLink)
     {

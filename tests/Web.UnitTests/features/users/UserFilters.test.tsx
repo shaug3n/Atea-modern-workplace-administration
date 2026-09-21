@@ -6,7 +6,7 @@ import { UserFilters } from '../../../../src/Web/src/features/users/UserFilters'
 describe('UserFilters', () => {
   afterEach(() => cleanup());
 
-  it('emits supported directory filters and clearly disables unsupported filters', () => {
+  it('emits all supported directory filters', () => {
     const onChange = vi.fn();
     render(<UserFilters filters={{ search: '', accountStatus: '', tenantRole: '', license: '', userType: '' }} onChange={onChange} />);
 
@@ -14,14 +14,14 @@ describe('UserFilters', () => {
     fireEvent.change(screen.getByLabelText('Account status'), { target: { value: 'enabled' } });
     fireEvent.change(screen.getByLabelText('User type'), { target: { value: 'Member' } });
 
-    expect(screen.getByLabelText('Tenant role')).toHaveProperty('disabled', true);
-    expect(screen.getByLabelText('License')).toHaveProperty('disabled', true);
+    fireEvent.change(screen.getByLabelText('Tenant role'), { target: { value: 'Global Reader' } });
+    fireEvent.change(screen.getByLabelText('License'), { target: { value: 'ENTERPRISEPACK' } });
 
     expect(onChange).toHaveBeenLastCalledWith({
       search: 'ada',
       accountStatus: 'enabled',
-      tenantRole: '',
-      license: '',
+      tenantRole: 'Global Reader',
+      license: 'ENTERPRISEPACK',
       userType: 'Member',
     });
   });
@@ -45,11 +45,10 @@ describe('UserFilters', () => {
     });
   });
 
-  it('does not render chips for unsupported tenant role or license values', () => {
+  it('renders chips for tenant role and license values', () => {
     render(<UserFilters filters={{ search: '', accountStatus: '', tenantRole: 'Global Reader', license: 'ENTERPRISEPACK', userType: '' }} onChange={vi.fn()} />);
 
-    expect(screen.queryByText('Tenant role: Global Reader')).toBeNull();
-    expect(screen.queryByText('License: ENTERPRISEPACK')).toBeNull();
-    expect(screen.getAllByText('This filter is not available yet.')).toHaveLength(2);
+    expect(screen.getByText('Tenant role: Global Reader')).toBeTruthy();
+    expect(screen.getByText('License: ENTERPRISEPACK')).toBeTruthy();
   });
 });

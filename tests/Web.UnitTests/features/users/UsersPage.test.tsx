@@ -39,6 +39,14 @@ describe('UsersPage', () => {
     apiMock.mockReset();
   });
 
+  it('opens the create form when the create capability is allowed', async () => {
+    render(<UsersPage capabilities={[decision('users.view', 'allowed'), decision('users.create', 'allowed'), decision('users.disable', 'hidden')]} loadUsers={async () => usersResponse} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Create user' }));
+    expect(screen.getByRole('dialog', { name: 'Create user' })).toBeTruthy();
+    expect(screen.getByLabelText('Name')).toBeTruthy();
+  });
+
   it('opens disable confirmation and mutates only after review and destructive phrase', async () => {
     const loadUsers = vi.fn(async (_filters: UserFiltersState, _continuationToken: string | null) => usersResponse);
     apiMock.mockResolvedValue(new Response(JSON.stringify({

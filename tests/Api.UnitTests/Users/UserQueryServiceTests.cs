@@ -202,10 +202,10 @@ public sealed class UserQueryServiceTests
 
     [Theory]
     [InlineData("bogus", null, null, null)]
-    [InlineData(null, "Other", null, null)]
+    [InlineData(null, "Other' or 1 eq 1", null, null)]
     [InlineData(null, null, "ENTERPRISEPACK' or 1 eq 1", null)]
     [InlineData(null, null, null, "Member' or 1 eq 1")]
-    public async Task Search_rejects_unsupported_or_unsafe_filter_values(string? accountStatus, string? tenantRole, string? license, string? userType)
+    public async Task Search_rejects_invalid_filter_values(string? accountStatus, string? tenantRole, string? license, string? userType)
     {
         var service = CreateService(new RecordingDirectoryReader());
         var act = () => service.SearchAsync(
