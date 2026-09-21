@@ -90,8 +90,10 @@ public static class WorkspaceEndpoints
         var objectId = ParseGuidClaim(httpContext.User, "oid");
         var email = httpContext.User.FindFirstValue("preferred_username") ?? httpContext.User.FindFirstValue("upn");
         if (tenantId == Guid.Empty || objectId == Guid.Empty) return Results.Unauthorized();
-        var redeemed = await invitations.RedeemAsync(nonce, tenantId, objectId, email, httpContext.User.FindFirstValue("name") ?? string.Empty, cancellationToken);
-        return redeemed ? Results.Ok(new { status = ConnectionState.ConsentRequired }) : Results.BadRequest(new { error = "invitation_invalid_or_expired" });
+        var redemption = await invitations.RedeemDetailedAsync(nonce, tenantId, objectId, email, httpContext.User.FindFirstValue("name") ?? string.Empty, cancellationToken);
+        return redemption is null
+            ? Results.BadRequest(new { error = "invitation_invalid_or_expired" })
+            : Results.Ok(new InvitationRedemptionResponse(ConnectionState.ConsentRequired, redemption.Workspace.Id, redemption.Workspace.DisplayName, "/overview"));
     }
 
     private static async Task<IResult> GetConnectionHealthAsync(IWorkspaceContextAccessor accessor, IOnboardingService onboarding, CancellationToken cancellationToken)

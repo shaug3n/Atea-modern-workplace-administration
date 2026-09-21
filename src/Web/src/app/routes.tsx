@@ -16,6 +16,10 @@ export type AppRoute = {
   render: (options?: { loadConnectionHealth?: ConnectionHealthLoader; loadOverview?: OverviewLoader; capabilities?: CapabilityDecision[]; navigate?: (path: string) => void }) => ReactNode;
 };
 
+export function isInvitationPath(pathname: string) {
+  return /^\/invitations\/[^/]+$/.test(pathname);
+}
+
 function WorkInProgressPage({ title, description }: { title: string; description: string }) {
   return (
     <section className="content-panel" aria-labelledby="page-title">

@@ -1,12 +1,14 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { useApi } from '../auth/useApi';
-import { capabilityDecisionFor, matchRoute } from './routes';
+import { capabilityDecisionFor, isInvitationPath, matchRoute } from './routes';
 import { AppShell } from '../components/AppShell';
 import { AppThemeProvider, ThemeProvider, type ThemePreferenceStore } from '../components/ThemeToggle';
 import type { AppSession } from '../components/TenantContextHeader';
 import { PermissionState } from '../components/PermissionState';
 import type { CapabilitySnapshot } from '../capabilities/capabilityTypes';
 import { useCapabilities, type CapabilityLoader } from '../capabilities/useCapabilities';
+import { InvitationRedemptionPage } from '../features/invitations/InvitationRedemptionPage';
+
 import type { ConnectionHealthLoader } from '../features/overview/OverviewPage';
 import { messages } from './messages';
 
@@ -34,6 +36,7 @@ function AuthenticatedApp({ loadConnectionHealth }: { loadConnectionHealth?: Con
     return await response.json() as AppSession;
   }, [api]);
 
+  if (isInvitationPath(window.location.pathname)) return <InvitationRedemptionPage nonce={window.location.pathname.slice('/invitations/'.length)} />;
   return (
     <AppThemeProvider>
       <AppExperience loadSession={loadSession} loadConnectionHealth={loadConnectionHealth} />
