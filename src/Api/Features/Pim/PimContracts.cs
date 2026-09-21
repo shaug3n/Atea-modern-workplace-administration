@@ -1,4 +1,5 @@
 using Atea.UnifiedWorkplace.Api.Authorization;
+using Atea.UnifiedWorkplace.Api.Features.Users;
 
 namespace Atea.UnifiedWorkplace.Api.Features.Pim;
 
@@ -47,7 +48,22 @@ public sealed record PimUserResponse(
     PimGuidedHandoff? Handoff = null,
     string? Error = null,
     string? GraphCorrelationId = null,
-    string? GraphRequestId = null);
+    string? GraphRequestId = null)
+{
+    public SectionAccessState? Access { get; init; }
+    public IReadOnlyList<PimEligibility> Items { get; init; } = [];
+}
+
+public sealed record PimUserResult(
+    string Outcome,
+    PimUserResponse? Response = null,
+    UserDirectoryError? Error = null);
+
+public static class PimUserOutcome
+{
+    public const string Found = "found";
+    public const string NotFound = "not_found";
+}
 
 public sealed record PimActivationRequest(
     string RoleTemplateId,

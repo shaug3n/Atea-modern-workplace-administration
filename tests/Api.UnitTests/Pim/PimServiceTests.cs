@@ -27,9 +27,12 @@ public sealed class PimServiceTests
 
         var result = await service.GetUserPimAsync(Workspace, "user-1", CancellationToken.None);
 
-        result.Status.Should().Be(PimStatus.Active);
-        result.Roles.Should().Contain(role => role.Status == PimStatus.Active && role.RoleTemplateId == EntraRoleCatalog.UserAdministratorTemplateId);
-        result.Roles.Should().Contain(role => role.Status == PimStatus.EligibleInactive && role.RoleTemplateId == EntraRoleCatalog.PrivilegedRoleAdministratorTemplateId);
+        result.Outcome.Should().Be(PimUserOutcome.Found);
+        result.Response!.Status.Should().Be(PimStatus.Active);
+        result.Response.Access!.Authorization.Capability.Should().Be(Capability.PimActivate);
+        result.Response.Items.Should().ContainSingle(item => item.RequiresJustification);
+        result.Response.Roles.Should().Contain(role => role.Status == PimStatus.Active && role.RoleTemplateId == EntraRoleCatalog.UserAdministratorTemplateId);
+        result.Response.Roles.Should().Contain(role => role.Status == PimStatus.EligibleInactive && role.RoleTemplateId == EntraRoleCatalog.PrivilegedRoleAdministratorTemplateId);
     }
 
     [Theory]
@@ -55,9 +58,10 @@ public sealed class PimServiceTests
 
         var result = await service.GetUserPimAsync(Workspace, "user-1", CancellationToken.None);
 
-        result.Roles.Should().ContainSingle().Which.Status.Should().Be(expectedStatus);
-        result.Roles.Single().Handoff!.NextStep.Should().Be(expectedNextStep);
-        result.Roles.Single().Handoff!.PortalUrl.Should().Contain("entra.microsoft.com");
+        result.Outcome.Should().Be(PimUserOutcome.Found);
+        result.Response!.Roles.Should().ContainSingle().Which.Status.Should().Be(expectedStatus);
+        result.Response.Roles.Single().Handoff!.NextStep.Should().Be(expectedNextStep);
+        result.Response.Roles.Single().Handoff!.PortalUrl.Should().Contain("entra.microsoft.com");
     }
 
     [Fact]
@@ -169,11 +173,13 @@ public sealed class PimServiceTests
     }
 
     private static PimService CreateService(
+        IUserDirectoryReader? directory = null,
         RecordingRoleAndPimReader? roles = null,
         RecordingPimActivationCommands? activations = null,
         GraphAuthorizationSnapshot? snapshot = null,
         IIdempotencyService? idempotency = null) =>
         new(
+            directory ?? new RecordingDirectoryReader(),
             roles ?? new RecordingRoleAndPimReader(),
             activations ?? new RecordingPimActivationCommands(),
             new StaticCapabilityReader(snapshot ?? EligibleSnapshot),
@@ -230,6 +236,41 @@ public sealed class PimServiceTests
     private sealed class StaticCapabilityReader(GraphAuthorizationSnapshot snapshot) : IGraphAuthorizationSnapshotReader
     {
         public Task<GraphAuthorizationSnapshot> ReadAsync(WorkspaceContext context, CancellationToken cancellationToken = default) => Task.FromResult(snapshot);
+    }
+
+    private sealed class RecordingDirectoryReader : IUserDirectoryReader
+    {
+        public UserDetails? User { get; init; } = new(
+            "user-1",
+            "Ada Lovelace",
+            "ada@example.com",
+            "ada@example.com",
+            true,
+            "Member",
+            "Ada",
+            "Lovelace",
+            "Principal Engineer",
+            "Digital Workplace",
+            "Oslo",
+            "+47 22 00 00 00",
+            "NO",
+            false,
+            "cloud",
+            null);
+        public GraphOperationResult? Error { get; init; }
+
+        public Task<PagedResult<UserSummary>> SearchAsync(WorkspaceContext context, UserSearchQuery query, CancellationToken cancellationToken) =>
+            Task.FromResult(new PagedResult<UserSummary>([], [], null));
+
+        public Task<UserDetails?> GetAsync(string userObjectId, CancellationToken cancellationToken)
+        {
+            if (Error is not null)
+            {
+                throw new GraphAdapterException(Error);
+            }
+
+            return Task.FromResult(User);
+        }
     }
 
     private sealed class RecordingRoleAndPimReader : IRoleAndPimReader

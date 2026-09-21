@@ -37,9 +37,50 @@ public sealed class PimEndpointTests
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         body.Should().Contain("\"status\":\"eligible_inactive\"");
+        body.Should().Contain("\"access\":{\"authorization\":{\"capability\":\"pim.activate\"");
+        body.Should().Contain("\"state\":\"pim_activation_required\"");
+        body.Should().Contain("\"items\":[");
         body.Should().Contain("\"nextStep\":\"Request activation in Microsoft Entra PIM\"");
         body.Should().NotContain("access_token");
         body.Should().NotContain("raw graph");
+    }
+
+    [Fact]
+    public async Task Get_user_pim_returns_not_found_without_reading_pim_when_target_user_is_missing()
+    {
+        var roles = new RecordingRoleAndPimReader();
+        using var factory = CreateFactory(roles, directory: new RecordingDirectoryReader { User = null });
+        using var client = AuthenticatedClient(factory);
+
+        var response = await client.GetAsync("/api/users/removed-user/pim");
+        var body = await response.Content.ReadAsStringAsync();
+
+        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        body.Should().Contain("\"error\":\"user_not_found\"");
+        roles.RoleReads.Should().Be(0);
+        roles.EligibilityReads.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task Get_user_pim_maps_target_verification_failure_to_safe_unavailable_state_without_reading_pim()
+    {
+        var roles = new RecordingRoleAndPimReader();
+        using var factory = CreateFactory(
+            roles,
+            directory: new RecordingDirectoryReader { Error = new GraphOperationResult(false, "throttled", 429, TimeSpan.FromSeconds(30)) });
+        using var client = AuthenticatedClient(factory);
+
+        var response = await client.GetAsync("/api/users/user-1/pim");
+        var body = await response.Content.ReadAsStringAsync();
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        body.Should().Contain("\"status\":\"temporarily_unavailable\"");
+        body.Should().Contain("\"access\":{\"authorization\":{\"capability\":\"pim.activate\"");
+        body.Should().Contain("\"freshness\":\"stale\"");
+        body.Should().Contain("\"category\":\"throttled\"");
+        body.Should().Contain("\"retryAfterSeconds\":30");
+        roles.RoleReads.Should().Be(0);
+        roles.EligibilityReads.Should().Be(0);
     }
 
     [Fact]
@@ -141,7 +182,8 @@ public sealed class PimEndpointTests
     private static WebApplicationFactory<Program> CreateFactory(
         RecordingRoleAndPimReader roles,
         RecordingPimActivationCommands? activations = null,
-        GraphAuthorizationSnapshot? snapshot = null) =>
+        GraphAuthorizationSnapshot? snapshot = null,
+        RecordingDirectoryReader? directory = null) =>
         new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
         {
             builder.ConfigureAppConfiguration((_, config) =>
@@ -164,6 +206,8 @@ public sealed class PimEndpointTests
                 services.AddSingleton<IWorkspaceMembershipReader>(new FixtureMembershipReader());
                 services.RemoveAll<IGraphAuthorizationSnapshotReader>();
                 services.AddSingleton<IGraphAuthorizationSnapshotReader>(new StaticCapabilityReader(snapshot ?? EligibleSnapshot));
+                services.RemoveAll<IUserDirectoryReader>();
+                services.AddSingleton<IUserDirectoryReader>(directory ?? new RecordingDirectoryReader());
                 services.RemoveAll<IRoleAndPimReader>();
                 services.AddSingleton<IRoleAndPimReader>(roles);
                 services.RemoveAll<IPimActivationCommands>();
@@ -201,6 +245,41 @@ public sealed class PimEndpointTests
             new DirectoryRoleSnapshot(EntraRoleCatalog.PrivilegedRoleAdministratorTemplateId, "Privileged Role Administrator", DirectoryRoleAssignmentState.Eligible, "/", new PimStateSnapshot(PimRequirement.ActivationRequired))
         ]);
 
+    private sealed class RecordingDirectoryReader : IUserDirectoryReader
+    {
+        public UserDetails? User { get; init; } = new(
+            "user-1",
+            "Ada Lovelace",
+            "ada@example.com",
+            "ada@example.com",
+            true,
+            "Member",
+            "Ada",
+            "Lovelace",
+            "Principal Engineer",
+            "Digital Workplace",
+            "Oslo",
+            "+47 22 00 00 00",
+            "NO",
+            false,
+            "cloud",
+            null);
+        public GraphOperationResult? Error { get; init; }
+
+        public Task<PagedResult<UserSummary>> SearchAsync(WorkspaceContext context, UserSearchQuery query, CancellationToken cancellationToken) =>
+            Task.FromResult(new PagedResult<UserSummary>([], [], null));
+
+        public Task<UserDetails?> GetAsync(string userObjectId, CancellationToken cancellationToken)
+        {
+            if (Error is not null)
+            {
+                throw new GraphAdapterException(Error);
+            }
+
+            return Task.FromResult(User);
+        }
+    }
+
     private sealed class StaticCapabilityReader(GraphAuthorizationSnapshot snapshot) : IGraphAuthorizationSnapshotReader
     {
         public Task<GraphAuthorizationSnapshot> ReadAsync(WorkspaceContext context, CancellationToken cancellationToken = default) => Task.FromResult(snapshot);
@@ -216,12 +295,20 @@ public sealed class PimEndpointTests
     {
         public IReadOnlyList<DirectoryRoleAssignment> Roles { get; init; } = [];
         public IReadOnlyList<PimEligibility> Eligibility { get; init; } = [];
+        public int RoleReads { get; private set; }
+        public int EligibilityReads { get; private set; }
 
-        public Task<GraphReadResult<IReadOnlyList<DirectoryRoleAssignment>>> ReadUserRoleAssignmentsAsync(string userObjectId, CancellationToken cancellationToken) =>
-            Task.FromResult(GraphReadResult<IReadOnlyList<DirectoryRoleAssignment>>.Succeeded(Roles));
+        public Task<GraphReadResult<IReadOnlyList<DirectoryRoleAssignment>>> ReadUserRoleAssignmentsAsync(string userObjectId, CancellationToken cancellationToken)
+        {
+            RoleReads++;
+            return Task.FromResult(GraphReadResult<IReadOnlyList<DirectoryRoleAssignment>>.Succeeded(Roles));
+        }
 
-        public Task<GraphReadResult<IReadOnlyList<PimEligibility>>> ReadUserPimEligibilityAsync(string userObjectId, CancellationToken cancellationToken) =>
-            Task.FromResult(GraphReadResult<IReadOnlyList<PimEligibility>>.Succeeded(Eligibility));
+        public Task<GraphReadResult<IReadOnlyList<PimEligibility>>> ReadUserPimEligibilityAsync(string userObjectId, CancellationToken cancellationToken)
+        {
+            EligibilityReads++;
+            return Task.FromResult(GraphReadResult<IReadOnlyList<PimEligibility>>.Succeeded(Eligibility));
+        }
     }
 
     private sealed class RecordingPimActivationCommands : IPimActivationCommands

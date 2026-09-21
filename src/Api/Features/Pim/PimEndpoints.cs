@@ -23,7 +23,12 @@ public static class PimEndpoints
             return Results.Json(new { error = "workspace_membership_required" }, statusCode: StatusCodes.Status403Forbidden);
         }
 
-        return Results.Ok(await service.GetUserPimAsync(context, userObjectId, cancellationToken));
+        var result = await service.GetUserPimAsync(context, userObjectId, cancellationToken);
+        return result.Outcome switch
+        {
+            PimUserOutcome.NotFound => Results.NotFound(new { error = result.Error?.Category ?? "user_not_found", message = result.Error?.Message }),
+            _ => Results.Ok(result.Response)
+        };
     }
 
     private static async Task<IResult> ActivateAsync(

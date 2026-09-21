@@ -8,28 +8,57 @@ namespace Atea.UnifiedWorkplace.Api.Features.Pim;
 
 public interface IPimService
 {
-    Task<PimUserResponse> GetUserPimAsync(WorkspaceContext context, string userObjectId, CancellationToken cancellationToken);
+    Task<PimUserResult> GetUserPimAsync(WorkspaceContext context, string userObjectId, CancellationToken cancellationToken);
     Task<PimActivationResult> ActivateAsync(WorkspaceContext context, PimActivationRequest request, string idempotencyKey, CancellationToken cancellationToken);
 }
 
 public sealed class PimService(
+    IUserDirectoryReader directoryReader,
     IRoleAndPimReader roleReader,
     IPimActivationCommands activationCommands,
     IGraphAuthorizationSnapshotReader authorizationSnapshotReader,
-    IIdempotencyService idempotency) : IPimService
+    IIdempotencyService idempotency,
+    Func<DateTimeOffset>? utcNow = null) : IPimService
 {
-    public async Task<PimUserResponse> GetUserPimAsync(WorkspaceContext context, string userObjectId, CancellationToken cancellationToken)
+    private readonly Func<DateTimeOffset> utcNow = utcNow ?? (() => DateTimeOffset.UtcNow);
+
+    public async Task<PimUserResult> GetUserPimAsync(WorkspaceContext context, string userObjectId, CancellationToken cancellationToken)
     {
+        var authorization = await AuthorizeAsync(context, cancellationToken);
+        if (authorization.State == CapabilityState.Hidden)
+        {
+            return PimUserResult(EmptyUserResponse(
+                userObjectId,
+                PimStatus.NotAuthorized,
+                authorization,
+                Error("capability_required", "PIM details are not visible for the current capability state.", authorization.State),
+                UserDirectoryFreshness.Unavailable,
+                PimStatus.NotAuthorized));
+        }
+
+        var user = await ReadUserAsync(userObjectId, cancellationToken);
+        if (user.Error is not null)
+        {
+            return PimUserResult(VerificationFailureResponse(userObjectId, authorization, user.Error));
+        }
+
+        if (user.Value is null)
+        {
+            return new PimUserResult(
+                PimUserOutcome.NotFound,
+                Error: Error("user_not_found", "The user was removed or is no longer visible in the current tenant."));
+        }
+
         var roles = await roleReader.ReadUserRoleAssignmentsAsync(userObjectId, cancellationToken);
         if (roles.Error is not null)
         {
-            return UnavailableUserResponse(userObjectId, roles.Error);
+            return PimUserResult(UnavailableUserResponse(userObjectId, authorization, roles.Error));
         }
 
         var eligibility = await roleReader.ReadUserPimEligibilityAsync(userObjectId, cancellationToken);
         if (eligibility.Error is not null)
         {
-            return UnavailableUserResponse(userObjectId, eligibility.Error);
+            return PimUserResult(UnavailableUserResponse(userObjectId, authorization, eligibility.Error));
         }
 
         var active = roles.Value
@@ -45,7 +74,11 @@ public sealed class PimService(
         var eligible = eligibility.Value.Select(MapEligibility).ToArray();
         var combined = active.Concat(eligible).ToArray();
         var status = combined.Length == 0 ? PimStatus.NotEligible : AggregateStatus(combined.Select(role => role.Status));
-        return new PimUserResponse(userObjectId, status, combined, combined.FirstOrDefault(role => role.Handoff is not null)?.Handoff);
+        return PimUserResult(new PimUserResponse(userObjectId, status, combined, combined.FirstOrDefault(role => role.Handoff is not null)?.Handoff)
+        {
+            Access = Access(authorization),
+            Items = eligibility.Value
+        });
     }
 
     public async Task<PimActivationResult> ActivateAsync(WorkspaceContext context, PimActivationRequest request, string idempotencyKey, CancellationToken cancellationToken)
@@ -258,6 +291,22 @@ public sealed class PimService(
         return CapabilityEvaluator.Evaluate(snapshot, context.Membership)[Capability.PimActivate];
     }
 
+    private async Task<GraphReadResult<UserDetails?>> ReadUserAsync(string userObjectId, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return GraphReadResult<UserDetails?>.Succeeded(await directoryReader.GetAsync(userObjectId, cancellationToken));
+        }
+        catch (GraphAdapterException exception) when (exception.Result.Category == "not_found")
+        {
+            return GraphReadResult<UserDetails?>.Succeeded(null);
+        }
+        catch (GraphAdapterException exception)
+        {
+            return GraphReadResult<UserDetails?>.Failed(exception.Result);
+        }
+    }
+
     private static PimRoleStatus MapEligibility(PimEligibility eligibility)
     {
         var status = NormalizeEligibilityStatus(eligibility.Status, eligibility.RequiresJustification);
@@ -303,15 +352,89 @@ public sealed class PimService(
             GraphCorrelationId: graph.CorrelationId,
             GraphRequestId: graph.RequestId);
 
-    private static PimUserResponse UnavailableUserResponse(string userObjectId, GraphOperationResult graph) =>
-        new(
+    private PimUserResponse VerificationFailureResponse(string userObjectId, CapabilityDecision authorization, GraphOperationResult graph) =>
+        EmptyUserResponse(
             userObjectId,
-            StatusForGraphCategory(graph.Category),
-            [],
-            HandoffFor(graph.Category, string.Empty, null, graphCorrelationId: graph.CorrelationId, graphRequestId: graph.RequestId),
+            PimStatus.TemporarilyUnavailable,
+            authorization,
+            Error(graph.Category, VerificationMessageFor(graph.Category), authorization.State, graph.StatusCode, graph.RetryAfter),
+            FreshnessFor(graph.Category),
             graph.Category,
             graph.CorrelationId,
             graph.RequestId);
+
+    private PimUserResponse UnavailableUserResponse(string userObjectId, CapabilityDecision authorization, GraphOperationResult graph) =>
+        EmptyUserResponse(
+            userObjectId,
+            StatusForGraphCategory(graph.Category),
+            authorization,
+            Error(graph.Category, MessageFor(graph.Category), authorization.State, graph.StatusCode, graph.RetryAfter),
+            FreshnessFor(graph.Category),
+            graph.Category,
+            graph.CorrelationId,
+            graph.RequestId);
+
+    private PimUserResponse EmptyUserResponse(
+        string userObjectId,
+        string status,
+        CapabilityDecision authorization,
+        UserDirectoryError? error,
+        string freshness,
+        string handoffCategory,
+        string? graphCorrelationId = null,
+        string? graphRequestId = null) =>
+        new(
+            userObjectId,
+            status,
+            [],
+            HandoffFor(handoffCategory, string.Empty, null, graphCorrelationId: graphCorrelationId, graphRequestId: graphRequestId),
+            error?.Category,
+            graphCorrelationId,
+            graphRequestId)
+        {
+            Access = Access(authorization, freshness, true, error),
+            Items = []
+        };
+
+    private SectionAccessState Access(
+        CapabilityDecision authorization,
+        string freshness = UserDirectoryFreshness.Fresh,
+        bool partialData = false,
+        UserDirectoryError? error = null) =>
+        new(authorization, utcNow(), freshness, partialData, error);
+
+    private static UserDirectoryError Error(
+        string category,
+        string message,
+        string? state = null,
+        int? statusCode = null,
+        TimeSpan? retryAfter = null) =>
+        new(category, message, state, statusCode, retryAfter is null ? null : (int)Math.Ceiling(retryAfter.Value.TotalSeconds));
+
+    private static PimUserResult PimUserResult(PimUserResponse response) =>
+        new(PimUserOutcome.Found, response);
+
+    private static string FreshnessFor(string category) => category switch
+    {
+        "throttled" => UserDirectoryFreshness.Stale,
+        _ => UserDirectoryFreshness.Unavailable
+    };
+
+    private static string MessageFor(string category) => category switch
+    {
+        "not_authorized" => "The signed-in user is not authorized to read PIM for this user.",
+        "consent_required" => "Delegated Microsoft Graph consent is required to read PIM for this user.",
+        "throttled" => "Microsoft Graph throttled this PIM request.",
+        _ => "PIM details are temporarily unavailable."
+    };
+
+    private static string VerificationMessageFor(string category) => category switch
+    {
+        "not_authorized" => "The signed-in user is not authorized to verify this user.",
+        "consent_required" => "Delegated Microsoft Graph consent is required to verify this user.",
+        "throttled" => "Microsoft Graph throttled user verification.",
+        _ => "User verification is temporarily unavailable."
+    };
 
     private static string NormalizeEligibilityStatus(string status, bool requiresJustification) => status switch
     {
