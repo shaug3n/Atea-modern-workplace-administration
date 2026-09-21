@@ -28,7 +28,9 @@ public sealed class GraphAdapterBoundaryTests
 
         foreach (var service in mutationServices)
         {
-            var publicInstanceMethods = service.GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.DeclaredOnly);
+            var publicInstanceMethods = service.GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.DeclaredOnly)
+                .Where(method => !method.Name.StartsWith("Read", StringComparison.Ordinal))
+                .ToArray();
 
             publicInstanceMethods.Should().NotContain(method =>
                 method.Name == "ExecuteAsync"
@@ -74,6 +76,31 @@ public sealed class GraphAdapterBoundaryTests
         request.PathAndQuery.Should().Be("/v1.0/groups/group-1/members/$ref");
         (await ReadJsonAsync(request)).RootElement.GetProperty("@odata.id").GetString()
             .Should().Be("https://graph.microsoft.com/v1.0/directoryObjects/user-1");
+    }
+
+    [Fact]
+    public async Task Group_catalog_escapes_odata_search_values_before_constructing_graph_query()
+    {
+        var transport = new RecordingGraphTransport(new GraphTransportResponse(GraphOperationResult.Success(), "{\"value\":[]}", 1, new Dictionary<string, IReadOnlyCollection<string>>()));
+        var groups = new GraphGroupMembershipService(new RecordingGraphClientFactory(transport));
+
+        await groups.ReadGroupsAsync("O'Reilly & admin", 25, CancellationToken.None);
+
+        var query = transport.Requests.Single().PathAndQuery;
+        query.Should().Contain("%27%27");
+        query.Should().Contain("%26");
+        query.Should().NotContain("O'Reilly & admin");
+    }
+
+    [Fact]
+    public async Task Group_catalog_maps_malformed_graph_payload_to_safe_read_error()
+    {
+        var transport = new RecordingGraphTransport(new GraphTransportResponse(GraphOperationResult.Success(), "{", 1, new Dictionary<string, IReadOnlyCollection<string>>()));
+        var groups = new GraphGroupMembershipService(new RecordingGraphClientFactory(transport));
+
+        var result = await groups.ReadGroupsAsync(null, 25, CancellationToken.None);
+
+        result.Error!.Category.Should().Be("invalid_response");
     }
 
     [Fact]

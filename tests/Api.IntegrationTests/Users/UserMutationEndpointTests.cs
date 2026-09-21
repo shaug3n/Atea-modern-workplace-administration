@@ -142,6 +142,60 @@ public sealed class UserMutationEndpointTests
     }
 
     [Fact]
+    public async Task Group_route_rejects_id_not_in_authoritative_catalog_without_graph_mutation()
+    {
+        var groups = new RecordingGroupCommands();
+        using var factory = CreateFactory(new RecordingUserCommands(), groupCommands: groups, groupCatalog: new RecordingGroupCatalogReader { Items = [new GroupCatalogItem("known-group", "Known", null, true, [])] });
+        using var client = AuthenticatedClient(factory);
+
+        var response = await client.PostAsync("/api/users/user-1/groups/unknown-group", Json("{\"groupObjectId\":\"unknown-group\"}", "unknown-group-key"));
+        var body = await response.Content.ReadAsStringAsync();
+
+        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        body.Should().Contain("group_not_found");
+        groups.Added.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task License_route_rejects_id_not_in_authoritative_catalog_without_graph_mutation()
+    {
+        var licenses = new RecordingLicenseCommands();
+        using var factory = CreateFactory(new RecordingUserCommands(), licenseCommands: licenses, licenseCatalog: new RecordingLicenseCatalogReader { Items = [new LicenseOverviewItem("known-sku", "E3", "Microsoft 365 E3", 1, 1)] });
+        using var client = AuthenticatedClient(factory);
+
+        var response = await client.PostAsync("/api/users/user-1/licenses/unknown-sku", Json("{\"skuId\":\"unknown-sku\",\"disabledPlans\":[]}", "unknown-license-key"));
+        var body = await response.Content.ReadAsStringAsync();
+
+        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        body.Should().Contain("license_not_found");
+        licenses.Assignments.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task Catalog_graph_validation_errors_are_returned_as_actionable_bad_requests()
+    {
+        var groups = new RecordingGroupCommands();
+        var licenses = new RecordingLicenseCommands();
+        using var factory = CreateFactory(
+            new RecordingUserCommands(),
+            groupCommands: groups,
+            licenseCommands: licenses,
+            groupCatalog: new RecordingGroupCatalogReader { Error = new GraphOperationResult(false, "invalid_request", 400) },
+            licenseCatalog: new RecordingLicenseCatalogReader { Error = new GraphOperationResult(false, "invalid_license", 400) });
+        using var client = AuthenticatedClient(factory);
+
+        var groupResponse = await client.PostAsync("/api/users/user-1/groups/route-group", Json("{\"groupObjectId\":\"route-group\"}", "invalid-group-key"));
+        var licenseResponse = await client.PostAsync("/api/users/user-1/licenses/route-sku", Json("{\"skuId\":\"route-sku\",\"disabledPlans\":[]}", "invalid-license-key"));
+
+        groupResponse.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        licenseResponse.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await groupResponse.Content.ReadAsStringAsync()).Should().Contain("invalid_request");
+        (await licenseResponse.Content.ReadAsStringAsync()).Should().Contain("invalid_license");
+        groups.Added.Should().BeEmpty();
+        licenses.Assignments.Should().BeEmpty();
+    }
+
+    [Fact]
     public async Task Malformed_secondary_target_is_rejected_without_graph_mutation()
     {
         var groups = new RecordingGroupCommands();
@@ -190,7 +244,9 @@ public sealed class UserMutationEndpointTests
         RecordingUserCommands commands,
         GraphAuthorizationSnapshot? snapshot = null,
         RecordingGroupCommands? groupCommands = null,
-        RecordingLicenseCommands? licenseCommands = null) =>
+        RecordingLicenseCommands? licenseCommands = null,
+        RecordingGroupCatalogReader? groupCatalog = null,
+        RecordingLicenseCatalogReader? licenseCatalog = null) =>
         new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
         {
             builder.ConfigureAppConfiguration((_, config) =>
@@ -219,8 +275,12 @@ public sealed class UserMutationEndpointTests
                 services.AddSingleton<IUserLifecycleCommands>(commands);
                 services.RemoveAll<IGroupMembershipCommands>();
                 services.AddSingleton<IGroupMembershipCommands>(groupCommands ?? new RecordingGroupCommands());
+                services.RemoveAll<IGroupCatalogReader>();
+                services.AddSingleton<IGroupCatalogReader>(groupCatalog ?? new RecordingGroupCatalogReader());
                 services.RemoveAll<ILicenseAssignmentCommands>();
                 services.AddSingleton<ILicenseAssignmentCommands>(licenseCommands ?? new RecordingLicenseCommands());
+                services.RemoveAll<ILicenseOverviewReader>();
+                services.AddSingleton<ILicenseOverviewReader>(licenseCatalog ?? new RecordingLicenseCatalogReader());
                 services.RemoveAll<IIdempotencyService>();
                 services.AddSingleton<IIdempotencyService>(new MemoryIdempotencyService());
                 services.RemoveAll<IAuditWriter>();
@@ -316,6 +376,21 @@ public sealed class UserMutationEndpointTests
             Assignments.Add((userObjectId, skuId, false));
             return Task.FromResult(GraphOperationResult.Success());
         }
+    }
+
+    private sealed class RecordingGroupCatalogReader : IGroupCatalogReader
+    {
+        public IReadOnlyList<GroupCatalogItem> Items { get; init; } = [new GroupCatalogItem("route-group", "Route group", null, true, []), new GroupCatalogItem("group-1", "Group one", null, true, [])];
+        public GraphOperationResult? Error { get; init; }
+        public Task<GraphReadResult<IReadOnlyList<GroupCatalogItem>>> ReadGroupsAsync(string? search, int pageSize, CancellationToken cancellationToken) => Task.FromResult(Error is { } error ? GraphReadResult<IReadOnlyList<GroupCatalogItem>>.Failed(error) : GraphReadResult<IReadOnlyList<GroupCatalogItem>>.Succeeded(Items));
+        public Task<GraphReadResult<GroupCatalogItem?>> ReadGroupAsync(string groupObjectId, CancellationToken cancellationToken) => Task.FromResult(Error is { } error ? GraphReadResult<GroupCatalogItem?>.Failed(error) : GraphReadResult<GroupCatalogItem?>.Succeeded(Items.SingleOrDefault(item => item.Id == groupObjectId)));
+    }
+
+    private sealed class RecordingLicenseCatalogReader : ILicenseOverviewReader
+    {
+        public IReadOnlyList<LicenseOverviewItem> Items { get; init; } = [new LicenseOverviewItem("route-sku", "E3", "Microsoft 365 E3", 1, 1), new LicenseOverviewItem("sku-1", "E1", "Microsoft 365 E1", 1, 1)];
+        public GraphOperationResult? Error { get; init; }
+        public Task<GraphReadResult<IReadOnlyList<LicenseOverviewItem>>> ReadAsync(WorkspaceContext context, LicenseOverviewQuery query, CancellationToken cancellationToken) => Task.FromResult(Error is { } error ? GraphReadResult<IReadOnlyList<LicenseOverviewItem>>.Failed(error) : GraphReadResult<IReadOnlyList<LicenseOverviewItem>>.Succeeded(Items));
     }
 
     private sealed class TestAuthenticationHandler(IOptionsMonitor<AuthenticationSchemeOptions> options, ILoggerFactory logger, UrlEncoder encoder)

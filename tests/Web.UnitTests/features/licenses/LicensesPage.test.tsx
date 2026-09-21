@@ -30,4 +30,11 @@ describe('LicensesPage', () => {
     expect(await screen.findByText('No license data is available.')).toBeTruthy();
     expect(screen.queryByText(/sku-/i)).toBeNull();
   });
+
+  it('keeps catalog IDs as opaque values when rendering license choices', async () => {
+    render(<LicensesPage loadLicenses={async () => ({ items: [{ skuId: 'opaque/sku?id=1', partNumber: 'E5', displayName: 'Microsoft 365 E5', assigned: 0, available: 4 }], total: 1, page: 1, pageSize: 25, fetchedAt: '2026-09-21T10:00:00Z', freshness: 'live', partialData: false, access: { state: 'allowed' } })} />);
+
+    expect(await screen.findByText('Microsoft 365 E5')).toBeTruthy();
+    expect(screen.getByText('4')).toBeTruthy();
+  });
 });

@@ -264,6 +264,7 @@ public static class UserCommandEndpoints
         UserCommandStatus.Conflict => Results.Json(result, statusCode: StatusCodes.Status409Conflict),
         UserCommandStatus.IdempotencyKeyReused => Results.Json(result, statusCode: StatusCodes.Status409Conflict),
         UserCommandStatus.NotFound => Results.Json(result, statusCode: StatusCodes.Status404NotFound),
+        UserCommandStatus.InvalidTarget => Results.Json(result, statusCode: StatusCodes.Status400BadRequest),
         _ => Results.Json(result, statusCode: StatusCodes.Status503ServiceUnavailable)
     };
 

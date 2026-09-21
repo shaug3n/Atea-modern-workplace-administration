@@ -55,5 +55,6 @@ public static class UserCommandStatus
     public const string Conflict = "conflict";
     public const string IdempotencyKeyReused = "idempotency_key_reused";
     public const string NotFound = "not_found";
+    public const string InvalidTarget = "invalid_target";
     public const string TemporarilyUnavailable = "temporarily_unavailable";
 }

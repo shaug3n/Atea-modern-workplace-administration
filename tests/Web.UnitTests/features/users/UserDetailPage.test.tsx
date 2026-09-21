@@ -61,7 +61,7 @@ const detail: UserDetailResponse = {
 };
 
 describe('UserDetailPage', () => {
-  afterEach(() => cleanup());
+  afterEach(() => { cleanup(); apiMock.mockReset(); });
 
   it('renders independent sections, PIM activation contract, and source-of-authority read-only explanation', async () => {
     render(<UserDetailPage userId="user-1" loadUserDetail={async () => detail} />);
@@ -131,16 +131,112 @@ describe('UserDetailPage', () => {
     expect(screen.queryByRole('button', { name: /assign license/i })).toBeNull();
   });
 
+  it('does not infer mutation permission from section access when the capability snapshot omits it', async () => {
+    const permittedSections = {
+      ...detail,
+      groups: { ...detail.groups, access: { ...detail.groups.access, authorization: { capability: 'groups.manage_members', state: 'allowed', reasonCode: 'active_role' } } },
+      licenses: { ...detail.licenses, access: { ...detail.licenses.access, authorization: { capability: 'licenses.assign', state: 'allowed', reasonCode: 'active_role' } } },
+    };
+    render(<UserDetailPage userId="user-1" loadUserDetail={async () => permittedSections} capabilities={[]} />);
+
+    expect(await screen.findByRole('heading', { name: 'Ada Lovelace' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /add group/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: /assign license/i })).toBeNull();
+  });
+
   it('refreshes detail after an allowed group mutation', async () => {
     const loadUserDetail = vi.fn(async () => detail);
-    apiMock.mockResolvedValue(new Response(JSON.stringify({ status: 'succeeded', requiredCapability: 'groups.manage_members', replayed: false }), { status: 200 }));
+    apiMock.mockImplementation(async (path: string) => path.startsWith('/api/groups')
+      ? new Response(JSON.stringify({ items: [{ id: 'group-2', displayName: 'Engineering' }], access: { state: 'allowed' } }), { status: 200 })
+      : new Response(JSON.stringify({ status: 'succeeded', requiredCapability: 'groups.manage_members', replayed: false }), { status: 200 }));
 
     render(<UserDetailPage userId="user-1" loadUserDetail={loadUserDetail} capabilities={[{ capability: 'groups.manage_members', state: 'allowed', reasonCode: 'active_role' }, { capability: 'licenses.assign', state: 'allowed', reasonCode: 'active_role' }]} />);
     fireEvent.click(await screen.findByRole('button', { name: /add group/i }));
+    fireEvent.change(await screen.findByRole('combobox', { name: /group/i }), { target: { value: 'group-2' } });
     fireEvent.click(screen.getByLabelText('I reviewed the target, change and required capability.'));
     fireEvent.click(screen.getByRole('button', { name: 'Confirm action' }));
 
-    await waitFor(() => expect(apiMock).toHaveBeenCalledWith('/api/users/user-1/groups/group-1', expect.objectContaining({ method: 'POST' })));
+    await waitFor(() => expect(apiMock).toHaveBeenCalledWith('/api/users/user-1/groups/group-2', expect.objectContaining({ method: 'POST' })));
     await waitFor(() => expect(loadUserDetail).toHaveBeenCalledTimes(2));
+  });
+
+  it('loads a group catalog for add, excludes assigned groups, and works when the user has no groups', async () => {
+    const loadUserDetail = vi.fn(async () => detail);
+    apiMock.mockImplementation(async (path: string) => {
+      if (path.startsWith('/api/groups')) return new Response(JSON.stringify({ items: [{ id: 'group-2', displayName: 'Engineering' }, { id: 'group-1', displayName: 'Already assigned' }], access: { state: 'allowed' } }), { status: 200 });
+      return new Response(JSON.stringify({ status: 'succeeded', requiredCapability: 'groups.manage_members', replayed: false }), { status: 200 });
+    });
+
+    render(<UserDetailPage userId="user-1" loadUserDetail={loadUserDetail} capabilities={[{ capability: 'groups.manage_members', state: 'allowed', reasonCode: 'active_role' }]} />);
+    fireEvent.click(await screen.findByRole('button', { name: /add group/i }));
+
+    expect(await screen.findByRole('option', { name: 'Engineering' })).toBeTruthy();
+    expect(screen.queryByRole('option', { name: 'Already assigned' })).toBeNull();
+    fireEvent.change(screen.getByRole('combobox', { name: /group/i }), { target: { value: 'group-2' } });
+    fireEvent.click(screen.getByLabelText('I reviewed the target, change and required capability.'));
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm action' }));
+    await waitFor(() => expect(apiMock).toHaveBeenCalledWith('/api/users/user-1/groups/group-2', expect.objectContaining({ method: 'POST' })));
+    await waitFor(() => expect(loadUserDetail).toHaveBeenCalledTimes(2));
+  });
+
+  it('shows actionable catalog mutation errors without refreshing stale detail', async () => {
+    const loadUserDetail = vi.fn(async () => detail);
+    apiMock.mockImplementation(async (path: string) => {
+      if (path.startsWith('/api/groups')) return new Response(JSON.stringify({ items: [{ id: 'group-2', displayName: 'Engineering' }], access: { state: 'allowed' } }), { status: 200 });
+      return new Response(JSON.stringify({ status: 'not_found', requiredCapability: 'groups.manage_members', replayed: false, error: 'group_not_found' }), { status: 404 });
+    });
+
+    render(<UserDetailPage userId="user-1" loadUserDetail={loadUserDetail} capabilities={[{ capability: 'groups.manage_members', state: 'allowed', reasonCode: 'active_role' }]} />);
+    fireEvent.click(await screen.findByRole('button', { name: /add group/i }));
+    fireEvent.change(await screen.findByRole('combobox', { name: /group/i }), { target: { value: 'group-2' } });
+    fireEvent.click(screen.getByLabelText('I reviewed the target, change and required capability.'));
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm action' }));
+
+    expect((await screen.findByRole('alert')).textContent).toMatch(/selected group is no longer available/i);
+    expect(loadUserDetail).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows actionable catalog authorization errors before allowing selection', async () => {
+    apiMock.mockResolvedValue(new Response(JSON.stringify({ error: 'not_authorized' }), { status: 403 }));
+    render(<UserDetailPage userId="user-1" loadUserDetail={async () => detail} capabilities={[{ capability: 'groups.manage_members', state: 'allowed', reasonCode: 'active_role' }]} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: /add group/i }));
+
+    expect((await screen.findByRole('alert')).textContent).toMatch(/Graph denied access to the group catalog/i);
+  });
+
+  it('shows actionable license catalog errors returned inside a successful overview response', async () => {
+    apiMock.mockResolvedValue(new Response(JSON.stringify({ error: { category: 'not_authorized' }, access: { state: 'allowed' }, items: [] }), { status: 200 }));
+    render(<UserDetailPage userId="user-1" loadUserDetail={async () => detail} capabilities={[{ capability: 'licenses.assign', state: 'allowed', reasonCode: 'active_role' }]} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: /assign license/i }));
+
+    expect((await screen.findByRole('alert')).textContent).toMatch(/Graph denied access to the license catalog/i);
+  });
+
+  it('loads a license catalog for assignment when the user has no assigned licenses', async () => {
+    const emptyDetail = { ...detail, licenses: { ...detail.licenses, items: [] } };
+    const loadUserDetail = vi.fn(async () => emptyDetail);
+    apiMock.mockImplementation(async (path: string) => path.startsWith('/api/licenses')
+      ? new Response(JSON.stringify({ items: [{ skuId: 'sku-2', partNumber: 'E5', displayName: 'Microsoft 365 E5' }], access: { state: 'allowed' } }), { status: 200 })
+      : new Response(JSON.stringify({ status: 'succeeded', requiredCapability: 'licenses.assign', replayed: false }), { status: 200 }));
+
+    render(<UserDetailPage userId="user-1" loadUserDetail={loadUserDetail} capabilities={[{ capability: 'licenses.assign', state: 'allowed', reasonCode: 'active_role' }]} />);
+    fireEvent.click(await screen.findByRole('button', { name: /assign license/i }));
+    expect(await screen.findByRole('option', { name: 'Microsoft 365 E5' })).toBeTruthy();
+    fireEvent.change(screen.getByRole('combobox', { name: 'License' }), { target: { value: 'sku-2' } });
+    fireEvent.click(screen.getByLabelText('I reviewed the target, change and required capability.'));
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm action' }));
+    await waitFor(() => expect(apiMock).toHaveBeenCalledWith('/api/users/user-1/licenses/sku-2', expect.objectContaining({ method: 'POST' })));
+    await waitFor(() => expect(loadUserDetail).toHaveBeenCalledTimes(2));
+  });
+
+  it('opens group selection when the user has no existing groups', async () => {
+    const emptyDetail = { ...detail, groups: { ...detail.groups, items: [] } };
+    apiMock.mockResolvedValue(new Response(JSON.stringify({ items: [{ id: 'group-2', displayName: 'Engineering' }], access: { state: 'allowed' } }), { status: 200 }));
+    render(<UserDetailPage userId="user-1" loadUserDetail={async () => emptyDetail} capabilities={[{ capability: 'groups.manage_members', state: 'allowed', reasonCode: 'active_role' }]} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: /add group/i }));
+    expect(await screen.findByRole('option', { name: 'Engineering' })).toBeTruthy();
   });
 });

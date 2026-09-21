@@ -1,5 +1,7 @@
 using Atea.UnifiedWorkplace.Api.Authorization;
 using Atea.UnifiedWorkplace.Api.Features.Users;
+using Atea.UnifiedWorkplace.Api.Features.Groups;
+using Atea.UnifiedWorkplace.Api.Features.Licenses;
 using Atea.UnifiedWorkplace.Api.Infrastructure.Graph;
 using Atea.UnifiedWorkplace.Api.Infrastructure.Observability;
 using Atea.UnifiedWorkplace.Api.Infrastructure.Persistence.Entities;
@@ -71,6 +73,8 @@ public sealed class AuditRedactionTests
             new StaticCapabilityReader(),
             new MemoryIdempotencyService(),
             new FailingAuditWriter(),
+            new GroupCatalogReader(),
+            new LicenseCatalogReader(),
             () => "Temp-Password-12345!");
 
         var result = await service.UpdateAsync(Workspace, "user-1", ValidUpdate, "audit-failure-key", CancellationToken.None);
@@ -152,5 +156,16 @@ public sealed class AuditRedactionTests
     {
         public Task WriteAsync(AuditEvent auditEvent, CancellationToken cancellationToken) =>
             throw new InvalidOperationException("database password=secret failed");
+    }
+
+    private sealed class GroupCatalogReader : IGroupCatalogReader
+    {
+        public Task<GraphReadResult<IReadOnlyList<GroupCatalogItem>>> ReadGroupsAsync(string? search, int pageSize, CancellationToken cancellationToken) => Task.FromResult(GraphReadResult<IReadOnlyList<GroupCatalogItem>>.Succeeded([]));
+        public Task<GraphReadResult<GroupCatalogItem?>> ReadGroupAsync(string groupObjectId, CancellationToken cancellationToken) => Task.FromResult(GraphReadResult<GroupCatalogItem?>.Succeeded(new GroupCatalogItem(groupObjectId, groupObjectId, null, true, [])));
+    }
+
+    private sealed class LicenseCatalogReader : ILicenseOverviewReader
+    {
+        public Task<GraphReadResult<IReadOnlyList<LicenseOverviewItem>>> ReadAsync(WorkspaceContext context, LicenseOverviewQuery query, CancellationToken cancellationToken) => Task.FromResult(GraphReadResult<IReadOnlyList<LicenseOverviewItem>>.Succeeded([]));
     }
 }

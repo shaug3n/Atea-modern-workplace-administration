@@ -163,6 +163,8 @@ public sealed class UserCommandServiceTests
             new StaticCapabilityReader(snapshot ?? AdminSnapshot),
             idempotency ?? new MemoryIdempotencyService(),
             new RecordingAuditWriter(),
+            new RecordingGroupCatalogReader(),
+            new RecordingLicenseCatalogReader(),
             () => "Temp-Password-12345!");
 
     private static readonly WorkspaceContext Workspace = new(
@@ -301,6 +303,23 @@ public sealed class UserCommandServiceTests
             Assignments.Add((userObjectId, skuId, false));
             return Task.FromResult(GraphOperationResult.Success());
         }
+    }
+
+    private sealed class RecordingGroupCatalogReader : IGroupCatalogReader
+    {
+        public Task<GraphReadResult<IReadOnlyList<GroupCatalogItem>>> ReadGroupsAsync(string? search, int pageSize, CancellationToken cancellationToken) =>
+            Task.FromResult(GraphReadResult<IReadOnlyList<GroupCatalogItem>>.Succeeded([new GroupCatalogItem("group-1", "Engineering", "engineering", true, [])]));
+
+        public Task<GraphReadResult<GroupCatalogItem?>> ReadGroupAsync(string groupObjectId, CancellationToken cancellationToken) =>
+            Task.FromResult(GraphReadResult<GroupCatalogItem?>.Succeeded(
+                groupObjectId == "group-1" ? new GroupCatalogItem("group-1", "Engineering", "engineering", true, []) : null));
+    }
+
+    private sealed class RecordingLicenseCatalogReader : ILicenseOverviewReader
+    {
+        public Task<GraphReadResult<IReadOnlyList<LicenseOverviewItem>>> ReadAsync(WorkspaceContext context, LicenseOverviewQuery query, CancellationToken cancellationToken) =>
+            Task.FromResult(GraphReadResult<IReadOnlyList<LicenseOverviewItem>>.Succeeded([
+                new LicenseOverviewItem("sku-1", "ENTERPRISEPACK", "Microsoft 365 E3", 1, 9)]));
     }
 
     private sealed class RecordingAuditWriter : IAuditWriter

@@ -28,6 +28,8 @@ public sealed class UserCommandService(
     IGraphAuthorizationSnapshotReader authorizationSnapshotReader,
     IIdempotencyService idempotency,
     IAuditWriter auditWriter,
+    IGroupCatalogReader groupCatalogReader,
+    ILicenseOverviewReader licenseCatalogReader,
     Func<string>? temporaryPasswordGenerator = null,
     Func<DateTimeOffset>? utcNow = null) : IUserCommandService
 {
@@ -188,6 +190,12 @@ public sealed class UserCommandService(
                 AuditWarning: auditWarning);
         }
 
+        var catalogFailure = await ValidateCatalogTargetAsync(context, capability, requestPayload, cancellationToken);
+        if (catalogFailure is not null)
+        {
+            return await AuditCatalogFailureAsync(context, operation, userObjectId, catalogFailure, cancellationToken);
+        }
+
         return await ExecuteAsync(
             context,
             operation,
@@ -197,6 +205,37 @@ public sealed class UserCommandService(
             idempotencyKey,
             async () => MapGraphResult(await graphMutation(), capability),
             cancellationToken);
+    }
+
+    private async Task<UserCommandResult?> ValidateCatalogTargetAsync(WorkspaceContext context, string capability, object requestPayload, CancellationToken cancellationToken)
+    {
+        if (requestPayload is GroupMembershipCommand groupCommand)
+        {
+            var result = await groupCatalogReader.ReadGroupAsync(groupCommand.GroupObjectId, cancellationToken);
+            if (result.Error is not null) return CatalogFailure(result.Error, capability, "group");
+            if (result.Value is null) return new UserCommandResult(UserCommandStatus.NotFound, capability, Error: "group_not_found");
+        }
+
+        if (requestPayload is LicenseAssignmentCommand licenseCommand)
+        {
+            var result = await licenseCatalogReader.ReadAsync(context, new LicenseOverviewQuery(), cancellationToken);
+            if (result.Error is not null) return CatalogFailure(result.Error, capability, "license");
+            if (!result.Value.Any(item => string.Equals(item.SkuId, licenseCommand.SkuId, StringComparison.OrdinalIgnoreCase))) return new UserCommandResult(UserCommandStatus.NotFound, capability, Error: "license_not_found");
+        }
+
+        return null;
+    }
+
+    private static UserCommandResult CatalogFailure(GraphOperationResult error, string capability, string targetType) => error.Category switch
+    {
+        "not_found" => new UserCommandResult(UserCommandStatus.NotFound, capability, Error: $"{targetType}_not_found"),
+        "invalid_request" or "invalid_target" or "invalid_license" => new UserCommandResult(UserCommandStatus.InvalidTarget, capability, Error: error.Category),
+        _ => new UserCommandResult(UserCommandStatus.TemporarilyUnavailable, capability, Error: error.Category, GraphCorrelationId: error.CorrelationId, GraphRequestId: error.RequestId)
+    };
+
+    private async Task<UserCommandResult> AuditCatalogFailureAsync(WorkspaceContext context, string operation, string targetId, UserCommandResult result, CancellationToken cancellationToken)
+    {
+        return result with { AuditWarning = await AuditAsync(context, operation, targetId, result.Status, result.Error, result.GraphCorrelationId, result.GraphRequestId, cancellationToken) };
     }
 
     private async Task<UserCommandResult> ExecuteAsync(
@@ -299,6 +338,7 @@ public sealed class UserCommandService(
         {
             "conflict" => UserCommandStatus.Conflict,
             "not_found" => UserCommandStatus.NotFound,
+            "invalid_request" or "invalid_target" or "invalid_license" => UserCommandStatus.InvalidTarget,
             _ => UserCommandStatus.TemporarilyUnavailable
         };
         return new UserCommandResult(status, capability, Error: graph.Category, GraphCorrelationId: graph.CorrelationId, GraphRequestId: graph.RequestId);

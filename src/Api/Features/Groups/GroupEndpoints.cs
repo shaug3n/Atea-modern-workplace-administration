@@ -33,12 +33,13 @@ public static class GroupEndpoints
     {
         var context = accessor.Current;
         if (context is null) return Results.Json(new { error = "workspace_membership_required" }, statusCode: 403);
+        (string? search, int pageSize) query;
+        try { query = GroupCatalogQueryContract.Normalize(request.Query["search"].ToString(), request.Query["pageSize"].ToString()); }
+        catch (GroupCatalogValidationException exception) { return Results.ValidationProblem(new Dictionary<string, string[]> { [exception.Field ?? "query"] = [exception.Message] }); }
         var snapshot = await snapshotReader.ReadAsync(context, cancellationToken);
         var access = CapabilityEvaluator.Evaluate(snapshot, context.Membership)[Capability.GroupsManageMembers];
-        if (access.State is not (CapabilityState.Allowed or CapabilityState.ReadOnly)) return Results.Ok(new { items = Array.Empty<object>(), search = request.Query["search"].ToString(), pageSize = 25, fetchedAt = DateTimeOffset.UtcNow, access });
-        var search = request.Query["search"].ToString();
-        var pageSize = int.TryParse(request.Query["pageSize"], out var parsed) ? Math.Clamp(parsed, 1, 100) : 25;
-        var result = await reader.ReadGroupsAsync(search, pageSize, cancellationToken);
-        return result.Error is null ? Results.Ok(new GroupCatalogResponse(result.Value, string.IsNullOrWhiteSpace(search) ? null : search, pageSize, DateTimeOffset.UtcNow, access)) : Results.Json(new { error = result.Error.Category, access }, statusCode: result.Error.StatusCode ?? 503);
+        if (access.State is not (CapabilityState.Allowed or CapabilityState.ReadOnly)) return Results.Ok(new GroupCatalogResponse([], query.search, query.pageSize, DateTimeOffset.UtcNow, access));
+        var result = await reader.ReadGroupsAsync(query.search, query.pageSize, cancellationToken);
+        return result.Error is null ? Results.Ok(new GroupCatalogResponse(result.Value, query.search, query.pageSize, DateTimeOffset.UtcNow, access)) : Results.Json(new { error = result.Error.Category, access }, statusCode: result.Error.StatusCode ?? 503);
     }
 }

@@ -12,6 +12,7 @@ export type ConfirmationDialogProps = {
   busy?: boolean;
   onConfirm: () => void;
   onCancel?: () => void;
+  children?: React.ReactNode;
 };
 
 export function ConfirmationDialog({
@@ -25,6 +26,7 @@ export function ConfirmationDialog({
   busy = false,
   onConfirm,
   onCancel,
+  children,
 }: ConfirmationDialogProps) {
   const [reviewed, setReviewed] = useState(false);
   const [phrase, setPhrase] = useState('');
@@ -53,6 +55,7 @@ export function ConfirmationDialog({
           <dd>{requiredCapability}</dd>
         </div>
       </dl>
+      {children}
       {sourceLimitation && <p role="alert">{sourceLimitation}</p>}
       <p>{auditNotice}</p>
       {destructivePhrase && (

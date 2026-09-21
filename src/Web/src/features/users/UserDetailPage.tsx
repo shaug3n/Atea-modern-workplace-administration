@@ -27,8 +27,8 @@ export function UserDetailPage({ userId, loadUserDetail, capabilities = [] }: { 
   const [reactivateOpen, setReactivateOpen] = useState(false);
   const [mutationError, setMutationError] = useState<string | null>(null);
   const [mutationPending, setMutationPending] = useState(false);
-  const [groupAction, setGroupAction] = useState<{ id: string; target: string; mode: 'add' | 'remove' } | null>(null);
-  const [licenseAction, setLicenseAction] = useState<{ id: string; target: string; mode: 'assign' | 'remove' } | null>(null);
+  const [groupAction, setGroupAction] = useState<{ id: string | null; target?: string; mode: 'add' | 'remove' } | null>(null);
+  const [licenseAction, setLicenseAction] = useState<{ id: string | null; target?: string; mode: 'assign' | 'remove' } | null>(null);
   const updateDecision = findDecision(capabilities, 'users.update');
   const disableDecision = findDecision(capabilities, 'users.disable');
 
@@ -117,12 +117,12 @@ export function UserDetailPage({ userId, loadUserDetail, capabilities = [] }: { 
       <div className="detail-grid">
         <IdentitySection user={user} access={detail.access} />
         <JobInformationSection user={user} access={detail.access} />
-        <LicensesSection section={detail.licenses} canManage={detail.licenses.access.authorization.state === 'allowed' || findDecision(capabilities, 'licenses.assign').state === 'allowed'} onAdd={() => { const item = detail.licenses.items[0]; if (item) setLicenseAction({ id: item.skuId, target: item.displayName || item.skuId, mode: 'assign' }); }} onRemove={(item) => setLicenseAction({ id: item.skuId, target: item.displayName || item.skuId, mode: 'remove' })} />
-        <GroupsSection section={detail.groups} canManage={detail.groups.access.authorization.state === 'allowed' || findDecision(capabilities, 'groups.manage_members').state === 'allowed'} onAdd={() => { const item = detail.groups.items[0]; if (item) setGroupAction({ id: item.id, target: item.displayName || item.id, mode: 'add' }); }} onRemove={(item) => setGroupAction({ id: item.id, target: item.displayName || item.id, mode: 'remove' })} />
+        <LicensesSection section={detail.licenses} canManage={findDecision(capabilities, 'licenses.assign').state === 'allowed'} onAdd={() => setLicenseAction({ id: null, mode: 'assign' })} onRemove={(item) => setLicenseAction({ id: item.skuId, target: item.displayName || item.skuId, mode: 'remove' })} />
+        <GroupsSection section={detail.groups} canManage={findDecision(capabilities, 'groups.manage_members').state === 'allowed'} onAdd={() => setGroupAction({ id: null, mode: 'add' })} onRemove={(item) => setGroupAction({ id: item.id, target: item.displayName || item.id, mode: 'remove' })} />
         <RolesAndPimSection roles={detail.roles} pim={detail.pim} />
       </div>
-      {groupAction && <GroupMembershipDialog userId={user.id} groupId={groupAction.id} target={groupAction.target} mode={groupAction.mode} onCompleted={(response) => response.status === 'succeeded' ? (setGroupAction(null), refreshAfterSuccess()) : setMutationError(formatMutationError(response))} />}
-      {licenseAction && <LicenseAssignmentDialog userId={user.id} skuId={licenseAction.id} target={licenseAction.target} mode={licenseAction.mode} onCompleted={(response) => response.status === 'succeeded' ? (setLicenseAction(null), refreshAfterSuccess()) : setMutationError(formatMutationError(response))} />}
+      {groupAction && <GroupMembershipDialog userId={user.id} groupId={groupAction.id} target={groupAction.target} assignedGroupIds={detail.groups.items.map((item) => item.id)} mode={groupAction.mode} onCompleted={(response) => response.status === 'succeeded' ? (setGroupAction(null), refreshAfterSuccess()) : setMutationError(formatMutationError(response))} />}
+      {licenseAction && <LicenseAssignmentDialog userId={user.id} skuId={licenseAction.id} target={licenseAction.target} assignedSkuIds={detail.licenses.items.map((item) => item.skuId)} mode={licenseAction.mode} onCompleted={(response) => response.status === 'succeeded' ? (setLicenseAction(null), refreshAfterSuccess()) : setMutationError(formatMutationError(response))} />}
     </section>
   );
 }
@@ -136,6 +136,11 @@ function formatMutationError(response: UserCommandResponse) {
   if (response.error === 'throttled' || response.status === 'temporarily_unavailable') return messages.userMutationThrottled;
   if (response.error === 'consent_required') return 'Microsoft Graph consent is required before this action can be completed.';
   if (response.error === 'source_of_authority_read_only' || response.status === 'source_of_authority_read_only') return messages.userDisableSourceReadOnly;
+  if (response.error === 'group_not_found') return 'The selected group is no longer available. Refresh the catalog and try again.';
+  if (response.error === 'license_not_found') return 'The selected license is no longer available. Refresh the catalog and try again.';
+  if (response.error === 'not_found') return 'The selected directory item is no longer available. Refresh the catalog and try again.';
+  if (response.error === 'not_authorized') return 'Microsoft Graph denied access to the catalog. Review permissions and try again.';
+  if (response.error === 'invalid_request' || response.error === 'invalid_license' || response.status === 'invalid_target') return 'The selected catalog item is invalid. Refresh the catalog and try again.';
   if (response.error === 'capability_required' || response.status === 'denied') return messages.userDisablePermissionDenied;
   return 'Sign-in could not be restored. Review the user and try again.';
 }

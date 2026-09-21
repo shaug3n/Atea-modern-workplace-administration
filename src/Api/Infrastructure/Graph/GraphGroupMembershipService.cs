@@ -11,6 +11,7 @@ public interface IGroupMembershipReader
 public interface IGroupCatalogReader
 {
     Task<GraphReadResult<IReadOnlyList<GroupCatalogItem>>> ReadGroupsAsync(string? search, int pageSize, CancellationToken cancellationToken);
+    Task<GraphReadResult<GroupCatalogItem?>> ReadGroupAsync(string groupObjectId, CancellationToken cancellationToken);
 }
 
 public interface IGroupMembershipCommands
@@ -24,14 +25,51 @@ public sealed class GraphGroupMembershipService(IDelegatedGraphClientFactory cli
     public async Task<GraphReadResult<IReadOnlyList<GroupCatalogItem>>> ReadGroupsAsync(string? search, int pageSize, CancellationToken cancellationToken)
     {
         await using var lease = await clientFactory.CreateForCurrentUserAsync(GraphScopeCatalog.DirectoryReadScopes, cancellationToken);
-        var filter = string.IsNullOrWhiteSpace(search) ? string.Empty : $"&$filter=startswith(displayName,'{search.Replace("'", "''")}')";
-        var response = await lease.Transport.SendAsync(new GraphRequest(HttpMethod.Get, $"/v1.0/groups?$select=id,displayName,mailNickname,securityEnabled,groupTypes&$top={pageSize}{filter}"), cancellationToken);
+        var query = "$select=id,displayName,mailNickname,securityEnabled,groupTypes&$top=" + pageSize;
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var odataValue = search.Replace("'", "''", StringComparison.Ordinal);
+            query += "&$filter=" + Uri.EscapeDataString($"startswith(displayName,'{odataValue}')");
+        }
+        var response = await lease.Transport.SendAsync(new GraphRequest(HttpMethod.Get, $"/v1.0/groups?{query}"), cancellationToken);
         if (!response.Result.IsSuccess) return GraphReadResult<IReadOnlyList<GroupCatalogItem>>.Failed(response.Result);
-        using var document = JsonDocument.Parse(response.Content);
-        var items = document.RootElement.TryGetProperty("value", out var value) && value.ValueKind == JsonValueKind.Array
-            ? value.EnumerateArray().Select(element => new GroupCatalogItem(RequiredString(element, "id"), OptionalString(element, "displayName"), OptionalString(element, "mailNickname"), OptionalBool(element, "securityEnabled"), StringArray(element, "groupTypes"))).Where(item => item.Id.Length > 0).ToArray()
-            : [];
-        return GraphReadResult<IReadOnlyList<GroupCatalogItem>>.Succeeded(items);
+        try
+        {
+            using var document = JsonDocument.Parse(response.Content);
+            var items = document.RootElement.TryGetProperty("value", out var value) && value.ValueKind == JsonValueKind.Array
+                ? value.EnumerateArray().Select(element => new GroupCatalogItem(RequiredString(element, "id"), OptionalString(element, "displayName"), OptionalString(element, "mailNickname"), OptionalBool(element, "securityEnabled"), StringArray(element, "groupTypes"))).Where(item => item.Id.Length > 0).ToArray()
+                : [];
+            return GraphReadResult<IReadOnlyList<GroupCatalogItem>>.Succeeded(items);
+        }
+        catch (JsonException)
+        {
+            return GraphReadResult<IReadOnlyList<GroupCatalogItem>>.Failed(new GraphOperationResult(false, "invalid_response"));
+        }
+        catch (InvalidOperationException)
+        {
+            return GraphReadResult<IReadOnlyList<GroupCatalogItem>>.Failed(new GraphOperationResult(false, "invalid_response"));
+        }
+    }
+
+    public async Task<GraphReadResult<GroupCatalogItem?>> ReadGroupAsync(string groupObjectId, CancellationToken cancellationToken)
+    {
+        await using var lease = await clientFactory.CreateForCurrentUserAsync(GraphScopeCatalog.DirectoryReadScopes, cancellationToken);
+        var response = await lease.Transport.SendAsync(new GraphRequest(HttpMethod.Get, $"/v1.0/groups/{Uri.EscapeDataString(groupObjectId)}?$select=id,displayName,mailNickname,securityEnabled,groupTypes"), cancellationToken);
+        if (!response.Result.IsSuccess) return GraphReadResult<GroupCatalogItem?>.Failed(response.Result);
+        try
+        {
+            using var document = JsonDocument.Parse(response.Content);
+            var item = MapCatalogGroup(document.RootElement);
+            return GraphReadResult<GroupCatalogItem?>.Succeeded(item.Id.Length == 0 ? null : item);
+        }
+        catch (JsonException)
+        {
+            return GraphReadResult<GroupCatalogItem?>.Failed(new GraphOperationResult(false, "invalid_response"));
+        }
+        catch (InvalidOperationException)
+        {
+            return GraphReadResult<GroupCatalogItem?>.Failed(new GraphOperationResult(false, "invalid_response"));
+        }
     }
     async Task<GraphReadResult<IReadOnlyList<GroupMembership>>> IGroupMembershipReader.ReadUserGroupsAsync(string userObjectId, CancellationToken cancellationToken)
     {
@@ -70,6 +108,9 @@ public sealed class GraphGroupMembershipService(IDelegatedGraphClientFactory cli
             OptionalString(element, "mailNickname"),
             OptionalBool(element, "securityEnabled"),
             StringArray(element, "groupTypes"));
+
+    private static GroupCatalogItem MapCatalogGroup(JsonElement element) =>
+        new(RequiredString(element, "id"), OptionalString(element, "displayName"), OptionalString(element, "mailNickname"), OptionalBool(element, "securityEnabled"), StringArray(element, "groupTypes"));
 
     private static string RequiredString(JsonElement element, string property) =>
         element.TryGetProperty(property, out var value) ? value.GetString() ?? string.Empty : string.Empty;
