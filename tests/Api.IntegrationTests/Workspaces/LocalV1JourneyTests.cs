@@ -71,6 +71,11 @@ public sealed class LocalV1JourneyTests
             isAteaOperator = false
         });
         membershipResponse.StatusCode.Should().Be(HttpStatusCode.Created);
+        state.Membership.Should().NotBeNull();
+        state.Membership!.WorkspaceId.Should().Be(workspace.Id);
+        state.Membership.TenantObjectId.Should().Be(CustomerObjectId);
+        state.Membership.Email.Should().Be("customer.admin@example.test");
+        state.Membership.PlatformRole.Should().Be("CustomerAdmin");
 
         var invitationResponse = await admin.PostAsJsonAsync($"/api/platform/workspaces/{workspace.Id}/invitations", new
         {
@@ -100,6 +105,10 @@ public sealed class LocalV1JourneyTests
         redeemed.WorkspaceId.Should().Be(workspace.Id);
         redeemed.NextStep.Should().Be("/overview");
         state.Invitation!.RedeemedAt.Should().NotBeNull();
+        state.RedeemedMembership.Should().BeSameAs(state.Membership);
+        state.RedeemedMembership!.WorkspaceId.Should().Be(workspace.Id);
+        state.RedeemedMembership.TenantObjectId.Should().Be(CustomerObjectId);
+        state.RedeemedMembership.Email.Should().Be("customer.admin@example.test");
     }
 
     private static WebApplicationFactory<Program> CreateFactory() => new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
@@ -168,6 +177,8 @@ public sealed class LocalV1JourneyTests
     private sealed class JourneyState : IInvitationRepository
     {
         public Workspace? Workspace { get; set; }
+        public PersistenceWorkspaceMembership? Membership { get; set; }
+        public PersistenceWorkspaceMembership? RedeemedMembership { get; private set; }
         public PlatformInvitation? Invitation { get; set; }
         public Task<PlatformInvitation> CreateAsync(PlatformInvitation invitation, CancellationToken cancellationToken = default)
         {
@@ -178,16 +189,15 @@ public sealed class LocalV1JourneyTests
 
         public Task<InvitationRedemption?> RedeemAsync(string nonceHash, Guid tenantId, Guid tenantObjectId, string? email, string displayName, CancellationToken cancellationToken = default)
         {
-            if (Invitation is null || Workspace is null || Invitation.NonceHash != nonceHash || Invitation.RedeemedAt is not null ||
+            if (Invitation is null || Workspace is null || Membership is null || Invitation.NonceHash != nonceHash || Invitation.RedeemedAt is not null ||
                 Invitation.ExpiresAt <= DateTimeOffset.UtcNow || Workspace.TenantId != tenantId || Invitation.ApprovedTenantObjectId != tenantObjectId ||
-                !string.Equals(Invitation.Email, email, StringComparison.OrdinalIgnoreCase)) return Task.FromResult<InvitationRedemption?>(null);
+                !string.Equals(Invitation.Email, email, StringComparison.OrdinalIgnoreCase) || Membership.WorkspaceId != Workspace.Id ||
+                Membership.TenantObjectId != tenantObjectId || !string.Equals(Membership.Email, email, StringComparison.OrdinalIgnoreCase)) return Task.FromResult<InvitationRedemption?>(null);
 
             Invitation.RedeemedAt = DateTimeOffset.UtcNow;
             Workspace.ConnectionStatus = "consent_required";
-            return Task.FromResult<InvitationRedemption?>(new InvitationRedemption(Workspace, new PersistenceWorkspaceMembership
-            {
-                Id = Guid.NewGuid(), WorkspaceId = Workspace.Id, TenantObjectId = tenantObjectId, Email = email!, PlatformRole = "customer_admin"
-            }));
+            RedeemedMembership = Membership;
+            return Task.FromResult<InvitationRedemption?>(new InvitationRedemption(Workspace, Membership));
         }
     }
 
@@ -200,7 +210,11 @@ public sealed class LocalV1JourneyTests
             state.Workspace = new Workspace { Id = WorkspaceId, TenantId = tenantId, DisplayName = displayName, ConnectionStatus = "awaiting_invitation" };
             return Task.FromResult(WorkspaceProvisioningResult.Created(state.Workspace));
         }
-        public Task<PersistenceWorkspaceMembership> AddMembershipAsync(Guid workspaceId, Guid tenantObjectId, string email, string platformRole, bool isAteaOperator, CancellationToken cancellationToken = default) => Task.FromResult(new PersistenceWorkspaceMembership { Id = Guid.NewGuid(), WorkspaceId = workspaceId, TenantObjectId = tenantObjectId, Email = email, PlatformRole = platformRole, IsAteaOperator = isAteaOperator });
+        public Task<PersistenceWorkspaceMembership> AddMembershipAsync(Guid workspaceId, Guid tenantObjectId, string email, string platformRole, bool isAteaOperator, CancellationToken cancellationToken = default)
+        {
+            state.Membership = new PersistenceWorkspaceMembership { Id = Guid.NewGuid(), WorkspaceId = workspaceId, TenantObjectId = tenantObjectId, Email = email, PlatformRole = platformRole, IsAteaOperator = isAteaOperator };
+            return Task.FromResult(state.Membership);
+        }
         public Task<Workspace?> GetAsync(Guid workspaceId, CancellationToken cancellationToken = default) => Task.FromResult(state.Workspace);
     }
 
