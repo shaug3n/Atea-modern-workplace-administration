@@ -1,8 +1,10 @@
 import React from 'react';
 import type { ReactNode } from 'react';
 import { workspaceSettingsCapability, type Capability, type CapabilityDecision } from '../capabilities/capabilityTypes';
-import { OverviewPage, type ConnectionHealthLoader } from '../features/overview/OverviewPage';
+import { OverviewPage, type ConnectionHealthLoader, type OverviewLoader } from '../features/overview/OverviewPage';
 import { AuditActivityPage } from '../features/audit/AuditActivityPage';
+import { LicensesPage } from '../features/licenses/LicensesPage';
+import { WorkspaceSettingsPage } from '../features/workspace-settings/WorkspaceSettingsPage';
 import { UserDetailPage } from '../features/users/UserDetailPage';
 import { UsersPage } from '../features/users/UsersPage';
 import { messages } from './messages';
@@ -11,7 +13,7 @@ export type AppRoute = {
   path: string;
   label: string;
   capability?: Capability;
-  render: (options?: { loadConnectionHealth?: ConnectionHealthLoader; capabilities?: CapabilityDecision[]; navigate?: (path: string) => void }) => ReactNode;
+  render: (options?: { loadConnectionHealth?: ConnectionHealthLoader; loadOverview?: OverviewLoader; capabilities?: CapabilityDecision[]; navigate?: (path: string) => void }) => ReactNode;
 };
 
 function WorkInProgressPage({ title, description }: { title: string; description: string }) {
@@ -28,7 +30,7 @@ export const appRoutes: AppRoute[] = [
   {
     path: '/overview',
     label: messages.navOverview,
-    render: (options) => <OverviewPage loadConnectionHealth={options?.loadConnectionHealth} />,
+    render: (options) => <OverviewPage loadConnectionHealth={options?.loadConnectionHealth} loadOverview={options?.loadOverview} />,
   },
   {
     path: '/users',
@@ -46,7 +48,7 @@ export const appRoutes: AppRoute[] = [
     path: '/licenses',
     label: messages.navLicenses,
     capability: 'licenses.assign',
-    render: () => <WorkInProgressPage title={messages.licensesTitle} description={messages.licensesDescription} />,
+    render: () => <LicensesPage />,
   },
   {
     path: '/audit',
@@ -58,7 +60,7 @@ export const appRoutes: AppRoute[] = [
     path: '/workspace-settings',
     label: messages.navWorkspaceSettings,
     capability: workspaceSettingsCapability,
-    render: () => <WorkInProgressPage title={messages.workspaceSettingsTitle} description={messages.workspaceSettingsDescription} />,
+    render: () => <WorkspaceSettingsPage />,
   },
 ];
 

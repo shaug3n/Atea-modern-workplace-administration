@@ -15,6 +15,7 @@ using Atea.UnifiedWorkplace.Api.Features.Users;
 using Atea.UnifiedWorkplace.Api.Infrastructure.Observability;
 using Atea.UnifiedWorkplace.Api.Infrastructure.Security;
 using Atea.UnifiedWorkplace.Api.Features.Audit;
+using Atea.UnifiedWorkplace.Api.Features.Overview;
 using Atea.UnifiedWorkplace.Api.Infrastructure.Http;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -24,6 +25,7 @@ builder.Services.AddScoped<IWorkspaceProvisioningRepository, WorkspaceProvisioni
 builder.Services.AddScoped<IUserPreferenceRepository, UserPreferenceRepository>();
 builder.Services.AddScoped<IThemePreferenceService, ThemePreferenceService>();
 builder.Services.AddScoped<IWorkspaceProvisioningService, WorkspaceProvisioningService>();
+builder.Services.AddScoped<IWorkspaceSettingsService, WorkspaceSettingsService>();
 builder.Services.AddScoped<WorkspaceOnboardingRepository>();
 builder.Services.AddScoped<IOnboardingRepository>(services => services.GetRequiredService<WorkspaceOnboardingRepository>());
 builder.Services.AddScoped<IInvitationRepository>(services => services.GetRequiredService<WorkspaceOnboardingRepository>());
@@ -34,6 +36,9 @@ builder.Services.AddScoped<InvitationService>(services => new InvitationService(
 builder.Services.AddScoped<IDelegatedConnectionProbe, DelegatedGraphConnectionProbe>();
 builder.Services.AddScoped<IConnectionHealthReader, ConnectionHealthReader>();
 builder.Services.AddScoped<IGraphAuthorizationSnapshotReader, GraphAuthorizationSnapshotReader>();
+builder.Services.AddSingleton<OverviewDataCache>();
+builder.Services.AddScoped<IOverviewDataReader, GraphOverviewDataReader>();
+builder.Services.AddScoped<IOverviewService, OverviewService>();
 builder.Services.AddHttpClient("MicrosoftGraph", client => client.BaseAddress = new Uri("https://graph.microsoft.com"));
 builder.Services.AddScoped<IGraphTokenProvider, MicrosoftIdentityGraphTokenProvider>();
 builder.Services.AddScoped<IDelegatedGraphClientFactory, DelegatedGraphClientFactory>();
@@ -56,6 +61,8 @@ builder.Services.AddScoped<IGroupMembershipCommands>(services => services.GetReq
 builder.Services.AddScoped<GraphLicenseService>();
 builder.Services.AddScoped<IUserLicenseReader>(services => services.GetRequiredService<GraphLicenseService>());
 builder.Services.AddScoped<ILicenseAssignmentCommands>(services => services.GetRequiredService<GraphLicenseService>());
+builder.Services.AddScoped<ILicenseOverviewReader, GraphLicenseOverviewReader>();
+builder.Services.AddScoped<ILicenseOverviewService, LicenseOverviewService>();
 builder.Services.AddScoped<GraphRoleAndPimService>();
 builder.Services.AddScoped<IRoleAndPimReader>(services => services.GetRequiredService<GraphRoleAndPimService>());
 builder.Services.AddScoped<IPimActivationCommands>(services => services.GetRequiredService<GraphRoleAndPimService>());
@@ -105,6 +112,7 @@ app.MapGet("/api/session", (IWorkspaceContextAccessor accessor) =>
     });
 }).RequireAuthorization();
 app.MapWorkspaceEndpoints();
+app.MapWorkspaceSettingsEndpoints();
 app.MapCapabilityEndpoints();
 app.MapUserPreferenceEndpoints();
 app.MapUserEndpoints();
@@ -115,6 +123,7 @@ app.MapGroupEndpoints();
 app.MapRoleEndpoints();
 app.MapPimEndpoints();
 app.MapAuditEndpoints();
+app.MapOverviewEndpoints();
 app.MapFallbackToFile("index.html");
 
 app.Run();
