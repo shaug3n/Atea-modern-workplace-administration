@@ -101,7 +101,7 @@ public sealed class CapabilityEndpointTests
                 {
                     ["AzureAd:Audience"] = "api://atea-unified-workplace-api",
                     ["AzureAd:ClientId"] = "test-client-id",
-                    ["Onboarding:ConsentSigningKey"] = "0123456789abcdef0123456789abcdef"
+                    ["Onboarding:ConsentSigningKey"] = Convert.ToBase64String(new byte[32])
                 });
             });
             builder.ConfigureServices(services =>

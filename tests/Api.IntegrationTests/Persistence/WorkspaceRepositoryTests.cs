@@ -96,6 +96,7 @@ public sealed class WorkspaceRepositoryTests : IAsyncLifetime
 
         results.Count(result => result).Should().Be(1);
         (await db.WorkspaceMemberships.CountAsync(x => x.WorkspaceId == workspaceId)).Should().Be(1);
+        db.ChangeTracker.Clear();
         (await db.PlatformInvitations.SingleAsync(x => x.Id == created.InvitationId)).RedeemedAt.Should().NotBeNull();
     }
 

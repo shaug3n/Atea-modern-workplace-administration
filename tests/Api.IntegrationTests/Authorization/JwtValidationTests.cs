@@ -11,6 +11,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.IdentityModel.Tokens;
+using System.Text.Json;
 
 namespace Atea.UnifiedWorkplace.Api.IntegrationTests.Authorization;
 
@@ -47,7 +48,9 @@ public sealed class JwtValidationTests
         var response = await client.GetAsync("/api/session");
 
         response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
-        (await response.Content.ReadAsStringAsync()).Should().Be("{\"error\":\"authentication_required\"}");
+        response.Content.Headers.ContentType!.MediaType.Should().Be("application/problem+json");
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        document.RootElement.GetProperty("code").GetString().Should().Be("authentication_required");
     }
 
     private static WebApplicationFactory<Program> CreateFactory() =>
