@@ -68,9 +68,24 @@ public sealed class DelegatedGraphAdapterTests
         transport.EnqueueJson(HttpStatusCode.NotFound, "{\"error\":{\"code\":\"Request_ResourceNotFound\",\"message\":\"raw graph detail\"}}", "corr", "req");
         var reader = new GraphDirectoryReader(new FakeDelegatedGraphClientFactory(transport));
 
-        var result = await reader.GetAsync("missing-user", CancellationToken.None);
+        var result = await reader.GetAsync(GraphContextFixture.Workspace, "missing-user", CancellationToken.None);
 
         result.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task Directory_get_marks_successful_result_with_verified_context_tenant()
+    {
+        var transport = new FakeGraphTransport(GraphScopeCatalog.DirectoryReadScopes);
+        transport.EnqueueJson(HttpStatusCode.OK, """
+            { "id": "user-1", "displayName": "Ada Lovelace", "userPrincipalName": "ada@example.com" }
+            """, "corr", "req");
+        var reader = new GraphDirectoryReader(new FakeDelegatedGraphClientFactory(transport));
+
+        var result = await reader.GetAsync(GraphContextFixture.Workspace, "user-1", CancellationToken.None);
+
+        result.Should().NotBeNull();
+        result!.DirectoryTenantId.Should().Be(GraphContextFixture.Workspace.User.TenantId);
     }
 
     [Fact]

@@ -239,7 +239,7 @@ public sealed class UserCommandServiceTests
         public Task<PagedResult<UserSummary>> SearchAsync(WorkspaceContext context, UserSearchQuery query, CancellationToken cancellationToken) =>
             Task.FromResult(new PagedResult<UserSummary>([], [], null));
 
-        public Task<UserDetails?> GetAsync(string userObjectId, CancellationToken cancellationToken) => Task.FromResult(User);
+        public Task<UserDetails?> GetAsync(WorkspaceContext context, string userObjectId, CancellationToken cancellationToken) => Task.FromResult(User);
     }
 
     private sealed class RecordingUserCommands : IUserLifecycleCommands

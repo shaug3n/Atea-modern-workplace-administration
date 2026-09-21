@@ -114,7 +114,7 @@ public sealed class AuditRedactionTests
         public Task<PagedResult<UserSummary>> SearchAsync(WorkspaceContext context, UserSearchQuery query, CancellationToken cancellationToken) =>
             Task.FromResult(new PagedResult<UserSummary>([], [], null));
 
-        public Task<UserDetails?> GetAsync(string userObjectId, CancellationToken cancellationToken) =>
+        public Task<UserDetails?> GetAsync(WorkspaceContext context, string userObjectId, CancellationToken cancellationToken) =>
             Task.FromResult<UserDetails?>(new UserDetails(userObjectId, "Ada Lovelace", "ada@example.com", "ada@example.com", true, "Member"));
     }
 

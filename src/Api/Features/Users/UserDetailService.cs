@@ -40,7 +40,7 @@ public sealed class UserDetailService(
                     EmptySection<PimEligibility>(capabilities[Capability.PimActivate])));
         }
 
-        var user = await ReadUserAsync(userObjectId, cancellationToken);
+        var user = await ReadUserAsync(context, userObjectId, cancellationToken);
         if (user.Error is not null)
         {
             var error = UserVerificationError(user.Error, usersView.State);
@@ -56,6 +56,11 @@ public sealed class UserDetailService(
         }
 
         if (user.Value is null)
+        {
+            return new UserDetailResult(UserDetailStatus.NotFound, Error: Error("user_not_found", "The user was removed or is no longer visible in the current tenant."));
+        }
+
+        if (user.Value.DirectoryTenantId is { } directoryTenantId && directoryTenantId != context.User.TenantId)
         {
             return new UserDetailResult(UserDetailStatus.NotFound, Error: Error("user_not_found", "The user was removed or is no longer visible in the current tenant."));
         }
@@ -98,7 +103,7 @@ public sealed class UserDetailService(
             return EmptySection<T>(usersView, Error("capability_required", "User details cannot be read for the current capability state.", usersView.State));
         }
 
-        var user = await ReadUserAsync(userObjectId, cancellationToken);
+        var user = await ReadUserAsync(context, userObjectId, cancellationToken);
         if (user.Error is not null)
         {
             return EmptySection<T>(capabilities[capability], UserVerificationError(user.Error, capabilities[capability].State), FreshnessFor(user.Error.Category));
@@ -109,14 +114,19 @@ public sealed class UserDetailService(
             return null;
         }
 
+        if (user.Value.DirectoryTenantId is { } directoryTenantId && directoryTenantId != context.User.TenantId)
+        {
+            return null;
+        }
+
         return await ReadSectionAsync(userObjectId, capabilities[capability], read, cancellationToken);
     }
 
-    private async Task<GraphReadResult<UserDetails?>> ReadUserAsync(string userObjectId, CancellationToken cancellationToken)
+    private async Task<GraphReadResult<UserDetails?>> ReadUserAsync(WorkspaceContext context, string userObjectId, CancellationToken cancellationToken)
     {
         try
         {
-            return GraphReadResult<UserDetails?>.Succeeded(await directoryReader.GetAsync(userObjectId, cancellationToken));
+            return GraphReadResult<UserDetails?>.Succeeded(await directoryReader.GetAsync(context, userObjectId, cancellationToken));
         }
         catch (GraphAdapterException exception) when (exception.Result.Category == "not_found")
         {

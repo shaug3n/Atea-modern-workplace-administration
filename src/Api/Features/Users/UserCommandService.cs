@@ -167,8 +167,13 @@ public sealed class UserCommandService(
             return await DenyAsync(context, capability, userObjectId, authorization, cancellationToken);
         }
 
-        var user = await directoryReader.GetAsync(userObjectId, cancellationToken);
+        var user = await directoryReader.GetAsync(context, userObjectId, cancellationToken);
         if (user is null)
+        {
+            return new UserCommandResult(UserCommandStatus.NotFound, capability, Error: "user_not_found");
+        }
+
+        if (user.DirectoryTenantId is { } directoryTenantId && directoryTenantId != context.User.TenantId)
         {
             return new UserCommandResult(UserCommandStatus.NotFound, capability, Error: "user_not_found");
         }

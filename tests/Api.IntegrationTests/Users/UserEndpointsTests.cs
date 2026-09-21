@@ -217,7 +217,7 @@ public sealed class UserEndpointsTests
             return Task.FromResult(Result);
         }
 
-        public Task<UserDetails?> GetAsync(string userObjectId, CancellationToken cancellationToken) => Task.FromResult<UserDetails?>(null);
+        public Task<UserDetails?> GetAsync(WorkspaceContext context, string userObjectId, CancellationToken cancellationToken) => Task.FromResult<UserDetails?>(null);
     }
 
     private sealed class StaticCapabilityReader(GraphAuthorizationSnapshot snapshot) : IGraphAuthorizationSnapshotReader

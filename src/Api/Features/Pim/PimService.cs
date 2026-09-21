@@ -36,13 +36,20 @@ public sealed class PimService(
                 PimStatus.NotAuthorized));
         }
 
-        var user = await ReadUserAsync(userObjectId, cancellationToken);
+        var user = await ReadUserAsync(context, userObjectId, cancellationToken);
         if (user.Error is not null)
         {
             return PimUserResult(VerificationFailureResponse(userObjectId, authorization, user.Error));
         }
 
         if (user.Value is null)
+        {
+            return new PimUserResult(
+                PimUserOutcome.NotFound,
+                Error: Error("user_not_found", "The user was removed or is no longer visible in the current tenant."));
+        }
+
+        if (user.Value.DirectoryTenantId is { } directoryTenantId && directoryTenantId != context.User.TenantId)
         {
             return new PimUserResult(
                 PimUserOutcome.NotFound,
@@ -291,11 +298,11 @@ public sealed class PimService(
         return CapabilityEvaluator.Evaluate(snapshot, context.Membership)[Capability.PimActivate];
     }
 
-    private async Task<GraphReadResult<UserDetails?>> ReadUserAsync(string userObjectId, CancellationToken cancellationToken)
+    private async Task<GraphReadResult<UserDetails?>> ReadUserAsync(WorkspaceContext context, string userObjectId, CancellationToken cancellationToken)
     {
         try
         {
-            return GraphReadResult<UserDetails?>.Succeeded(await directoryReader.GetAsync(userObjectId, cancellationToken));
+            return GraphReadResult<UserDetails?>.Succeeded(await directoryReader.GetAsync(context, userObjectId, cancellationToken));
         }
         catch (GraphAdapterException exception) when (exception.Result.Category == "not_found")
         {

@@ -1,5 +1,6 @@
 using Atea.UnifiedWorkplace.Api.Authorization;
 using Microsoft.Extensions.Configuration;
+using System.Text.Json.Serialization;
 
 namespace Atea.UnifiedWorkplace.Api.Features.Users;
 
@@ -45,7 +46,8 @@ public sealed record UserDetails(
     string? UsageLocation = null,
     bool IsReadOnly = false,
     string SourceOfAuthority = "cloud",
-    string? SourceOfAuthorityReason = null);
+    string? SourceOfAuthorityReason = null,
+    [property: JsonIgnore] Guid? DirectoryTenantId = null);
 
 public sealed record AssignedLicense(
     string SkuId,

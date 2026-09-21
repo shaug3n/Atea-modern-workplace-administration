@@ -269,7 +269,7 @@ public sealed class PimEndpointTests
         public Task<PagedResult<UserSummary>> SearchAsync(WorkspaceContext context, UserSearchQuery query, CancellationToken cancellationToken) =>
             Task.FromResult(new PagedResult<UserSummary>([], [], null));
 
-        public Task<UserDetails?> GetAsync(string userObjectId, CancellationToken cancellationToken)
+        public Task<UserDetails?> GetAsync(WorkspaceContext context, string userObjectId, CancellationToken cancellationToken)
         {
             if (Error is not null)
             {

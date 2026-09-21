@@ -61,7 +61,9 @@ public static class AuditEndpoints
         }
 
         var query = db.AuditEvents.AsNoTracking()
-            .Where(audit => audit.WorkspaceId == context.Membership.WorkspaceId);
+            .Where(audit => audit.WorkspaceId == context.Membership.WorkspaceId
+                && audit.TenantId == context.User.TenantId
+                && audit.ActorTenantId == context.User.TenantId);
 
         if (actorObjectId is { } actor)
         {

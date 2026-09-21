@@ -11,7 +11,7 @@ public interface IUserDirectoryReader
         UserSearchQuery query,
         CancellationToken cancellationToken);
 
-    Task<UserDetails?> GetAsync(string userObjectId, CancellationToken cancellationToken);
+    Task<UserDetails?> GetAsync(WorkspaceContext context, string userObjectId, CancellationToken cancellationToken);
 }
 
 public sealed record PagedResult<T>(
@@ -51,7 +51,7 @@ public sealed class GraphDirectoryReader(IDelegatedGraphClientFactory clientFact
         return new PagedResult<UserSummary>(users, correlations, continuationLink);
     }
 
-    public async Task<UserDetails?> GetAsync(string userObjectId, CancellationToken cancellationToken)
+    public async Task<UserDetails?> GetAsync(WorkspaceContext context, string userObjectId, CancellationToken cancellationToken)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(userObjectId);
 
@@ -65,7 +65,7 @@ public sealed class GraphDirectoryReader(IDelegatedGraphClientFactory clientFact
         }
 
         using var document = JsonDocument.Parse(response.Content);
-        return MapUserDetails(document.RootElement);
+        return MapUserDetails(document.RootElement) with { DirectoryTenantId = context.User.TenantId };
     }
 
     private static string BuildSearchPath(UserSearchQuery query)
