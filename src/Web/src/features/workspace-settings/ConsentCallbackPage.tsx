@@ -1,10 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { messages, type ConnectionState } from '../../messages/en';
 import { useApi } from '../../auth/useApi';
 
 type Completion = { valid: boolean; status: string };
 type Health = { status: ConnectionState };
-export type ConsentCallbackApi = { complete: (request: { state: string; tenant: string; errorCode?: string; errorDescription?: string }) => Promise<Completion>; check: () => Promise<Health> };
+export type ConsentCallbackApi = { complete: (request: { state: string; tenant: string; errorCode?: string }) => Promise<Completion>; check: () => Promise<Health> };
 
 export function ConsentCallbackPage({ api }: { api?: ConsentCallbackApi }) {
   if (!api) return <AuthenticatedConsentCallback />;
@@ -22,14 +22,23 @@ function AuthenticatedConsentCallback() {
 function LoadedConsentCallback({ api }: { api: ConsentCallbackApi }) {
   const [state, setState] = useState<'loading' | 'success' | 'denied' | 'invalid' | 'failed'>('loading');
   const [health, setHealth] = useState<ConnectionState | null>(null);
+  const completion = useRef<Completion | null>(null);
   const params = new URLSearchParams(window.location.search);
   const run = async () => {
     setState('loading');
     try {
-      const request = { state: params.get('state') ?? '', tenant: params.get('tenant') ?? '', ...(params.get('error') ? { errorCode: params.get('error') ?? undefined, errorDescription: params.get('error_description') ?? undefined } : {}) };
-      const result = await api.complete(request);
-      if (!result.valid) { setState('invalid'); return; }
-      if (result.status === 'consent_denied') { setState('denied'); return; }
+      const alreadyCompleted = completion.current !== null;
+      if (!completion.current) {
+        const request = { state: params.get('state') ?? '', tenant: params.get('tenant') ?? '', ...(params.get('error') ? { errorCode: params.get('error') ?? undefined } : {}) };
+        const result = await api.complete(request);
+        if (!result.valid) { setState('invalid'); return; }
+        completion.current = result;
+      }
+      if (completion.current.status === 'consent_denied') {
+        if (alreadyCompleted) await api.check();
+        setState('denied');
+        return;
+      }
       setHealth((await api.check()).status); setState('success');
     } catch { setState('failed'); }
   };

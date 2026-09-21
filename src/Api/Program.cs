@@ -39,6 +39,7 @@ builder.Services.AddScoped<IWorkspaceSettingsService, WorkspaceSettingsService>(
 builder.Services.AddScoped<WorkspaceOnboardingRepository>();
 builder.Services.AddScoped<IOnboardingRepository>(services => services.GetRequiredService<WorkspaceOnboardingRepository>());
 builder.Services.AddScoped<IInvitationRepository>(services => services.GetRequiredService<WorkspaceOnboardingRepository>());
+builder.Services.AddScoped<IConsentChallengeRepository>(services => services.GetRequiredService<WorkspaceOnboardingRepository>());
 builder.Services.AddScoped<IOnboardingService, OnboardingService>();
 builder.Services.AddSingleton<ConsentChallengeService>(services => new ConsentChallengeService(
     services.GetRequiredService<IOptions<OnboardingOptions>>().Value.ConsentSigningKey));

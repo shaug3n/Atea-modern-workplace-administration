@@ -3,6 +3,7 @@ using System.Net.Http.Headers;
 using System.Security.Claims;
 using Atea.UnifiedWorkplace.Api.Authorization;
 using Atea.UnifiedWorkplace.Api.Infrastructure.Graph;
+using Atea.UnifiedWorkplace.Api.Infrastructure.Persistence.Repositories;
 using FluentAssertions;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -132,6 +133,8 @@ public sealed class CapabilityEndpointTests
                 services.AddSingleton<IWorkspaceMembershipReader>(new FixtureMembershipReader(platformRole));
                 services.RemoveAll<IGraphAuthorizationSnapshotReader>();
                 services.AddSingleton<IGraphAuthorizationSnapshotReader>(reader ?? new RecordingSnapshotReader(snapshot ?? GraphAuthorizationSnapshot.Unavailable("temporarily_unavailable")));
+                services.RemoveAll<IConsentChallengeRepository>();
+                services.AddSingleton<IConsentChallengeRepository, RecordingConsentChallengeRepository>();
             });
         });
 
@@ -144,6 +147,12 @@ public sealed class CapabilityEndpointTests
             Calls++;
             return Task.FromResult(snapshot);
         }
+    }
+
+    private sealed class RecordingConsentChallengeRepository : IConsentChallengeRepository
+    {
+        public Task CreateAsync(Guid workspaceId, Guid tenantId, string stateHash, string correlationId, DateTimeOffset expiresAt, CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public Task<bool> TryConsumeAsync(Guid workspaceId, Guid tenantId, string stateHash, DateTimeOffset now, CancellationToken cancellationToken = default) => Task.FromResult(true);
     }
 
     private sealed class FixtureMembershipReader(string platformRole) : IWorkspaceMembershipReader

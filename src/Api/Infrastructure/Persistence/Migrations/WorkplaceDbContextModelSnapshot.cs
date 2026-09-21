@@ -96,6 +96,36 @@ namespace Atea.UnifiedWorkplace.Api.Infrastructure.Persistence.Migrations
                     b.ToTable("AuditEvents");
                 });
 
+            modelBuilder.Entity("Atea.UnifiedWorkplace.Api.Infrastructure.Persistence.Entities.ConsentChallenge", b =>
+                {
+                    b.Property<string>("StateHash")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<string>("CorrelationId")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<DateTimeOffset?>("ConsumedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("WorkspaceId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("StateHash");
+
+                    b.HasIndex("WorkspaceId", "TenantId", "ExpiresAt");
+
+                    b.ToTable("ConsentChallenges");
+                });
+
             modelBuilder.Entity("Atea.UnifiedWorkplace.Api.Infrastructure.Persistence.Entities.IdempotencyRecord", b =>
                 {
                     b.Property<Guid>("Id")
@@ -350,6 +380,17 @@ namespace Atea.UnifiedWorkplace.Api.Infrastructure.Persistence.Migrations
                 });
 
             modelBuilder.Entity("Atea.UnifiedWorkplace.Api.Infrastructure.Persistence.Entities.PlatformInvitation", b =>
+                {
+                    b.HasOne("Atea.UnifiedWorkplace.Api.Infrastructure.Persistence.Entities.Workspace", "Workspace")
+                        .WithMany()
+                        .HasForeignKey("WorkspaceId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Workspace");
+                });
+
+            modelBuilder.Entity("Atea.UnifiedWorkplace.Api.Infrastructure.Persistence.Entities.ConsentChallenge", b =>
                 {
                     b.HasOne("Atea.UnifiedWorkplace.Api.Infrastructure.Persistence.Entities.Workspace", "Workspace")
                         .WithMany()

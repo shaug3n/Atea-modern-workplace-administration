@@ -14,6 +14,7 @@ public sealed class WorkplaceDbContext(DbContextOptions<WorkplaceDbContext> opti
     public DbSet<UserPreference> UserPreferences => Set<UserPreference>();
     public DbSet<IdempotencyRecord> IdempotencyRecords => Set<IdempotencyRecord>();
     public DbSet<AuditEvent> AuditEvents => Set<AuditEvent>();
+    public DbSet<ConsentChallenge> ConsentChallenges => Set<ConsentChallenge>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -97,6 +98,16 @@ public sealed class WorkplaceDbContext(DbContextOptions<WorkplaceDbContext> opti
             entity.Property(x => x.FailureCategory).HasMaxLength(100);
             entity.Property(x => x.SafeMetadataJson).HasColumnType("jsonb").IsRequired();
             ConfigureUtc(entity.Property(x => x.Timestamp));
+        });
+        modelBuilder.Entity<ConsentChallenge>(entity =>
+        {
+            entity.HasKey(x => x.StateHash);
+            entity.Property(x => x.StateHash).HasMaxLength(128).IsRequired();
+            entity.Property(x => x.CorrelationId).HasMaxLength(100).IsRequired();
+            ConfigureUtc(entity.Property(x => x.ExpiresAt));
+            ConfigureUtc(entity.Property(x => x.ConsumedAt));
+            entity.HasIndex(x => new { x.WorkspaceId, x.TenantId, x.ExpiresAt });
+            entity.HasOne(x => x.Workspace).WithMany().HasForeignKey(x => x.WorkspaceId).OnDelete(DeleteBehavior.Cascade);
         });
     }
 

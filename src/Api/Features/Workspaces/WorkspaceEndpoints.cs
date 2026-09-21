@@ -1,5 +1,6 @@
 using Atea.UnifiedWorkplace.Api.Authorization;
 using Atea.UnifiedWorkplace.Api.Infrastructure.Graph;
+using Atea.UnifiedWorkplace.Api.Infrastructure.Persistence.Repositories;
 using Microsoft.Extensions.Options;
 using System.Security.Claims;
 
@@ -131,29 +132,31 @@ public static class WorkspaceEndpoints
         return Results.Ok(new ConnectionHealthDto(context.Membership.WorkspaceId, status, DateTimeOffset.UtcNow, result.GrantedScopes, result.ProblemCategory, correlationId));
     }
 
-    private static IResult StartConsentAsync(IWorkspaceContextAccessor accessor, IOptions<OnboardingOptions> onboardingOptions, ConsentChallengeService challenges, IConfiguration configuration)
+    private static async Task<IResult> StartConsentAsync(IWorkspaceContextAccessor accessor, IOptions<OnboardingOptions> onboardingOptions, ConsentChallengeService challenges, IConsentChallengeRepository challengeRepository, IConfiguration configuration, CancellationToken cancellationToken)
     {
         var context = accessor.Current;
         if (context is null) return Results.StatusCode(StatusCodes.Status403Forbidden);
         if (!challenges.IsConfigured) return Results.Json(new { error = "consent_configuration_unavailable" }, statusCode: StatusCodes.Status503ServiceUnavailable);
         var clientId = configuration["AzureAd:ClientId"] ?? string.Empty;
         var redirectUri = onboardingOptions.Value.ConsentRedirectUri;
-        var scopes = string.Join(' ', GraphScopeCatalog.V1DelegatedScopes);
         var challenge = challenges.Create(context.Membership.WorkspaceId, context.User.TenantId);
-        var url = $"https://login.microsoftonline.com/{context.User.TenantId}/oauth2/v2.0/authorize?client_id={Uri.EscapeDataString(clientId)}&response_type=code&redirect_uri={Uri.EscapeDataString(redirectUri)}&response_mode=query&scope={Uri.EscapeDataString(scopes)}&state={Uri.EscapeDataString(challenge.Challenge)}";
+        await challengeRepository.CreateAsync(context.Membership.WorkspaceId, context.User.TenantId, ConsentChallengeService.HashState(challenge.Challenge), challenge.CorrelationId, challenge.ExpiresAt, cancellationToken);
+        var url = $"https://login.microsoftonline.com/{context.User.TenantId}/v2.0/adminconsent?client_id={Uri.EscapeDataString(clientId)}&redirect_uri={Uri.EscapeDataString(redirectUri)}&state={Uri.EscapeDataString(challenge.Challenge)}";
         return Results.Ok(new ConsentStartResponse(url, GraphScopeCatalog.V1DelegatedScopes, challenge.Challenge, challenge.CorrelationId));
     }
 
-    private static IResult CompleteConsentAsync(ConsentCompletionRequest request, IWorkspaceContextAccessor accessor, ConsentChallengeService challenges)
+    private static async Task<IResult> CompleteConsentAsync(ConsentCompletionRequest request, IWorkspaceContextAccessor accessor, ConsentChallengeService challenges, IConsentChallengeRepository challengeRepository, CancellationToken cancellationToken)
     {
         var context = accessor.Current;
         if (context is null) return Results.StatusCode(StatusCodes.Status403Forbidden);
         if (request.Tenant == Guid.Empty || request.Tenant != context.User.TenantId || string.IsNullOrWhiteSpace(request.State))
             return Results.Ok(new ConsentCompletionResponse(false, "invalid_callback", string.Empty));
-        if (!challenges.TryValidateAndConsume(request.State, context.Membership.WorkspaceId, context.User.TenantId, out var correlationId))
+        if (!await challenges.TryValidateAndConsumeAsync(request.State, context.Membership.WorkspaceId, context.User.TenantId, challengeRepository, cancellationToken))
+            return Results.Ok(new ConsentCompletionResponse(false, "invalid_callback", string.Empty));
+        if (!challenges.TryRead(request.State, context.Membership.WorkspaceId, context.User.TenantId, out var challenge))
             return Results.Ok(new ConsentCompletionResponse(false, "invalid_callback", string.Empty));
         var status = string.IsNullOrWhiteSpace(request.ErrorCode) ? "consent_received" : "consent_denied";
-        return Results.Ok(new ConsentCompletionResponse(true, status, correlationId));
+        return Results.Ok(new ConsentCompletionResponse(true, status, challenge.CorrelationId));
     }
 
     private static ConnectionHealthDto ToHealthDto(WorkspaceOnboardingState state, string? problem, string correlationId) => new(state.WorkspaceId, state.ConnectionStatus, state.LastVerifiedAt, state.ConsentScopes, problem ?? state.FailureCategory, correlationId);

@@ -4,8 +4,21 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Atea.UnifiedWorkplace.Api.Infrastructure.Persistence.Repositories;
 
-public sealed class WorkspaceOnboardingRepository(WorkplaceDbContext db) : IOnboardingRepository, IInvitationRepository
+public sealed class WorkspaceOnboardingRepository(WorkplaceDbContext db) : IOnboardingRepository, IInvitationRepository, IConsentChallengeRepository
 {
+    public async Task CreateAsync(Guid workspaceId, Guid tenantId, string stateHash, string correlationId, DateTimeOffset expiresAt, CancellationToken cancellationToken = default)
+    {
+        db.ConsentChallenges.Add(new Entities.ConsentChallenge { StateHash = stateHash, WorkspaceId = workspaceId, TenantId = tenantId, CorrelationId = correlationId, ExpiresAt = expiresAt });
+        await db.SaveChangesAsync(cancellationToken);
+    }
+
+    public async Task<bool> TryConsumeAsync(Guid workspaceId, Guid tenantId, string stateHash, DateTimeOffset now, CancellationToken cancellationToken = default)
+    {
+        var consumed = await db.ConsentChallenges
+            .Where(x => x.StateHash == stateHash && x.WorkspaceId == workspaceId && x.TenantId == tenantId && x.ConsumedAt == null && x.ExpiresAt > now)
+            .ExecuteUpdateAsync(updates => updates.SetProperty(x => x.ConsumedAt, now), cancellationToken);
+        return consumed == 1;
+    }
     public async Task<ConnectionSnapshot?> GetConnectionAsync(Guid workspaceId, CancellationToken cancellationToken = default)
     {
         var workspace = await db.Workspaces.AsNoTracking().Include(x => x.TenantConnection).SingleOrDefaultAsync(x => x.Id == workspaceId, cancellationToken);

@@ -1,15 +1,14 @@
 using System.Security.Cryptography;
 using System.Text;
-using System.Collections.Concurrent;
+using Atea.UnifiedWorkplace.Api.Infrastructure.Persistence.Repositories;
 
 namespace Atea.UnifiedWorkplace.Api.Features.Workspaces;
 
-public sealed record ConsentChallenge(string Challenge, string CorrelationId);
+public sealed record ConsentChallenge(string Challenge, string CorrelationId, DateTimeOffset ExpiresAt);
 
 public sealed class ConsentChallengeService
 {
     private readonly byte[]? key;
-    private readonly ConcurrentDictionary<string, byte> consumed = new(StringComparer.Ordinal);
 
     public ConsentChallengeService(string? base64Key)
     {
@@ -28,31 +27,26 @@ public sealed class ConsentChallengeService
     public bool IsConfigured => key is not null;
 
     public ConsentChallenge Create(Guid workspaceId, Guid tenantId)
+        => Create(workspaceId, tenantId, DateTimeOffset.UtcNow.AddMinutes(10));
+
+    public ConsentChallenge Create(Guid workspaceId, Guid tenantId, DateTimeOffset expiresAt)
     {
         EnsureConfigured();
         var correlationId = Guid.NewGuid().ToString("N");
-        var payload = $"{correlationId}|{workspaceId:N}|{tenantId:N}|{DateTimeOffset.UtcNow.AddMinutes(10).ToUnixTimeSeconds()}|{Convert.ToBase64String(RandomNumberGenerator.GetBytes(24))}";
+        var payload = $"{correlationId}|{workspaceId:N}|{tenantId:N}|{expiresAt.ToUnixTimeSeconds()}|{Convert.ToBase64String(RandomNumberGenerator.GetBytes(24))}";
         var encodedPayload = Base64Url(Encoding.UTF8.GetBytes(payload));
         var signature = Base64Url(HMACSHA256.HashData(key!, Encoding.UTF8.GetBytes(encodedPayload)));
-        return new ConsentChallenge($"{encodedPayload}.{signature}", correlationId);
+        return new ConsentChallenge($"{encodedPayload}.{signature}", correlationId, expiresAt);
     }
 
     public bool Validate(string challenge, string correlationId, Guid expectedWorkspaceId, Guid expectedTenantId)
     {
-        if (!IsConfigured) return false;
-        var parts = challenge.Split('.', 2);
-        if (parts.Length != 2) return false;
-        var expected = HMACSHA256.HashData(key!, Encoding.UTF8.GetBytes(parts[0]));
-        var actual = FromBase64Url(parts[1]);
-        var payloadBytes = FromBase64Url(parts[0]);
-        if (actual is null || payloadBytes is null || !CryptographicOperations.FixedTimeEquals(expected, actual)) return false;
-        var fields = Encoding.UTF8.GetString(payloadBytes).Split('|');
-        return fields.Length == 5 && fields[0] == correlationId && Guid.TryParse(fields[1], out var workspaceId) && workspaceId == expectedWorkspaceId && Guid.TryParse(fields[2], out var tenantId) && tenantId == expectedTenantId && long.TryParse(fields[3], out var expiresAt) && expiresAt > DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        return TryRead(challenge, expectedWorkspaceId, expectedTenantId, out var parsed) && parsed.CorrelationId == correlationId;
     }
 
-    public bool TryValidateAndConsume(string challenge, Guid expectedWorkspaceId, Guid expectedTenantId, out string correlationId)
+    public bool TryRead(string challenge, Guid expectedWorkspaceId, Guid expectedTenantId, out ConsentChallenge parsed)
     {
-        correlationId = string.Empty;
+        parsed = default!;
         if (!IsConfigured) return false;
         var parts = challenge.Split('.', 2);
         if (parts.Length != 2) return false;
@@ -65,9 +59,17 @@ public sealed class ConsentChallengeService
         if (fields.Length != 5 || !Guid.TryParse(fields[1], out var workspaceId) || workspaceId != expectedWorkspaceId ||
             !Guid.TryParse(fields[2], out var tenantId) || tenantId != expectedTenantId ||
             !long.TryParse(fields[3], out var expiresAt) || expiresAt <= DateTimeOffset.UtcNow.ToUnixTimeSeconds()) return false;
-        correlationId = fields[0];
-        return consumed.TryAdd(challenge, 0);
+        parsed = new ConsentChallenge(challenge, fields[0], DateTimeOffset.FromUnixTimeSeconds(expiresAt));
+        return true;
     }
+
+    public async Task<bool> TryValidateAndConsumeAsync(string challenge, Guid expectedWorkspaceId, Guid expectedTenantId, IConsentChallengeRepository repository, CancellationToken cancellationToken = default)
+    {
+        if (!TryRead(challenge, expectedWorkspaceId, expectedTenantId, out _)) return false;
+        return await repository.TryConsumeAsync(expectedWorkspaceId, expectedTenantId, HashState(challenge), DateTimeOffset.UtcNow, cancellationToken);
+    }
+
+    public static string HashState(string challenge) => Base64Url(SHA256.HashData(Encoding.UTF8.GetBytes(challenge)));
 
     private void EnsureConfigured() => _ = key ?? throw new InvalidOperationException("Consent challenge signing is not configured.");
     private static string Base64Url(byte[] bytes) => Convert.ToBase64String(bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_');

@@ -1,4 +1,5 @@
 using Atea.UnifiedWorkplace.Api.Features.Workspaces;
+using Atea.UnifiedWorkplace.Api.Infrastructure.Persistence.Repositories;
 using FluentAssertions;
 
 namespace Atea.UnifiedWorkplace.Api.UnitTests.Workspaces;
@@ -41,28 +42,44 @@ public sealed class ConsentChallengeTests
     }
 
     [Fact]
-    public void Validates_and_consumes_a_challenge_once_without_exposing_payload()
+    public async Task Validates_and_consumes_a_challenge_once_without_exposing_payload()
     {
         var service = new ConsentChallengeService(new byte[32]);
         var workspaceId = Guid.NewGuid();
         var tenantId = Guid.NewGuid();
         var challenge = service.Create(workspaceId, tenantId);
 
-        service.TryValidateAndConsume(challenge.Challenge, workspaceId, tenantId, out var correlationId).Should().BeTrue();
-        correlationId.Should().Be(challenge.CorrelationId);
-        service.TryValidateAndConsume(challenge.Challenge, workspaceId, tenantId, out _).Should().BeFalse();
+        var repository = new RecordingRepository();
+        (await service.TryValidateAndConsumeAsync(challenge.Challenge, workspaceId, tenantId, repository)).Should().BeTrue();
+        repository.Consumed.Should().Be(1);
+        (await service.TryValidateAndConsumeAsync(challenge.Challenge, workspaceId, tenantId, repository)).Should().BeFalse();
     }
 
     [Fact]
-    public void Rejects_tampered_and_cross_tenant_challenges_without_consuming_valid_state()
+    public async Task Rejects_tampered_and_cross_tenant_challenges_without_consuming_valid_state()
     {
         var service = new ConsentChallengeService(new byte[32]);
         var workspaceId = Guid.NewGuid();
         var tenantId = Guid.NewGuid();
         var challenge = service.Create(workspaceId, tenantId);
 
-        service.TryValidateAndConsume($"{challenge.Challenge}x", workspaceId, tenantId, out _).Should().BeFalse();
-        service.TryValidateAndConsume(challenge.Challenge, workspaceId, Guid.NewGuid(), out _).Should().BeFalse();
-        service.TryValidateAndConsume(challenge.Challenge, workspaceId, tenantId, out _).Should().BeTrue();
+        var repository = new RecordingRepository();
+        (await service.TryValidateAndConsumeAsync($"{challenge.Challenge}x", workspaceId, tenantId, repository)).Should().BeFalse();
+        (await service.TryValidateAndConsumeAsync(challenge.Challenge, workspaceId, Guid.NewGuid(), repository)).Should().BeFalse();
+        (await service.TryValidateAndConsumeAsync(challenge.Challenge, workspaceId, tenantId, repository)).Should().BeTrue();
+    }
+
+    private sealed class RecordingRepository : IConsentChallengeRepository
+    {
+        public int Consumed { get; private set; }
+
+        public Task CreateAsync(Guid workspaceId, Guid tenantId, string stateHash, string correlationId, DateTimeOffset expiresAt, CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+        public Task<bool> TryConsumeAsync(Guid workspaceId, Guid tenantId, string stateHash, DateTimeOffset now, CancellationToken cancellationToken = default)
+        {
+            if (Consumed > 0) return Task.FromResult(false);
+            Consumed++;
+            return Task.FromResult(true);
+        }
     }
 }
