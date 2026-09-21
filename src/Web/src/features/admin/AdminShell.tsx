@@ -6,7 +6,7 @@ export function AdminShell({ session, onSignOut }: { session: AdminSession; onSi
   return <div className="admin-app">
     <header className="admin-header">
       <a href="/admin" className="brand-link" aria-label="Atea platform administration home"><img src={greyLogo} alt="Atea" className="brand-logo" /> <span>Platform administration</span></a>
-      <div className="admin-user"><span>{session.username}</span><button type="button" onClick={onSignOut}>Sign out</button></div>
+      <div className="admin-user"><span>{session.displayName}</span><button type="button" onClick={onSignOut}>Sign out</button></div>
     </header>
     <main className="admin-content"><p className="eyebrow">Admin console</p><h1>Atea platform administration</h1><p>Workspace administration tools will appear here in the next MVP task.</p></main>
   </div>;

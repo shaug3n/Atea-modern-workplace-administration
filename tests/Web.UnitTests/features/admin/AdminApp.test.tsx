@@ -24,12 +24,12 @@ describe('AdminApp', () => {
   });
 
   it('renders the protected admin shell for a valid cookie session', async () => {
-    authApi.getSession.mockResolvedValue({ username: 'admin@example.test' });
+    authApi.getSession.mockResolvedValue({ displayName: 'Admin User' });
 
     render(<AdminApp />);
 
     expect(await screen.findByRole('heading', { name: 'Atea platform administration' })).toBeTruthy();
-    expect(screen.getByText('admin@example.test')).toBeTruthy();
+    expect(screen.getByText('Admin User')).toBeTruthy();
   });
 
   it('treats a 401 session response as signed out', async () => {

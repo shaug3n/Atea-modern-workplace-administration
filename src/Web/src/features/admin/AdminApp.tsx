@@ -4,6 +4,10 @@ import { adminAuthApi, type AdminSession } from './adminAuthApi';
 import { AdminLoginPage } from './AdminLoginPage';
 import { AdminShell } from './AdminShell';
 
+export function isAdminPath(pathname: string) {
+  return pathname === '/admin' || pathname.startsWith('/admin/');
+}
+
 export function AdminApp() {
   const [session, setSession] = useState<AdminSession | null>(null);
   const [loading, setLoading] = useState(true);

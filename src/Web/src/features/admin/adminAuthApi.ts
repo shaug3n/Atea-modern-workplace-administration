@@ -1,5 +1,5 @@
 export type AdminSession = {
-  username: string;
+  displayName: string;
 };
 
 async function request(path: string, init?: RequestInit): Promise<Response> {
@@ -25,6 +25,7 @@ export const adminAuthApi = {
   },
 
   async logout(): Promise<void> {
-    await request('/api/admin-auth/logout', { method: 'POST' });
+    const response = await request('/api/admin-auth/logout', { method: 'POST' });
+    if (!response.ok) throw new Error('admin_logout_failed');
   },
 };
