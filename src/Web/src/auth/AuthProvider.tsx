@@ -42,7 +42,7 @@ function AuthenticatedContent({ children }: { children: ReactNode }) {
   const account = accounts[0] ?? null;
   const value = useMemo(() => createAuthActions(instance, account, setError), [account, instance]);
 
-  if (!isAuthenticated) return <main role="main"><h1>{messages.authSignInTitle}</h1><button type="button" onClick={() => value.signIn().catch(() => setError(messages.authSignInError))}>{messages.authSignIn}</button>{error && <p role="alert">{error}</p>}</main>;
+  if (!isAuthenticated) return <main role="main"><h1>{messages.authSignInTitle}</h1><button type="button" onClick={() => value.signIn().catch(() => { console.error('MSAL sign-in failed'); setError(messages.authSignInError); })}>{messages.authSignIn}</button>{error && <p role="alert">{error}</p>}</main>;
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 

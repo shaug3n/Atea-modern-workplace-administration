@@ -13,6 +13,7 @@ services:
       Onboarding__PublicBaseUrl: ${Onboarding__PublicBaseUrl:-http://localhost:5173}
       Onboarding__ConsentRedirectUri: ${Onboarding__ConsentRedirectUri:-http://localhost:5173/onboarding/consent/callback}
       Onboarding__ConsentSigningKey: ${Onboarding__ConsentSigningKey:-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=}
+      PlatformAuthorization__RequiredScope: ${PlatformAuthorization__RequiredScope:-platform.admin}
     ports: ["8080:8080"]
     depends_on:
       postgres: { condition: service_healthy }

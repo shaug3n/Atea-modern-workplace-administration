@@ -80,13 +80,40 @@ public sealed class AuthenticationTests
         await AssertProblemAsync(response, ApiProblemCode.AuthenticationRequired);
     }
 
-    private static WebApplicationFactory<Program> CreateFactory(bool includeMembership = false, bool malformedIdentity = false) =>
+    [Fact]
+    public async Task Allowlisted_customer_bearer_without_platform_scope_is_forbidden_before_platform_endpoint()
+    {
+        using var client = CreateFactory(includePlatformAdmin: true).CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer");
+
+        var response = await client.PostAsJsonAsync("/api/platform/workspaces", new { tenantId = Guid.Empty, displayName = "" });
+
+        response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        (await response.Content.ReadAsStringAsync()).Should().NotContain("invalid_workspace");
+    }
+
+    [Fact]
+    public async Task Platform_bearer_with_required_scope_in_space_delimited_scp_reaches_platform_endpoint()
+    {
+        using var client = CreateFactory(includePlatformAdmin: true).CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer");
+        client.DefaultRequestHeaders.Add("X-Test-Scopes", "openid profile platform.admin");
+
+        var response = await client.PostAsJsonAsync("/api/platform/workspaces", new { tenantId = Guid.Empty, displayName = "" });
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await response.Content.ReadAsStringAsync()).Should().Contain("invalid_workspace");
+    }
+
+    private static WebApplicationFactory<Program> CreateFactory(bool includeMembership = false, bool malformedIdentity = false, bool includePlatformAdmin = false) =>
         new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
         {
             builder.ConfigureAppConfiguration((_, configuration) => configuration.AddInMemoryCollection(new Dictionary<string, string?>
             {
                 ["AzureAd:Audience"] = "api://atea-unified-workplace-api",
-                ["AzureAd:ClientId"] = "test-client-id"
+                ["AzureAd:ClientId"] = "test-client-id",
+                ["PlatformAuthorization:AdminObjectIds:0"] = includePlatformAdmin ? "22222222-2222-2222-2222-222222222222" : null,
+                ["PlatformAuthorization:RequiredScope"] = "platform.admin"
             }));
             builder.ConfigureServices(services =>
             {
@@ -98,6 +125,16 @@ public sealed class AuthenticationTests
                 services.RemoveAll<IWorkspaceMembershipReader>();
                 services.AddSingleton<IWorkspaceMembershipReader>(new FixtureMembershipReader(includeMembership));
                 services.AddSingleton(typeof(TestAuthenticationMode), malformedIdentity ? TestAuthenticationMode.Malformed : TestAuthenticationMode.Valid);
+                if (includePlatformAdmin)
+                {
+                    services.AddAuthorization(options => options.AddPolicy("PlatformAdminPolicy", policy => policy
+                        .AddAuthenticationSchemes(TestAuthenticationHandler.Scheme)
+                        .RequireAuthenticatedUser()
+                        .RequireClaim("oid")
+                        .AddRequirements(new PlatformScopeRequirement("platform.admin"))));
+                    services.RemoveAll<IPlatformAuthorization>();
+                    services.AddSingleton<IPlatformAuthorization, TestPlatformAuthorization>();
+                }
             });
         });
 
@@ -118,6 +155,13 @@ public sealed class AuthenticationTests
     {
         public Task<WorkspaceMembership?> FindMembershipAsync(Guid tenantId, Guid objectId, CancellationToken cancellationToken = default) =>
             Task.FromResult(includeMembership ? new WorkspaceMembership(Guid.Parse("55555555-5555-5555-5555-555555555555"), "customer-workspace") : null);
+    }
+
+    private sealed class TestPlatformAuthorization : IPlatformAuthorization
+    {
+        public bool IsAuthorized(ClaimsPrincipal principal) => true;
+        public PlatformWorkspaceScope GetWorkspaceScope(ClaimsPrincipal principal) => new(true, new HashSet<Guid>());
+        public bool CanManageWorkspace(ClaimsPrincipal principal, Guid workspaceId) => true;
     }
 
     private enum TestAuthenticationMode { Valid, Malformed }
@@ -141,6 +185,8 @@ public sealed class AuthenticationTests
                 new Claim("aud", "api://atea-unified-workplace-api")
             };
             if (mode == TestAuthenticationMode.Valid) claims.Add(new Claim("tid", "11111111-1111-1111-1111-111111111111"));
+            var scopes = Request.Headers["X-Test-Scopes"].FirstOrDefault();
+            if (!string.IsNullOrWhiteSpace(scopes)) claims.Add(new Claim("scp", scopes));
             var identity = new ClaimsIdentity(claims, Scheme);
             return Task.FromResult(AuthenticateResult.Success(new AuthenticationTicket(new ClaimsPrincipal(identity), Scheme)));
         }

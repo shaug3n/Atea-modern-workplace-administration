@@ -12,6 +12,8 @@ namespace Atea.UnifiedWorkplace.Api.Authorization;
 
 public static class PlatformAuthorization
 {
+    private const string DefaultRequiredScope = "platform.admin";
+
     public static IServiceCollection AddPlatformAuthorization(this IServiceCollection services, IConfiguration configuration, IHostEnvironment environment)
     {
         services.AddHttpContextAccessor();
@@ -40,16 +42,21 @@ public static class PlatformAuthorization
         });
         services.AddAuthorization(options =>
         {
+            var requiredScope = configuration["PlatformAuthorization:RequiredScope"];
+            if (string.IsNullOrWhiteSpace(requiredScope)) requiredScope = DefaultRequiredScope;
             var fallbackPolicy = new AuthorizationPolicyBuilder(JwtBearerDefaults.AuthenticationScheme)
                 .RequireAuthenticatedUser()
                 .Build();
             options.FallbackPolicy = fallbackPolicy;
             var platformPolicy = new AuthorizationPolicyBuilder(JwtBearerDefaults.AuthenticationScheme)
-                .RequireAuthenticatedUser();
+                .RequireAuthenticatedUser()
+                .RequireClaim("oid")
+                .AddRequirements(new PlatformScopeRequirement(requiredScope));
             if (environment.IsDevelopment())
                 platformPolicy.AddAuthenticationSchemes(LocalAdminAuthentication.Scheme);
-            options.AddPolicy("PlatformAdminPolicy", platformPolicy.RequireClaim("oid").Build());
+            options.AddPolicy("PlatformAdminPolicy", platformPolicy.Build());
         });
+        services.AddSingleton<IAuthorizationHandler, PlatformScopeAuthorizationHandler>();
         services.AddScoped<IWorkspaceMembershipReader, EfWorkspaceMembershipReader>();
         var scopes = configuration.GetSection("PlatformAuthorization:AdminWorkspaceScopes").GetChildren()
             .Where(section => Guid.TryParse(section.Key, out _))
@@ -92,6 +99,24 @@ public static class PlatformAuthorization
             return membership is null ? null : new WorkspaceMembership(membership.WorkspaceId, membership.DisplayName, membership.PlatformRole, membership.IsAteaOperator);
         }
     }
+}
+
+public sealed record PlatformScopeRequirement(string RequiredScope) : IAuthorizationRequirement;
+
+public sealed class PlatformScopeAuthorizationHandler(IHostEnvironment environment) : AuthorizationHandler<PlatformScopeRequirement>
+{
+    protected override Task HandleRequirementAsync(AuthorizationHandlerContext context, PlatformScopeRequirement requirement)
+    {
+        var isLocalDevelopmentAdmin = environment.IsDevelopment() && context.User.Identities.Any(identity =>
+            string.Equals(identity.AuthenticationType, LocalAdminAuthentication.Scheme, StringComparison.Ordinal) &&
+            context.User.HasClaim(LocalAdminAuthentication.LocalAdminClaim, "true"));
+        if (isLocalDevelopmentAdmin || HasScope(context.User, requirement.RequiredScope)) context.Succeed(requirement);
+        return Task.CompletedTask;
+    }
+
+    private static bool HasScope(ClaimsPrincipal principal, string requiredScope) => principal.FindAll("scp")
+        .SelectMany(claim => claim.Value.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        .Contains(requiredScope, StringComparer.OrdinalIgnoreCase);
 }
 
 public interface IPlatformAuthorization

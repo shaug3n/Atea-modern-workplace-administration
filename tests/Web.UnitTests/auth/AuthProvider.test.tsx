@@ -53,10 +53,15 @@ describe('AuthProvider behavior', () => {
 
   it('shows an accessible sign-in error when redirect cannot start', async () => {
     auth.authenticated = false;
-    auth.instance.loginRedirect.mockRejectedValueOnce(new Error('redirect failed'));
+    const signInFailure = Object.assign(new Error('redirect failed'), { requestId: 'request-secret', correlationId: 'correlation-secret' });
+    auth.instance.loginRedirect.mockRejectedValueOnce(signInFailure);
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     render(<AuthProvider instance={auth.instance as never}><Harness /></AuthProvider>);
     fireEvent.click(screen.getByRole('button', { name: 'Sign in' }));
     expect((await screen.findByRole('alert')).textContent).toBe('Sign-in could not be started.');
+    expect(errorSpy).toHaveBeenCalledWith('MSAL sign-in failed');
+    expect(errorSpy.mock.calls.flat().join(' ')).not.toContain('request-secret');
+    expect(errorSpy.mock.calls.flat().join(' ')).not.toContain('correlation-secret');
   });
 
   it('acquires the API token silently for authenticated requests', async () => {

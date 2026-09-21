@@ -9,6 +9,7 @@ test('local Compose startup supplies Development onboarding and admin configurat
   assert.match(compose, /Onboarding__PublicBaseUrl:\s*\$\{Onboarding__PublicBaseUrl:-http:\/\/localhost:5173\}/);
   assert.match(compose, /Onboarding__ConsentRedirectUri:/);
   assert.match(compose, /Onboarding__ConsentSigningKey:/);
+  assert.match(compose, /PlatformAuthorization__RequiredScope:\s*\$\{PlatformAuthorization__RequiredScope:-platform\.admin\}/);
   assert.match(compose, /AteaAdmin__LocalDevelopment__Enabled:\s*\$\{AteaAdmin__LocalDevelopment__Enabled:-true\}/);
   assert.match(compose, /condition: service_healthy/);
 });

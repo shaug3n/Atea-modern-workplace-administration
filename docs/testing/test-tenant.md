@@ -23,6 +23,7 @@ Configure the local onboarding URLs and development signing key in the API envir
 Onboarding__PublicBaseUrl=http://localhost:5173
 Onboarding__ConsentRedirectUri=http://localhost:5173/onboarding/consent/callback
 Onboarding__ConsentSigningKey=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+PlatformAuthorization__RequiredScope=platform.admin
 ```
 
 Copy `.env.example` to `.env`; it contains the local Development admin credentials and onboarding values. Start the local stack in exactly three terminals, sourcing `.env` in each terminal (the API waits for PostgreSQL in Compose via its health dependency). Terminal 1:
@@ -49,7 +50,7 @@ cd src/Web && npm ci && npm run dev -- --host 0.0.0.0 --port 5173
 
 For the all-in-Compose path, run `set -a; . ./.env; set +a; docker compose up --build`. Compose supplies `ASPNETCORE_ENVIRONMENT=Development`, the local admin credentials, all `Onboarding__*` values, and the container PostgreSQL connection string. `Onboarding__PublicBaseUrl=http://localhost:5173` is required for local invitation links; the rejected placeholder `https://workplace.example` is never a runtime fallback. After testing, use `docker compose down`; use `docker compose down -v` only to intentionally discard the local PostgreSQL volume.
 
-Open `http://localhost:5173/admin`, sign in with the configured local Atea credentials, create a workspace for the verified customer tenant, open the workspace detail page, add the nominated customer administrator by Entra object ID, and create an invitation. Copy the one-time invitation instruction only through the approved handoff channel; do not store it in notes, logs, screenshots, or test output. The workspace detail page should show membership and invitation status metadata without exposing nonce/hash fields.
+Open `http://localhost:5173/admin`, sign in with the configured local Atea credentials, create a workspace for the verified customer tenant, open the workspace detail page, add the nominated customer administrator by Entra object ID, and create an invitation. Platform bearer routes require the configured `platform.admin` value in the space-delimited `scp` claim; the Development-only local admin cookie remains usable without that bearer claim. A customer bearer token with a matching object ID but no platform scope must still be rejected before `/api/platform/*`. Copy the one-time invitation instruction only through the approved handoff channel; do not store it in notes, logs, screenshots, or test output. The workspace detail page should show membership and invitation status metadata without exposing nonce/hash fields.
 
 The route boundary is deliberate. `/admin` uses the local Atea cookie session for platform onboarding. Customer routes use the customer tenant's Entra sign-in and effective Microsoft Graph permissions. The customer administrator redeems the invitation in the customer tenant, completes delegated consent, and continues through the customer-facing application. A local Atea admin session cannot be used to call customer directory routes.
 

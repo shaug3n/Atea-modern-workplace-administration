@@ -27,6 +27,7 @@ The local onboarding configuration is also included in `.env.example` and must r
 Onboarding__PublicBaseUrl=http://localhost:5173
 Onboarding__ConsentRedirectUri=http://localhost:5173/onboarding/consent/callback
 Onboarding__ConsentSigningKey=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+PlatformAuthorization__RequiredScope=platform.admin
 ```
 
 Use exactly three terminals. Source `.env` in each terminal so the API and Compose receive the same local configuration. Terminal 1 starts PostgreSQL:
@@ -53,7 +54,7 @@ cd src/Web && npm ci && npm run dev -- --host 0.0.0.0 --port 5173
 
 For the one-command Compose variant, source `.env` first: `set -a; . ./.env; set +a; docker compose up --build`. Compose explicitly configures the API as Development, injects the local admin credentials, injects all required onboarding values, uses the container PostgreSQL connection string, and waits for the PostgreSQL health check before starting the API. Generated invitations use `Onboarding__PublicBaseUrl=http://localhost:5173` and have no fallback origin. Tear down with `docker compose down` (add `-v` only when deliberately removing the local database volume).
 
-Open `http://localhost:5173/admin` for the local Atea platform-admin login. Create the workspace, add the customer administrator membership, and create the one-time invitation. The customer administrator signs in through the customer tenant's Entra ID flow, redeems the invitation, grants admin consent for approved delegated Graph scopes, verifies the overview connection state, checks Global Reader read-only and User Administrator mutation states, and follows the PIM handoff for eligible, approval-required, and MFA-required states. The local Atea admin cookie is not a customer Entra session and cannot authorize customer Graph operations. The API health endpoint is `GET http://localhost:8080/health`.
+Open `http://localhost:5173/admin` for the local Atea platform-admin login. Platform bearer calls require the configured `platform.admin` scope in the space-delimited `scp` claim; the Development-only local admin cookie is exempt from bearer scopes. Create the workspace, add the customer administrator membership, and create the one-time invitation. The customer administrator signs in through the customer tenant's Entra ID flow, redeems the invitation, grants admin consent for approved delegated Graph scopes, verifies the overview connection state, checks Global Reader read-only and User Administrator mutation states, and follows the PIM handoff for eligible, approval-required, and MFA-required states. The local Atea admin cookie is not a customer Entra session and cannot authorize customer Graph operations. The API health endpoint is `GET http://localhost:8080/health`.
 
 ## Azure infrastructure
 
