@@ -1,11 +1,16 @@
 using System.Text.Json;
 using Atea.UnifiedWorkplace.Api.Features.Users;
+using Atea.UnifiedWorkplace.Api.Features.Groups;
 
 namespace Atea.UnifiedWorkplace.Api.Infrastructure.Graph;
 
 public interface IGroupMembershipReader
 {
     Task<GraphReadResult<IReadOnlyList<GroupMembership>>> ReadUserGroupsAsync(string userObjectId, CancellationToken cancellationToken);
+}
+public interface IGroupCatalogReader
+{
+    Task<GraphReadResult<IReadOnlyList<GroupCatalogItem>>> ReadGroupsAsync(string? search, int pageSize, CancellationToken cancellationToken);
 }
 
 public interface IGroupMembershipCommands
@@ -14,8 +19,20 @@ public interface IGroupMembershipCommands
     Task<GraphOperationResult> RemoveMemberAsync(string groupObjectId, string memberObjectId, string idempotencyKey, CancellationToken cancellationToken);
 }
 
-public sealed class GraphGroupMembershipService(IDelegatedGraphClientFactory clientFactory) : IGroupMembershipReader, IGroupMembershipCommands, IGraphMutationExecutor
+public sealed class GraphGroupMembershipService(IDelegatedGraphClientFactory clientFactory) : IGroupMembershipReader, IGroupCatalogReader, IGroupMembershipCommands, IGraphMutationExecutor
 {
+    public async Task<GraphReadResult<IReadOnlyList<GroupCatalogItem>>> ReadGroupsAsync(string? search, int pageSize, CancellationToken cancellationToken)
+    {
+        await using var lease = await clientFactory.CreateForCurrentUserAsync(GraphScopeCatalog.DirectoryReadScopes, cancellationToken);
+        var filter = string.IsNullOrWhiteSpace(search) ? string.Empty : $"&$filter=startswith(displayName,'{search.Replace("'", "''")}')";
+        var response = await lease.Transport.SendAsync(new GraphRequest(HttpMethod.Get, $"/v1.0/groups?$select=id,displayName,mailNickname,securityEnabled,groupTypes&$top={pageSize}{filter}"), cancellationToken);
+        if (!response.Result.IsSuccess) return GraphReadResult<IReadOnlyList<GroupCatalogItem>>.Failed(response.Result);
+        using var document = JsonDocument.Parse(response.Content);
+        var items = document.RootElement.TryGetProperty("value", out var value) && value.ValueKind == JsonValueKind.Array
+            ? value.EnumerateArray().Select(element => new GroupCatalogItem(RequiredString(element, "id"), OptionalString(element, "displayName"), OptionalString(element, "mailNickname"), OptionalBool(element, "securityEnabled"), StringArray(element, "groupTypes"))).Where(item => item.Id.Length > 0).ToArray()
+            : [];
+        return GraphReadResult<IReadOnlyList<GroupCatalogItem>>.Succeeded(items);
+    }
     async Task<GraphReadResult<IReadOnlyList<GroupMembership>>> IGroupMembershipReader.ReadUserGroupsAsync(string userObjectId, CancellationToken cancellationToken)
     {
         await using var lease = await clientFactory.CreateForCurrentUserAsync(GraphScopeCatalog.DirectoryReadScopes, cancellationToken);

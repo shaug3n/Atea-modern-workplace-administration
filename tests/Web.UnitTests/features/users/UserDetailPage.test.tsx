@@ -122,4 +122,25 @@ describe('UserDetailPage', () => {
     await waitFor(() => expect(apiMock).toHaveBeenCalledWith('/api/users/user-1/reactivate', expect.objectContaining({ method: 'POST' })));
     await waitFor(() => expect(loadUserDetail).toHaveBeenCalledTimes(2));
   });
+
+  it('does not render group or license mutation controls for read-only sections', async () => {
+    render(<UserDetailPage userId="user-1" loadUserDetail={async () => detail} capabilities={[]} />);
+
+    expect(await screen.findByRole('heading', { name: 'Ada Lovelace' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /add group/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: /assign license/i })).toBeNull();
+  });
+
+  it('refreshes detail after an allowed group mutation', async () => {
+    const loadUserDetail = vi.fn(async () => detail);
+    apiMock.mockResolvedValue(new Response(JSON.stringify({ status: 'succeeded', requiredCapability: 'groups.manage_members', replayed: false }), { status: 200 }));
+
+    render(<UserDetailPage userId="user-1" loadUserDetail={loadUserDetail} capabilities={[{ capability: 'groups.manage_members', state: 'allowed', reasonCode: 'active_role' }, { capability: 'licenses.assign', state: 'allowed', reasonCode: 'active_role' }]} />);
+    fireEvent.click(await screen.findByRole('button', { name: /add group/i }));
+    fireEvent.click(screen.getByLabelText('I reviewed the target, change and required capability.'));
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm action' }));
+
+    await waitFor(() => expect(apiMock).toHaveBeenCalledWith('/api/users/user-1/groups/group-1', expect.objectContaining({ method: 'POST' })));
+    await waitFor(() => expect(loadUserDetail).toHaveBeenCalledTimes(2));
+  });
 });

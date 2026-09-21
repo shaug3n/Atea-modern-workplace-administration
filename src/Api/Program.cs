@@ -72,6 +72,7 @@ builder.Services.AddScoped<GraphUserLifecycle>();
 builder.Services.AddScoped<IUserLifecycleCommands>(services => services.GetRequiredService<GraphUserLifecycle>());
 builder.Services.AddScoped<GraphGroupMembershipService>();
 builder.Services.AddScoped<IGroupMembershipReader>(services => services.GetRequiredService<GraphGroupMembershipService>());
+builder.Services.AddScoped<IGroupCatalogReader>(services => services.GetRequiredService<GraphGroupMembershipService>());
 builder.Services.AddScoped<IGroupMembershipCommands>(services => services.GetRequiredService<GraphGroupMembershipService>());
 builder.Services.AddScoped<GraphLicenseService>();
 builder.Services.AddScoped<IUserLicenseReader>(services => services.GetRequiredService<GraphLicenseService>());

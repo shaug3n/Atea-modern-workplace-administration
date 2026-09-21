@@ -23,4 +23,11 @@ describe('LicensesPage', () => {
     expect((await screen.findByRole('alert')).textContent).toContain('License data is unavailable');
     expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy();
   });
+
+  it('renders a safe empty-catalog state without inventing SKU identifiers', async () => {
+    render(<LicensesPage loadLicenses={async () => ({ items: [], total: 0, page: 1, pageSize: 25, fetchedAt: '2026-09-21T10:00:00Z', freshness: 'live', partialData: false, access: { state: 'allowed' } })} />);
+
+    expect(await screen.findByText('No license data is available.')).toBeTruthy();
+    expect(screen.queryByText(/sku-/i)).toBeNull();
+  });
 });
