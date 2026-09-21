@@ -25,6 +25,7 @@ The product will expose an authentication-provider boundary for the Atea console
 - The local provider accepts credentials configured through ignored local environment settings, validates them server-side, and issues an encrypted, `HttpOnly` session cookie. Credentials and session values are never placed in browser local storage or logged.
 - Startup will reject local-admin configuration when the environment is not `Development`.
 - The local administrator receives platform-admin claims only. The existing `IPlatformAuthorization` boundary remains authoritative for `/api/platform/*` routes.
+- Local development may use an explicit `AllowAllWorkspaces` scope gate so the configured local administrator can complete a full demo onboarding flow after creating a workspace. This gate is accepted only in `Development`; production and future Atea Entra federation require explicit workspace scopes.
 - Customer routes continue to require Entra bearer authentication and workspace membership. A local Atea admin session cannot be used to call customer Graph operations.
 - The future `AteaEntra` provider will replace the local provider behind the same boundary and map Atea Entra users/groups to platform authorization without changing the admin UI contract.
 
