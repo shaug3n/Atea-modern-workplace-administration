@@ -81,6 +81,60 @@ public sealed class WorkspaceEndpointsTests : IClassFixture<WebApplicationFactor
     }
 
     [Fact]
+    public async Task Platform_workspace_list_returns_only_authorized_workspaces()
+    {
+        var service = new RecordingProvisioningService
+        {
+            ListedWorkspaces = [new Workspace { Id = WorkspaceId, TenantId = TenantId, DisplayName = "Authorized", ConnectionStatus = "connected" }]
+        };
+        using var factory = CreateFactory(service, [WorkspaceId]);
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Test");
+
+        var response = await client.GetAsync("/api/platform/workspaces");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        (await response.Content.ReadAsStringAsync()).Should().Contain("Authorized");
+        service.LastListScope!.WorkspaceIds.Should().Contain(WorkspaceId);
+    }
+
+    [Fact]
+    public async Task Platform_workspace_detail_returns_not_found_outside_scope_and_has_no_invitation_secrets()
+    {
+        var service = new RecordingProvisioningService
+        {
+            AdminDetail = new WorkspaceAdminDetailDto(WorkspaceId, TenantId, "Authorized", "connected", null, null, [], [new InvitationSummaryDto(Guid.NewGuid(), "invitee@example.com", "Invitee", DateTimeOffset.UtcNow.AddDays(1), null)])
+        };
+        using var factory = CreateFactory(service, [WorkspaceId]);
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Test");
+
+        var response = await client.GetAsync($"/api/platform/workspaces/{Guid.NewGuid()}");
+
+        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        service.LastDetailScope!.WorkspaceIds.Should().Contain(WorkspaceId);
+    }
+
+    [Fact]
+    public async Task Platform_workspace_detail_response_omits_nonce_hash_and_invitation_url()
+    {
+        var service = new RecordingProvisioningService
+        {
+            AdminDetail = new WorkspaceAdminDetailDto(WorkspaceId, TenantId, "Authorized", "connected", null, null, [], [new InvitationSummaryDto(Guid.NewGuid(), "invitee@example.com", "Invitee", DateTimeOffset.UtcNow.AddDays(1), null)])
+        };
+        using var factory = CreateFactory(service, [WorkspaceId]);
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Test");
+
+        var response = await client.GetAsync($"/api/platform/workspaces/{WorkspaceId}");
+        var body = await response.Content.ReadAsStringAsync();
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        body.Should().NotContain("nonceHash");
+        body.Should().NotContain("invitationUrl");
+    }
+
+    [Fact]
     public async Task Membership_database_failure_is_returned_as_503()
     {
         using var factory = CreateFactory(new RecordingProvisioningService { MembershipUnavailable = true }, [WorkspaceId]);
@@ -109,6 +163,10 @@ public sealed class WorkspaceEndpointsTests : IClassFixture<WebApplicationFactor
                 options.DefaultAuthenticateScheme = TestAuthenticationHandler.Scheme;
                 options.DefaultChallengeScheme = TestAuthenticationHandler.Scheme;
             }).AddScheme<AuthenticationSchemeOptions, TestAuthenticationHandler>(TestAuthenticationHandler.Scheme, _ => { });
+            services.AddAuthorization(options => options.AddPolicy("PlatformAdminPolicy", policy => policy
+                .AddAuthenticationSchemes(TestAuthenticationHandler.Scheme)
+                .RequireAuthenticatedUser()
+                .RequireClaim("oid")));
             services.RemoveAll<IWorkspaceProvisioningService>();
             services.AddSingleton<IWorkspaceProvisioningService>(service);
             services.RemoveAll<IPlatformAuthorization>();
@@ -129,11 +187,18 @@ public sealed class WorkspaceEndpointsTests : IClassFixture<WebApplicationFactor
     private sealed class RecordingPlatformAuthorization(Guid[] scopedWorkspaces) : IPlatformAuthorization
     {
         public bool IsAuthorized(ClaimsPrincipal principal) => true;
+        public PlatformWorkspaceScope GetWorkspaceScope(ClaimsPrincipal principal) => new(false, scopedWorkspaces.ToHashSet());
         public bool CanManageWorkspace(ClaimsPrincipal principal, Guid workspaceId) => scopedWorkspaces.Contains(workspaceId);
     }
 
     private sealed class RecordingProvisioningService : IWorkspaceProvisioningService
     {
+        public IReadOnlyList<Workspace> ListedWorkspaces { get; init; } = [];
+        public WorkspaceAdminDetailDto? AdminDetail { get; init; }
+        public PlatformWorkspaceScope? LastListScope { get; private set; }
+        public PlatformWorkspaceScope? LastDetailScope { get; private set; }
+        public Task<IReadOnlyList<Workspace>> ListAsync(PlatformWorkspaceScope workspaceScope, CancellationToken cancellationToken = default) { LastListScope = workspaceScope; return Task.FromResult(ListedWorkspaces); }
+        public Task<WorkspaceAdminDetailDto?> GetAdminDetailAsync(Guid workspaceId, PlatformWorkspaceScope workspaceScope, CancellationToken cancellationToken = default) { LastDetailScope = workspaceScope; return Task.FromResult(workspaceId == WorkspaceId ? AdminDetail : null); }
         public bool CreateConflict { get; init; }
         public bool MembershipUnavailable { get; init; }
         public int AddMembershipCalls { get; private set; }

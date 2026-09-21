@@ -1,10 +1,13 @@
 using Atea.UnifiedWorkplace.Api.Infrastructure.Persistence.Entities;
 using Atea.UnifiedWorkplace.Api.Infrastructure.Persistence.Repositories;
+using PlatformWorkspaceScope = Atea.UnifiedWorkplace.Api.Authorization.PlatformWorkspaceScope;
 
 namespace Atea.UnifiedWorkplace.Api.Features.Workspaces;
 
 public interface IWorkspaceProvisioningService
 {
+    Task<IReadOnlyList<Workspace>> ListAsync(PlatformWorkspaceScope workspaceScope, CancellationToken cancellationToken = default);
+    Task<WorkspaceAdminDetailDto?> GetAdminDetailAsync(Guid workspaceId, PlatformWorkspaceScope workspaceScope, CancellationToken cancellationToken = default);
     Task<WorkspaceProvisioningResult> CreateWorkspaceAsync(Guid tenantId, string displayName, CancellationToken cancellationToken = default);
     Task<WorkspaceMembership> AddMembershipAsync(Guid workspaceId, Guid tenantObjectId, string email, string platformRole, bool isAteaOperator, CancellationToken cancellationToken = default);
     Task<Workspace?> GetAsync(Guid workspaceId, CancellationToken cancellationToken = default);
@@ -23,6 +26,10 @@ public sealed class WorkspaceAlreadyExistsException(string message, Exception? i
 
 public sealed class WorkspaceProvisioningService(IWorkspaceProvisioningRepository repository) : IWorkspaceProvisioningService
 {
+    public Task<IReadOnlyList<Workspace>> ListAsync(PlatformWorkspaceScope workspaceScope, CancellationToken cancellationToken = default) => repository.ListAsync(workspaceScope, cancellationToken);
+
+    public Task<WorkspaceAdminDetailDto?> GetAdminDetailAsync(Guid workspaceId, PlatformWorkspaceScope workspaceScope, CancellationToken cancellationToken = default) => repository.GetAdminDetailAsync(workspaceId, workspaceScope, cancellationToken);
+
     public async Task<WorkspaceProvisioningResult> CreateWorkspaceAsync(Guid tenantId, string displayName, CancellationToken cancellationToken = default)
     {
         if (await repository.FindByTenantIdAsync(tenantId, cancellationToken) is not null) return WorkspaceProvisioningResult.Conflict();

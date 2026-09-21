@@ -97,8 +97,11 @@ public static class PlatformAuthorization
 public interface IPlatformAuthorization
 {
     bool IsAuthorized(ClaimsPrincipal principal);
+    PlatformWorkspaceScope GetWorkspaceScope(ClaimsPrincipal principal);
     bool CanManageWorkspace(ClaimsPrincipal principal, Guid workspaceId);
 }
+
+public sealed record PlatformWorkspaceScope(bool IsAll, IReadOnlySet<Guid> WorkspaceIds);
 
 public sealed class AllowlistPlatformAuthorization(
     IEnumerable<string> allowedObjectIds,
@@ -112,6 +115,13 @@ public sealed class AllowlistPlatformAuthorization(
 
     public bool IsAuthorized(ClaimsPrincipal principal) =>
         Guid.TryParse(principal.FindFirstValue("oid"), out var objectId) && allowedObjectIds.Contains(objectId);
+
+    public PlatformWorkspaceScope GetWorkspaceScope(ClaimsPrincipal principal)
+    {
+        if (!Guid.TryParse(principal.FindFirstValue("oid"), out var objectId) || !allowedObjectIds.Contains(objectId)) return new(false, new HashSet<Guid>());
+        if (principal.HasClaim(LocalAdminAuthentication.AllowAllWorkspacesClaim, "true")) return new(true, new HashSet<Guid>());
+        return new(false, workspaceScopes.TryGetValue(objectId, out var scopes) ? scopes : new HashSet<Guid>());
+    }
 
     public bool CanManageWorkspace(ClaimsPrincipal principal, Guid workspaceId) =>
         Guid.TryParse(principal.FindFirstValue("oid"), out var objectId) &&

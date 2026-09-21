@@ -3,11 +3,49 @@ using Atea.UnifiedWorkplace.Api.Infrastructure.Persistence.Repositories;
 using Atea.UnifiedWorkplace.Api.Infrastructure.Persistence.Entities;
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
+using PlatformWorkspaceScope = Atea.UnifiedWorkplace.Api.Authorization.PlatformWorkspaceScope;
 
 namespace Atea.UnifiedWorkplace.Api.UnitTests.Workspaces;
 
 public sealed class WorkspaceProvisioningServiceTests
 {
+    [Fact]
+    public async Task List_returns_only_workspaces_in_the_authorized_scope_with_memberships()
+    {
+        var inScope = new Workspace { Id = Guid.NewGuid(), TenantId = Guid.NewGuid(), DisplayName = "In scope" };
+        inScope.Memberships.Add(new WorkspaceMembership { Id = Guid.NewGuid(), WorkspaceId = inScope.Id, Email = "member@example.com", PlatformRole = "member" });
+        var repository = new ReadRecordingProvisioningRepository([inScope]);
+        var service = new WorkspaceProvisioningService(repository);
+        var scope = new PlatformWorkspaceScope(false, new HashSet<Guid> { inScope.Id });
+
+        var result = await service.ListAsync(scope);
+
+        result.Should().ContainSingle().Which.Memberships.Should().ContainSingle();
+        repository.LastScope.Should().BeSameAs(scope);
+    }
+
+    [Fact]
+    public async Task Get_admin_detail_returns_safe_invitation_metadata_without_nonce_hash_or_url()
+    {
+        var workspaceId = Guid.NewGuid();
+        var detail = new WorkspaceAdminDetailDto(
+            workspaceId,
+            Guid.NewGuid(),
+            "Workspace",
+            "connected",
+            DateTimeOffset.UtcNow,
+            null,
+            [new WorkspaceMembershipDto(Guid.NewGuid(), Guid.NewGuid(), "member@example.com", "member", false)],
+            [new InvitationSummaryDto(Guid.NewGuid(), "invitee@example.com", "Invitee", DateTimeOffset.UtcNow.AddDays(1), null)]);
+        var service = new WorkspaceProvisioningService(new ReadRecordingProvisioningRepository([], detail));
+
+        var result = await service.GetAdminDetailAsync(workspaceId, new PlatformWorkspaceScope(false, new HashSet<Guid> { workspaceId }));
+
+        result.Should().BeEquivalentTo(detail);
+        typeof(InvitationSummaryDto).GetProperties().Select(property => property.Name)
+            .Should().NotContain(new[] { "NonceHash", "InvitationUrl" });
+    }
+
     [Fact]
     public async Task Unique_create_failure_is_returned_as_a_conflict_result()
     {
@@ -65,6 +103,8 @@ public sealed class WorkspaceProvisioningServiceTests
 
     private class DuplicateProvisioningRepository : IWorkspaceProvisioningRepository
     {
+        public Task<IReadOnlyList<Workspace>> ListAsync(PlatformWorkspaceScope workspaceScope, CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<Workspace>>([]);
+        public Task<WorkspaceAdminDetailDto?> GetAdminDetailAsync(Guid workspaceId, PlatformWorkspaceScope workspaceScope, CancellationToken cancellationToken = default) => Task.FromResult<WorkspaceAdminDetailDto?>(null);
         public Task<Workspace?> GetAsync(Guid workspaceId, CancellationToken cancellationToken = default) => Task.FromResult<Workspace?>(null);
         public Task<Workspace?> FindByTenantIdAsync(Guid tenantId, CancellationToken cancellationToken = default) => Task.FromResult<Workspace?>(null);
         public Task<Workspace> CreateAsync(Guid tenantId, string displayName, CancellationToken cancellationToken = default) => throw new WorkspaceUniqueConstraintException("duplicate tenant");
@@ -73,6 +113,8 @@ public sealed class WorkspaceProvisioningServiceTests
 
     private sealed class FailingProvisioningRepository : IWorkspaceProvisioningRepository
     {
+        public Task<IReadOnlyList<Workspace>> ListAsync(PlatformWorkspaceScope workspaceScope, CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<Workspace>>([]);
+        public Task<WorkspaceAdminDetailDto?> GetAdminDetailAsync(Guid workspaceId, PlatformWorkspaceScope workspaceScope, CancellationToken cancellationToken = default) => Task.FromResult<WorkspaceAdminDetailDto?>(null);
         public Task<Workspace?> GetAsync(Guid workspaceId, CancellationToken cancellationToken = default) => Task.FromResult<Workspace?>(null);
         public Task<Workspace?> FindByTenantIdAsync(Guid tenantId, CancellationToken cancellationToken = default) => Task.FromResult<Workspace?>(null);
         public Task<Workspace> CreateAsync(Guid tenantId, string displayName, CancellationToken cancellationToken = default) => throw new WorkspaceProvisioningDatabaseException("database unavailable");
@@ -81,6 +123,8 @@ public sealed class WorkspaceProvisioningServiceTests
 
     private sealed class RecordingProvisioningRepository : IWorkspaceProvisioningRepository
     {
+        public Task<IReadOnlyList<Workspace>> ListAsync(PlatformWorkspaceScope workspaceScope, CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<Workspace>>([]);
+        public Task<WorkspaceAdminDetailDto?> GetAdminDetailAsync(Guid workspaceId, PlatformWorkspaceScope workspaceScope, CancellationToken cancellationToken = default) => Task.FromResult<WorkspaceAdminDetailDto?>(null);
         public int FindByTenantIdCalls { get; private set; }
         public int CreateCalls { get; private set; }
         public Guid LastTenantId { get; private set; }
@@ -98,5 +142,16 @@ public sealed class WorkspaceProvisioningServiceTests
     private sealed class FailingMembershipRepository : DuplicateProvisioningRepository
     {
         public override Task<WorkspaceMembership> AddMembershipAsync(Guid workspaceId, Guid tenantObjectId, string email, string platformRole, bool isAteaOperator, CancellationToken cancellationToken = default) => throw new WorkspaceProvisioningDatabaseException("database unavailable");
+    }
+
+    private sealed class ReadRecordingProvisioningRepository(IReadOnlyList<Workspace> workspaces, WorkspaceAdminDetailDto? detail = null) : IWorkspaceProvisioningRepository
+    {
+        public PlatformWorkspaceScope? LastScope { get; private set; }
+        public Task<Workspace?> GetAsync(Guid workspaceId, CancellationToken cancellationToken = default) => Task.FromResult<Workspace?>(null);
+        public Task<Workspace?> FindByTenantIdAsync(Guid tenantId, CancellationToken cancellationToken = default) => Task.FromResult<Workspace?>(null);
+        public Task<Workspace> CreateAsync(Guid tenantId, string displayName, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+        public Task<WorkspaceMembership> AddMembershipAsync(Guid workspaceId, Guid tenantObjectId, string email, string platformRole, bool isAteaOperator, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+        public Task<IReadOnlyList<Workspace>> ListAsync(PlatformWorkspaceScope workspaceScope, CancellationToken cancellationToken = default) { LastScope = workspaceScope; return Task.FromResult(workspaces); }
+        public Task<WorkspaceAdminDetailDto?> GetAdminDetailAsync(Guid workspaceId, PlatformWorkspaceScope workspaceScope, CancellationToken cancellationToken = default) { LastScope = workspaceScope; return Task.FromResult(detail); }
     }
 }

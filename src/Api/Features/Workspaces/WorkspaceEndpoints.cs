@@ -10,6 +10,8 @@ public static class WorkspaceEndpoints
     {
         var platform = endpoints.MapGroup("/api/platform").RequireAuthorization("PlatformAdminPolicy");
         platform.MapPost("/workspaces", CreateWorkspaceAsync);
+        platform.MapGet("/workspaces", ListWorkspacesAsync);
+        platform.MapGet("/workspaces/{workspaceId:guid}", GetWorkspaceDetailAsync);
         platform.MapPost("/workspaces/{workspaceId:guid}/memberships", AddMembershipAsync);
         platform.MapPost("/workspaces/{workspaceId:guid}/invitations", CreateInvitationAsync);
 
@@ -19,6 +21,22 @@ public static class WorkspaceEndpoints
         endpoints.MapPost("/api/workspaces/current/consent/start", StartConsentAsync).RequireAuthorization().RequireCapability(Capability.WorkspaceSettingsManage);
         endpoints.MapPost("/api/invitations/{nonce}/redeem", RedeemInvitationAsync).RequireAuthorization();
         return endpoints;
+    }
+
+    private static async Task<IResult> ListWorkspacesAsync(HttpContext httpContext, IPlatformAuthorization authorization, IWorkspaceProvisioningService provisioning, CancellationToken cancellationToken)
+    {
+        var scope = authorization.GetWorkspaceScope(httpContext.User);
+        if (!authorization.IsAuthorized(httpContext.User)) return Results.Forbid();
+        var workspaces = await provisioning.ListAsync(scope, cancellationToken);
+        return Results.Ok(workspaces.Select(ToDto));
+    }
+
+    private static async Task<IResult> GetWorkspaceDetailAsync(Guid workspaceId, HttpContext httpContext, IPlatformAuthorization authorization, IWorkspaceProvisioningService provisioning, CancellationToken cancellationToken)
+    {
+        var scope = authorization.GetWorkspaceScope(httpContext.User);
+        if (!authorization.IsAuthorized(httpContext.User)) return Results.Forbid();
+        var detail = await provisioning.GetAdminDetailAsync(workspaceId, scope, cancellationToken);
+        return detail is null ? Results.NotFound() : Results.Ok(detail);
     }
 
     private static async Task<IResult> CreateWorkspaceAsync(CreateWorkspaceRequest request, HttpContext httpContext, IPlatformAuthorization authorization, IWorkspaceProvisioningService provisioning, CancellationToken cancellationToken)
