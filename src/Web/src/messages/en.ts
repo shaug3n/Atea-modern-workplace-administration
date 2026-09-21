@@ -16,6 +16,7 @@ export const messages = {
   workspaceSettingsTitle: 'Workspace settings', workspaceSettingsDescription: 'Workspace connection, consent and onboarding settings will appear here for workspace administrators.', notFoundTitle: 'Page not found', notFoundDescription: 'Choose a section from the primary navigation.',
   permissionRequiredTitle: 'Permission required', permissionRequiredBody: 'This workspace section is not available for your current role or tenant state.',
   authSignInTitle: 'Sign in to Atea Unified Workplace', authSignIn: 'Sign in', authPreparing: 'Preparing sign-in…', authSignInError: 'Sign-in could not be started.', authSignInRequired: 'Sign-in is required',
+  adminSignInTitle: 'Admin sign in', adminLocalOnly: 'For local development only.', adminInvalidLogin: 'Invalid username or password.', adminSignOut: 'Sign out',
   connectionTitle: 'Microsoft 365 connection', connectionCheck: 'Check connection', connectionConsent: 'Start consent', connectionContinueConsent: 'Continue consent', connectionCopyInvitation: 'Copy invitation instruction', connectionLoading: 'Loading connection status…', connectionUnavailable: 'Connection status is unavailable.', connectionActionFailed: 'That connection action could not be completed. Try again.',
   connectionStaleLabel: 'Connection check is stale', connectionStaleAction: 'Run a new connection check before using connected operations.',
   connectionState: {
