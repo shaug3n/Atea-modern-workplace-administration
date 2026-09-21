@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Atea.UnifiedWorkplace.Api.Infrastructure.Observability;
 using Microsoft.AspNetCore.Mvc;
 
@@ -51,10 +52,14 @@ public static class ApiProblemDetails
     {
         var problem = Describe(code, CorrelationId(httpContext), detail, extensions);
         httpContext.Response.StatusCode = problem.Status ?? StatusCodes.Status500InternalServerError;
-        await httpContext.Response.WriteAsJsonAsync(
-            problem,
-            contentType: "application/problem+json",
-            cancellationToken: httpContext.RequestAborted);
+        httpContext.Response.ContentType = "application/problem+json";
+        if (problem.Extensions.TryGetValue("correlationId", out var correlationId)
+            && correlationId is string safeCorrelationId
+            && safeCorrelationId != "unavailable")
+        {
+            httpContext.Response.Headers[CorrelationMiddleware.HeaderName] = safeCorrelationId;
+        }
+        await JsonSerializer.SerializeAsync(httpContext.Response.Body, problem, cancellationToken: httpContext.RequestAborted);
     }
 
     public static string FromGraphCategory(string? category) => category switch
@@ -75,7 +80,8 @@ public static class ApiProblemDetails
             return context.CorrelationId;
         }
 
-        return httpContext.Request.Headers[CorrelationMiddleware.HeaderName].FirstOrDefault();
+        return CorrelationMiddleware.SafeCorrelationId(
+            httpContext.Request.Headers[CorrelationMiddleware.HeaderName].FirstOrDefault());
     }
 
     private static string? SafeDetail(string code, string? detail)
