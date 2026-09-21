@@ -35,7 +35,7 @@ public sealed class OverviewService(
         var permissionHealth = PermissionHealth(snapshot, capabilities);
         var pimAttention = PimAttention(snapshot);
 
-        if (!snapshot.IsAvailable || snapshot.ConsentRequired)
+        if (access.State != CapabilityState.Allowed)
         {
             return Unavailable(now, access, permissionHealth, pimAttention, null, "capability_required");
         }

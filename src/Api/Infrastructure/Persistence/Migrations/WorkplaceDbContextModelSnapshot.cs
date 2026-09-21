@@ -328,6 +328,10 @@ namespace Atea.UnifiedWorkplace.Api.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasColumnType("jsonb");
 
+                    b.Property<string>("DefaultFiltersJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
                     b.Property<string>("DefaultTheme")
                         .IsRequired()
                         .HasColumnType("text");

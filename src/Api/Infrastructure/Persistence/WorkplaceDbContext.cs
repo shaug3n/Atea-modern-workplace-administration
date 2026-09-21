@@ -49,6 +49,7 @@ public sealed class WorkplaceDbContext(DbContextOptions<WorkplaceDbContext> opti
             entity.HasKey(x => x.WorkspaceId);
             entity.Property(x => x.EnabledModulesJson).HasColumnType("jsonb").IsRequired();
             entity.Property(x => x.DefaultColumnsJson).HasColumnType("jsonb").IsRequired();
+            entity.Property(x => x.DefaultFiltersJson).HasColumnType("jsonb").IsRequired();
             entity.HasOne(x => x.Workspace).WithOne(x => x.Settings).HasForeignKey<WorkspaceSettings>(x => x.WorkspaceId).OnDelete(DeleteBehavior.Cascade);
         });
         modelBuilder.Entity<PlatformInvitation>(entity =>

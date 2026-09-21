@@ -51,9 +51,12 @@ public sealed class WorkspaceSettingsService(WorkplaceDbContext db, IConfigurati
         {
             var entity = await db.WorkspaceSettings.SingleOrDefaultAsync(x => x.WorkspaceId == context.Membership.WorkspaceId, cancellationToken);
             if (entity is null) { entity = new WorkspaceSettings { WorkspaceId = context.Membership.WorkspaceId }; db.WorkspaceSettings.Add(entity); }
+            var workspace = await db.Workspaces.SingleOrDefaultAsync(x => x.Id == context.Membership.WorkspaceId, cancellationToken);
+            if (workspace is not null) { workspace.DisplayName = updated.DisplayName; workspace.UpdatedAt = DateTimeOffset.UtcNow; }
             entity.DefaultTheme = updated.DefaultTheme;
             entity.EnabledModulesJson = JsonSerializer.Serialize(updated.EnabledModules);
             entity.DefaultColumnsJson = JsonSerializer.Serialize(updated.DefaultColumns);
+            entity.DefaultFiltersJson = JsonSerializer.Serialize(updated.DefaultFilters);
             entity.SupportInstructions = updated.SupportInstructions;
             await db.SaveChangesAsync(cancellationToken);
         }
@@ -63,8 +66,9 @@ public sealed class WorkspaceSettingsService(WorkplaceDbContext db, IConfigurati
 
     private bool HasDatabase() => !string.IsNullOrWhiteSpace(configuration.GetConnectionString("WorkplaceDb"));
     private static WorkspaceSettingsResponse Defaults(WorkspaceContext context, CapabilityDecision access) => new(context.Membership.WorkspaceName, ["overview", "users", "licenses"], ["displayName", "userPrincipalName"], new Dictionary<string, string>(), string.Empty, "light", access);
-    private static WorkspaceSettingsResponse FromEntity(WorkspaceSettings entity, CapabilityDecision access) => new(entity.Workspace.DisplayName, ParseList(entity.EnabledModulesJson), ParseList(entity.DefaultColumnsJson), new Dictionary<string, string>(), entity.SupportInstructions, entity.DefaultTheme, access);
+    private static WorkspaceSettingsResponse FromEntity(WorkspaceSettings entity, CapabilityDecision access) => new(entity.Workspace.DisplayName, ParseList(entity.EnabledModulesJson), ParseList(entity.DefaultColumnsJson), ParseFilters(entity.DefaultFiltersJson), entity.SupportInstructions, entity.DefaultTheme, access);
     private static IReadOnlyCollection<string> ParseList(string value) { try { return JsonSerializer.Deserialize<string[]>(value) ?? []; } catch (JsonException) { return []; } }
+    private static IReadOnlyDictionary<string, string> ParseFilters(string value) { try { return JsonSerializer.Deserialize<Dictionary<string, string>>(value) ?? new Dictionary<string, string>(); } catch (JsonException) { return new Dictionary<string, string>(); } }
     private static string ValidateDisplayName(string value) => !string.IsNullOrWhiteSpace(value) && value.Length <= 200 && !value.Any(char.IsControl) ? value.Trim() : throw new WorkspaceSettingsValidationException("displayName is invalid.", "displayName");
     private static IReadOnlyCollection<string> ValidateList(IReadOnlyCollection<string> values, HashSet<string> allowed, string field) { var normalized = values.Select(value => value.Trim()).ToArray(); if (normalized.Any(value => !allowed.Contains(value))) throw new WorkspaceSettingsValidationException($"{field} contains an unsupported value.", field); return normalized; }
     private static IReadOnlyDictionary<string, string> ValidateFilters(IReadOnlyDictionary<string, string> values) { if (values.Keys.Any(key => !AllowedFilters.Contains(key)) || values.Values.Any(value => value.Length > 100 || value.Any(char.IsControl))) throw new WorkspaceSettingsValidationException("defaultFilters contains an unsupported value.", "defaultFilters"); return new Dictionary<string, string>(values, StringComparer.OrdinalIgnoreCase); }

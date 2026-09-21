@@ -28,11 +28,22 @@ public sealed class GraphLicenseOverviewReader(IDelegatedGraphClientFactory clie
             return GraphReadResult<IReadOnlyList<LicenseOverviewItem>>.Failed(response.Result);
         }
 
-        using var document = JsonDocument.Parse(response.Content);
-        var items = document.RootElement.TryGetProperty("value", out var value) && value.ValueKind == JsonValueKind.Array
-            ? value.EnumerateArray().Select(MapLicense).ToArray()
-            : [];
-        return GraphReadResult<IReadOnlyList<LicenseOverviewItem>>.Succeeded(items);
+        try
+        {
+            using var document = JsonDocument.Parse(response.Content);
+            var items = document.RootElement.TryGetProperty("value", out var value) && value.ValueKind == JsonValueKind.Array
+                ? value.EnumerateArray().Select(MapLicense).ToArray()
+                : [];
+            return GraphReadResult<IReadOnlyList<LicenseOverviewItem>>.Succeeded(items);
+        }
+        catch (JsonException)
+        {
+            return GraphReadResult<IReadOnlyList<LicenseOverviewItem>>.Failed(new GraphOperationResult(false, "invalid_response"));
+        }
+        catch (InvalidOperationException)
+        {
+            return GraphReadResult<IReadOnlyList<LicenseOverviewItem>>.Failed(new GraphOperationResult(false, "invalid_response"));
+        }
     }
 
     private static LicenseOverviewItem MapLicense(JsonElement element)

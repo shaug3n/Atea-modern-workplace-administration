@@ -69,7 +69,9 @@ public sealed class OverviewServiceTests
         var snapshot = GraphAuthorizationSnapshot.Available(
             "user-1",
             ["Directory.Read.All", "User.Read.All"],
-            [new DirectoryRoleSnapshot(EntraRoleCatalog.UserAdministratorTemplateId, "User Administrator", DirectoryRoleAssignmentState.Eligible, "/", new PimStateSnapshot(PimRequirement.ActivationRequired))]);
+            [
+                new DirectoryRoleSnapshot(EntraRoleCatalog.GlobalReaderTemplateId, "Global Reader", DirectoryRoleAssignmentState.Active, "/"),
+                new DirectoryRoleSnapshot(EntraRoleCatalog.UserAdministratorTemplateId, "User Administrator", DirectoryRoleAssignmentState.Eligible, "/", new PimStateSnapshot(PimRequirement.ActivationRequired))]);
         var service = new OverviewService(
             new RecordingOverviewReader { Result = GraphReadResult<OverviewData>.Succeeded(new OverviewData(4, 3, 1)) },
             new StaticAuthorizationReader(snapshot));

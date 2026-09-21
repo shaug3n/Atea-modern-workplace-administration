@@ -23,10 +23,15 @@ function AuthenticatedOverview() {
     if (!response.ok) throw new Error('overview request failed');
     return await response.json() as OverviewData;
   }, [api]);
-  return <LoadedOverviewMetrics loadOverview={loadOverview} />;
+  const loadConnectionHealth = useCallback(async () => { const response = await api('/api/workspaces/current/connection-health'); if (!response.ok) throw new Error('connection health request failed'); return await response.json() as ConnectionHealth; }, [api]);
+  const actions = {
+    check: useCallback(async () => { const response = await api('/api/workspaces/current/connection-health/check', { method: 'POST' }); if (!response.ok) throw new Error('connection check failed'); return await response.json() as ConnectionHealth; }, [api]),
+    startConsent: useCallback(async () => { const response = await api('/api/workspaces/current/consent/start', { method: 'POST' }); if (!response.ok) throw new Error('consent start failed'); return await response.json() as ConsentDescriptor; }, [api])
+  } satisfies ConnectionHealthActions;
+  return <LoadedOverviewMetrics loadOverview={loadOverview} loadConnectionHealth={loadConnectionHealth} actions={actions} />;
 }
 
-function LoadedOverviewMetrics({ loadOverview }: { loadOverview: OverviewLoader }) {
+function LoadedOverviewMetrics({ loadOverview, loadConnectionHealth, actions }: { loadOverview: OverviewLoader; loadConnectionHealth?: ConnectionHealthLoader; actions?: ConnectionHealthActions }) {
   const [overview, setOverview] = useState<OverviewData | null>(null);
   const [failed, setFailed] = useState(false);
   const [retry, setRetry] = useState(0);
@@ -34,7 +39,7 @@ function LoadedOverviewMetrics({ loadOverview }: { loadOverview: OverviewLoader 
   if (failed) return <section className="content-panel"><p role="alert">{messages.overviewUnavailable}</p><button type="button" onClick={() => setRetry(value => value + 1)}>{messages.retry}</button></section>;
   if (!overview) return <section className="content-panel"><p role="status">{messages.overviewLoading}</p></section>;
   if (overview.access.state !== 'allowed') return <section className="content-panel"><h1>{messages.permissionRequiredTitle}</h1><p>{messages.permissionRequiredBody}</p></section>;
-  return <section className="content-panel overview-page" aria-labelledby="overview-title"><p className="eyebrow">{messages.overviewEyebrow}</p><h1 id="overview-title">{messages.overviewTitle}</h1><p>{messages.overviewFreshness}: {overview.freshness}</p><div className="overview-metrics"><article><strong>{overview.totalUsers}</strong><span>{messages.overviewTotalUsers}</span></article><article><strong>{overview.licenseCoverage.percentage}%</strong><span>{messages.overviewLicenseCoverage}</span></article><article><strong>{overview.permissionHealth.allowedCount}/{overview.permissionHealth.totalCount}</strong><span>{messages.overviewPermissionHealth}</span></article></div>{overview.pimAttention.requiresAttention && <p role="status">{messages.overviewPimAttention}</p>}</section>;
+  return <><section className="content-panel overview-page" aria-labelledby="overview-title"><p className="eyebrow">{messages.overviewEyebrow}</p><h1 id="overview-title">{messages.overviewTitle}</h1><p>{messages.overviewFreshness}: {overview.freshness}</p><div className="overview-metrics"><article><strong>{overview.totalUsers}</strong><span>{messages.overviewTotalUsers}</span></article><article><strong>{overview.licenseCoverage.percentage}%</strong><span>{messages.overviewLicenseCoverage}</span></article><article><strong>{overview.permissionHealth.allowedCount}/{overview.permissionHealth.totalCount}</strong><span>{messages.overviewPermissionHealth}</span></article></div>{overview.pimAttention.requiresAttention && <p role="status">{messages.overviewPimAttention}</p>}</section>{loadConnectionHealth && <LoadedConnectionHealth loadConnectionHealth={loadConnectionHealth} actions={actions} />}</>;
 }
 
 function LoadedConnectionHealth({ loadConnectionHealth, actions }: { loadConnectionHealth: ConnectionHealthLoader; actions?: ConnectionHealthActions }) {
