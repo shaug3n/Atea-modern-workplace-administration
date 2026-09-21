@@ -89,6 +89,21 @@ public sealed class PimServiceTests
     }
 
     [Fact]
+    public async Task Graph_expired_enum_reaches_pim_service_and_preserves_renewal_guidance()
+    {
+        var adapter = new GraphRoleAndPimService(new ExpiredEligibilityGraphClientFactory());
+        var eligibility = await ((IRoleAndPimReader)adapter).ReadUserPimEligibilityAsync("user-1", CancellationToken.None);
+
+        eligibility.Value.Should().ContainSingle().Which.Status.Should().Be(PimRequirement.EligibilityExpired);
+
+        var service = CreateService(roleReader: adapter);
+        var result = await service.GetUserPimAsync(Workspace, "user-1", CancellationToken.None);
+
+        result.Response!.Roles.Should().ContainSingle().Which.Status.Should().Be(PimStatus.NotEligible);
+        result.Response.Roles.Single().Handoff!.NextStep.Should().Be("Request renewed PIM eligibility");
+    }
+
+    [Fact]
     public async Task Activate_requires_explicit_confirmation_before_reading_current_eligibility_or_calling_graph()
     {
         var roles = new RecordingRoleAndPimReader();
@@ -199,12 +214,13 @@ public sealed class PimServiceTests
     private static PimService CreateService(
         IUserDirectoryReader? directory = null,
         RecordingRoleAndPimReader? roles = null,
+        IRoleAndPimReader? roleReader = null,
         RecordingPimActivationCommands? activations = null,
         GraphAuthorizationSnapshot? snapshot = null,
         IIdempotencyService? idempotency = null) =>
         new(
             directory ?? new RecordingDirectoryReader(),
-            roles ?? new RecordingRoleAndPimReader(),
+            roleReader ?? roles ?? new RecordingRoleAndPimReader(),
             activations ?? new RecordingPimActivationCommands(),
             new StaticCapabilityReader(snapshot ?? EligibleSnapshot),
             idempotency ?? new MemoryIdempotencyService());
@@ -260,6 +276,29 @@ public sealed class PimServiceTests
     private sealed class StaticCapabilityReader(GraphAuthorizationSnapshot snapshot) : IGraphAuthorizationSnapshotReader
     {
         public Task<GraphAuthorizationSnapshot> ReadAsync(WorkspaceContext context, CancellationToken cancellationToken = default) => Task.FromResult(snapshot);
+    }
+
+    private sealed class ExpiredEligibilityGraphClientFactory : IDelegatedGraphClientFactory
+    {
+        public Task<GraphClientLease> CreateForCurrentUserAsync(IReadOnlyCollection<string> scopes, CancellationToken cancellationToken) =>
+            Task.FromResult(new GraphClientLease(new ExpiredEligibilityGraphTransport(), scopes));
+    }
+
+    private sealed class ExpiredEligibilityGraphTransport : IGraphTransport
+    {
+        public IReadOnlyCollection<string> Scopes => GraphScopeCatalog.AuthorizationReadScopes;
+
+        public Task<GraphTransportResponse> SendAsync(GraphRequest request, CancellationToken cancellationToken)
+        {
+            var content = request.PathAndQuery.Contains("roleEligibilityScheduleInstances", StringComparison.Ordinal)
+                ? """{"value":[{"id":"eligibility-expired","roleDefinitionId":"role-definition-id","directoryScopeId":"/","status":"EligibilityExpired","roleDefinition":{"templateId":"e8611ab8-c189-46e8-94e1-60213ab1f814","displayName":"Privileged Role Administrator"}}]}"""
+                : """{"value":[]}""";
+            return Task.FromResult(new GraphTransportResponse(
+                GraphOperationResult.Success("graph-correlation", "graph-request"),
+                content,
+                1,
+                new Dictionary<string, IReadOnlyCollection<string>>()));
+        }
     }
 
     private sealed class RecordingDirectoryReader : IUserDirectoryReader

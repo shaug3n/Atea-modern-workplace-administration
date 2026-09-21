@@ -138,7 +138,7 @@ public sealed class GraphRoleAndPimService(IDelegatedGraphClientFactory clientFa
         {
             PimRequirement.ApprovalRequired => "approval_required",
             PimRequirement.MfaRequired => "mfa_required",
-            PimRequirement.EligibilityExpired => "not_eligible",
+            PimRequirement.EligibilityExpired => PimRequirement.EligibilityExpired,
             PimRequirement.ActivationRequired => "eligible_inactive",
             _ => "temporarily_unavailable"
         };
