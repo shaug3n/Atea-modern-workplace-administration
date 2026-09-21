@@ -2,6 +2,33 @@
 
 This runbook covers the existing onboarding checks and the Task 14 manual real-tenant scenarios. Use only a dedicated, non-production tenant and a separate test app registration. The checked-in scenario manifest is under `tests/RealTenant/`; the repository has no real-tenant test project and these scenarios are intentionally not part of CI.
 
+## Local Atea platform-admin demo
+
+The local Atea administrator is a Development-only provider for the onboarding demo. It is not customer authentication, does not grant Microsoft Graph permissions, and must not be enabled outside a local Development API. Configure all six keys in the environment used by the API:
+
+```text
+AteaAdmin__LocalDevelopment__Enabled=true
+AteaAdmin__LocalDevelopment__Username=local-admin
+AteaAdmin__LocalDevelopment__Password=change-me-locally
+AteaAdmin__LocalDevelopment__ObjectId=00000000-0000-0000-0000-000000000001
+AteaAdmin__LocalDevelopment__DisplayName=Local Atea Administrator
+AteaAdmin__LocalDevelopment__AllowAllWorkspaces=true
+```
+
+`AllowAllWorkspaces` is intentionally a local limitation for the demo. Production and future Atea Entra federation require explicit workspace scope; never reuse the sample password or enable this gate in a deployed environment.
+
+Start the local stack in this order:
+
+```bash
+docker compose up -d postgres
+dotnet run --project src/Api/Atea.UnifiedWorkplace.Api.csproj --urls http://localhost:8080
+cd src/Web && npm ci && npm run dev -- --host 0.0.0.0 --port 5173
+```
+
+Open `http://localhost:5173/admin`, sign in with the configured local Atea credentials, create a workspace for the verified customer tenant, open the workspace detail page, add the nominated customer administrator by Entra object ID, and create an invitation. Copy the one-time invitation instruction only through the approved handoff channel; do not store it in notes, logs, screenshots, or test output. The workspace detail page should show membership and invitation status metadata without exposing nonce/hash fields.
+
+The route boundary is deliberate. `/admin` uses the local Atea cookie session for platform onboarding. Customer routes use the customer tenant's Entra sign-in and effective Microsoft Graph permissions. The customer administrator redeems the invitation in the customer tenant, completes delegated consent, and continues through the customer-facing application. A local Atea admin session cannot be used to call customer directory routes.
+
 ## Customer-admin handoff
 
 1. An authorized Atea platform administrator provisions the workspace and creates an invitation instruction for the customer administrator.

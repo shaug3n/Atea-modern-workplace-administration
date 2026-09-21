@@ -8,9 +8,28 @@
 
 ## Run locally
 
-Copy `.env.example` to `.env` for local configuration. `.env` is local-only and must not be committed.
+Copy `.env.example` to `.env` for local configuration. `.env` is local-only and must not be committed. For the Development-only Atea platform console, set all six local-admin keys (use a stable GUID for the object ID):
 
-Run `dotnet run --project src/Api/Atea.UnifiedWorkplace.Api.csproj` and, from the repository root, `cd src/Web && npm ci && npm run dev` in separate terminals. The API health endpoint is `GET http://localhost:8080/health`.
+```bash
+AteaAdmin__LocalDevelopment__Enabled=true
+AteaAdmin__LocalDevelopment__Username=local-admin
+AteaAdmin__LocalDevelopment__Password=change-me-locally
+AteaAdmin__LocalDevelopment__ObjectId=00000000-0000-0000-0000-000000000001
+AteaAdmin__LocalDevelopment__DisplayName=Local Atea Administrator
+AteaAdmin__LocalDevelopment__AllowAllWorkspaces=true
+```
+
+This local provider is accepted only when the API environment is `Development`. It is a development convenience, not an Atea production login, and `AllowAllWorkspaces=true` must never be carried into a deployed environment.
+
+Start PostgreSQL first, then run the API and Vite in separate terminals:
+
+```bash
+docker compose up -d postgres
+dotnet run --project src/Api/Atea.UnifiedWorkplace.Api.csproj --urls http://localhost:8080
+cd src/Web && npm ci && npm run dev -- --host 0.0.0.0 --port 5173
+```
+
+Open `http://localhost:5173/admin` for the local Atea platform-admin login. The admin session uses the development cookie provider and manages workspace provisioning, memberships, and one-time invitation handoff. Customer routes remain separate: a customer administrator signs in through the customer tenant's Entra ID flow, redeems the invitation, grants delegated consent, and then uses the existing customer application routes. The local Atea admin cookie is not a customer Entra session and cannot authorize customer Graph operations. The API health endpoint is `GET http://localhost:8080/health`.
 
 Run `docker compose up --build` for the reproducible API, web and PostgreSQL stack.
 
