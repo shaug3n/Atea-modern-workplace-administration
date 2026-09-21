@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
+using System.Collections.Concurrent;
 
 namespace Atea.UnifiedWorkplace.Api.Features.Workspaces;
 
@@ -8,6 +9,7 @@ public sealed record ConsentChallenge(string Challenge, string CorrelationId);
 public sealed class ConsentChallengeService
 {
     private readonly byte[]? key;
+    private readonly ConcurrentDictionary<string, byte> consumed = new(StringComparer.Ordinal);
 
     public ConsentChallengeService(string? base64Key)
     {
@@ -46,6 +48,25 @@ public sealed class ConsentChallengeService
         if (actual is null || payloadBytes is null || !CryptographicOperations.FixedTimeEquals(expected, actual)) return false;
         var fields = Encoding.UTF8.GetString(payloadBytes).Split('|');
         return fields.Length == 5 && fields[0] == correlationId && Guid.TryParse(fields[1], out var workspaceId) && workspaceId == expectedWorkspaceId && Guid.TryParse(fields[2], out var tenantId) && tenantId == expectedTenantId && long.TryParse(fields[3], out var expiresAt) && expiresAt > DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+    }
+
+    public bool TryValidateAndConsume(string challenge, Guid expectedWorkspaceId, Guid expectedTenantId, out string correlationId)
+    {
+        correlationId = string.Empty;
+        if (!IsConfigured) return false;
+        var parts = challenge.Split('.', 2);
+        if (parts.Length != 2) return false;
+        var payloadBytes = FromBase64Url(parts[0]);
+        var signature = FromBase64Url(parts[1]);
+        if (payloadBytes is null || signature is null) return false;
+        var expectedSignature = HMACSHA256.HashData(key!, Encoding.UTF8.GetBytes(parts[0]));
+        if (!CryptographicOperations.FixedTimeEquals(expectedSignature, signature)) return false;
+        var fields = Encoding.UTF8.GetString(payloadBytes).Split('|');
+        if (fields.Length != 5 || !Guid.TryParse(fields[1], out var workspaceId) || workspaceId != expectedWorkspaceId ||
+            !Guid.TryParse(fields[2], out var tenantId) || tenantId != expectedTenantId ||
+            !long.TryParse(fields[3], out var expiresAt) || expiresAt <= DateTimeOffset.UtcNow.ToUnixTimeSeconds()) return false;
+        correlationId = fields[0];
+        return consumed.TryAdd(challenge, 0);
     }
 
     private void EnsureConfigured() => _ = key ?? throw new InvalidOperationException("Consent challenge signing is not configured.");

@@ -39,4 +39,30 @@ public sealed class ConsentChallengeTests
         service.IsConfigured.Should().BeFalse();
         FluentActions.Invoking(() => service.Create(Guid.NewGuid(), Guid.NewGuid())).Should().Throw<InvalidOperationException>();
     }
+
+    [Fact]
+    public void Validates_and_consumes_a_challenge_once_without_exposing_payload()
+    {
+        var service = new ConsentChallengeService(new byte[32]);
+        var workspaceId = Guid.NewGuid();
+        var tenantId = Guid.NewGuid();
+        var challenge = service.Create(workspaceId, tenantId);
+
+        service.TryValidateAndConsume(challenge.Challenge, workspaceId, tenantId, out var correlationId).Should().BeTrue();
+        correlationId.Should().Be(challenge.CorrelationId);
+        service.TryValidateAndConsume(challenge.Challenge, workspaceId, tenantId, out _).Should().BeFalse();
+    }
+
+    [Fact]
+    public void Rejects_tampered_and_cross_tenant_challenges_without_consuming_valid_state()
+    {
+        var service = new ConsentChallengeService(new byte[32]);
+        var workspaceId = Guid.NewGuid();
+        var tenantId = Guid.NewGuid();
+        var challenge = service.Create(workspaceId, tenantId);
+
+        service.TryValidateAndConsume($"{challenge.Challenge}x", workspaceId, tenantId, out _).Should().BeFalse();
+        service.TryValidateAndConsume(challenge.Challenge, workspaceId, Guid.NewGuid(), out _).Should().BeFalse();
+        service.TryValidateAndConsume(challenge.Challenge, workspaceId, tenantId, out _).Should().BeTrue();
+    }
 }

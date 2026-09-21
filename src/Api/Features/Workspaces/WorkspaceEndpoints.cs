@@ -20,6 +20,7 @@ public static class WorkspaceEndpoints
         endpoints.MapGet("/api/workspaces/current/connection-health", GetConnectionHealthAsync).RequireAuthorization();
         endpoints.MapPost("/api/workspaces/current/connection-health/check", CheckConnectionHealthAsync).RequireAuthorization();
         endpoints.MapPost("/api/workspaces/current/consent/start", StartConsentAsync).RequireAuthorization().RequireCapability(Capability.WorkspaceSettingsManage);
+        endpoints.MapPost("/api/workspaces/current/consent/complete", CompleteConsentAsync).RequireAuthorization();
         endpoints.MapPost("/api/invitations/{nonce}/redeem", RedeemInvitationAsync).RequireAuthorization();
         return endpoints;
     }
@@ -141,6 +142,18 @@ public static class WorkspaceEndpoints
         var challenge = challenges.Create(context.Membership.WorkspaceId, context.User.TenantId);
         var url = $"https://login.microsoftonline.com/{context.User.TenantId}/oauth2/v2.0/authorize?client_id={Uri.EscapeDataString(clientId)}&response_type=code&redirect_uri={Uri.EscapeDataString(redirectUri)}&response_mode=query&scope={Uri.EscapeDataString(scopes)}&state={Uri.EscapeDataString(challenge.Challenge)}";
         return Results.Ok(new ConsentStartResponse(url, GraphScopeCatalog.V1DelegatedScopes, challenge.Challenge, challenge.CorrelationId));
+    }
+
+    private static IResult CompleteConsentAsync(ConsentCompletionRequest request, IWorkspaceContextAccessor accessor, ConsentChallengeService challenges)
+    {
+        var context = accessor.Current;
+        if (context is null) return Results.StatusCode(StatusCodes.Status403Forbidden);
+        if (request.Tenant == Guid.Empty || request.Tenant != context.User.TenantId || string.IsNullOrWhiteSpace(request.State))
+            return Results.Ok(new ConsentCompletionResponse(false, "invalid_callback", string.Empty));
+        if (!challenges.TryValidateAndConsume(request.State, context.Membership.WorkspaceId, context.User.TenantId, out var correlationId))
+            return Results.Ok(new ConsentCompletionResponse(false, "invalid_callback", string.Empty));
+        var status = string.IsNullOrWhiteSpace(request.ErrorCode) ? "consent_received" : "consent_denied";
+        return Results.Ok(new ConsentCompletionResponse(true, status, correlationId));
     }
 
     private static ConnectionHealthDto ToHealthDto(WorkspaceOnboardingState state, string? problem, string correlationId) => new(state.WorkspaceId, state.ConnectionStatus, state.LastVerifiedAt, state.ConsentScopes, problem ?? state.FailureCategory, correlationId);

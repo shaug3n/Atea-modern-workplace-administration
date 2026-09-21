@@ -5,6 +5,7 @@ import { OverviewPage, type ConnectionHealthLoader, type OverviewLoader } from '
 import { AuditActivityPage } from '../features/audit/AuditActivityPage';
 import { LicensesPage } from '../features/licenses/LicensesPage';
 import { WorkspaceSettingsPage } from '../features/workspace-settings/WorkspaceSettingsPage';
+import { ConsentCallbackPage } from '../features/workspace-settings/ConsentCallbackPage';
 import { UserDetailPage } from '../features/users/UserDetailPage';
 import { UsersPage } from '../features/users/UsersPage';
 import { messages } from './messages';
@@ -31,6 +32,8 @@ function WorkInProgressPage({ title, description }: { title: string; description
 }
 
 export const appRoutes: AppRoute[] = [
+  { path: '/consent-callback', label: messages.connectionTitle, render: () => <ConsentCallbackPage /> },
+  { path: '/onboarding/consent/callback', label: messages.connectionTitle, render: () => <ConsentCallbackPage /> },
   {
     path: '/overview',
     label: messages.navOverview,
