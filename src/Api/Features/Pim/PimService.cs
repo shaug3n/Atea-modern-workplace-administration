@@ -319,7 +319,9 @@ public sealed class PimService(
         var status = NormalizeEligibilityStatus(eligibility.Status, eligibility.RequiresJustification);
         var handoffCategory = string.Equals(eligibility.Status, "justification_required", StringComparison.OrdinalIgnoreCase)
             ? "justification_required"
-            : status;
+            : string.Equals(eligibility.Status, "eligibility_expired", StringComparison.OrdinalIgnoreCase)
+                ? "eligibility_expired"
+                : status;
         return new PimRoleStatus(
             eligibility.RoleTemplateId,
             eligibility.RoleDefinitionId,
@@ -452,6 +454,7 @@ public sealed class PimService(
         PimStatus.ApprovalRequired => PimStatus.ApprovalRequired,
         PimStatus.MfaRequired => PimStatus.MfaRequired,
         PimStatus.PolicyBlocked => PimStatus.PolicyBlocked,
+        "eligibility_expired" => PimStatus.NotEligible,
         "justification_required" when requiresJustification => PimStatus.EligibleInactive,
         _ => PimStatus.TemporarilyUnavailable
     };
@@ -499,6 +502,7 @@ public sealed class PimService(
         PimStatus.ApprovalRequired or "approval_required" => "Wait for PIM approval",
         PimStatus.MfaRequired or "mfa_required" => "Complete MFA for PIM activation",
         PimStatus.PolicyBlocked or "policy_blocked" or "authorization_pending" or "request_denied" => "Review the tenant PIM policy",
+        "eligibility_expired" => "Request renewed PIM eligibility",
         "justification_required" => "Enter a business justification",
         "consent_required" => "Grant delegated Microsoft Graph consent",
         "not_authorized" or "capability_required" => "Ask an administrator to grant the required role or Graph consent",

@@ -64,4 +64,18 @@ describe('AuditActivityPage', () => {
     expect(document.body.textContent).not.toContain('raw Graph payload');
     expect(document.body.textContent).not.toContain('access_token');
   });
+
+  it('retries audit loading after a transient read failure', async () => {
+    let attempts = 0;
+    render(<AuditActivityPage loadAuditEvents={async () => {
+      attempts += 1;
+      if (attempts === 1) throw new Error('transient audit failure');
+      return response;
+    }} />);
+
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy());
+    screen.getByRole('button', { name: 'Retry' }).click();
+    await waitFor(() => expect(screen.getByText('users.disable')).toBeTruthy());
+    expect(attempts).toBe(2);
+  });
 });

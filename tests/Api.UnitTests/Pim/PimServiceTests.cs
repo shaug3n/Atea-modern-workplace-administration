@@ -65,6 +65,30 @@ public sealed class PimServiceTests
     }
 
     [Fact]
+    public async Task Get_user_pim_maps_expired_graph_eligibility_to_not_eligible_handoff()
+    {
+        var roles = new RecordingRoleAndPimReader
+        {
+            Eligibility =
+            [
+                Eligibility(
+                    "eligibility-expired",
+                    EntraRoleCatalog.PrivilegedRoleAdministratorTemplateId,
+                    "Privileged Role Administrator",
+                    "eligibility_expired",
+                    requiresJustification: false)
+            ]
+        };
+        var service = CreateService(roles: roles);
+
+        var result = await service.GetUserPimAsync(Workspace, "user-1", CancellationToken.None);
+
+        result.Response!.Roles.Should().ContainSingle().Which.Status.Should().Be(PimStatus.NotEligible);
+        result.Response.Roles.Single().ActivationAvailable.Should().BeFalse();
+        result.Response.Roles.Single().Handoff!.NextStep.Should().Be("Request renewed PIM eligibility");
+    }
+
+    [Fact]
     public async Task Activate_requires_explicit_confirmation_before_reading_current_eligibility_or_calling_graph()
     {
         var roles = new RecordingRoleAndPimReader();

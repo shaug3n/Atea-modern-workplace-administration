@@ -60,6 +60,7 @@ function LoadedAuditActivityPage({ loadAuditEvents }: { loadAuditEvents: AuditEv
   const [continuationToken, setContinuationToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
+  const [retry, setRetry] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -78,7 +79,7 @@ function LoadedAuditActivityPage({ loadAuditEvents }: { loadAuditEvents: AuditEv
         if (!cancelled) setLoading(false);
     });
     return () => { cancelled = true; };
-  }, [loadAuditEvents, filters, continuationToken]);
+  }, [loadAuditEvents, filters, continuationToken, retry]);
 
   const state = loading ? 'loading' : failed ? 'error' : result && result.items.length === 0 ? 'empty' : 'ready';
 
@@ -117,7 +118,7 @@ function LoadedAuditActivityPage({ loadAuditEvents }: { loadAuditEvents: AuditEv
           <span>{messages.auditLoading}</span>
         </div>
       )}
-      {state === 'error' && <div className="async-state" role="alert">{messages.auditUnavailable}</div>}
+      {state === 'error' && <div className="async-state" role="alert">{messages.auditUnavailable} <button type="button" onClick={() => setRetry(value => value + 1)}>{messages.retry}</button></div>}
       {state === 'empty' && <div className="async-state">{messages.auditNoResults}</div>}
       {state === 'ready' && result && (
         <>
