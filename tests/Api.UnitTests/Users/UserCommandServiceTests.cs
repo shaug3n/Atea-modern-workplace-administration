@@ -4,8 +4,10 @@ using Atea.UnifiedWorkplace.Api.Features.Licenses;
 using Atea.UnifiedWorkplace.Api.Features.Users;
 using Atea.UnifiedWorkplace.Api.Infrastructure.Graph;
 using Atea.UnifiedWorkplace.Api.Infrastructure.Observability;
+using Atea.UnifiedWorkplace.Api.Infrastructure.Persistence.Entities;
 using Atea.UnifiedWorkplace.Api.Infrastructure.Security;
 using FluentAssertions;
+using AuthorizationWorkspaceMembership = Atea.UnifiedWorkplace.Api.Authorization.WorkspaceMembership;
 
 namespace Atea.UnifiedWorkplace.Api.UnitTests.Users;
 
@@ -170,7 +172,7 @@ public sealed class UserCommandServiceTests
             "alex@example.com",
             "Alex Example",
             "Member"),
-        new WorkspaceMembership(
+        new AuthorizationWorkspaceMembership(
             Guid.Parse("55555555-5555-5555-5555-555555555555"),
             "Contoso Workplace",
             "member"));

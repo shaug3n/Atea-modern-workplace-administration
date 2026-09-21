@@ -1,3 +1,5 @@
+using Atea.UnifiedWorkplace.Api.Infrastructure.Observability;
+
 namespace Atea.UnifiedWorkplace.Api.Infrastructure.Graph;
 
 public interface IDelegatedGraphClientFactory
@@ -14,7 +16,8 @@ public sealed record GraphClientLease(IGraphTransport Transport, IReadOnlyCollec
 
 public sealed class DelegatedGraphClientFactory(
     IGraphTokenProvider tokenProvider,
-    IHttpClientFactory httpClientFactory) : IDelegatedGraphClientFactory
+    IHttpClientFactory httpClientFactory,
+    ICorrelationContextAccessor correlationContext) : IDelegatedGraphClientFactory
 {
     public async Task<GraphClientLease> CreateForCurrentUserAsync(
         IReadOnlyCollection<string> scopes,
@@ -42,6 +45,6 @@ public sealed class DelegatedGraphClientFactory(
             client.BaseAddress = new Uri("https://graph.microsoft.com");
         }
 
-        return new GraphClientLease(new GraphHttpTransport(client, accessToken, normalizedScopes), normalizedScopes);
+        return new GraphClientLease(new GraphHttpTransport(client, accessToken, normalizedScopes, correlationContext: correlationContext.Current), normalizedScopes);
     }
 }

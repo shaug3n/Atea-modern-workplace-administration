@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Headers;
+using Atea.UnifiedWorkplace.Api.Infrastructure.Observability;
 
 namespace Atea.UnifiedWorkplace.Api.Infrastructure.Graph;
 
@@ -28,7 +29,8 @@ public sealed class GraphHttpTransport(
     HttpClient httpClient,
     string accessToken,
     IReadOnlyCollection<string> scopes,
-    GraphTransportOptions? options = null) : IGraphTransport
+    GraphTransportOptions? options = null,
+    CorrelationContext? correlationContext = null) : IGraphTransport
 {
     private readonly GraphTransportOptions options = options ?? new GraphTransportOptions();
 
@@ -48,7 +50,7 @@ public sealed class GraphHttpTransport(
         {
             using var message = new HttpRequestMessage(request.Method, request.PathAndQuery);
             message.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
-            message.Headers.TryAddWithoutValidation("client-request-id", Guid.NewGuid().ToString("D"));
+            message.Headers.TryAddWithoutValidation("client-request-id", correlationContext?.CorrelationId ?? Guid.NewGuid().ToString("D"));
             foreach (var header in request.Headers ?? new Dictionary<string, string>())
             {
                 message.Headers.TryAddWithoutValidation(header.Key, header.Value);

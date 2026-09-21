@@ -15,6 +15,7 @@ using Atea.UnifiedWorkplace.Api.Features.UserPreferences;
 using Atea.UnifiedWorkplace.Api.Features.Users;
 using Atea.UnifiedWorkplace.Api.Infrastructure.Observability;
 using Atea.UnifiedWorkplace.Api.Infrastructure.Security;
+using Atea.UnifiedWorkplace.Api.Features.Audit;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddDbContext<WorkplaceDbContext>(options => options.UseNpgsql(builder.Configuration.GetConnectionString("WorkplaceDb")));
@@ -41,7 +42,8 @@ builder.Services.AddScoped<IUserQueryService, UserQueryService>();
 builder.Services.AddScoped<IUserDetailService, UserDetailService>();
 builder.Services.AddScoped<IUserCommandService, UserCommandService>();
 builder.Services.AddScoped<IIdempotencyService, IdempotencyService>();
-builder.Services.AddSingleton<IAuditWriter, NoOpAuditWriter>();
+builder.Services.AddSingleton<ICorrelationContextAccessor, CorrelationContextAccessor>();
+builder.Services.AddScoped<IAuditWriter, AuditWriter>();
 builder.Services.AddSingleton(_ => new UserContinuationTokenProtector(
     UserContinuationConfiguration.ResolveSigningKey(builder.Configuration, builder.Environment.IsDevelopment())));
 builder.Services.AddScoped<GraphUserLifecycle>();
@@ -83,6 +85,7 @@ if (app.Environment.IsDevelopment() && !string.IsNullOrWhiteSpace(builder.Config
 app.UseDefaultFiles();
 app.UseStaticFiles();
 app.MapGet("/health", () => Results.Json(new { status = "ok" })).AllowAnonymous();
+app.UseMiddleware<CorrelationMiddleware>();
 app.UsePlatformAuthorization();
 app.MapGet("/api/ping", () => Results.Ok(new { status = "ok" }));
 app.MapGet("/api/session", (IWorkspaceContextAccessor accessor) =>
@@ -112,6 +115,7 @@ app.MapLicenseEndpoints();
 app.MapGroupEndpoints();
 app.MapRoleEndpoints();
 app.MapPimEndpoints();
+app.MapAuditEndpoints();
 app.MapFallbackToFile("index.html");
 
 app.Run();

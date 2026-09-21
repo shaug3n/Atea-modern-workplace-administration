@@ -13,6 +13,7 @@ public sealed class WorkplaceDbContext(DbContextOptions<WorkplaceDbContext> opti
     public DbSet<PlatformInvitation> PlatformInvitations => Set<PlatformInvitation>();
     public DbSet<UserPreference> UserPreferences => Set<UserPreference>();
     public DbSet<IdempotencyRecord> IdempotencyRecords => Set<IdempotencyRecord>();
+    public DbSet<AuditEvent> AuditEvents => Set<AuditEvent>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -78,6 +79,23 @@ public sealed class WorkplaceDbContext(DbContextOptions<WorkplaceDbContext> opti
             entity.Property(x => x.ResultCategory).HasMaxLength(100).IsRequired();
             entity.Property(x => x.SafeResultJson).HasColumnType("jsonb").IsRequired();
             ConfigureUtc(entity.Property(x => x.CreatedAt));
+        });
+        modelBuilder.Entity<AuditEvent>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.HasIndex(x => new { x.WorkspaceId, x.Timestamp });
+            entity.HasIndex(x => new { x.WorkspaceId, x.TargetType, x.TargetId, x.Timestamp });
+            entity.Property(x => x.Action).HasMaxLength(128).IsRequired();
+            entity.Property(x => x.TargetType).HasMaxLength(64).IsRequired();
+            entity.Property(x => x.TargetId).HasMaxLength(256).IsRequired();
+            entity.Property(x => x.Outcome).HasMaxLength(32).IsRequired();
+            entity.Property(x => x.CorrelationId).HasMaxLength(100);
+            entity.Property(x => x.GraphCorrelationId).HasMaxLength(100);
+            entity.Property(x => x.GraphRequestId).HasMaxLength(100);
+            entity.Property(x => x.PimRequestId).HasMaxLength(100);
+            entity.Property(x => x.FailureCategory).HasMaxLength(100);
+            entity.Property(x => x.SafeMetadataJson).HasColumnType("jsonb").IsRequired();
+            ConfigureUtc(entity.Property(x => x.Timestamp));
         });
     }
 

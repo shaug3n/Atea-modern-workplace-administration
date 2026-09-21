@@ -4,6 +4,7 @@ using Atea.UnifiedWorkplace.Api.Features.Groups;
 using Atea.UnifiedWorkplace.Api.Features.Licenses;
 using Atea.UnifiedWorkplace.Api.Infrastructure.Graph;
 using Atea.UnifiedWorkplace.Api.Infrastructure.Observability;
+using Atea.UnifiedWorkplace.Api.Infrastructure.Persistence.Entities;
 using Atea.UnifiedWorkplace.Api.Infrastructure.Security;
 
 namespace Atea.UnifiedWorkplace.Api.Features.Users;
@@ -301,19 +302,38 @@ public sealed class UserCommandService(
         string? failureCategory,
         string? graphCorrelationId,
         string? graphRequestId,
-        CancellationToken cancellationToken) =>
-        await auditWriter.WriteAsync(
-            new AuditEvent(
-                context.Membership.WorkspaceId,
-                context.User.ObjectId,
-                action,
-                targetId,
-                result,
-                utcNow(),
-                graphCorrelationId,
-                graphRequestId,
-                failureCategory),
-            cancellationToken);
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await auditWriter.WriteAsync(
+                new AuditEvent
+                {
+                    WorkspaceId = context.Membership.WorkspaceId,
+                    TenantId = context.User.TenantId,
+                    ActorTenantId = context.User.TenantId,
+                    ActorObjectId = context.User.ObjectId,
+                    Action = action,
+                    TargetType = "user",
+                    TargetId = targetId,
+                    Outcome = result,
+                    Timestamp = utcNow(),
+                    GraphCorrelationId = graphCorrelationId,
+                    GraphRequestId = graphRequestId,
+                    FailureCategory = failureCategory,
+                    SafeMetadataJson = "{}"
+                },
+                cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch
+        {
+            // Audit persistence must never expose sensitive failure content or mask the user operation outcome.
+        }
+    }
 
     private static int StatusCodeFor(UserCommandResult result) => result.Status switch
     {
