@@ -39,4 +39,13 @@ describe('AdminApp', () => {
 
     await waitFor(() => expect(screen.getByRole('heading', { name: 'Admin sign in' })).toBeTruthy());
   });
+
+  it('renders an explicit not-found page for unknown admin routes', async () => {
+    window.history.pushState({}, '', '/admin/unknown');
+    authApi.getSession.mockResolvedValue({ displayName: 'Admin User' });
+    render(<AdminApp />);
+    expect(await screen.findByRole('heading', { name: 'Admin page not found' })).toBeTruthy();
+    expect(screen.getByText('Choose a workspace administration page from the admin home.')).toBeTruthy();
+    window.history.pushState({}, '', '/admin');
+  });
 });

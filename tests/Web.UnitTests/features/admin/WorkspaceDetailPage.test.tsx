@@ -10,6 +10,23 @@ afterEach(() => { cleanup(); vi.clearAllMocks(); });
 const detail = { id: 'w-1', tenantId: '11111111-1111-1111-1111-111111111111', displayName: 'Demo', connectionStatus: 'awaiting_invitation', lastVerifiedAt: null, connectionFailureCategory: null, memberships: [{ id: 'm-1', tenantObjectId: '22222222-2222-2222-2222-222222222222', email: 'admin@example.com', platformRole: 'CustomerAdmin', isAteaOperator: false }], invitations: [{ id: 'i-1', email: 'admin@example.com', displayName: 'Admin', expiresAt: '2026-10-01T00:00:00Z', redeemedAt: null, nonceHash: 'must-not-render' }] };
 
 describe('WorkspaceDetailPage', () => {
+  it('validates and creates a membership, then refreshes workspace details', async () => {
+    api.getWorkspace.mockResolvedValue(detail);
+    api.addMembership.mockResolvedValue({ id: 'm-2', tenantObjectId: '33333333-3333-3333-3333-333333333333', email: 'operator@example.com', platformRole: 'PlatformOperator', isAteaOperator: true });
+    render(<WorkspaceDetailPage workspaceId="w-1" />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Add membership' }));
+    fireEvent.click(screen.getAllByRole('button', { name: 'Add membership', exact: true })[1]);
+    expect(screen.getByRole('alert').textContent).toContain('Enter a valid Entra object ID.');
+    fireEvent.change(screen.getByLabelText('Entra object ID'), { target: { value: '33333333-3333-3333-3333-333333333333' } });
+    fireEvent.change(screen.getByLabelText('Membership email'), { target: { value: 'operator@example.com' } });
+    fireEvent.change(screen.getByLabelText('Platform role'), { target: { value: 'PlatformOperator' } });
+    fireEvent.click(screen.getByLabelText('Atea operator'));
+    fireEvent.click(screen.getAllByRole('button', { name: 'Add membership', exact: true })[1]);
+    expect(await screen.findByText(/Membership added/)).toBeTruthy();
+    expect(api.addMembership).toHaveBeenCalledWith('w-1', { tenantObjectId: '33333333-3333-3333-3333-333333333333', email: 'operator@example.com', platformRole: 'PlatformOperator', isAteaOperator: true });
+    expect(api.getWorkspace).toHaveBeenCalledTimes(2);
+  });
+
   it('renders safe membership and invitation metadata without secret fields', async () => {
     api.getWorkspace.mockResolvedValue(detail);
     render(<WorkspaceDetailPage workspaceId="w-1" />);
