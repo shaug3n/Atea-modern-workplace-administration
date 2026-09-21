@@ -1,4 +1,5 @@
 using Atea.UnifiedWorkplace.Api.Infrastructure.Graph;
+using Atea.UnifiedWorkplace.Api.Infrastructure.Http;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Atea.UnifiedWorkplace.Api.Authorization;
@@ -30,7 +31,10 @@ internal sealed class CapabilityEndpointFilter(string capability) : IEndpointFil
         var workspaceContext = accessor.Current;
         if (workspaceContext is null)
         {
-            return Results.Json(new { error = "workspace_membership_required" }, statusCode: StatusCodes.Status403Forbidden);
+            return ApiProblemDetails.Result(
+                ApiProblemCode.AuthorizationDenied,
+                context.HttpContext,
+                "The signed-in user is not assigned to this workspace.");
         }
 
         var decision = CapabilityEvaluator.IsPlatformOnly(capability)
@@ -42,21 +46,18 @@ internal sealed class CapabilityEndpointFilter(string capability) : IEndpointFil
             return await next(context);
         }
 
-        return Results.Problem(new ProblemDetails
-        {
-            Status = StatusCodes.Status403Forbidden,
-            Title = "Capability required",
-            Type = "https://httpstatuses.com/403",
-            Extensions =
+        return ApiProblemDetails.Result(
+            ApiProblemCode.CapabilityRequired,
+            context.HttpContext,
+            extensions: new Dictionary<string, object?>
             {
-                ["error"] = "capability_required",
+                ["error"] = ApiProblemCode.CapabilityRequired,
                 ["capability"] = decision.Capability,
                 ["state"] = decision.State,
                 ["reasonCode"] = decision.ReasonCode,
                 ["requiredRole"] = decision.RequiredRoleTemplateId,
                 ["nextStep"] = decision.NextStep
-            }
-        });
+            });
     }
 
     private async Task<CapabilityDecision> EvaluateGraphCapabilityAsync(HttpContext httpContext, WorkspaceContext workspaceContext)

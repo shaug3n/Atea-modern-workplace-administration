@@ -1,3 +1,5 @@
+using Atea.UnifiedWorkplace.Api.Infrastructure.Http;
+
 namespace Atea.UnifiedWorkplace.Api.Authorization;
 
 public sealed class WorkspaceContextMiddleware(RequestDelegate next)
@@ -18,14 +20,13 @@ public sealed class WorkspaceContextMiddleware(RequestDelegate next)
         var resolution = await resolver.ResolveAsync(httpContext.User, httpContext.RequestAborted);
         if (!resolution.Succeeded)
         {
-            httpContext.Response.StatusCode = resolution.IsAuthenticationFailure
-                ? StatusCodes.Status401Unauthorized
-                : StatusCodes.Status403Forbidden;
-            httpContext.Response.ContentType = "application/json";
-            await httpContext.Response.WriteAsJsonAsync(new
-            {
-                error = resolution.IsAuthenticationFailure ? "authentication_required" : "workspace_membership_required"
-            }, httpContext.RequestAborted);
+            var code = resolution.IsAuthenticationFailure
+                ? ApiProblemCode.AuthenticationRequired
+                : ApiProblemCode.AuthorizationDenied;
+            var detail = resolution.IsAuthenticationFailure
+                ? null
+                : "The signed-in user is not assigned to this workspace.";
+            await ApiProblemDetails.WriteAsync(httpContext, code, detail);
             return;
         }
 

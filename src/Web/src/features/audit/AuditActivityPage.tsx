@@ -1,0 +1,172 @@
+import React, { useCallback, useEffect, useState } from 'react';
+import { useApi } from '../../auth/useApi';
+import { messages } from '../../app/messages';
+
+export type AuditFreshness = 'fresh' | 'stale' | 'unavailable';
+
+export type AuditEvent = {
+  id: string;
+  workspaceId: string;
+  tenantId: string;
+  actorTenantId: string;
+  actorObjectId: string;
+  action: string;
+  targetType: string;
+  targetId: string;
+  outcome: string;
+  timestamp: string;
+  correlationId: string | null;
+  graphCorrelationId: string | null;
+  graphRequestId: string | null;
+  pimRequestId: string | null;
+  failureCategory: string | null;
+  safeMetadataJson: string;
+};
+
+export type AuditEventsResponse = {
+  items: AuditEvent[];
+  fetchedAt: string;
+  freshness: AuditFreshness;
+  partialData: boolean;
+  authoritativeSourceNotice: string;
+};
+
+export type AuditEventsLoader = () => Promise<AuditEventsResponse>;
+
+export function AuditActivityPage({ loadAuditEvents }: { loadAuditEvents?: AuditEventsLoader }) {
+  if (loadAuditEvents) {
+    return <LoadedAuditActivityPage loadAuditEvents={loadAuditEvents} />;
+  }
+
+  return <AuthenticatedAuditActivityPage />;
+}
+
+function AuthenticatedAuditActivityPage() {
+  const api = useApi();
+  const loadAuditEvents = useCallback(() => fetchAuditEvents(api), [api]);
+  return <LoadedAuditActivityPage loadAuditEvents={loadAuditEvents} />;
+}
+
+function LoadedAuditActivityPage({ loadAuditEvents }: { loadAuditEvents: AuditEventsLoader }) {
+  const [result, setResult] = useState<AuditEventsResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setFailed(false);
+    loadAuditEvents()
+      .then((response) => {
+        if (!cancelled) setResult(response);
+      })
+      .catch(() => {
+        if (!cancelled) setFailed(true);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+    });
+    return () => { cancelled = true; };
+  }, [loadAuditEvents]);
+
+  const state = loading ? 'loading' : failed ? 'error' : result && result.items.length === 0 ? 'empty' : 'ready';
+
+  return (
+    <section className="audit-page" aria-labelledby="audit-page-title">
+      <div className="audit-page__header">
+        <div>
+          <p className="eyebrow">{messages.auditEyebrow}</p>
+          <h1 id="audit-page-title">{messages.auditTitle}</h1>
+          <p>{messages.auditIntro}</p>
+        </div>
+      </div>
+
+      {result && (
+        <AuditFreshnessBanner
+          fetchedAt={result.fetchedAt}
+          freshness={result.freshness}
+          partialData={result.partialData}
+          notice={result.authoritativeSourceNotice}
+        />
+      )}
+
+      {state === 'loading' && (
+        <div className="async-state async-state--loading" role="status" aria-live="polite">
+          <span className="async-state__bar" />
+          <span className="async-state__bar" />
+          <span className="async-state__bar" />
+          <span>{messages.auditLoading}</span>
+        </div>
+      )}
+      {state === 'error' && <div className="async-state" role="alert">{messages.auditUnavailable}</div>}
+      {state === 'empty' && <div className="async-state">{messages.auditNoResults}</div>}
+      {state === 'ready' && result && <AuditEventsTable events={result.items} />}
+    </section>
+  );
+}
+
+async function fetchAuditEvents(api: (path: string, init?: RequestInit) => Promise<Response>) {
+  const response = await api('/api/audit/events?pageSize=25');
+  if (!response.ok) {
+    throw new Error('audit_activity_unavailable');
+  }
+
+  return await response.json() as AuditEventsResponse;
+}
+
+function AuditFreshnessBanner({ fetchedAt, freshness, partialData, notice }: { fetchedAt?: string | null; freshness: AuditFreshness; partialData: boolean; notice: string }) {
+  const tone = freshness === 'fresh' && !partialData ? 'success' : freshness === 'stale' ? 'warning' : 'danger';
+  const label = freshness === 'fresh' && !partialData
+    ? messages.auditFresh
+    : freshness === 'stale'
+      ? messages.auditStale
+      : messages.auditDataUnavailable;
+  const fetched = fetchedAt ? new Date(fetchedAt).toLocaleString() : messages.auditNeverFetched;
+
+  return (
+    <div className="data-freshness" data-tone={tone} role={tone === 'success' ? 'status' : 'alert'}>
+      <span>{label}</span>
+      <span>{messages.auditFetchedAt}: {fetched}</span>
+      <span>{notice}</span>
+    </div>
+  );
+}
+
+function AuditEventsTable({ events }: { events: AuditEvent[] }) {
+  return (
+    <div className="audit-table-wrap">
+      <table className="audit-table" aria-label={messages.auditTableLabel}>
+        <thead>
+          <tr>
+            <th scope="col">{messages.auditTimeColumn}</th>
+            <th scope="col">{messages.auditActionColumn}</th>
+            <th scope="col">{messages.auditTargetColumn}</th>
+            <th scope="col">{messages.auditOutcomeColumn}</th>
+            <th scope="col">{messages.auditCorrelationColumn}</th>
+            <th scope="col">{messages.auditMetadataColumn}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {events.map((event) => (
+            <tr key={event.id}>
+              <td>{formatDate(event.timestamp)}</td>
+              <td>{event.action}</td>
+              <td>{event.targetId || event.targetType}</td>
+              <td>{event.failureCategory ? `${event.outcome} (${event.failureCategory})` : event.outcome}</td>
+              <td>{correlationText(event)}</td>
+              <td><code>{event.safeMetadataJson || '{}'}</code></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function correlationText(event: AuditEvent) {
+  return [event.correlationId, event.graphCorrelationId, event.graphRequestId, event.pimRequestId].filter(Boolean).join(' / ') || messages.auditNoCorrelation;
+}
+
+function formatDate(value: string) {
+  return Number.isNaN(Date.parse(value)) ? value : new Date(value).toLocaleString();
+}

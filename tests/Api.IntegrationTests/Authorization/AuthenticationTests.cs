@@ -1,9 +1,12 @@
 using System.Net;
 using System.Net.Http.Headers;
+using System.Text.Json;
 using System.Security.Claims;
 using Atea.UnifiedWorkplace.Api.Authorization;
+using Atea.UnifiedWorkplace.Api.Infrastructure.Http;
 using FluentAssertions;
 using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -19,10 +22,13 @@ public sealed class AuthenticationTests
     public async Task UnauthenticatedApiCallReturnsStructured401()
     {
         using var client = CreateFactory().CreateClient();
+        client.DefaultRequestHeaders.Add("X-Correlation-ID", "problem-correlation-123");
         var response = await client.GetAsync("/api/session");
 
         response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
-        (await response.Content.ReadAsStringAsync()).Should().Be("{\"error\":\"authentication_required\"}");
+        var problem = await AssertProblemAsync(response, ApiProblemCode.AuthenticationRequired);
+        problem.RootElement.GetProperty("title").GetString().Should().Be("Authentication required");
+        problem.RootElement.GetProperty("correlationId").GetString().Should().Be("problem-correlation-123");
     }
 
     [Fact]
@@ -33,7 +39,8 @@ public sealed class AuthenticationTests
         var response = await client.GetAsync("/api/session");
 
         response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
-        (await response.Content.ReadAsStringAsync()).Should().Be("{\"error\":\"workspace_membership_required\"}");
+        var problem = await AssertProblemAsync(response, ApiProblemCode.AuthorizationDenied);
+        problem.RootElement.GetProperty("detail").GetString().Should().Be("The signed-in user is not assigned to this workspace.");
     }
 
     [Fact]
@@ -60,7 +67,7 @@ public sealed class AuthenticationTests
         var response = await client.GetAsync("/api/session");
 
         response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
-        (await response.Content.ReadAsStringAsync()).Should().Be("{\"error\":\"authentication_required\"}");
+        await AssertProblemAsync(response, ApiProblemCode.AuthenticationRequired);
     }
 
     [Fact]
@@ -70,7 +77,7 @@ public sealed class AuthenticationTests
         var response = await client.GetAsync("/api/ping");
 
         response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
-        (await response.Content.ReadAsStringAsync()).Should().Be("{\"error\":\"authentication_required\"}");
+        await AssertProblemAsync(response, ApiProblemCode.AuthenticationRequired);
     }
 
     private static WebApplicationFactory<Program> CreateFactory(bool includeMembership = false, bool malformedIdentity = false) =>
@@ -83,16 +90,29 @@ public sealed class AuthenticationTests
             }));
             builder.ConfigureServices(services =>
             {
-            services.AddAuthentication(options =>
-            {
-                options.DefaultAuthenticateScheme = TestAuthenticationHandler.Scheme;
-                options.DefaultChallengeScheme = TestAuthenticationHandler.Scheme;
-            }).AddScheme<AuthenticationSchemeOptions, TestAuthenticationHandler>(TestAuthenticationHandler.Scheme, _ => { });
-            services.RemoveAll<IWorkspaceMembershipReader>();
-            services.AddSingleton<IWorkspaceMembershipReader>(new FixtureMembershipReader(includeMembership));
-            services.AddSingleton(typeof(TestAuthenticationMode), malformedIdentity ? TestAuthenticationMode.Malformed : TestAuthenticationMode.Valid);
+                services.AddAuthentication(options =>
+                {
+                    options.DefaultAuthenticateScheme = TestAuthenticationHandler.Scheme;
+                    options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+                }).AddScheme<AuthenticationSchemeOptions, TestAuthenticationHandler>(TestAuthenticationHandler.Scheme, _ => { });
+                services.RemoveAll<IWorkspaceMembershipReader>();
+                services.AddSingleton<IWorkspaceMembershipReader>(new FixtureMembershipReader(includeMembership));
+                services.AddSingleton(typeof(TestAuthenticationMode), malformedIdentity ? TestAuthenticationMode.Malformed : TestAuthenticationMode.Valid);
             });
         });
+
+    private static async Task<JsonDocument> AssertProblemAsync(HttpResponseMessage response, string code)
+    {
+        response.Content.Headers.ContentType!.MediaType.Should().Be("application/problem+json");
+        response.Headers.GetValues("X-Correlation-ID").Should().NotBeEmpty();
+        var body = await response.Content.ReadAsStringAsync();
+        body.Should().NotContain("access_token");
+        body.Should().NotContain("raw Graph");
+        var document = JsonDocument.Parse(body);
+        document.RootElement.GetProperty("code").GetString().Should().Be(code);
+        document.RootElement.GetProperty("correlationId").GetString().Should().NotBeNullOrWhiteSpace();
+        return document;
+    }
 
     private sealed class FixtureMembershipReader(bool includeMembership) : IWorkspaceMembershipReader
     {
@@ -123,13 +143,6 @@ public sealed class AuthenticationTests
             if (mode == TestAuthenticationMode.Valid) claims.Add(new Claim("tid", "11111111-1111-1111-1111-111111111111"));
             var identity = new ClaimsIdentity(claims, Scheme);
             return Task.FromResult(AuthenticateResult.Success(new AuthenticationTicket(new ClaimsPrincipal(identity), Scheme)));
-        }
-
-        protected override Task HandleChallengeAsync(AuthenticationProperties properties)
-        {
-            Response.StatusCode = StatusCodes.Status401Unauthorized;
-            Response.ContentType = "application/json";
-            return Response.WriteAsync("{\"error\":\"authentication_required\"}");
         }
     }
 }

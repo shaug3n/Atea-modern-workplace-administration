@@ -2,6 +2,7 @@ import React from 'react';
 import type { ReactNode } from 'react';
 import { workspaceSettingsCapability, type Capability, type CapabilityDecision } from '../capabilities/capabilityTypes';
 import { OverviewPage, type ConnectionHealthLoader } from '../features/overview/OverviewPage';
+import { AuditActivityPage } from '../features/audit/AuditActivityPage';
 import { UserDetailPage } from '../features/users/UserDetailPage';
 import { UsersPage } from '../features/users/UsersPage';
 import { messages } from './messages';
@@ -50,7 +51,7 @@ export const appRoutes: AppRoute[] = [
   {
     path: '/audit',
     label: messages.navAudit,
-    render: () => <WorkInProgressPage title={messages.auditTitle} description={messages.auditDescription} />,
+    render: () => <AuditActivityPage />,
   },
   {
     path: '/workspace-settings',

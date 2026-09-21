@@ -308,6 +308,12 @@ p {
   max-width: 78rem;
 }
 
+.audit-page {
+  display: grid;
+  gap: var(--atea-space-5);
+  max-width: 78rem;
+}
+
 .users-page__header {
   display: flex;
   align-items: flex-start;
@@ -319,7 +325,21 @@ p {
   background: var(--uw-surface);
 }
 
+.audit-page__header {
+  display: grid;
+  gap: var(--atea-space-2);
+  padding: var(--atea-space-5);
+  border: 1px solid var(--uw-border);
+  border-radius: var(--atea-radius-md);
+  background: var(--uw-surface);
+}
+
 .users-page__header p:last-child {
+  max-width: 42rem;
+  color: var(--uw-muted);
+}
+
+.audit-page__header p:last-child {
   max-width: 42rem;
   color: var(--uw-muted);
 }
@@ -428,9 +448,24 @@ p {
   background: var(--uw-surface);
 }
 
+.audit-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--uw-border);
+  border-radius: var(--atea-radius-md);
+  background: var(--uw-surface);
+}
+
 .users-table {
   width: 100%;
   min-width: 58rem;
+  border-collapse: collapse;
+  font-size: var(--atea-text-m);
+  line-height: var(--atea-text-m-lh);
+}
+
+.audit-table {
+  width: 100%;
+  min-width: 64rem;
   border-collapse: collapse;
   font-size: var(--atea-text-m);
   line-height: var(--atea-text-m-lh);
@@ -444,7 +479,28 @@ p {
   vertical-align: top;
 }
 
+.audit-table th,
+.audit-table td {
+  padding: var(--atea-space-3) var(--atea-space-4);
+  border-bottom: 1px solid var(--uw-border);
+  text-align: left;
+  vertical-align: top;
+}
+
+.audit-table code {
+  color: var(--uw-text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: var(--atea-text-s);
+  white-space: pre-wrap;
+}
+
 .users-table thead th {
+  color: var(--uw-muted);
+  font-size: var(--atea-text-s);
+  font-weight: 700;
+}
+
+.audit-table thead th {
   color: var(--uw-muted);
   font-size: var(--atea-text-s);
   font-weight: 700;
@@ -452,6 +508,11 @@ p {
 
 .users-table tbody tr:last-child th,
 .users-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.audit-table tbody tr:last-child th,
+.audit-table tbody tr:last-child td {
   border-bottom: 0;
 }
 

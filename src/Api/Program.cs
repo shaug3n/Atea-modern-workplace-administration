@@ -1,4 +1,3 @@
-using System.Text.Json;
 using Atea.UnifiedWorkplace.Api.Authorization;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Atea.UnifiedWorkplace.Api.Features.Authorization;
@@ -16,6 +15,7 @@ using Atea.UnifiedWorkplace.Api.Features.Users;
 using Atea.UnifiedWorkplace.Api.Infrastructure.Observability;
 using Atea.UnifiedWorkplace.Api.Infrastructure.Security;
 using Atea.UnifiedWorkplace.Api.Features.Audit;
+using Atea.UnifiedWorkplace.Api.Infrastructure.Http;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddDbContext<WorkplaceDbContext>(options => options.UseNpgsql(builder.Configuration.GetConnectionString("WorkplaceDb")));
@@ -64,15 +64,11 @@ builder.Services.Configure<JwtBearerOptions>(JwtBearerDefaults.AuthenticationSch
     options.Events.OnChallenge = async context =>
     {
         context.HandleResponse();
-        context.Response.StatusCode = StatusCodes.Status401Unauthorized;
-        context.Response.ContentType = "application/json";
-        await context.Response.WriteAsync(JsonSerializer.Serialize(new { error = "authentication_required" }));
+        await ApiProblemDetails.WriteAsync(context.HttpContext, ApiProblemCode.AuthenticationRequired);
     };
     options.Events.OnForbidden = async context =>
     {
-        context.Response.StatusCode = StatusCodes.Status403Forbidden;
-        context.Response.ContentType = "application/json";
-        await context.Response.WriteAsync(JsonSerializer.Serialize(new { error = "forbidden" }));
+        await ApiProblemDetails.WriteAsync(context.HttpContext, ApiProblemCode.AuthorizationDenied);
     };
 });
 
@@ -86,6 +82,7 @@ app.UseDefaultFiles();
 app.UseStaticFiles();
 app.MapGet("/health", () => Results.Json(new { status = "ok" })).AllowAnonymous();
 app.UseMiddleware<CorrelationMiddleware>();
+app.UseMiddleware<ApiProblemDetailsMiddleware>();
 app.UsePlatformAuthorization();
 app.MapGet("/api/ping", () => Results.Ok(new { status = "ok" }));
 app.MapGet("/api/session", (IWorkspaceContextAccessor accessor) =>
