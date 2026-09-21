@@ -300,17 +300,31 @@ Primary new or modified areas:
 - Modify: `src/Api/Features/Pim/PimService.cs`
 - Modify: `src/Api/Features/Pim/PimEndpoints.cs`
 - Modify: `src/Api/Authorization/CapabilityEvaluator.cs`
+- Modify: `src/Api/Features/Overview/OverviewService.cs`
+- Modify: `src/Api/Features/Workspaces/WorkspaceSettingsEndpoints.cs`
+- Modify: `src/Api/Features/Audit/AuditEndpoints.cs`
+- Modify: `src/Api/Infrastructure/Observability/AuditWriter.cs`
 - Modify: `src/Web/src/features/pim/PimActivationDialog.tsx`
 - Modify: `src/Web/src/features/pim/PimGuidedHandoff.tsx`
 - Modify: `src/Web/src/features/users/RolesAndPimSection.tsx`
 - Modify: `src/Web/src/components/PermissionState.tsx`
 - Modify: `src/Web/src/features/overview/OverviewPage.tsx`
 - Modify: `src/Web/src/messages/en.ts`
+- Modify: `src/Web/src/app/App.tsx`
+- Modify: `src/Web/src/features/audit/AuditActivityPage.tsx`
+- Modify: `src/Web/src/features/workspace-settings/WorkspaceSettingsPage.tsx`
 - Test: `tests/Api.UnitTests/Pim/PimServiceTests.cs`
 - Test: `tests/Api.UnitTests/Authorization/CapabilityEvaluatorTests.cs`
+- Test: `tests/Api.UnitTests/Overview/OverviewServiceTests.cs`
+- Test: `tests/Api.UnitTests/Observability/AuditRedactionTests.cs`
 - Test: `tests/Api.IntegrationTests/Pim/PimEndpointTests.cs`
+- Test: `tests/Api.IntegrationTests/Audit/AuditEndpointTests.cs`
+- Test: `tests/Api.IntegrationTests/Workspaces/WorkspaceSettingsEndpointTests.cs`
 - Test: `tests/Web.UnitTests/features/pim/PimActivationDialog.test.tsx`
 - Test: `tests/Web.UnitTests/capabilities/PermissionState.test.tsx`
+- Test: `tests/Web.UnitTests/features/overview/OverviewPage.test.tsx`
+- Test: `tests/Web.UnitTests/features/audit/AuditActivityPage.test.tsx`
+- Test: `tests/Web.UnitTests/features/workspace-settings/WorkspaceSettingsPage.test.tsx`
 - Test: `tests/Web.E2E/pim-activation.spec.tsx`
 
 **Interfaces:**
@@ -321,9 +335,13 @@ Primary new or modified areas:
 
   Cover successful activation, approval-required, MFA-required, justification-required, expired eligibility, insufficient scopes, 403/429/5xx Graph responses and active-role refresh. Assert raw Graph payloads and tokens are absent from responses.
 
+- [ ] **Step 1b: Add regression tests for the operational shell.**
+
+  Assert overview metrics are hidden or unavailable when `users.view` is hidden, connection-health check and consent actions render in the normal application route, database-backed settings persist `displayName` and `defaultFilters`, and audit reads require the audit capability. Assert audit metadata redacts `accessToken`, `refreshToken`, `clientSecret`, `token` and nested secret values.
+
 - [ ] **Step 2: Fix adapter/service/UI mappings.**
 
-  Ensure the Graph request uses the correct directory-role PIM activation contract, preserve safe correlation IDs, display tenant requirements, and provide an Entra handoff when activation cannot be completed in-app.
+  Ensure the Graph request uses the correct directory-role PIM activation contract, preserve safe correlation IDs, display tenant requirements, and provide an Entra handoff when activation cannot be completed in-app. In the same slice, enforce overview capability checks before metric/cache reads, wire connection-health actions into the normal overview route, persist all settings fields, add audit capability enforcement/filter/pagination behavior, and make audit write failures explicit rather than silently dropping the record.
 
 - [ ] **Step 3: Run focused tests and commit.**
 
@@ -332,7 +350,7 @@ Primary new or modified areas:
   dotnet test tests/Api.IntegrationTests/Api.IntegrationTests.csproj --filter FullyQualifiedName~PimEndpointTests
   npm run test:behavior --prefix src/Web -- --run tests/Web.UnitTests/features/pim tests/Web.UnitTests/capabilities
   npm run test --prefix tests/Web.E2E -- --run pim-activation.spec.tsx
-  git add src/Api/Infrastructure/Graph/GraphRoleAndPimService.cs src/Api/Features/Pim src/Api/Authorization/CapabilityEvaluator.cs src/Web/src/features/pim src/Web/src/features/users/RolesAndPimSection.tsx src/Web/src/components/PermissionState.tsx src/Web/src/features/overview/OverviewPage.tsx src/Web/src/messages/en.ts tests/Api.UnitTests/Pim tests/Api.UnitTests/Authorization/CapabilityEvaluatorTests.cs tests/Api.IntegrationTests/Pim tests/Web.UnitTests/features/pim tests/Web.UnitTests/capabilities tests/Web.E2E/pim-activation.spec.tsx
+  git add src/Api/Infrastructure/Graph/GraphRoleAndPimService.cs src/Api/Features/Pim src/Api/Authorization/CapabilityEvaluator.cs src/Api/Features/Overview/OverviewService.cs src/Api/Features/Workspaces/WorkspaceSettingsEndpoints.cs src/Api/Features/Audit/AuditEndpoints.cs src/Api/Infrastructure/Observability/AuditWriter.cs src/Web/src/features/pim src/Web/src/features/users/RolesAndPimSection.tsx src/Web/src/components/PermissionState.tsx src/Web/src/features/overview/OverviewPage.tsx src/Web/src/features/audit/AuditActivityPage.tsx src/Web/src/features/workspace-settings/WorkspaceSettingsPage.tsx src/Web/src/app/App.tsx src/Web/src/messages/en.ts tests/Api.UnitTests/Pim tests/Api.UnitTests/Authorization/CapabilityEvaluatorTests.cs tests/Api.UnitTests/Overview/OverviewServiceTests.cs tests/Api.UnitTests/Observability/AuditRedactionTests.cs tests/Api.IntegrationTests/Pim tests/Api.IntegrationTests/Audit/AuditEndpointTests.cs tests/Api.IntegrationTests/Workspaces/WorkspaceSettingsEndpointTests.cs tests/Web.UnitTests/features/pim tests/Web.UnitTests/capabilities tests/Web.UnitTests/features/overview/OverviewPage.test.tsx tests/Web.UnitTests/features/audit/AuditActivityPage.test.tsx tests/Web.UnitTests/features/workspace-settings/WorkspaceSettingsPage.test.tsx tests/Web.E2E/pim-activation.spec.tsx
   git commit -m "feat: complete permission and PIM experience"
   ```
 
