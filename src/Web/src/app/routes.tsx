@@ -49,7 +49,7 @@ export const appRoutes: AppRoute[] = [
     path: '/users/:userId',
     label: messages.navUsers,
     capability: 'users.view',
-    render: () => <UserDetailPage />,
+    render: (options) => <UserDetailPage capabilities={options?.capabilities} />,
   },
   {
     path: '/licenses',

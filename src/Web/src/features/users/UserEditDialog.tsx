@@ -10,8 +10,11 @@ export function UserEditDialog({ user, onCompleted }: { user: UserDetails; onCom
   const [displayName, setDisplayName] = useState(user.displayName ?? '');
   const [jobTitle, setJobTitle] = useState(user.jobTitle ?? '');
   const [error, setError] = useState<string | null>(null);
+  const [pending, setPending] = useState(false);
   const sourceLimitation = user.isReadOnly ? user.sourceOfAuthorityReason ?? messages.userSourceReadOnlyTitle : null;
   const submit = async () => {
+    if (pending) return;
+    setPending(true);
     const command: UpdateUserCommand = {
       displayName,
       givenName: user.givenName ?? null,
@@ -25,10 +28,12 @@ export function UserEditDialog({ user, onCompleted }: { user: UserDetails; onCom
     };
     try {
       const response = await mutateUser(api, `/api/users/${encodeURIComponent(user.id)}`, 'PATCH', command);
-      if (response.status !== 'succeeded') setError(response.error === 'consent_required' ? 'Microsoft Graph consent is required before this action can be completed.' : 'User details could not be updated. Review the user and try again.');
+      if (response.status !== 'succeeded') setError(formatEditError(response));
       onCompleted?.(response);
     } catch {
       setError('User details could not be updated. Review the user and try again.');
+    } finally {
+      setPending(false);
     }
   };
 
@@ -43,8 +48,18 @@ export function UserEditDialog({ user, onCompleted }: { user: UserDetails; onCom
       proposedChange={messages.userEditProposedChange}
       requiredCapability="users.update"
       sourceLimitation={sourceLimitation}
+      busy={pending}
       onConfirm={submit}
       />
     </div>
   );
+}
+
+function formatEditError(response: UserCommandResponse) {
+  if (response.error === 'idempotency_key_reused' || response.error === 'conflict') return messages.userMutationConflict;
+  if (response.error === 'throttled' || response.status === 'temporarily_unavailable') return messages.userMutationThrottled;
+  if (response.error === 'consent_required') return 'Microsoft Graph consent is required before this action can be completed.';
+  if (response.error === 'source_of_authority_read_only' || response.status === 'source_of_authority_read_only') return messages.userDisableSourceReadOnly;
+  if (response.error === 'capability_required' || response.status === 'denied') return messages.userDisablePermissionDenied;
+  return 'User details could not be updated. Review the user and try again.';
 }

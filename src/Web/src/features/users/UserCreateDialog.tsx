@@ -10,6 +10,7 @@ export function UserCreateDialog({ onCompleted }: { onCompleted?: (result: UserC
   const [userPrincipalName, setUserPrincipalName] = useState('');
   const [usageLocation, setUsageLocation] = useState('NO');
   const [result, setResult] = useState<UserCommandResponse | null>(null);
+  const [pending, setPending] = useState(false);
 
   const command: CreateUserCommand = {
     displayName,
@@ -26,21 +27,30 @@ export function UserCreateDialog({ onCompleted }: { onCompleted?: (result: UserC
   };
 
   const submit = async () => {
-    const response = await mutateUser(api, '/api/users', 'POST', command);
-    setResult(response);
-    onCompleted?.(response);
+    if (pending) return;
+    setPending(true);
+    try {
+      const response = await mutateUser(api, '/api/users', 'POST', command);
+      setResult(response);
+      onCompleted?.(response);
+    } catch {
+      setResult({ status: 'failed', requiredCapability: 'users.create', replayed: false, error: 'user_mutation_failed' });
+    } finally {
+      setPending(false);
+    }
   };
 
   return (
     <div role="dialog" aria-modal="true" aria-labelledby="user-create-dialog-title">
-      <label>{messages.usersNameColumn}<input value={displayName} onChange={(event) => setDisplayName(event.target.value)} /></label>
-      <label>{messages.usersUpnColumn}<input value={userPrincipalName} onChange={(event) => setUserPrincipalName(event.target.value)} /></label>
-      <label>{messages.userUsageLocation}<input value={usageLocation} onChange={(event) => setUsageLocation(event.target.value.toUpperCase())} /></label>
+      <label>{messages.usersNameColumn}<input value={displayName} onChange={(event) => { setDisplayName(event.target.value); setResult(null); }} /></label>
+      <label>{messages.usersUpnColumn}<input value={userPrincipalName} onChange={(event) => { setUserPrincipalName(event.target.value); setResult(null); }} /></label>
+      <label>{messages.userUsageLocation}<input value={usageLocation} onChange={(event) => { setUsageLocation(event.target.value.toUpperCase()); setResult(null); }} /></label>
       <ConfirmationDialog
         title={messages.userCreateDialogTitle}
         target={displayName || userPrincipalName || messages.usersUnnamedUser}
         proposedChange={messages.userCreateProposedChange}
         requiredCapability="users.create"
+        busy={pending}
         onConfirm={submit}
       />
       {result?.temporaryCredentialNotice && (
@@ -52,6 +62,8 @@ export function UserCreateDialog({ onCompleted }: { onCompleted?: (result: UserC
       )}
       {result?.error === 'idempotency_key_reused' && <p role="alert">{messages.userMutationConflict}</p>}
       {result?.error === 'throttled' && <p role="alert">{messages.userMutationThrottled}</p>}
+      {result?.error === 'user_mutation_failed' && <p role="alert">User creation could not be completed. Review the details and try again.</p>}
+      {result && result.status !== 'succeeded' && result.error !== 'idempotency_key_reused' && result.error !== 'throttled' && result.error !== 'user_mutation_failed' && <p role="alert">User creation could not be completed. Review the details and try again.</p>}
     </div>
   );
 }

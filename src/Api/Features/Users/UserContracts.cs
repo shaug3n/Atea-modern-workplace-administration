@@ -166,6 +166,9 @@ public sealed class UserSearchValidationException : Exception
 
 public static class UserSearchFilterContract
 {
+    // Microsoft Graph cannot safely join users to directory role assignments in this adapter.
+    // Reject tenantRole explicitly until a tenant-scoped role-assignment index is available;
+    // never drop the requested filter and return an unfiltered directory.
     private static readonly IReadOnlySet<string> SupportedUserTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
     {
         "Member",
@@ -183,7 +186,8 @@ public static class UserSearchFilterContract
         var accountStatus = NormalizeEnum(request.AccountStatus, "accountStatus", ["enabled", "disabled"]);
         var userType = NormalizeEnum(request.UserType, "userType", SupportedUserTypes);
 
-        var tenantRole = NormalizeText(request.TenantRole, "tenantRole");
+        RejectUnsupported(request.TenantRole, "tenantRole", "Tenant role filtering requires a role-assignment index and is not available through the users directory adapter.");
+        var tenantRole = (string?)null;
         var license = NormalizeText(request.License, "license");
 
         return new UserSearchQuery(

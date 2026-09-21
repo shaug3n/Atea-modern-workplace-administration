@@ -81,6 +81,7 @@ public sealed class UserQueryService(
         "throttled" => "Microsoft Graph throttled the directory request.",
         "not_authorized" => "The signed-in user is not authorized to read the directory.",
         "consent_required" => "Delegated Microsoft Graph consent is required.",
+        "invalid_license_filter" => "The selected license SKU could not be resolved in this tenant.",
         _ => "The directory is temporarily unavailable."
     };
 }

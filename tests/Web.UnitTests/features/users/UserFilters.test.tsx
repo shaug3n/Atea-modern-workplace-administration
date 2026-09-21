@@ -6,7 +6,7 @@ import { UserFilters } from '../../../../src/Web/src/features/users/UserFilters'
 describe('UserFilters', () => {
   afterEach(() => cleanup());
 
-  it('emits all supported directory filters', () => {
+  it('marks tenant-role filtering unavailable until a safe role index exists', () => {
     const onChange = vi.fn();
     render(<UserFilters filters={{ search: '', accountStatus: '', tenantRole: '', license: '', userType: '' }} onChange={onChange} />);
 
@@ -14,13 +14,12 @@ describe('UserFilters', () => {
     fireEvent.change(screen.getByLabelText('Account status'), { target: { value: 'enabled' } });
     fireEvent.change(screen.getByLabelText('User type'), { target: { value: 'Member' } });
 
-    fireEvent.change(screen.getByLabelText('Tenant role'), { target: { value: 'Global Reader' } });
     fireEvent.change(screen.getByLabelText('License'), { target: { value: 'ENTERPRISEPACK' } });
 
     expect(onChange).toHaveBeenLastCalledWith({
       search: 'ada',
       accountStatus: 'enabled',
-      tenantRole: 'Global Reader',
+      tenantRole: '',
       license: 'ENTERPRISEPACK',
       userType: 'Member',
     });

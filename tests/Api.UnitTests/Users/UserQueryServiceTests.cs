@@ -217,6 +217,18 @@ public sealed class UserQueryServiceTests
             .WithMessage("*filter*");
     }
 
+    [Fact]
+    public async Task Search_rejects_tenant_role_with_explicit_unsupported_filter_error_instead_of_ignoring_it()
+    {
+        var service = CreateService(new RecordingDirectoryReader());
+
+        var act = () => service.SearchAsync(Workspace, new UserSearchRequest(TenantRole: "Global Reader"), CancellationToken.None);
+
+        var exception = await act.Should().ThrowAsync<UserSearchValidationException>();
+        exception.Which.Category.Should().Be("unsupported_filter");
+        exception.Which.Field.Should().Be("tenantRole");
+    }
+
     [Theory]
     [InlineData("not_found", UserDirectoryFreshness.Unavailable)]
     [InlineData("throttled", UserDirectoryFreshness.Stale)]

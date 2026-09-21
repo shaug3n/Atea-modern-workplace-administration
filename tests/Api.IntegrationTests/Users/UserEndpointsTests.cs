@@ -129,21 +129,36 @@ public sealed class UserEndpointsTests
         reader.Calls.Should().Be(0);
     }
 
-    [Theory]
-    [InlineData("license")]
-    [InlineData("tenantRole")]
-    public async Task Users_endpoint_forwards_supported_directory_filters(string field)
+    [Fact]
+    public async Task Users_endpoint_forwards_license_filter_to_query_contract()
     {
         var reader = new RecordingDirectoryReader();
         using var factory = CreateFactory(reader);
         using var client = factory.CreateClient();
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Test");
 
-        var response = await client.GetAsync($"/api/users?{field}=unsupported");
+        var response = await client.GetAsync("/api/users?license=ENTERPRISEPACK");
         var body = await response.Content.ReadAsStringAsync();
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         reader.Calls.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Users_endpoint_returns_explicit_unsupported_error_for_tenant_role_filter()
+    {
+        var reader = new RecordingDirectoryReader();
+        using var factory = CreateFactory(reader);
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Test");
+
+        var response = await client.GetAsync("/api/users?tenantRole=Global%20Reader");
+        var body = await response.Content.ReadAsStringAsync();
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        body.Should().Contain("tenantRole");
+        body.Should().Contain("role-assignment index");
+        reader.Calls.Should().Be(0);
     }
 
     [Theory]

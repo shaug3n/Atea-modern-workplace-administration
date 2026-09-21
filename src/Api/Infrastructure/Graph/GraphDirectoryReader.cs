@@ -31,6 +31,17 @@ public sealed class GraphDirectoryReader(IDelegatedGraphClientFactory clientFact
         var users = new List<UserSummary>();
         var correlations = new List<string>();
 
+        if (string.IsNullOrWhiteSpace(query.ContinuationPath) && !string.IsNullOrWhiteSpace(query.License))
+        {
+            var license = await ResolveLicenseSkuAsync(lease.Transport, query.License, cancellationToken);
+            if (license.Error is not null)
+            {
+                return new PagedResult<UserSummary>(users, correlations, null, license.Error);
+            }
+
+            path = BuildSearchPath(query, license.SkuId);
+        }
+
         var response = await lease.Transport.SendAsync(new GraphRequest(HttpMethod.Get, path, Headers: HeadersFor(query)), cancellationToken);
         AddCorrelation(response, correlations);
         if (!response.Result.IsSuccess)
@@ -68,7 +79,7 @@ public sealed class GraphDirectoryReader(IDelegatedGraphClientFactory clientFact
         return MapUserDetails(document.RootElement) with { DirectoryTenantId = context.User.TenantId };
     }
 
-    private static string BuildSearchPath(UserSearchQuery query)
+    private static string BuildSearchPath(UserSearchQuery query, string? resolvedLicenseSkuId = null)
     {
         if (!string.IsNullOrWhiteSpace(query.ContinuationPath))
         {
@@ -87,7 +98,7 @@ public sealed class GraphDirectoryReader(IDelegatedGraphClientFactory clientFact
             parameters.Add($"$search={Uri.EscapeDataString($"\"displayName:{query.Search.Trim()}\"")}");
         }
 
-        var filters = BuildFilters(query);
+        var filters = BuildFilters(query, resolvedLicenseSkuId);
         if (filters.Count > 0)
         {
             parameters.Add($"$filter={Uri.EscapeDataString(string.Join(" and ", filters))}");
@@ -96,7 +107,7 @@ public sealed class GraphDirectoryReader(IDelegatedGraphClientFactory clientFact
         return $"/v1.0/users?{string.Join("&", parameters)}";
     }
 
-    private static List<string> BuildFilters(UserSearchQuery query)
+    private static List<string> BuildFilters(UserSearchQuery query, string? resolvedLicenseSkuId)
     {
         var filters = new List<string>();
         if (string.Equals(query.AccountStatus, "enabled", StringComparison.OrdinalIgnoreCase))
@@ -113,9 +124,9 @@ public sealed class GraphDirectoryReader(IDelegatedGraphClientFactory clientFact
             filters.Add($"userType eq '{EscapeODataString(query.UserType)}'");
         }
 
-        if (!string.IsNullOrWhiteSpace(query.License))
+        if (!string.IsNullOrWhiteSpace(resolvedLicenseSkuId))
         {
-            filters.Add($"assignedLicenses/any(a:a/skuId eq {EscapeODataGuidOrText(query.License)})");
+            filters.Add($"assignedLicenses/any(a:a/skuId eq {resolvedLicenseSkuId})");
         }
 
         return filters;
@@ -128,9 +139,38 @@ public sealed class GraphDirectoryReader(IDelegatedGraphClientFactory clientFact
 
     private static string EscapeODataString(string value) => value.Trim().Replace("'", "''", StringComparison.Ordinal);
 
-    private static string EscapeODataGuidOrText(string value) => Guid.TryParse(value.Trim(), out var guid)
-        ? guid.ToString()
-        : $"'{EscapeODataString(value)}'";
+    private static async Task<(string? SkuId, GraphOperationResult? Error)> ResolveLicenseSkuAsync(
+        IGraphTransport transport,
+        string licenseInput,
+        CancellationToken cancellationToken)
+    {
+        var response = await transport.SendAsync(
+            new GraphRequest(HttpMethod.Get, "/v1.0/subscribedSkus?$select=skuId,skuPartNumber"),
+            cancellationToken);
+        if (!response.Result.IsSuccess)
+        {
+            return (null, response.Result);
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(response.Content);
+            var normalized = licenseInput.Trim();
+            var match = document.RootElement.TryGetProperty("value", out var value) && value.ValueKind == JsonValueKind.Array
+                ? value.EnumerateArray().FirstOrDefault(item =>
+                    string.Equals(OptionalString(item, "skuId"), normalized, StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(OptionalString(item, "skuPartNumber"), normalized, StringComparison.OrdinalIgnoreCase))
+                : default;
+            var skuId = match.ValueKind == JsonValueKind.Undefined ? null : OptionalString(match, "skuId");
+            return skuId is null
+                ? (null, new GraphOperationResult(false, "invalid_license_filter", 400))
+                : (skuId, null);
+        }
+        catch (JsonException)
+        {
+            return (null, new GraphOperationResult(false, "invalid_response"));
+        }
+    }
 
     private static string? NormalizeGraphPath(string? nextLink)
     {

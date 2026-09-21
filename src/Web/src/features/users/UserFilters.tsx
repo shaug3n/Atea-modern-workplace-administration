@@ -46,7 +46,8 @@ export function UserFilters({ filters, onChange }: { filters: UserFiltersState; 
       </label>
       <label>
         <span>{messages.usersTenantRoleLabel}</span>
-        <input aria-label={messages.usersTenantRoleLabel} value={draft.tenantRole} onChange={(event) => update({ tenantRole: event.currentTarget.value })} placeholder={messages.usersTenantRolePlaceholder} />
+        <input aria-label={messages.usersTenantRoleLabel} value="" disabled placeholder={messages.usersTenantRolePlaceholder} aria-describedby="users-tenant-role-unavailable" />
+        <small id="users-tenant-role-unavailable">Tenant-role filtering is unavailable until the directory has a safe role-assignment index.</small>
       </label>
       <label>
         <span>{messages.usersLicenseLabel}</span>
