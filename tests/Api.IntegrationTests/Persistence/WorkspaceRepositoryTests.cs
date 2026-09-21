@@ -101,6 +101,28 @@ public sealed class WorkspaceRepositoryTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Approved_invitation_rejects_same_tenant_different_object_id_even_when_email_matches()
+    {
+        var workspaceId = Guid.NewGuid();
+        var tenantId = Guid.NewGuid();
+        var approvedObjectId = Guid.NewGuid();
+        var wrongObjectId = Guid.NewGuid();
+        await db.Workspaces.AddAsync(NewWorkspace(workspaceId, tenantId, "Approved invitation"));
+        await db.SaveChangesAsync();
+
+        var service = new InvitationService(new WorkspaceOnboardingRepository(db), new Uri("http://localhost:5173"));
+        var created = await service.CreateAsync(workspaceId, "admin@example.com", "Admin", DateTimeOffset.UtcNow.AddMinutes(5), approvedObjectId);
+        var nonce = created.InvitationUrl.Split('/').Last();
+
+        var redeemed = await service.RedeemAsync(nonce, tenantId, wrongObjectId, "admin@example.com", "Impostor");
+
+        redeemed.Should().BeFalse();
+        db.ChangeTracker.Clear();
+        (await db.PlatformInvitations.SingleAsync(x => x.Id == created.InvitationId)).RedeemedAt.Should().BeNull();
+        (await db.WorkspaceMemberships.CountAsync(x => x.WorkspaceId == workspaceId)).Should().Be(0);
+    }
+
+    [Fact]
     public async Task Theme_preferences_are_isolated_by_tenant_and_user()
     {
         var tenantA = Guid.NewGuid();

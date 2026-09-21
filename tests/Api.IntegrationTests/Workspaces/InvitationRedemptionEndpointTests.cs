@@ -75,6 +75,22 @@ public sealed class InvitationRedemptionEndpointTests
     }
 
     [Fact]
+    public async Task Redemption_rejects_same_tenant_different_object_id_when_invitation_approves_another_object()
+    {
+        using var factory = CreateFactory(out var repository);
+        var approvedObjectId = ObjectId;
+        var wrongObjectId = Guid.Parse("99999999-9999-9999-9999-999999999999");
+        var nonce = SeedInvitation(repository, approvedTenantObjectId: approvedObjectId);
+        using var client = AuthenticatedClient(factory, TenantId.ToString(), wrongObjectId.ToString(), "customer@example.com");
+
+        var response = await client.PostAsync($"/api/invitations/{nonce}/redeem", null);
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await response.Content.ReadAsStringAsync()).Should().Be("{\"error\":\"invitation_invalid_or_expired\"}");
+        repository.Invitation!.RedeemedAt.Should().BeNull();
+    }
+
+    [Fact]
     public async Task Redemption_returns_only_safe_workspace_metadata_and_rejects_reuse()
     {
         using var factory = CreateFactory(out var repository);
@@ -121,7 +137,7 @@ public sealed class InvitationRedemptionEndpointTests
         return client;
     }
 
-    private static string SeedInvitation(TestInvitationRepository repository, DateTimeOffset? expiresAt = null)
+    private static string SeedInvitation(TestInvitationRepository repository, DateTimeOffset? expiresAt = null, Guid? approvedTenantObjectId = null)
     {
         const string nonce = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
         repository.Invitation = new PlatformInvitation
@@ -130,6 +146,7 @@ public sealed class InvitationRedemptionEndpointTests
             WorkspaceId = WorkspaceId,
             Email = "customer@example.com",
             DisplayName = "Customer Admin",
+            ApprovedTenantObjectId = approvedTenantObjectId,
             NonceHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(nonce))).ToLowerInvariant(),
             ExpiresAt = expiresAt ?? DateTimeOffset.UtcNow.AddHours(1),
             CreatedAt = DateTimeOffset.UtcNow
@@ -180,7 +197,7 @@ public sealed class InvitationRedemptionEndpointTests
         public Task<InvitationRedemption?> RedeemAsync(string nonceHash, Guid tenantId, Guid tenantObjectId, string? email, string displayName, CancellationToken cancellationToken = default)
         {
             RedeemCalls++;
-            if (Invitation is null || Workspace is null || Invitation.NonceHash != nonceHash || Invitation.RedeemedAt is not null || Invitation.ExpiresAt <= DateTimeOffset.UtcNow || Workspace.TenantId != tenantId || (!string.Equals(Invitation.Email, email, StringComparison.OrdinalIgnoreCase) && Invitation.ApprovedTenantObjectId != tenantObjectId)) return Task.FromResult<InvitationRedemption?>(null);
+            if (Invitation is null || Workspace is null || Invitation.NonceHash != nonceHash || Invitation.RedeemedAt is not null || Invitation.ExpiresAt <= DateTimeOffset.UtcNow || Workspace.TenantId != tenantId || (Invitation.ApprovedTenantObjectId != tenantObjectId && !(Invitation.ApprovedTenantObjectId is null && string.Equals(Invitation.Email, email, StringComparison.OrdinalIgnoreCase)))) return Task.FromResult<InvitationRedemption?>(null);
             Invitation.RedeemedAt = DateTimeOffset.UtcNow;
             Workspace.ConnectionStatus = "consent_required";
             return Task.FromResult<InvitationRedemption?>(new InvitationRedemption(Workspace, new WorkspaceMembership { WorkspaceId = Workspace.Id, TenantObjectId = tenantObjectId, Email = email!, PlatformRole = "customer_admin" }));

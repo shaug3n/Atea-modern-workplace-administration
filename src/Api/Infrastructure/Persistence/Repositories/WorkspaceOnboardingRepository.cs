@@ -60,7 +60,7 @@ public sealed class WorkspaceOnboardingRepository(WorkplaceDbContext db) : IOnbo
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
         var now = DateTimeOffset.UtcNow;
         var claimed = await db.PlatformInvitations
-            .Where(x => x.NonceHash == nonceHash && x.RedeemedAt == null && x.ExpiresAt > now && x.Workspace.TenantId == tenantId && (x.ApprovedTenantObjectId == tenantObjectId || (email != null && x.Email.ToLower() == email.ToLower())))
+            .Where(x => x.NonceHash == nonceHash && x.RedeemedAt == null && x.ExpiresAt > now && x.Workspace.TenantId == tenantId && (x.ApprovedTenantObjectId == tenantObjectId || (x.ApprovedTenantObjectId == null && email != null && x.Email.ToLower() == email.ToLower())))
             .ExecuteUpdateAsync(updates => updates.SetProperty(x => x.RedeemedAt, now), cancellationToken);
         if (claimed != 1) return null;
 
