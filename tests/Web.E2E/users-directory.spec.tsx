@@ -47,6 +47,6 @@ describe('users directory browser boundary', () => {
     await waitFor(() => expect(document.body.textContent).toContain('Ada Lovelace'));
     expect(requests).toHaveLength(1);
     expect(requests[0]).toContain('/api/users?');
-    expect(document.body.textContent).toContain('not available yet');
+    expect(document.body.textContent).toContain('unavailable until the directory has a safe role-assignment index');
   });
 });

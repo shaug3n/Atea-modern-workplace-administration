@@ -14,7 +14,7 @@
 
 - The local Atea provider is accepted only when the API environment is `Development`; it never grants customer Graph authority.
 - Customer invitation, consent, directory and PIM routes use Entra bearer authentication and server-resolved tenant/workspace membership.
-- `Onboarding__PublicBaseUrl=http://localhost:5173` is required for the local demo; no generated link may fall back to `https://workplace.example`.
+- `Onboarding__PublicBaseUrl=http://localhost:5173` is required for the local demo; no generated link may fall back to a placeholder origin.
 - The API never returns or logs access tokens, refresh tokens, client secrets, raw authorization headers, invitation nonce hashes or plaintext invitation nonces after the one-time creation response.
 - Microsoft Graph remains the source of truth for directory data and effective user authority; PostgreSQL stores only platform metadata, connection state, safe audit events and idempotency records.
 - Every mutating UI action has API capability enforcement, explicit confirmation where required, an idempotency key, pending/success/error states and a refresh path.
@@ -60,7 +60,7 @@ Primary new or modified areas:
 
 - [ ] **Step 1: Write failing configuration tests.**
 
-  Add tests for `http://localhost:5173` being accepted in Development, `https://workplace.example` being rejected, an invalid/relative URL being rejected, and HTTP being rejected outside Development.
+  Add tests for `http://localhost:5173` being accepted in Development, a placeholder origin being rejected, an invalid/relative URL being rejected, and HTTP being rejected outside Development.
 
 - [ ] **Step 2: Run the focused tests and verify the expected failure.**
 
@@ -404,7 +404,7 @@ Primary new or modified areas:
 - Review only: all changed files from Tasks 1–7
 - Update if required: `docs/security/data-isolation.md`, `docs/security/graph-permission-matrix.md`, `docs/security/audit-retention-and-incident-triage.md`, `README.md`
 
-- [ ] Verify no `workplace.example` fallback remains outside test fixtures.
+- [ ] Verify no placeholder-origin fallback remains outside test fixtures.
 - [ ] Verify invitation plaintext appears only in the immediate create response and controlled UI handoff; it is absent from list/detail DTOs, logs, audit metadata and tests that assert response shape.
 - [ ] Verify local admin cookies cannot satisfy customer routes and customer bearer tokens cannot satisfy platform routes without the platform scope.
 - [ ] Verify every workspace query and mutation is scoped, every Graph target is validated against the current tenant, and error responses do not leak raw Graph payloads.

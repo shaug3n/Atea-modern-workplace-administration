@@ -21,7 +21,7 @@ The current branch already contains the PostgreSQL workspace model, local Atea a
 
 The known gaps are:
 
-- `Onboarding:PublicBaseUrl` defaults to `https://workplace.example` and is not present in the local environment example.
+- `Onboarding:PublicBaseUrl` has no runtime default and is required in the local environment example.
 - The invitation URL has no customer-facing frontend route, even though the API redemption endpoint exists.
 - The consent start link has no complete browser callback/refresh journey.
 - The user create/edit/group/license components are present but not consistently connected to visible actions and refreshes.
@@ -64,7 +64,7 @@ The invitation redemption response contains only safe workspace status and next-
 
 The V1 is complete when the following are all demonstrated:
 
-- A generated local invitation opens a real frontend page instead of `workplace.example` or a missing route.
+- A generated local invitation opens a real frontend page on the configured local origin instead of a placeholder or missing route.
 - A wrong-tenant, wrong-user, expired or reused invitation cannot create membership.
 - A redeemed customer can reach `/overview` and the API reports a truthful connection state.
 - A Global Reader can read allowed data while mutations are hidden or blocked; a User Administrator can perform the supported user actions; an eligible inactive PIM role presents activation or guided handoff.

@@ -25,13 +25,16 @@ Onboarding__ConsentRedirectUri=http://localhost:5173/onboarding/consent/callback
 Onboarding__ConsentSigningKey=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
 ```
 
-Start the local stack in this order:
+Start the local stack in exactly three terminals, in this order (the API waits for PostgreSQL in Compose via its health dependency):
 
 ```bash
 docker compose up -d postgres
+docker compose ps postgres
 dotnet run --project src/Api/Atea.UnifiedWorkplace.Api.csproj --urls http://localhost:8080
 cd src/Web && npm ci && npm run dev -- --host 0.0.0.0 --port 5173
 ```
+
+Set `Onboarding__PublicBaseUrl=http://localhost:5173` in the API environment. This is required for local invitation links; the rejected placeholder `https://workplace.example` is never a runtime fallback. After testing, use `docker compose down`; use `docker compose down -v` only to intentionally discard the local PostgreSQL volume.
 
 Open `http://localhost:5173/admin`, sign in with the configured local Atea credentials, create a workspace for the verified customer tenant, open the workspace detail page, add the nominated customer administrator by Entra object ID, and create an invitation. Copy the one-time invitation instruction only through the approved handoff channel; do not store it in notes, logs, screenshots, or test output. The workspace detail page should show membership and invitation status metadata without exposing nonce/hash fields.
 

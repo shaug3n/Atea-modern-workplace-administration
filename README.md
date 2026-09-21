@@ -29,15 +29,18 @@ Onboarding__ConsentRedirectUri=http://localhost:5173/onboarding/consent/callback
 Onboarding__ConsentSigningKey=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
 ```
 
-Start PostgreSQL first, then run the API and Vite in separate terminals:
+Use exactly three terminals. Terminal 1 starts PostgreSQL; terminal 2 starts the API after PostgreSQL is healthy; terminal 3 starts Vite:
 
 ```bash
 docker compose up -d postgres
+docker compose ps postgres
 dotnet run --project src/Api/Atea.UnifiedWorkplace.Api.csproj --urls http://localhost:8080
 cd src/Web && npm ci && npm run dev -- --host 0.0.0.0 --port 5173
 ```
 
-Open `http://localhost:5173/admin` for the local Atea platform-admin login. The admin session uses the development cookie provider and manages workspace provisioning, memberships, and one-time invitation handoff. Customer routes remain separate: a customer administrator signs in through the customer tenant's Entra ID flow, redeems the invitation, grants delegated consent, and then uses the existing customer application routes. The local Atea admin cookie is not a customer Entra session and cannot authorize customer Graph operations. The API health endpoint is `GET http://localhost:8080/health`.
+For the one-command Compose variant, `docker compose up --build` waits for the PostgreSQL health check before starting the API. The local API must receive `Onboarding__PublicBaseUrl=http://localhost:5173`; generated invitations use that origin and have no fallback origin. Tear down with `docker compose down` (add `-v` only when deliberately removing the local database volume).
+
+Open `http://localhost:5173/admin` for the local Atea platform-admin login. Create the workspace, add the customer administrator membership, and create the one-time invitation. The customer administrator signs in through the customer tenant's Entra ID flow, redeems the invitation, grants admin consent for approved delegated Graph scopes, verifies the overview connection state, checks Global Reader read-only and User Administrator mutation states, and follows the PIM handoff for eligible, approval-required, and MFA-required states. The local Atea admin cookie is not a customer Entra session and cannot authorize customer Graph operations. The API health endpoint is `GET http://localhost:8080/health`.
 
 Run `docker compose up --build` for the reproducible API, web and PostgreSQL stack.
 

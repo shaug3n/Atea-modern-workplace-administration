@@ -30,8 +30,9 @@ public sealed record ManualScenarioStep(
 public static class RealTenantEnvironment
 {
     public const string RunVariable = "ATEA_REAL_TENANT_RUN";
-    public const string BaseUrlVariable = "ATEA_REAL_TENANT_BASE_URL";
+    public const string BaseUrlVariable = "ATEA_REAL_TENANT_API_BASE_URL";
     public const string TenantIdVariable = "ATEA_REAL_TENANT_TENANT_ID";
+    public const string ObjectIdVariable = "ATEA_REAL_TENANT_OBJECT_ID";
     public const string AccessTokenVariable = "ATEA_REAL_TENANT_ACCESS_TOKEN";
     public const string WorkspaceIdVariable = "ATEA_REAL_TENANT_WORKSPACE_ID";
     public const string CustomerAdminObjectIdVariable = "ATEA_REAL_TENANT_CUSTOMER_ADMIN_OBJECT_ID";
@@ -59,6 +60,7 @@ public static class RealTenantEnvironment
 
         var baseUrl = Environment.GetEnvironmentVariable(BaseUrlVariable)?.Trim();
         var tenantId = Environment.GetEnvironmentVariable(TenantIdVariable)?.Trim();
+        var objectId = Environment.GetEnvironmentVariable(ObjectIdVariable)?.Trim();
         var accessToken = Environment.GetEnvironmentVariable(AccessTokenVariable);
 
         if (string.IsNullOrWhiteSpace(baseUrl) || !Uri.TryCreate(baseUrl, UriKind.Absolute, out var parsedBaseUrl) || parsedBaseUrl.Scheme != Uri.UriSchemeHttps)
@@ -70,6 +72,12 @@ public static class RealTenantEnvironment
         if (!Guid.TryParse(tenantId, out _))
         {
             reason = $"{TenantIdVariable} must contain the dedicated tenant object ID (GUID).";
+            return null;
+        }
+
+        if (!Guid.TryParse(objectId, out _))
+        {
+            reason = $"{ObjectIdVariable} must contain the customer administrator object ID (GUID).";
             return null;
         }
 
