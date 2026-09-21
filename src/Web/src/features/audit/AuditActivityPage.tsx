@@ -29,9 +29,16 @@ export type AuditEventsResponse = {
   freshness: AuditFreshness;
   partialData: boolean;
   authoritativeSourceNotice: string;
+  nextContinuationToken?: string | null;
 };
 
-export type AuditEventsLoader = () => Promise<AuditEventsResponse>;
+export type AuditFilters = {
+  actorObjectId: string;
+  action: string;
+  outcome: string;
+};
+
+export type AuditEventsLoader = (filters?: AuditFilters & { continuationToken?: string | null }) => Promise<AuditEventsResponse>;
 
 export function AuditActivityPage({ loadAuditEvents }: { loadAuditEvents?: AuditEventsLoader }) {
   if (loadAuditEvents) {
@@ -43,12 +50,14 @@ export function AuditActivityPage({ loadAuditEvents }: { loadAuditEvents?: Audit
 
 function AuthenticatedAuditActivityPage() {
   const api = useApi();
-  const loadAuditEvents = useCallback(() => fetchAuditEvents(api), [api]);
+  const loadAuditEvents = useCallback((filters?: AuditFilters & { continuationToken?: string | null }) => fetchAuditEvents(api, filters), [api]);
   return <LoadedAuditActivityPage loadAuditEvents={loadAuditEvents} />;
 }
 
 function LoadedAuditActivityPage({ loadAuditEvents }: { loadAuditEvents: AuditEventsLoader }) {
   const [result, setResult] = useState<AuditEventsResponse | null>(null);
+  const [filters, setFilters] = useState<AuditFilters>({ actorObjectId: '', action: '', outcome: '' });
+  const [continuationToken, setContinuationToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
 
@@ -56,9 +65,11 @@ function LoadedAuditActivityPage({ loadAuditEvents }: { loadAuditEvents: AuditEv
     let cancelled = false;
     setLoading(true);
     setFailed(false);
-    loadAuditEvents()
+    loadAuditEvents({ ...filters, continuationToken })
       .then((response) => {
-        if (!cancelled) setResult(response);
+        if (!cancelled) {
+          setResult(response);
+        }
       })
       .catch(() => {
         if (!cancelled) setFailed(true);
@@ -67,7 +78,7 @@ function LoadedAuditActivityPage({ loadAuditEvents }: { loadAuditEvents: AuditEv
         if (!cancelled) setLoading(false);
     });
     return () => { cancelled = true; };
-  }, [loadAuditEvents]);
+  }, [loadAuditEvents, filters, continuationToken]);
 
   const state = loading ? 'loading' : failed ? 'error' : result && result.items.length === 0 ? 'empty' : 'ready';
 
@@ -90,6 +101,14 @@ function LoadedAuditActivityPage({ loadAuditEvents }: { loadAuditEvents: AuditEv
         />
       )}
 
+      <AuditFiltersBar
+        filters={filters}
+        onChange={(nextFilters) => {
+          setFilters(nextFilters);
+          setContinuationToken(null);
+        }}
+      />
+
       {state === 'loading' && (
         <div className="async-state async-state--loading" role="status" aria-live="polite">
           <span className="async-state__bar" />
@@ -100,13 +119,60 @@ function LoadedAuditActivityPage({ loadAuditEvents }: { loadAuditEvents: AuditEv
       )}
       {state === 'error' && <div className="async-state" role="alert">{messages.auditUnavailable}</div>}
       {state === 'empty' && <div className="async-state">{messages.auditNoResults}</div>}
-      {state === 'ready' && result && <AuditEventsTable events={result.items} />}
+      {state === 'ready' && result && (
+        <>
+          <AuditEventsTable events={result.items} />
+          {result.nextContinuationToken && (
+            <button type="button" className="secondary-button audit-next" onClick={() => setContinuationToken(result.nextContinuationToken ?? null)}>
+              {messages.auditNextPage}
+            </button>
+          )}
+        </>
+      )}
     </section>
   );
 }
 
-async function fetchAuditEvents(api: (path: string, init?: RequestInit) => Promise<Response>) {
-  const response = await api('/api/audit/events?pageSize=25');
+function AuditFiltersBar({ filters, onChange }: { filters: AuditFilters; onChange: (filters: AuditFilters) => void }) {
+  return (
+    <form className="audit-filters" onSubmit={(event) => event.preventDefault()}>
+      <label>
+        {messages.auditActorFilter}
+        <input
+          value={filters.actorObjectId}
+          placeholder={messages.auditActorPlaceholder}
+          onChange={(event) => onChange({ ...filters, actorObjectId: event.target.value })}
+        />
+      </label>
+      <label>
+        {messages.auditActionFilter}
+        <input
+          value={filters.action}
+          placeholder={messages.auditActionPlaceholder}
+          onChange={(event) => onChange({ ...filters, action: event.target.value })}
+        />
+      </label>
+      <label>
+        {messages.auditOutcomeFilter}
+        <select value={filters.outcome} onChange={(event) => onChange({ ...filters, outcome: event.target.value })}>
+          <option value="">{messages.auditAnyOutcome}</option>
+          <option value="succeeded">succeeded</option>
+          <option value="denied">denied</option>
+          <option value="failed">failed</option>
+        </select>
+      </label>
+    </form>
+  );
+}
+
+async function fetchAuditEvents(api: (path: string, init?: RequestInit) => Promise<Response>, filters?: AuditFilters & { continuationToken?: string | null }) {
+  const query = new URLSearchParams({ pageSize: '25' });
+  if (filters?.actorObjectId) query.set('actorObjectId', filters.actorObjectId);
+  if (filters?.action) query.set('action', filters.action);
+  if (filters?.outcome) query.set('outcome', filters.outcome);
+  if (filters?.continuationToken) query.set('continuationToken', filters.continuationToken);
+
+  const response = await api(`/api/audit/events?${query.toString()}`);
   if (!response.ok) {
     throw new Error('audit_activity_unavailable');
   }

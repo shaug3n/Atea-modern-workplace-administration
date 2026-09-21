@@ -28,6 +28,7 @@ const response: AuditEventsResponse = {
   freshness: 'fresh',
   partialData: false,
   authoritativeSourceNotice: 'Microsoft 365 audit logs remain authoritative.',
+  nextContinuationToken: null,
 };
 
 describe('AuditActivityPage', () => {

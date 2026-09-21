@@ -9,6 +9,7 @@ export type Capability =
   | 'roles.assign'
   | 'pim.view'
   | 'pim.activate'
+  | 'audit.view'
   | 'workspace.settings.manage';
 
 export const workspaceSettingsCapability: Capability = 'workspace.settings.manage';

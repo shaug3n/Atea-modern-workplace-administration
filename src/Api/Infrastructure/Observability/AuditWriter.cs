@@ -23,10 +23,12 @@ public sealed class AuditWriter(
         }
         catch (OperationCanceledException)
         {
+            db.Entry(auditEvent).State = EntityState.Detached;
             throw;
         }
-        catch (Exception exception) when (exception is DbUpdateException or InvalidOperationException)
+        catch (Exception exception)
         {
+            db.Entry(auditEvent).State = EntityState.Detached;
             logger.LogError(
                 exception,
                 "Audit write failed for action {Action}, outcome {Outcome}, workspace {WorkspaceHash}, correlation {CorrelationId}",
@@ -34,6 +36,7 @@ public sealed class AuditWriter(
                 auditEvent.Outcome,
                 StableHash(auditEvent.WorkspaceId),
                 auditEvent.CorrelationId ?? correlationContext?.Current?.CorrelationId);
+            throw;
         }
     }
 

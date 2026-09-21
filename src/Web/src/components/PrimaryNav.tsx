@@ -13,7 +13,7 @@ const navItems: NavItem[] = [
   { href: '/overview', label: messages.navOverview },
   { href: '/users', label: messages.navUsers, capability: 'users.view' },
   { href: '/licenses', label: messages.navLicenses, capability: 'licenses.assign' },
-  { href: '/audit', label: messages.navAudit },
+  { href: '/audit', label: messages.navAudit, capability: 'audit.view' },
   { href: '/workspace-settings', label: messages.navWorkspaceSettings, capability: workspaceSettingsCapability },
 ];
 

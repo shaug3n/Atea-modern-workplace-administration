@@ -159,6 +159,30 @@ public sealed class CapabilityEvaluatorTests
         capabilities[Capability.WorkspaceSettingsManage].State.Should().Be(CapabilityState.Allowed);
     }
 
+    [Theory]
+    [InlineData("admin", false)]
+    [InlineData("workspace-manager", false)]
+    [InlineData("owner", false)]
+    [InlineData("member", true)]
+    public void Audit_view_is_platform_capability_for_workspace_managers_and_owners(string platformRole, bool hidden)
+    {
+        var capabilities = CapabilityEvaluator.Evaluate(
+            GraphAuthorizationSnapshot.Unavailable("temporarily_unavailable"),
+            Member(platformRole));
+
+        capabilities[Capability.AuditView].State.Should().Be(hidden ? CapabilityState.Hidden : CapabilityState.Allowed);
+    }
+
+    [Fact]
+    public void Audit_view_is_allowed_for_atea_operator_without_graph_availability()
+    {
+        var capabilities = CapabilityEvaluator.Evaluate(
+            GraphAuthorizationSnapshot.Unavailable("temporarily_unavailable"),
+            new WorkspaceMembership(Guid.NewGuid(), "Customer workspace", "member", IsAteaOperator: true));
+
+        capabilities[Capability.AuditView].State.Should().Be(CapabilityState.Allowed);
+    }
+
     private static GraphAuthorizationSnapshot AvailableSnapshot(IReadOnlyCollection<string> scopes, IReadOnlyCollection<DirectoryRoleSnapshot> roles) =>
         new(
             IsAvailable: true,

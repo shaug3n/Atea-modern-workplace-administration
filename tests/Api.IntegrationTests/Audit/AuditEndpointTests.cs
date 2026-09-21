@@ -71,7 +71,50 @@ public sealed class AuditEndpointTests : IAsyncLifetime
         response.Headers.GetValues("X-Correlation-ID").Single().Should().NotContain("secret");
     }
 
-    private WebApplicationFactory<Program> CreateFactory() =>
+    [Fact]
+    public async Task Audit_endpoint_denies_members_without_audit_view_capability()
+    {
+        await SeedAsync();
+        using var factory = CreateFactory(platformRole: "member");
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Test");
+
+        var response = await client.GetAsync("/api/audit/events");
+        var body = await response.Content.ReadAsStringAsync();
+
+        response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        body.Should().Contain("\"capability\":\"audit.view\"");
+        body.Should().NotContain("other-workspace");
+    }
+
+    [Fact]
+    public async Task Audit_endpoint_returns_opaque_filter_bound_continuation_token()
+    {
+        await SeedAsync();
+        await AddAuditEventAsync(DateTimeOffset.Parse("2026-09-21T07:59:00Z"), "users.update", "succeeded");
+        using var factory = CreateFactory();
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Test");
+
+        var first = await client.GetAsync("/api/audit/events?action=users.update&outcome=succeeded&pageSize=1");
+        var firstBody = await first.Content.ReadAsStringAsync();
+        var firstResult = System.Text.Json.JsonDocument.Parse(firstBody).RootElement;
+        var token = firstResult.GetProperty("nextContinuationToken").GetString();
+
+        token.Should().NotBeNullOrWhiteSpace();
+        token.Should().NotContain(WorkspaceId.ToString());
+        token.Should().NotContain("users.update");
+
+        var second = await client.GetAsync($"/api/audit/events?action=users.update&outcome=succeeded&pageSize=1&continuationToken={Uri.EscapeDataString(token!)}");
+        second.StatusCode.Should().Be(HttpStatusCode.OK);
+        (await second.Content.ReadAsStringAsync()).Should().Contain("2026-09-21T07:59:00");
+
+        var mismatchedFilter = await client.GetAsync($"/api/audit/events?action=users.disable&outcome=succeeded&pageSize=1&continuationToken={Uri.EscapeDataString(token!)}");
+        mismatchedFilter.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await mismatchedFilter.Content.ReadAsStringAsync()).Should().Be("{\"error\":\"invalid_continuation_token\"}");
+    }
+
+    private WebApplicationFactory<Program> CreateFactory(string platformRole = "owner") =>
         new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
         {
             builder.ConfigureAppConfiguration((_, config) =>
@@ -91,11 +134,32 @@ public sealed class AuditEndpointTests : IAsyncLifetime
                     options.DefaultChallengeScheme = TestAuthenticationHandler.Scheme;
                 }).AddScheme<AuthenticationSchemeOptions, TestAuthenticationHandler>(TestAuthenticationHandler.Scheme, _ => { });
                 services.RemoveAll<IWorkspaceMembershipReader>();
-                services.AddSingleton<IWorkspaceMembershipReader>(new FixtureMembershipReader());
+                services.AddSingleton<IWorkspaceMembershipReader>(new FixtureMembershipReader(platformRole));
                 services.RemoveAll<DbContextOptions<WorkplaceDbContext>>();
                 services.AddDbContext<WorkplaceDbContext>(options => options.UseNpgsql(postgres.GetConnectionString()));
             });
         });
+
+    private async Task AddAuditEventAsync(DateTimeOffset timestamp, string action, string outcome)
+    {
+        await using var db = new WorkplaceDbContext(new DbContextOptionsBuilder<WorkplaceDbContext>()
+            .UseNpgsql(postgres.GetConnectionString())
+            .Options);
+        await db.AuditEvents.AddAsync(new AuditEvent
+        {
+            WorkspaceId = WorkspaceId,
+            TenantId = TenantId,
+            ActorTenantId = TenantId,
+            ActorObjectId = ObjectId,
+            Action = action,
+            TargetType = "user",
+            TargetId = "user-older",
+            Outcome = outcome,
+            Timestamp = timestamp,
+            SafeMetadataJson = "{}"
+        });
+        await db.SaveChangesAsync();
+    }
 
     private async Task SeedAsync()
     {
@@ -144,10 +208,10 @@ public sealed class AuditEndpointTests : IAsyncLifetime
     private static readonly Guid ObjectId = Guid.Parse("22222222-2222-2222-2222-222222222222");
     private static readonly Guid WorkspaceId = Guid.Parse("55555555-5555-5555-5555-555555555555");
 
-    private sealed class FixtureMembershipReader : IWorkspaceMembershipReader
+    private sealed class FixtureMembershipReader(string platformRole) : IWorkspaceMembershipReader
     {
         public Task<AuthorizationWorkspaceMembership?> FindMembershipAsync(Guid tenantId, Guid objectId, CancellationToken cancellationToken = default) =>
-            Task.FromResult<AuthorizationWorkspaceMembership?>(new AuthorizationWorkspaceMembership(WorkspaceId, "customer-workspace", "member"));
+            Task.FromResult<AuthorizationWorkspaceMembership?>(new AuthorizationWorkspaceMembership(WorkspaceId, "customer-workspace", platformRole));
     }
 
     private sealed class TestAuthenticationHandler(IOptionsMonitor<AuthenticationSchemeOptions> options, ILoggerFactory logger, UrlEncoder encoder)

@@ -44,6 +44,8 @@ builder.Services.AddScoped<IUserCommandService, UserCommandService>();
 builder.Services.AddScoped<IIdempotencyService, IdempotencyService>();
 builder.Services.AddSingleton<ICorrelationContextAccessor, CorrelationContextAccessor>();
 builder.Services.AddScoped<IAuditWriter, AuditWriter>();
+builder.Services.AddDataProtection();
+builder.Services.AddSingleton<AuditContinuationTokenProtector>();
 builder.Services.AddSingleton(_ => new UserContinuationTokenProtector(
     UserContinuationConfiguration.ResolveSigningKey(builder.Configuration, builder.Environment.IsDevelopment())));
 builder.Services.AddScoped<GraphUserLifecycle>();

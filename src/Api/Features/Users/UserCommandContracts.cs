@@ -44,7 +44,8 @@ public sealed record UserCommandResult(
     CapabilityDecision? Authorization = null,
     TemporaryCredentialNotice? TemporaryCredentialNotice = null,
     string? GraphCorrelationId = null,
-    string? GraphRequestId = null);
+    string? GraphRequestId = null,
+    string? AuditWarning = null);
 
 public static class UserCommandStatus
 {

@@ -51,6 +51,7 @@ export const appRoutes: AppRoute[] = [
   {
     path: '/audit',
     label: messages.navAudit,
+    capability: 'audit.view',
     render: () => <AuditActivityPage />,
   },
   {

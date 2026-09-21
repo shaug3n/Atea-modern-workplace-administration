@@ -175,11 +175,12 @@ public sealed class UserCommandService(
 
         if (user.IsReadOnly)
         {
-            await AuditAsync(context, operation, userObjectId, UserCommandStatus.SourceOfAuthorityReadOnly, "source_of_authority_read_only", null, null, cancellationToken);
+            var auditWarning = await AuditAsync(context, operation, userObjectId, UserCommandStatus.SourceOfAuthorityReadOnly, "source_of_authority_read_only", null, null, cancellationToken);
             return new UserCommandResult(
                 UserCommandStatus.SourceOfAuthorityReadOnly,
                 capability,
-                Error: "source_of_authority_read_only");
+                Error: "source_of_authority_read_only",
+                AuditWarning: auditWarning);
         }
 
         return await ExecuteAsync(
@@ -210,14 +211,17 @@ public sealed class UserCommandService(
             async () =>
             {
                 var result = await execute();
-                liveResult = result;
-                await AuditAsync(context, operation, targetId, result.Status, result.Error, result.GraphCorrelationId, result.GraphRequestId, cancellationToken);
+                var auditedResult = result with
+                {
+                    AuditWarning = await AuditAsync(context, operation, targetId, result.Status, result.Error, result.GraphCorrelationId, result.GraphRequestId, cancellationToken)
+                };
+                liveResult = auditedResult;
                 return new IdempotentOperationResult(
-                    StatusCodeFor(result),
-                    result.Status,
-                    JsonSerializer.Serialize(result with { TemporaryCredentialNotice = null }, JsonOptions),
-                    result.GraphCorrelationId,
-                    result.GraphRequestId);
+                    StatusCodeFor(auditedResult),
+                    auditedResult.Status,
+                    JsonSerializer.Serialize(auditedResult with { TemporaryCredentialNotice = null }, JsonOptions),
+                    auditedResult.GraphCorrelationId,
+                    auditedResult.GraphRequestId);
             },
             cancellationToken);
 
@@ -265,12 +269,13 @@ public sealed class UserCommandService(
         CapabilityDecision authorization,
         CancellationToken cancellationToken)
     {
-        await AuditAsync(context, capability, targetId, UserCommandStatus.Denied, "capability_required", null, null, cancellationToken);
+        var auditWarning = await AuditAsync(context, capability, targetId, UserCommandStatus.Denied, "capability_required", null, null, cancellationToken);
         return new UserCommandResult(
             UserCommandStatus.Denied,
             capability,
             Error: "capability_required",
-            Authorization: authorization);
+            Authorization: authorization,
+            AuditWarning: auditWarning);
     }
 
     private static UserCommandResult MapGraphResult(GraphOperationResult graph, string capability, string? temporaryPassword = null)
@@ -294,7 +299,7 @@ public sealed class UserCommandService(
         return new UserCommandResult(status, capability, Error: graph.Category, GraphCorrelationId: graph.CorrelationId, GraphRequestId: graph.RequestId);
     }
 
-    private async Task AuditAsync(
+    private async Task<string?> AuditAsync(
         WorkspaceContext context,
         string action,
         string targetId,
@@ -324,14 +329,15 @@ public sealed class UserCommandService(
                     SafeMetadataJson = "{}"
                 },
                 cancellationToken);
+            return null;
         }
         catch (OperationCanceledException)
         {
             throw;
         }
-        catch
+        catch (Exception)
         {
-            // Audit persistence must never expose sensitive failure content or mask the user operation outcome.
+            return "audit_persistence_failed";
         }
     }
 

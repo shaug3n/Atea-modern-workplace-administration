@@ -12,6 +12,7 @@ public static class Capability
     public const string RolesAssign = "roles.assign";
     public const string PimView = "pim.view";
     public const string PimActivate = "pim.activate";
+    public const string AuditView = "audit.view";
     public const string WorkspaceSettingsManage = "workspace.settings.manage";
 
     public static readonly IReadOnlyList<string> All =
@@ -26,6 +27,7 @@ public static class Capability
         RolesAssign,
         PimView,
         PimActivate,
+        AuditView,
         WorkspaceSettingsManage
     ];
 }

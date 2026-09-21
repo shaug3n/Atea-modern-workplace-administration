@@ -40,6 +40,27 @@ public sealed class AuditRedactionTests
     }
 
     [Fact]
+    public void Redactor_recursively_replaces_camel_case_and_nested_token_or_secret_fields()
+    {
+        var input = """
+        {"safe":"request-123","accessToken":"access-secret","refreshToken":"refresh-secret","clientSecret":"client-secret","nested":{"token":"nested-token","secret":"nested-secret","safe":"keep-me"},"items":[{"api_secret":"array-secret"}]}
+        """;
+
+        var redacted = RedactingLogEnricher.Redact(input);
+
+        redacted.Should().Contain("request-123");
+        redacted.Should().Contain("keep-me");
+        redacted.Should().NotContain("access-secret");
+        redacted.Should().NotContain("refresh-secret");
+        redacted.Should().NotContain("client-secret");
+        redacted.Should().NotContain("nested-token");
+        redacted.Should().NotContain("nested-secret");
+        redacted.Should().NotContain("array-secret");
+        redacted.Should().Contain("\"accessToken\":\"[REDACTED]\"");
+        redacted.Should().Contain("\"nested\":{\"token\":\"[REDACTED]\"");
+    }
+
+    [Fact]
     public async Task User_mutation_succeeds_when_audit_writer_fails()
     {
         var service = new UserCommandService(
@@ -56,6 +77,7 @@ public sealed class AuditRedactionTests
 
         result.Status.Should().Be(UserCommandStatus.Succeeded);
         result.GraphRequestId.Should().Be("graph-request-1");
+        result.AuditWarning.Should().Be("audit_persistence_failed");
     }
 
     private static readonly WorkspaceContext Workspace = new(

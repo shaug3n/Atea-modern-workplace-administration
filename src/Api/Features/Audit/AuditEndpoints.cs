@@ -13,13 +13,14 @@ public static class AuditEndpoints
 
     public static IEndpointRouteBuilder MapAuditEndpoints(this IEndpointRouteBuilder endpoints)
     {
-        endpoints.MapGet("/api/audit/events", ReadAuditEventsAsync).RequireAuthorization();
+        endpoints.MapGet("/api/audit/events", ReadAuditEventsAsync).RequireAuthorization().RequireCapability(Capability.AuditView);
         return endpoints;
     }
 
     private static async Task<IResult> ReadAuditEventsAsync(
         IWorkspaceContextAccessor accessor,
         WorkplaceDbContext db,
+        AuditContinuationTokenProtector continuationTokens,
         HttpRequest request,
         CancellationToken cancellationToken)
     {
@@ -29,37 +30,87 @@ public static class AuditEndpoints
         }
 
         var pageSize = PageSize(request);
+        var actorFilter = Query(request, "actorObjectId");
+        Guid? actorObjectId = null;
+        if (actorFilter is not null)
+        {
+            if (!Guid.TryParse(actorFilter, out var parsedActorObjectId))
+            {
+                return Results.BadRequest(new { error = "invalid_actor_filter" });
+            }
+
+            actorObjectId = parsedActorObjectId;
+        }
+
+        var actionFilter = Query(request, "action");
+        var outcomeFilter = Query(request, "outcome");
+        AuditContinuationCursor? cursor = null;
+        if (Query(request, "continuationToken") is { } token)
+        {
+            if (!continuationTokens.TryUnprotect(token, out cursor)
+                || cursor is null
+                || cursor.WorkspaceId != context.Membership.WorkspaceId
+                || cursor.RequesterObjectId != context.User.ObjectId
+                || cursor.ActorObjectId != actorObjectId
+                || !string.Equals(cursor.Action, actionFilter, StringComparison.Ordinal)
+                || !string.Equals(cursor.Outcome, outcomeFilter, StringComparison.Ordinal)
+                || cursor.PageSize != pageSize)
+            {
+                return Results.BadRequest(new { error = "invalid_continuation_token" });
+            }
+        }
+
         var query = db.AuditEvents.AsNoTracking()
             .Where(audit => audit.WorkspaceId == context.Membership.WorkspaceId);
 
-        if (Query(request, "actorObjectId") is { } actor && Guid.TryParse(actor, out var actorObjectId))
+        if (actorObjectId is { } actor)
         {
-            query = query.Where(audit => audit.ActorObjectId == actorObjectId);
+            query = query.Where(audit => audit.ActorObjectId == actor);
         }
 
-        if (Query(request, "action") is { } action)
+        if (actionFilter is { } action)
         {
             query = query.Where(audit => audit.Action == action);
         }
 
-        if (Query(request, "outcome") is { } outcome)
+        if (outcomeFilter is { } outcome)
         {
             query = query.Where(audit => audit.Outcome == outcome);
         }
 
-        var items = await query
+        if (cursor is not null)
+        {
+            query = query.Where(audit => audit.Timestamp < cursor.Timestamp
+                || audit.Timestamp == cursor.Timestamp && audit.Id.CompareTo(cursor.Id) < 0);
+        }
+
+        var page = await query
             .OrderByDescending(audit => audit.Timestamp)
             .ThenByDescending(audit => audit.Id)
-            .Take(pageSize)
+            .Take(pageSize + 1)
             .Select(audit => AuditEventDto.From(audit))
             .ToArrayAsync(cancellationToken);
+
+        var items = page.Take(pageSize).ToArray();
+        var nextContinuationToken = page.Length > pageSize
+            ? continuationTokens.Protect(new AuditContinuationCursor(
+                context.Membership.WorkspaceId,
+                context.User.ObjectId,
+                actorObjectId,
+                actionFilter,
+                outcomeFilter,
+                pageSize,
+                items[^1].Timestamp,
+                items[^1].Id))
+            : null;
 
         return Results.Ok(new AuditEventsResponse(
             items,
             DateTimeOffset.UtcNow,
             items.Length == 0 ? "stale" : "fresh",
             false,
-            "Microsoft 365 audit logs remain authoritative for directory changes. This stream records platform actor intent, result and correlation references."));
+            "Microsoft 365 audit logs remain authoritative for directory changes. This stream records platform actor intent, result and correlation references.",
+            nextContinuationToken));
     }
 
     private static string? Query(HttpRequest request, string name) =>
@@ -83,7 +134,8 @@ public sealed record AuditEventsResponse(
     DateTimeOffset FetchedAt,
     string Freshness,
     bool PartialData,
-    string AuthoritativeSourceNotice);
+    string AuthoritativeSourceNotice,
+    string? NextContinuationToken = null);
 
 public sealed record AuditEventDto(
     Guid Id,
