@@ -174,6 +174,14 @@ p {
 .admin-header { display: flex; justify-content: space-between; align-items: center; min-height: 4.5rem; padding: var(--atea-space-4) var(--atea-space-6); border-bottom: 1px solid var(--uw-border); background: var(--uw-surface); }
 .admin-user { display: flex; align-items: center; gap: var(--atea-space-4); }
 .admin-content { max-width: 64rem; margin: 0 auto; padding: var(--atea-space-8) var(--atea-space-6); }
+.admin-content section, .admin-card { display: grid; gap: var(--atea-space-4); }
+.admin-card { padding: var(--atea-space-5); border: 1px solid var(--uw-border); border-radius: var(--atea-radius-md); background: var(--uw-surface); }
+.admin-page-heading, .admin-actions { display: flex; justify-content: space-between; align-items: start; gap: var(--atea-space-4); }
+.admin-list { display: grid; gap: var(--atea-space-3); margin-top: var(--atea-space-6); }
+.admin-list__item { text-align: left; }
+.admin-content label { display: grid; gap: var(--atea-space-2); }
+.admin-content input { min-height: 2.75rem; padding: 0 var(--atea-space-3); border: 1px solid var(--uw-border-strong); border-radius: var(--atea-radius-sm); background: var(--uw-surface); color: var(--uw-text); font: inherit; }
+.admin-content code { overflow-wrap: anywhere; }
 .admin-login { display: grid; min-height: 100vh; place-items: center; padding: var(--atea-space-6); }
 .admin-login__card { display: grid; gap: var(--atea-space-4); width: min(100%, 28rem); padding: var(--atea-space-8); border: 1px solid var(--uw-border); border-radius: var(--atea-radius-md); background: var(--uw-surface); box-shadow: 0 0.5rem 2rem rgb(31 35 37 / 12%); }
 .admin-login__logo { width: auto; height: 2rem; }

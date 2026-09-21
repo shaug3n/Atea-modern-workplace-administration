@@ -1,13 +1,22 @@
 import React from 'react';
 import type { AdminSession } from './adminAuthApi';
 import greyLogo from '../../assets/logos/atea-logo-grey.svg';
+import { WorkspaceDetailPage } from './WorkspaceDetailPage';
+import { WorkspaceListPage } from './WorkspaceListPage';
 
 export function AdminShell({ session, onSignOut }: { session: AdminSession; onSignOut: () => void }) {
+  const path = window.location.pathname;
+  const detailMatch = path.match(/^\/admin\/workspaces\/([^/]+)$/);
+  const navigate = (next: string) => { window.history.pushState({}, '', next); window.dispatchEvent(new PopStateEvent('popstate')); };
+  const [currentPath, setCurrentPath] = React.useState(path);
+  React.useEffect(() => { const handler = () => setCurrentPath(window.location.pathname); window.addEventListener('popstate', handler); return () => window.removeEventListener('popstate', handler); }, []);
+  const currentDetail = currentPath.match(/^\/admin\/workspaces\/([^/]+)$/);
+  const content = currentDetail ? <WorkspaceDetailPage workspaceId={currentDetail[1]} /> : <WorkspaceListPage onOpenWorkspace={(id) => navigate(`/admin/workspaces/${id}`)} />;
   return <div className="admin-app">
     <header className="admin-header">
       <a href="/admin" className="brand-link" aria-label="Atea platform administration home"><img src={greyLogo} alt="Atea" className="brand-logo" /> <span>Platform administration</span></a>
       <div className="admin-user"><span>{session.displayName}</span><button type="button" onClick={onSignOut}>Sign out</button></div>
     </header>
-    <main className="admin-content"><p className="eyebrow">Admin console</p><h1>Atea platform administration</h1><p>Workspace administration tools will appear here in the next MVP task.</p></main>
+    <main className="admin-content"><h1 className="admin-shell-title">Atea platform administration</h1>{content}</main>
   </div>;
 }
