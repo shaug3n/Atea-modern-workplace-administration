@@ -86,6 +86,7 @@ def main() -> int:
     require_text(main_bicep, r"westeurope", "EU/EEA-safe development region", errors)
     postgres_bicep = require_file(ROOT / "infra" / "modules" / "postgres.bicep", errors)
     require_text(main_bicep + postgres_bicep, r"publicNetworkAccess\s*:\s*'Disabled'", "private PostgreSQL network access", errors)
+    require_text(postgres_bicep, r"Microsoft\.App/environments", "Container Apps subnet delegation", errors)
     require_text(main_bicep, r"postgresAdminPassword", "secure PostgreSQL administrator password parameter", errors)
 
     container_apps = require_file(ROOT / "infra" / "modules" / "container-apps.bicep", errors)
@@ -135,6 +136,7 @@ def main() -> int:
         "alert ownership": r"Alert ownership",
         "log retention": r"[Ll]og retention",
         "local/Azure mapping": r"Local.*Azure|Azure.*local",
+        "Key Vault bootstrap ordering": r"Bootstrap.*Key Vault|seed.*workplace-db",
     }.items():
         require_text(operations, pattern, label, errors)
 

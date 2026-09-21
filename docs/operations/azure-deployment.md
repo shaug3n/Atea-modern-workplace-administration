@@ -10,7 +10,7 @@ This runbook covers the v1 single-region Azure foundation for the combined ASP.N
 - Two separate Entra app registrations: development and production. Register only exact redirect URIs; wildcard redirect URIs are forbidden. The production default is `https://workplace.atea.com/auth/callback`.
 - DNS control for every hostname in `allowedIngressHostnames`. Azure Container Apps managed certificates use CNAME validation.
 
-Before the first app deployment, create the resource group, put the PostgreSQL administrator password in the CI secret store, and deploy the Bicep template with that value supplied at invocation time. Never write the password to a parameter file or shell trace.
+Before the first app deployment, create the resource group and put the PostgreSQL administrator password in the CI secret store. Bootstrap the Key Vault module first, seed `workplace-db` and `consent-signing-key` through the approved secret-management process, then deploy the full template with the password supplied at invocation time. The Container App references those secret names at creation time, so they must exist before the first app revision is provisioned. Never write the password or secret values to a parameter file or shell trace.
 
 ## Local validation and provisioning
 
