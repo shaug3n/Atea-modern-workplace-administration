@@ -23,7 +23,7 @@
     "allowedIngressHostnames": { "value": ["dev.workplace.atea.com"] },
     "entraDevelopmentClientId": { "value": "00000000-0000-0000-0000-000000000001" },
     "entraDevelopmentAudience": { "value": "api://atea-unified-workplace-dev" },
-    "entraDevelopmentRedirectUris": { "value": ["http://localhost:5173/auth/callback", "https://localhost:5173/auth/callback"] },
+    "entraDevelopmentRedirectUris": { "value": ["https://dev.workplace.atea.com/auth/callback"] },
     "entraProductionClientId": { "value": "00000000-0000-0000-0000-000000000002" },
     "entraProductionAudience": { "value": "api://atea-unified-workplace-prod" },
     "entraProductionRedirectUris": { "value": ["https://workplace.atea.com/auth/callback"] }

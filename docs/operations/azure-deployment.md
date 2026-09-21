@@ -46,11 +46,11 @@ az deployment group what-if \
 | `ASPNETCORE_URLS` | `http://+:8080` behind controlled HTTPS ingress |
 | `GET /health` | Startup, readiness and liveness probes |
 
-The same Dockerfile builds the frontend and publishes the API in both profiles. Only managed services and configuration sources differ; the API still uses the existing PostgreSQL migrations and port 8080 contract.
+The same Dockerfile builds the frontend and publishes the API in both profiles. The deployment workflow supplies the four public `VITE_ENTRA_*` build arguments so the static SPA uses the selected hosted Entra registration; local development continues to use its local Vite environment. Only managed services and configuration sources differ; the API still uses the existing PostgreSQL migrations and port 8080 contract.
 
 ## Deployment stages
 
-`.github/workflows/validate-and-deploy.yml` runs build/test, dependency and security checks, local infrastructure validation, Bicep compilation, immutable image push, non-production what-if, the approved migration job, revision deployment, a `/health` smoke test, and traffic routing as the final step.
+`.github/workflows/validate-and-deploy.yml` runs build/test, dependency and security checks, local infrastructure validation, Bicep compilation, builds and pushes the immutable image tag with the hosted SPA configuration, runs non-production what-if, updates and waits for the version-pinned migration job, deploys the revision, performs a `/health` smoke test, and routes traffic only as the final step.
 
 The migration job is deliberately an explicit operational gate. It must use the approved migration image/command for the deployed application version and complete successfully before the revision is routed. The current API applies migrations only in its Development startup profile, so production migration command ownership must be agreed before enabling a production pipeline environment; this foundation does not claim production readiness by itself.
 

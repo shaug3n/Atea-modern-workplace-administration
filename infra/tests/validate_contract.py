@@ -98,6 +98,10 @@ def main() -> int:
     require_text(container_apps, r"minReplicas\s*:", "minimum replica bound", errors)
     require_text(container_apps, r"maxReplicas\s*:", "maximum replica bound", errors)
     require_text(container_apps, r"managedCertificates", "managed certificate resource", errors)
+    dockerfile = require_file(ROOT / "Dockerfile", errors)
+    for build_arg in ("VITE_ENTRA_CLIENT_ID", "VITE_ENTRA_API_SCOPE", "VITE_ENTRA_AUTHORITY", "VITE_ENTRA_REDIRECT_URI"):
+        require_text(dockerfile, rf"ARG\s+{build_arg}", f"SPA build argument {build_arg}", errors)
+        require_text(workflow, rf"VITE_ENTRA_{build_arg.removeprefix('VITE_ENTRA_')}", f"workflow SPA build value {build_arg}", errors)
 
     for parameter_path in (
         ROOT / "infra" / "parameters" / "dev.json",

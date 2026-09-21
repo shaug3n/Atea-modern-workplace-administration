@@ -50,6 +50,20 @@ jobs:
         run: |
           docker compose config --quiet
           docker compose build
+      - name: Build the exact deployment image once
+        run: |
+          docker build \
+            --build-arg VITE_ENTRA_CLIENT_ID="${{ vars.ENTRA_CLIENT_ID }}" \
+            --build-arg VITE_ENTRA_API_SCOPE="${{ vars.ENTRA_API_SCOPE }}" \
+            --build-arg VITE_ENTRA_AUTHORITY="${{ vars.ENTRA_AUTHORITY }}" \
+            --build-arg VITE_ENTRA_REDIRECT_URI="${{ vars.ENTRA_REDIRECT_URI }}" \
+            --tag "$IMAGE_REPOSITORY:$IMAGE_TAG" .
+          docker save "$IMAGE_REPOSITORY:$IMAGE_TAG" --output /tmp/atea-unified-workplace-image.tar
+      - uses: actions/upload-artifact@v4
+        with:
+          name: atea-unified-workplace-image-${{ github.sha }}
+          path: /tmp/atea-unified-workplace-image.tar
+          if-no-files-found: error
 
   dependency-security:
     needs: build-test
@@ -105,8 +119,16 @@ jobs:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: atea-unified-workplace-image-${{ github.sha }}
+          path: /tmp/atea-image
       - name: Push immutable image
-        run: az acr build --registry "$AZURE_ACR_NAME" --image "$IMAGE_REPOSITORY:$IMAGE_TAG" .
+        run: |
+          docker load --input /tmp/atea-image/atea-unified-workplace-image.tar
+          az acr login --name "$AZURE_ACR_NAME"
+          docker tag "$IMAGE_REPOSITORY:$IMAGE_TAG" "$AZURE_ACR_NAME.azurecr.io/$IMAGE_REPOSITORY:$IMAGE_TAG"
+          docker push "$AZURE_ACR_NAME.azurecr.io/$IMAGE_REPOSITORY:$IMAGE_TAG"
       - name: Bicep what-if against non-production resource group
         env:
           POSTGRES_ADMIN_PASSWORD: ${{ secrets.POSTGRES_ADMIN_PASSWORD }}
@@ -121,7 +143,23 @@ jobs:
       - name: Database migration job
         run: |
           test -n "$AZURE_MIGRATION_JOB_NAME"
-          az containerapp job start --name "$AZURE_MIGRATION_JOB_NAME" --resource-group "$AZURE_RESOURCE_GROUP"
+          az containerapp job update \
+            --name "$AZURE_MIGRATION_JOB_NAME" \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --image "$AZURE_ACR_NAME.azurecr.io/$IMAGE_REPOSITORY:$IMAGE_TAG" \
+            --output none
+          execution="$(az containerapp job start --name "$AZURE_MIGRATION_JOB_NAME" --resource-group "$AZURE_RESOURCE_GROUP" --query name -o tsv)"
+          test -n "$execution"
+          for attempt in $(seq 1 30); do
+            status="$(az containerapp job execution show --name "$AZURE_MIGRATION_JOB_NAME" --resource-group "$AZURE_RESOURCE_GROUP" --job-execution-name "$execution" --query properties.status -o tsv)"
+            case "$status" in
+              Succeeded) exit 0 ;;
+              Failed|Canceled|Degraded) echo "Migration job ended with status: $status"; exit 1 ;;
+            esac
+            sleep 10
+          done
+          echo 'Migration job did not complete within the bounded wait window.'
+          exit 1
       - name: Deploy revision
         run: |
           az containerapp update \

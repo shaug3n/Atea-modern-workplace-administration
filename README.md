@@ -24,7 +24,7 @@ Run the credential-free infrastructure contract validation locally:
 python3 infra/tests/validate_contract.py
 ```
 
-This checks the Bicep parameter contract, environment-separated Entra values, secret-free parameter examples, exact redirect URI policy, health/revision/ingress settings, and CI/runbook coverage. It does not require Azure credentials and does not deploy resources. Do not commit `.env` files, passwords, connection strings, signing keys, or tenant credentials.
+This checks the Bicep parameter contract, environment-separated Entra values, secret-free parameter examples, exact hosted redirect URI policy, SPA build arguments, health/revision/ingress settings, and CI/runbook coverage. It does not require Azure credentials and does not deploy resources. Do not commit `.env` files, passwords, connection strings, signing keys, or tenant credentials.
 
 ## Tests
 
