@@ -16,11 +16,12 @@ using Atea.UnifiedWorkplace.Api.Infrastructure.Observability;
 using Atea.UnifiedWorkplace.Api.Infrastructure.Security;
 using Atea.UnifiedWorkplace.Api.Features.Audit;
 using Atea.UnifiedWorkplace.Api.Features.Overview;
+using Atea.UnifiedWorkplace.Api.Features.AdminAuth;
 using Atea.UnifiedWorkplace.Api.Infrastructure.Http;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddDbContext<WorkplaceDbContext>(options => options.UseNpgsql(builder.Configuration.GetConnectionString("WorkplaceDb")));
-builder.Services.AddPlatformAuthorization(builder.Configuration);
+builder.Services.AddPlatformAuthorization(builder.Configuration, builder.Environment);
 builder.Services.AddScoped<IWorkspaceProvisioningRepository, WorkspaceProvisioningRepository>();
 builder.Services.AddScoped<IUserPreferenceRepository, UserPreferenceRepository>();
 builder.Services.AddScoped<IThemePreferenceService, ThemePreferenceService>();
@@ -94,6 +95,7 @@ app.UseMiddleware<CorrelationMiddleware>();
 app.UseMiddleware<ApiProblemDetailsMiddleware>();
 app.UsePlatformAuthorization();
 app.MapGet("/api/ping", () => Results.Ok(new { status = "ok" }));
+app.MapAdminAuthEndpoints();
 app.MapGet("/api/session", (IWorkspaceContextAccessor accessor) =>
 {
     var context = accessor.Current!;

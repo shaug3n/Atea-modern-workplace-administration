@@ -5,18 +5,36 @@ using Atea.UnifiedWorkplace.Api.Infrastructure.Persistence;
 using Atea.UnifiedWorkplace.Api.Infrastructure.Persistence.Repositories;
 using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
+using Atea.UnifiedWorkplace.Api.Features.AdminAuth;
+using Microsoft.AspNetCore.Authentication.Cookies;
 
 namespace Atea.UnifiedWorkplace.Api.Authorization;
 
 public static class PlatformAuthorization
 {
-    public static IServiceCollection AddPlatformAuthorization(this IServiceCollection services, IConfiguration configuration)
+    public static IServiceCollection AddPlatformAuthorization(this IServiceCollection services, IConfiguration configuration, IHostEnvironment environment)
     {
         services.AddHttpContextAccessor();
         services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             .AddMicrosoftIdentityWebApi(configuration.GetSection("AzureAd"))
             .EnableTokenAcquisitionToCallDownstreamApi()
             .AddInMemoryTokenCaches();
+        services.Configure<LocalAdminOptions>(configuration.GetSection("AteaAdmin:LocalDevelopment"));
+        var localOptions = configuration.GetSection("AteaAdmin:LocalDevelopment").Get<LocalAdminOptions>() ?? new();
+        if (environment.IsDevelopment())
+        {
+            services.AddAuthentication(options =>
+            {
+                if (LocalAdminAuthentication.IsConfigured(environment, localOptions))
+                    options.DefaultAuthenticateScheme = LocalAdminAuthentication.Scheme;
+            }).AddCookie(LocalAdminAuthentication.Scheme, options =>
+            {
+                options.Cookie.Name = "atea-local-admin";
+                options.Cookie.HttpOnly = true;
+                options.Cookie.SameSite = SameSiteMode.Strict;
+                options.Cookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
+            });
+        }
         services.PostConfigure<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme, options =>
         {
             options.MapInboundClaims = false;
@@ -25,9 +43,18 @@ public static class PlatformAuthorization
         });
         services.AddAuthorization(options =>
         {
-            options.FallbackPolicy = new AuthorizationPolicyBuilder()
+            var fallbackPolicy = new AuthorizationPolicyBuilder(JwtBearerDefaults.AuthenticationScheme)
                 .RequireAuthenticatedUser()
                 .Build();
+            if (LocalAdminAuthentication.IsConfigured(environment, localOptions))
+                fallbackPolicy = new AuthorizationPolicyBuilder(JwtBearerDefaults.AuthenticationScheme, LocalAdminAuthentication.Scheme)
+                    .RequireAuthenticatedUser().Build();
+            options.FallbackPolicy = fallbackPolicy;
+            var platformPolicy = new AuthorizationPolicyBuilder(JwtBearerDefaults.AuthenticationScheme)
+                .RequireAuthenticatedUser();
+            if (LocalAdminAuthentication.IsConfigured(environment, localOptions))
+                platformPolicy.AddAuthenticationSchemes(LocalAdminAuthentication.Scheme);
+            options.AddPolicy("PlatformAdminPolicy", platformPolicy.RequireClaim("oid").Build());
         });
         services.AddScoped<IWorkspaceMembershipReader, EfWorkspaceMembershipReader>();
         var scopes = configuration.GetSection("PlatformAuthorization:AdminWorkspaceScopes").GetChildren()
@@ -38,8 +65,9 @@ public static class PlatformAuthorization
                     .Where(value => Guid.TryParse(value, out _))
                     .Select(Guid.Parse)
                     .ToHashSet());
-        services.AddSingleton<IPlatformAuthorization>(_ => new AllowlistPlatformAuthorization(
-            configuration.GetSection("PlatformAuthorization:AdminObjectIds").Get<string[]>() ?? [], scopes));
+        var adminObjectIds = configuration.GetSection("PlatformAuthorization:AdminObjectIds").Get<string[]>() ?? [];
+        if (LocalAdminAuthentication.IsConfigured(environment, localOptions)) adminObjectIds = [.. adminObjectIds, localOptions.ObjectId];
+        services.AddSingleton<IPlatformAuthorization>(_ => new AllowlistPlatformAuthorization(adminObjectIds, scopes));
         services.AddScoped<WorkspaceContextResolver>(serviceProvider => new WorkspaceContextResolver(
             configuration["AzureAd:Audience"] ?? string.Empty,
             serviceProvider.GetRequiredService<IWorkspaceMembershipReader>()));
@@ -94,5 +122,6 @@ public sealed class AllowlistPlatformAuthorization(
     public bool CanManageWorkspace(ClaimsPrincipal principal, Guid workspaceId) =>
         Guid.TryParse(principal.FindFirstValue("oid"), out var objectId) &&
         allowedObjectIds.Contains(objectId) &&
-        workspaceScopes.TryGetValue(objectId, out var scopes) && scopes.Contains(workspaceId);
+        (principal.HasClaim(LocalAdminAuthentication.AllowAllWorkspacesClaim, "true") ||
+         (workspaceScopes.TryGetValue(objectId, out var scopes) && scopes.Contains(workspaceId)));
 }
