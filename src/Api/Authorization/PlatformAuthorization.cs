@@ -61,7 +61,7 @@ public static class PlatformAuthorization
                     .ToHashSet());
         var adminObjectIds = configuration.GetSection("PlatformAuthorization:AdminObjectIds").Get<string[]>() ?? [];
         if (LocalAdminAuthentication.IsConfigured(environment, localOptions)) adminObjectIds = [.. adminObjectIds, localOptions.ObjectId];
-        services.AddSingleton<IPlatformAuthorization>(_ => new AllowlistPlatformAuthorization(adminObjectIds, scopes));
+        services.AddSingleton<IPlatformAuthorization>(_ => new AllowlistPlatformAuthorization(adminObjectIds, scopes, LocalAdminAuthentication.IsAllWorkspacesAllowed(environment, localOptions)));
         services.AddScoped<WorkspaceContextResolver>(serviceProvider => new WorkspaceContextResolver(
             configuration["AzureAd:Audience"] ?? string.Empty,
             serviceProvider.GetRequiredService<IWorkspaceMembershipReader>()));
@@ -105,13 +105,15 @@ public sealed record PlatformWorkspaceScope(bool IsAll, IReadOnlySet<Guid> Works
 
 public sealed class AllowlistPlatformAuthorization(
     IEnumerable<string> allowedObjectIds,
-    IReadOnlyDictionary<Guid, IReadOnlySet<Guid>> workspaceScopes) : IPlatformAuthorization
+    IReadOnlyDictionary<Guid, IReadOnlySet<Guid>> workspaceScopes,
+    bool localAllWorkspacesAllowed = false) : IPlatformAuthorization
 {
     private readonly HashSet<Guid> allowedObjectIds = allowedObjectIds
         .Where(x => Guid.TryParse(x, out _))
         .Select(Guid.Parse)
         .ToHashSet();
     private readonly IReadOnlyDictionary<Guid, IReadOnlySet<Guid>> workspaceScopes = workspaceScopes;
+    private readonly bool localAllWorkspacesAllowed = localAllWorkspacesAllowed;
 
     public bool IsAuthorized(ClaimsPrincipal principal) =>
         Guid.TryParse(principal.FindFirstValue("oid"), out var objectId) && allowedObjectIds.Contains(objectId);
@@ -119,13 +121,19 @@ public sealed class AllowlistPlatformAuthorization(
     public PlatformWorkspaceScope GetWorkspaceScope(ClaimsPrincipal principal)
     {
         if (!Guid.TryParse(principal.FindFirstValue("oid"), out var objectId) || !allowedObjectIds.Contains(objectId)) return new(false, new HashSet<Guid>());
-        if (principal.HasClaim(LocalAdminAuthentication.AllowAllWorkspacesClaim, "true")) return new(true, new HashSet<Guid>());
+        if (IsLocalAllWorkspacesPrincipal(principal)) return new(true, new HashSet<Guid>());
         return new(false, workspaceScopes.TryGetValue(objectId, out var scopes) ? scopes : new HashSet<Guid>());
     }
 
     public bool CanManageWorkspace(ClaimsPrincipal principal, Guid workspaceId) =>
         Guid.TryParse(principal.FindFirstValue("oid"), out var objectId) &&
         allowedObjectIds.Contains(objectId) &&
-        (principal.HasClaim(LocalAdminAuthentication.AllowAllWorkspacesClaim, "true") ||
+        (IsLocalAllWorkspacesPrincipal(principal) ||
          (workspaceScopes.TryGetValue(objectId, out var scopes) && scopes.Contains(workspaceId)));
+
+    private bool IsLocalAllWorkspacesPrincipal(ClaimsPrincipal principal) =>
+        localAllWorkspacesAllowed &&
+        principal.Identity?.AuthenticationType == LocalAdminAuthentication.Scheme &&
+        principal.HasClaim(LocalAdminAuthentication.LocalAdminClaim, "true") &&
+        principal.HasClaim(LocalAdminAuthentication.AllowAllWorkspacesClaim, "true");
 }
