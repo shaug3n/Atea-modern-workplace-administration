@@ -25,7 +25,7 @@ export function AssociatedDevicesSection({ userId, decision }: { userId: string;
     <div className="detail-card__header"><h2 id="associated-devices-title">Associated devices</h2><span className="section-help">Managed devices linked to this user</span></div>
     {failed && <p role="alert">{messages.devicesUnavailable}</p>}
     {!failed && !result && <p role="status">{messages.devicesLoading}</p>}
-    {result?.error && <p role="alert">{result.error.message || messages.devicesUnavailable}</p>}
+    {result?.error && <p role="alert">{messages.devicesUnavailable}</p>}
     {result && !result.error && result.items.length === 0 && <p>{messages.devicesNoResults}</p>}
     {result && !result.error && result.items.length > 0 && <ul className="associated-devices__list">{result.items.map((device) => <li key={device.id}><div><strong>{device.deviceName || device.id}</strong><span>{device.operatingSystem || messages.devicesUnknown}</span></div><a href={`/devices?device=${encodeURIComponent(device.id)}`}>Open device {device.deviceName || device.id}</a></li>)}</ul>}
   </section>;

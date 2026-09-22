@@ -156,10 +156,13 @@ describe('UserDetailPage', () => {
       capability: 'authentication.methods.manage', state: 'read_only', reasonCode: 'role_read_only',
     }, {
       capability: 'users.sessions.revoke', state: 'read_only', reasonCode: 'role_read_only',
+    }, {
+      capability: 'authentication.methods.view', state: 'read_only', reasonCode: 'role_read_only',
     }]} />);
 
     expect(await screen.findByRole('heading', { name: 'Ada Lovelace' })).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Grant Temporary Access Pass' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Reset MFA methods' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Revoke sessions' })).toBeNull();
   });
 

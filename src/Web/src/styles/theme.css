@@ -1890,7 +1890,7 @@ p {
   margin-top: var(--atea-space-6);
 }
 
-.settings-section {
+.workspace-settings-form .settings-section {
   display: grid;
   gap: var(--atea-space-4);
   padding: var(--atea-space-5);
@@ -1899,28 +1899,28 @@ p {
   background: var(--uw-surface-subtle);
 }
 
-.settings-section__heading {
+.workspace-settings-form .settings-section__heading {
   display: flex;
   justify-content: space-between;
   gap: var(--atea-space-5);
   align-items: flex-start;
 }
 
-.settings-section__heading h2 {
+.workspace-settings-form .settings-section__heading h2 {
   margin: 0;
   color: var(--uw-heading);
   font-size: var(--atea-text-l);
 }
 
-.settings-section__heading p:last-child {
+.workspace-settings-form .settings-section__heading p:last-child {
   max-width: 34rem;
   margin: 0;
   color: var(--uw-muted);
 }
 
-.settings-section > label,
-.settings-filter-grid label,
-.settings-section--split > label {
+.workspace-settings-form .settings-section > label,
+.workspace-settings-form .settings-filter-grid label,
+.workspace-settings-form .settings-section--split > label {
   display: grid;
   gap: var(--atea-space-2);
   color: var(--uw-muted);
@@ -1928,9 +1928,9 @@ p {
   font-weight: 700;
 }
 
-.settings-section input:not([type='checkbox']),
-.settings-section select,
-.settings-section textarea {
+.workspace-settings-form .settings-section input:not([type='checkbox']),
+.workspace-settings-form .settings-section select,
+.workspace-settings-form .settings-section textarea {
   min-height: 2.5rem;
   padding: var(--atea-space-2) var(--atea-space-3);
   border: 1px solid var(--uw-border);
@@ -1940,17 +1940,17 @@ p {
   font: inherit;
 }
 
-.settings-section textarea {
+.workspace-settings-form .settings-section textarea {
   resize: vertical;
 }
 
-.settings-option-grid {
+.workspace-settings-form .settings-option-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--atea-space-3);
 }
 
-.settings-option {
+.workspace-settings-form .settings-option {
   display: flex;
   align-items: flex-start;
   gap: var(--atea-space-3);
@@ -1963,78 +1963,78 @@ p {
   cursor: pointer;
 }
 
-.settings-option:has(input:checked) {
+.workspace-settings-form .settings-option:has(input:checked) {
   border-color: var(--uw-primary);
   box-shadow: inset 0 0 0 1px var(--uw-primary);
 }
 
-.settings-option input {
+.workspace-settings-form .settings-option input {
   margin-top: 0.2rem;
   accent-color: var(--uw-primary);
 }
 
-.settings-option span {
+.workspace-settings-form .settings-option span {
   display: grid;
   gap: var(--atea-space-1);
 }
 
-.settings-option small {
+.workspace-settings-form .settings-option small {
   color: var(--uw-muted);
   font-size: var(--atea-text-s);
   font-weight: 400;
 }
 
-fieldset {
+.workspace-settings-form fieldset {
   display: grid;
   gap: var(--atea-space-3);
   padding: 0;
   border: 0;
 }
 
-legend {
+.workspace-settings-form legend {
   margin-bottom: var(--atea-space-2);
   color: var(--uw-muted);
   font-size: var(--atea-text-s);
   font-weight: 700;
 }
 
-.settings-option-grid--columns {
+.workspace-settings-form .settings-option-grid--columns {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
-.settings-filter-grid,
-.settings-section--split {
+.workspace-settings-form .settings-filter-grid,
+.workspace-settings-form .settings-section--split {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--atea-space-4);
 }
 
-.settings-form-actions {
+.workspace-settings-form .settings-form-actions {
   display: flex;
   align-items: center;
   gap: var(--atea-space-4);
 }
 
-.settings-form-actions [role='status'] {
+.workspace-settings-form .settings-form-actions [role='status'] {
   color: var(--uw-success-text);
   font-weight: 700;
 }
 
-.form-error {
+.workspace-settings-form .form-error {
   margin: 0;
   color: var(--uw-danger-text);
 }
 
 @media (max-width: 48rem) {
-  .settings-section__heading,
-  .settings-filter-grid,
-  .settings-section--split {
+  .workspace-settings-form .settings-section__heading,
+  .workspace-settings-form .settings-filter-grid,
+  .workspace-settings-form .settings-section--split {
     display: grid;
     grid-template-columns: 1fr;
   }
 
-  .settings-option-grid,
-  .settings-option-grid--columns {
+  .workspace-settings-form .settings-option-grid,
+  .workspace-settings-form .settings-option-grid--columns {
     grid-template-columns: 1fr;
   }
 }
