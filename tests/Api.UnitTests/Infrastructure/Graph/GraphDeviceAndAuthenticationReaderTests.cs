@@ -152,6 +152,21 @@ public sealed class GraphDeviceAndAuthenticationReaderTests
         transport.RequestBodies.Single().Should().Be("{\"keepEnrollmentData\":false,\"keepUserData\":false,\"persistEsimDataPlan\":false}");
     }
 
+    [Theory]
+    [InlineData("bad\u0001key")]
+    [InlineData("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")]
+    public async Task Managed_device_commands_reject_malformed_idempotency_keys_before_graph_dispatch(string idempotencyKey)
+    {
+        var transport = new RecordingTransport("{}");
+        var factory = new RecordingFactory(transport);
+
+        var result = await new GraphManagedDeviceCommands(factory).ExecuteAsync("device-1", DeviceActionNames.Sync, idempotencyKey, CancellationToken.None);
+
+        result.Category.Should().Be("invalid_request");
+        transport.Requests.Should().BeEmpty();
+        factory.Scopes.Should().BeEmpty();
+    }
+
     [Fact]
     public async Task Authentication_method_remove_maps_fido2_to_the_specific_graph_collection()
     {

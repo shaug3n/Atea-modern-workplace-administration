@@ -11,7 +11,7 @@ public sealed class GraphManagedDeviceCommands(IDelegatedGraphClientFactory clie
 {
     public Task<GraphOperationResult> ExecuteAsync(string deviceObjectId, string action, string idempotencyKey, CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(deviceObjectId) || deviceObjectId.Any(character => char.IsControl(character) || character is '/' or '\\') || string.IsNullOrWhiteSpace(idempotencyKey))
+        if (string.IsNullOrWhiteSpace(deviceObjectId) || deviceObjectId.Any(character => char.IsControl(character) || character is '/' or '\\') || !DeviceCommandInputValidation.IsValidIdempotencyKey(idempotencyKey))
         {
             return Task.FromResult(new GraphOperationResult(false, "invalid_request"));
         }

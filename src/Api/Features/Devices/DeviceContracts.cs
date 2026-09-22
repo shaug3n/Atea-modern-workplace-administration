@@ -85,6 +85,16 @@ public static class DeviceActionNames
     }
 }
 
+public static class DeviceCommandInputValidation
+{
+    public const int MaxIdempotencyKeyLength = 256;
+
+    public static bool IsValidIdempotencyKey(string? value) =>
+        !string.IsNullOrWhiteSpace(value)
+        && value.Length <= MaxIdempotencyKeyLength
+        && !value.Any(char.IsControl);
+}
+
 public static class DeviceCommandStatus
 {
     public const string Succeeded = "succeeded";

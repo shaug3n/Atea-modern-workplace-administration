@@ -24,6 +24,18 @@ public sealed class DeviceCommandServiceTests
         commands.Calls.Should().Be(0);
     }
 
+    [Fact]
+    public async Task Denied_command_audit_uses_the_normalized_operation_name()
+    {
+        var audit = new RecordingAuditWriter();
+        var service = CreateService(new RecordingCommands(), Snapshot(["DeviceManagementManagedDevices.ReadWrite.All"]), audit);
+
+        var result = await service.ExecuteAsync(Context(), "device-1", DeviceActionNames.Wipe, "key-1", CancellationToken.None);
+
+        result.Status.Should().Be(DeviceCommandStatus.Denied);
+        audit.Events.Should().ContainSingle().Which.Action.Should().Be("devices.wipe");
+    }
+
     [Theory]
     [InlineData(DeviceActionNames.Sync, "devices.sync")]
     [InlineData(DeviceActionNames.RemoteLock, "devices.remote-lock")]
@@ -59,6 +71,21 @@ public sealed class DeviceCommandServiceTests
         var result = await service.ExecuteAsync(Context(), deviceId, DeviceActionNames.Sync, key, CancellationToken.None);
 
         result.Status.Should().Be(DeviceCommandStatus.InvalidTarget);
+        commands.Calls.Should().Be(0);
+    }
+
+    [Theory]
+    [InlineData("bad\u0001key")]
+    [InlineData("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")]
+    public async Task Malformed_idempotency_input_does_not_dispatch(string key)
+    {
+        var commands = new RecordingCommands();
+        var service = CreateService(commands, Snapshot(GraphScopeCatalog.DevicePrivilegedOperationScopes));
+
+        var result = await service.ExecuteAsync(Context(), "device-1", DeviceActionNames.Sync, key, CancellationToken.None);
+
+        result.Status.Should().Be(DeviceCommandStatus.InvalidTarget);
+        result.Error.Should().Be("invalid_idempotency_key");
         commands.Calls.Should().Be(0);
     }
 

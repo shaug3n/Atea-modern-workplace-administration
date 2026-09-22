@@ -23,21 +23,27 @@ public static class DeviceEndpoints
     {
         if (string.IsNullOrWhiteSpace(deviceObjectId) || deviceObjectId.Any(character => char.IsControl(character) || character is '/' or '\\'))
         {
-            return Results.BadRequest(new { error = "invalid_target" });
+            return Results.BadRequest(new DeviceCommandResult(DeviceCommandStatus.InvalidTarget, Capability.DevicesPrivilegedManage, "invalid_target"));
         }
 
         if (!request.Headers.TryGetValue("Idempotency-Key", out var values) || string.IsNullOrWhiteSpace(values.ToString()))
         {
-            return Results.BadRequest(new { error = "idempotency_key_required" });
+            return Results.BadRequest(new DeviceCommandResult(DeviceCommandStatus.InvalidTarget, Capability.DevicesPrivilegedManage, "idempotency_key_required"));
+        }
+
+        var idempotencyKey = values.ToString().Trim();
+        if (!DeviceCommandInputValidation.IsValidIdempotencyKey(idempotencyKey))
+        {
+            return Results.BadRequest(new DeviceCommandResult(DeviceCommandStatus.InvalidTarget, Capability.DevicesPrivilegedManage, "invalid_idempotency_key"));
         }
 
         var context = accessor.Current;
         if (context is null)
         {
-            return Results.Json(new { error = "workspace_membership_required" }, statusCode: StatusCodes.Status403Forbidden);
+            return Results.Json(new DeviceCommandResult(DeviceCommandStatus.Denied, Capability.DevicesPrivilegedManage, "workspace_membership_required"), statusCode: StatusCodes.Status403Forbidden);
         }
 
-        var result = await service.ExecuteAsync(context, deviceObjectId, action, values.ToString().Trim(), cancellationToken);
+        var result = await service.ExecuteAsync(context, deviceObjectId, action, idempotencyKey, cancellationToken);
         return result.Status switch
         {
             DeviceCommandStatus.Succeeded => Results.Ok(result),

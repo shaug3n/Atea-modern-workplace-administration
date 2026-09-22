@@ -33,20 +33,20 @@ public sealed class DeviceCommandService(
             return new DeviceCommandResult(DeviceCommandStatus.InvalidTarget, Capability.DevicesPrivilegedManage, "invalid_action");
         }
 
+        var operation = $"devices.{normalizedAction}";
+        if (!DeviceCommandInputValidation.IsValidIdempotencyKey(idempotencyKey))
+        {
+            return new DeviceCommandResult(DeviceCommandStatus.InvalidTarget, Capability.DevicesPrivilegedManage, "invalid_idempotency_key");
+        }
+
         var snapshot = await authorizationSnapshotReader.ReadAsync(context, cancellationToken);
         var authorization = CapabilityEvaluator.Evaluate(snapshot, context.Membership)[Capability.DevicesPrivilegedManage];
         if (authorization.State != CapabilityState.Allowed)
         {
-            return await DenyAsync(context, deviceObjectId, authorization, cancellationToken);
-        }
-
-        if (string.IsNullOrWhiteSpace(idempotencyKey))
-        {
-            return new DeviceCommandResult(DeviceCommandStatus.InvalidTarget, Capability.DevicesPrivilegedManage, "idempotency_key_required", authorization);
+            return await DenyAsync(context, deviceObjectId, operation, authorization, cancellationToken);
         }
 
         DeviceCommandResult? liveResult = null;
-        var operation = $"devices.{normalizedAction}";
         var outcome = await idempotency.ExecuteAsync(
             new IdempotencyScope(context.Membership.WorkspaceId, context.User.ObjectId, operation, deviceObjectId, idempotencyKey),
             new { action = normalizedAction },
@@ -75,9 +75,9 @@ public sealed class DeviceCommandService(
         return stored with { Replayed = outcome.Kind == IdempotencyOutcomeKind.Replayed, AuditWarning = liveResult?.AuditWarning };
     }
 
-    private async Task<DeviceCommandResult> DenyAsync(WorkspaceContext context, string targetId, CapabilityDecision authorization, CancellationToken cancellationToken)
+    private async Task<DeviceCommandResult> DenyAsync(WorkspaceContext context, string targetId, string operation, CapabilityDecision authorization, CancellationToken cancellationToken)
     {
-        var auditWarning = await AuditAsync(context, Capability.DevicesPrivilegedManage, targetId, DeviceCommandStatus.Denied, "capability_required", null, null, cancellationToken);
+        var auditWarning = await AuditAsync(context, operation, targetId, DeviceCommandStatus.Denied, "capability_required", null, null, cancellationToken);
         return new DeviceCommandResult(DeviceCommandStatus.Denied, Capability.DevicesPrivilegedManage, "capability_required", authorization, AuditWarning: auditWarning);
     }
 

@@ -35,6 +35,15 @@ public sealed class DeviceCommandEndpointTests
     }
 
     [Fact]
+    public void Production_composition_resolves_the_graph_managed_device_command_adapter()
+    {
+        using var factory = CreateFactory(null, AllowedSnapshot);
+
+        using var scope = factory.Services.CreateScope();
+        scope.ServiceProvider.GetRequiredService<IManagedDeviceCommands>().Should().BeOfType<GraphManagedDeviceCommands>();
+    }
+
+    [Fact]
     public async Task Duplicate_action_request_is_replayed_without_a_second_graph_call()
     {
         var commands = new RecordingCommands();
@@ -75,13 +84,63 @@ public sealed class DeviceCommandEndpointTests
         var response = await PostAsync(client, DeviceActionNames.Restart, "workspace-key");
 
         response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
-        (await response.Content.ReadAsStringAsync()).Should().Contain("authorization_denied");
+        var body = await response.Content.ReadAsStringAsync();
+        body.Should().Contain("\"status\":\"denied\"");
+        body.Should().Contain($"\"requiredCapability\":\"{Capability.DevicesPrivilegedManage}\"");
+        body.Should().Contain("workspace_membership_required");
         commands.Calls.Should().Be(0);
     }
 
-    private static async Task<HttpResponseMessage> PostAsync(HttpClient client, string action, string key)
+    [Fact]
+    public async Task Invalid_target_returns_typed_privileged_command_result()
     {
-        using var request = new HttpRequestMessage(HttpMethod.Post, $"/api/devices/device-1/actions/{action}");
+        var commands = new RecordingCommands();
+        using var factory = CreateFactory(commands, AllowedSnapshot);
+        using var client = AuthenticatedClient(factory);
+
+        var response = await PostAsync(client, DeviceActionNames.Sync, "invalid-target-key", deviceId: "%20");
+        var body = await response.Content.ReadAsStringAsync();
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        body.Should().Contain("\"status\":\"invalid_target\"");
+        body.Should().Contain($"\"requiredCapability\":\"{Capability.DevicesPrivilegedManage}\"");
+    }
+
+    [Fact]
+    public async Task Missing_idempotency_key_returns_typed_privileged_command_result()
+    {
+        var commands = new RecordingCommands();
+        using var factory = CreateFactory(commands, AllowedSnapshot);
+        using var client = AuthenticatedClient(factory);
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/devices/device-1/actions/sync");
+        var response = await client.SendAsync(request);
+        var body = await response.Content.ReadAsStringAsync();
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        body.Should().Contain("\"error\":\"idempotency_key_required\"");
+        body.Should().Contain($"\"requiredCapability\":\"{Capability.DevicesPrivilegedManage}\"");
+    }
+
+    [Fact]
+    public async Task Oversized_idempotency_key_returns_typed_privileged_command_result()
+    {
+        var commands = new RecordingCommands();
+        using var factory = CreateFactory(commands, AllowedSnapshot);
+        using var client = AuthenticatedClient(factory);
+
+        var response = await PostAsync(client, DeviceActionNames.Sync, new string('a', 257));
+        var body = await response.Content.ReadAsStringAsync();
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        body.Should().Contain("\"error\":\"invalid_idempotency_key\"");
+        body.Should().Contain($"\"requiredCapability\":\"{Capability.DevicesPrivilegedManage}\"");
+        commands.Calls.Should().Be(0);
+    }
+
+    private static async Task<HttpResponseMessage> PostAsync(HttpClient client, string action, string key, string deviceId = "device-1")
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post, $"/api/devices/{deviceId}/actions/{action}");
         request.Headers.Add("Idempotency-Key", key);
         return await client.SendAsync(request);
     }
@@ -93,7 +152,7 @@ public sealed class DeviceCommandEndpointTests
         return client;
     }
 
-    private static WebApplicationFactory<Program> CreateFactory(RecordingCommands commands, GraphAuthorizationSnapshot snapshot, bool hasMembership = true) =>
+    private static WebApplicationFactory<Program> CreateFactory(RecordingCommands? commands, GraphAuthorizationSnapshot snapshot, bool hasMembership = true) =>
         new WebApplicationFactory<Program>().WithWebHostBuilder(builder => builder
             .ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
             {
@@ -111,8 +170,11 @@ public sealed class DeviceCommandEndpointTests
                 services.AddSingleton<IWorkspaceMembershipReader>(new FixtureMembershipReader(hasMembership));
                 services.RemoveAll<IGraphAuthorizationSnapshotReader>();
                 services.AddSingleton<IGraphAuthorizationSnapshotReader>(new StaticAuthorizationReader(snapshot));
-                services.RemoveAll<IManagedDeviceCommands>();
-                services.AddSingleton<IManagedDeviceCommands>(commands);
+                if (commands is not null)
+                {
+                    services.RemoveAll<IManagedDeviceCommands>();
+                    services.AddSingleton<IManagedDeviceCommands>(commands);
+                }
                 services.RemoveAll<IIdempotencyService>();
                 services.AddSingleton<IIdempotencyService, MemoryIdempotencyService>();
                 services.RemoveAll<IAuditWriter>();
