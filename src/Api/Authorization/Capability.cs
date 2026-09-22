@@ -7,11 +7,18 @@ public static class Capability
     public const string UsersUpdate = "users.update";
     public const string UsersDisable = "users.disable";
     public const string UsersResetPassword = "users.reset_password";
+    public const string UsersRevokeSessions = "users.sessions.revoke";
     public const string GroupsManageMembers = "groups.manage_members";
+    public const string LicensesView = "licenses.view";
     public const string LicensesAssign = "licenses.assign";
     public const string RolesAssign = "roles.assign";
     public const string PimView = "pim.view";
     public const string PimActivate = "pim.activate";
+    public const string DevicesView = "devices.view";
+    public const string DevicesManage = "devices.manage";
+    public const string DevicesPrivilegedManage = "devices.privileged.manage";
+    public const string AuthenticationMethodsView = "authentication.methods.view";
+    public const string AuthenticationMethodsManage = "authentication.methods.manage";
     public const string AuditView = "audit.view";
     public const string WorkspaceSettingsManage = "workspace.settings.manage";
 
@@ -22,11 +29,18 @@ public static class Capability
         UsersUpdate,
         UsersDisable,
         UsersResetPassword,
+        UsersRevokeSessions,
         GroupsManageMembers,
+        LicensesView,
         LicensesAssign,
         RolesAssign,
         PimView,
         PimActivate,
+        DevicesView,
+        DevicesManage,
+        DevicesPrivilegedManage,
+        AuthenticationMethodsView,
+        AuthenticationMethodsManage,
         AuditView,
         WorkspaceSettingsManage
     ];
@@ -69,6 +83,10 @@ public static class EntraRoleCatalog
     public const string GroupsAdministratorTemplateId = "fdd7a751-b60b-444a-984c-02652fe8fa1c";
     public const string LicenseAdministratorTemplateId = "4d6ac14f-3453-41d0-bef9-a3e0c569773a";
     public const string PrivilegedRoleAdministratorTemplateId = "e8611ab8-c189-46e8-94e1-60213ab1f814";
+    public const string AuthenticationAdministratorTemplateId = "c4e39bd9-1100-46d3-8c65-fb160da0071f";
+    public const string PrivilegedAuthenticationAdministratorTemplateId = "7be44c8a-adaf-4e2a-84d6-ab2649e08a13";
+    public const string CloudDeviceAdministratorTemplateId = "7698a772-787b-4ac8-901f-60d6b08affd2";
+    public const string IntuneAdministratorTemplateId = "3a2c62db-5318-420d-8d74-23affee5d9d5";
 
     public static readonly IReadOnlyDictionary<string, string> DisplayNames = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
     {
@@ -77,6 +95,10 @@ public static class EntraRoleCatalog
         [UserAdministratorTemplateId] = "User Administrator",
         [GroupsAdministratorTemplateId] = "Groups Administrator",
         [LicenseAdministratorTemplateId] = "License Administrator",
-        [PrivilegedRoleAdministratorTemplateId] = "Privileged Role Administrator"
+        [PrivilegedRoleAdministratorTemplateId] = "Privileged Role Administrator",
+        [AuthenticationAdministratorTemplateId] = "Authentication Administrator",
+        [PrivilegedAuthenticationAdministratorTemplateId] = "Privileged Authentication Administrator",
+        [CloudDeviceAdministratorTemplateId] = "Cloud Device Administrator",
+        [IntuneAdministratorTemplateId] = "Intune Administrator"
     };
 }

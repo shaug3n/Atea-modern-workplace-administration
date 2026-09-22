@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import React from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { CapabilitySnapshot } from '../../../src/Web/src/capabilities/capabilityTypes';
@@ -35,6 +35,28 @@ describe('PermissionState', () => {
     expect(screen.getByRole('status').textContent).toContain('read-only');
   });
 
+  it('shows missing delegated scopes alongside the blocked action', () => {
+    render(
+      <PermissionState decision={{ capability: 'users.update', state: 'consent_required', reasonCode: 'delegated_scope_required', missingScopes: ['User.ReadWrite.All'] }}>
+        <button>Save changes</button>
+      </PermissionState>
+    );
+
+    expect(screen.getByRole('status').textContent).toContain('User.ReadWrite.All');
+    expect(screen.getByRole('status').textContent).toContain('Unavailable through the API’s delegated Graph token');
+  });
+
+  it('does not label a transient scope probe as missing consent', () => {
+    render(
+      <PermissionState decision={{ capability: 'devices.view', state: 'temporarily_unavailable', reasonCode: 'scope_probe_unavailable', missingScopes: ['DeviceManagementManagedDevices.Read.All'] }}>
+        <button>Open devices</button>
+      </PermissionState>
+    );
+
+    expect(screen.getByRole('status').textContent).toContain('could not be verified');
+    expect(screen.getByRole('status').textContent).not.toContain('Unavailable through the API’s delegated Graph token');
+  });
+
   it.each([
     ['consent_required', 'Grant delegated consent', 'https://entra.example/consent'],
     ['pim_activation_required', 'Activate the required Entra role', 'https://entra.example/activate'],
@@ -49,6 +71,19 @@ describe('PermissionState', () => {
 
     expect((screen.getByRole('button', { name: 'Create user' }) as HTMLButtonElement).disabled).toBe(true);
     expect(screen.getByRole('link', { name: linkText }).getAttribute('href')).toBe(href);
+  });
+
+  it('starts API consent with POST before exposing the Entra authorization link', async () => {
+    apiMock.mockResolvedValue(new Response(JSON.stringify({ authorizationUrl: 'https://login.example/consent' }), { status: 200 }));
+    render(
+      <PermissionState decision={{ capability: 'users.create', state: 'consent_required', reasonCode: 'consent_required', nextStep: { label: 'Grant delegated consent', href: '/api/workspaces/current/consent/start' } }}>
+        <button>Create user</button>
+      </PermissionState>
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Grant delegated consent' }));
+    await waitFor(() => expect(apiMock).toHaveBeenCalledWith('/api/workspaces/current/consent/start', { method: 'POST' }));
+    expect((await screen.findByRole('link', { name: 'Continue consent' })).getAttribute('href')).toBe('https://login.example/consent');
   });
 });
 

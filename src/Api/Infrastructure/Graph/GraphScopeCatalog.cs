@@ -8,8 +8,39 @@ public static class GraphScopeCatalog
     public static readonly IReadOnlyList<string> UserProfileWriteScopes = ["User.ReadWrite.All"];
     public static readonly IReadOnlyList<string> UserAccountWriteScopes = ["User.EnableDisableAccount.All", "User.Read.All"];
     public static readonly IReadOnlyList<string> UserPasswordWriteScopes = ["User-PasswordProfile.ReadWrite.All"];
+    public static readonly IReadOnlyList<string> UserSessionWriteScopes = ["User.RevokeSessions.All"];
     public static readonly IReadOnlyList<string> GroupMembershipWriteScopes = ["GroupMember.ReadWrite.All"];
     public static readonly IReadOnlyList<string> LicenseWriteScopes = ["LicenseAssignment.ReadWrite.All"];
     public static readonly IReadOnlyList<string> RoleAndPimScopes = ["RoleManagement.ReadWrite.Directory"];
+    public static readonly IReadOnlyList<string> DeviceReadScopes = ["DeviceManagementManagedDevices.Read.All"];
+    public static readonly IReadOnlyList<string> DeviceWriteScopes = ["DeviceManagementManagedDevices.ReadWrite.All"];
+    public static readonly IReadOnlyList<string> DevicePrivilegedOperationScopes = ["DeviceManagementManagedDevices.PrivilegedOperations.All"];
+    public static readonly IReadOnlyList<string> AuthenticationMethodReadScopes = ["UserAuthenticationMethod.Read.All"];
+    public static readonly IReadOnlyList<string> AuthenticationMethodWriteScopes = ["UserAuthenticationMethod.ReadWrite.All"];
     public static readonly IReadOnlyList<string> AuthorizationReadScopes = ["Directory.Read.All", "RoleManagement.Read.Directory"];
+
+    // These are the known Graph scopes used by capability evaluation. The
+    // authorization reader probes them individually so an optional unconsented
+    // feature does not make the entire authorization snapshot unavailable.
+    public static readonly IReadOnlyList<string> CapabilityEvaluationScopes =
+    [
+        "User.Read",
+        "User.Read.All",
+        "Group.Read.All",
+        "Directory.Read.All",
+        "User.Create",
+        "User.ReadWrite.All",
+        "User.EnableDisableAccount.All",
+        "User-PasswordProfile.ReadWrite.All",
+        "User.RevokeSessions.All",
+        "GroupMember.ReadWrite.All",
+        "LicenseAssignment.ReadWrite.All",
+        "RoleManagement.Read.Directory",
+        "RoleManagement.ReadWrite.Directory",
+        "DeviceManagementManagedDevices.Read.All",
+        "DeviceManagementManagedDevices.ReadWrite.All",
+        "DeviceManagementManagedDevices.PrivilegedOperations.All",
+        "UserAuthenticationMethod.Read.All",
+        "UserAuthenticationMethod.ReadWrite.All"
+    ];
 }

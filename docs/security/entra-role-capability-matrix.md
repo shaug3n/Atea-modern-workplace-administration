@@ -26,9 +26,15 @@ Display names are presentation data only. Capability evaluation keys only on sta
 | `users.update` | read scope plus `User.ReadWrite.All` | Global Administrator or User Administrator | `read_only`, `consent_required`, or PIM state |
 | `users.disable` | read scope plus `User.EnableDisableAccount.All` and `User.Read.All` | Global Administrator or User Administrator | `read_only`, `consent_required`, or PIM state |
 | `users.reset_password` | read scope plus `User-PasswordProfile.ReadWrite.All` | Global Administrator or User Administrator | `read_only`, `consent_required`, or PIM state |
+| `users.sessions.revoke` | `Directory.Read.All` or `User.Read.All`, plus `User.RevokeSessions.All` | Global Administrator or User Administrator | `read_only`, `consent_required`, or PIM state |
 | `groups.manage_members` | `Directory.Read.All` or `Group.Read.All`, plus `GroupMember.ReadWrite.All` | Global Administrator or Groups Administrator | `hidden`, `consent_required`, or PIM state |
 | `licenses.assign` | read scope plus `LicenseAssignment.ReadWrite.All` | Global Administrator or License Administrator | `hidden`, `consent_required`, or PIM state |
 | `roles.assign` | `Directory.Read.All` plus `RoleManagement.ReadWrite.Directory` | Global Administrator or Privileged Role Administrator | `hidden`, `consent_required`, or PIM state |
+| `devices.view` | `DeviceManagementManagedDevices.Read.All` | Global Administrator, Global Reader, Intune Administrator, or Cloud Device Administrator | `hidden`, `consent_required`, or `temporarily_unavailable` |
+| `devices.manage` | read scope plus `DeviceManagementManagedDevices.ReadWrite.All` | Global Administrator, Intune Administrator, or Cloud Device Administrator | Global Reader is `read_only`; otherwise `hidden`, `consent_required`, or PIM state |
+| `devices.privileged.manage` | `DeviceManagementManagedDevices.Read.All`, plus `DeviceManagementManagedDevices.PrivilegedOperations.All` | Global Administrator, Intune Administrator, or Cloud Device Administrator | Global Reader is `read_only`; otherwise `hidden`, `consent_required`, or PIM state |
+| `authentication.methods.view` | `UserAuthenticationMethod.Read.All` | Global Administrator, Global Reader, Authentication Administrator, or Privileged Authentication Administrator | `hidden`, `consent_required`, or `temporarily_unavailable` |
+| `authentication.methods.manage` | read scope plus `UserAuthenticationMethod.ReadWrite.All` | Global Administrator, Authentication Administrator, or Privileged Authentication Administrator | Global Reader is `read_only`; otherwise `hidden`, `consent_required`, or PIM state |
 | `workspace.settings.manage` | Platform-only; no Graph scope | Workspace platform role `admin`/`owner` or Atea operator | `hidden` |
 
 ## PIM State Mapping

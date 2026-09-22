@@ -4,11 +4,18 @@ export type Capability =
   | 'users.update'
   | 'users.disable'
   | 'users.reset_password'
+  | 'users.sessions.revoke'
   | 'groups.manage_members'
+  | 'licenses.view'
   | 'licenses.assign'
   | 'roles.assign'
   | 'pim.view'
   | 'pim.activate'
+  | 'devices.view'
+  | 'devices.manage'
+  | 'devices.privileged.manage'
+  | 'authentication.methods.view'
+  | 'authentication.methods.manage'
   | 'audit.view'
   | 'workspace.settings.manage';
 
@@ -33,6 +40,7 @@ export type CapabilityDecision = {
   requiredRoleTemplateId?: string | null;
   pim?: { state: string; activationUrl?: string | null } | null;
   nextStep?: { label: string; href?: string | null } | null;
+  missingScopes?: string[] | null;
 };
 
 export type CapabilitySnapshot = {
@@ -42,3 +50,10 @@ export type CapabilitySnapshot = {
   sourceState?: string | null;
   sourceReasonCode?: string | null;
 };
+
+export function isPimCapabilityState(state: CapabilityState) {
+  return state === 'pim_activation_required'
+    || state === 'pim_approval_required'
+    || state === 'pim_mfa_required'
+    || state === 'pim_eligibility_expired';
+}

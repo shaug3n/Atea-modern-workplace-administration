@@ -6,6 +6,30 @@ namespace Atea.UnifiedWorkplace.Api.UnitTests.Authorization;
 public sealed class CapabilityEvaluatorTests
 {
     [Fact]
+    public void Privileged_device_commands_require_privileged_operations_consent()
+    {
+        var snapshot = AvailableSnapshot(
+            scopes: ["DeviceManagementManagedDevices.ReadWrite.All"],
+            roles: [ActiveRole(EntraRoleCatalog.IntuneAdministratorTemplateId)]);
+
+        var decision = CapabilityEvaluator.Evaluate(snapshot, Member("admin"))[Capability.DevicesPrivilegedManage];
+
+        decision.State.Should().Be(CapabilityState.ConsentRequired);
+        decision.MissingScopes.Should().Contain("DeviceManagementManagedDevices.PrivilegedOperations.All");
+    }
+
+    [Fact]
+    public void Session_revocation_requires_user_revoke_sessions_scope()
+    {
+        var snapshot = AvailableSnapshot(
+            scopes: ["User.ReadWrite.All"],
+            roles: [ActiveRole(EntraRoleCatalog.UserAdministratorTemplateId)]);
+
+        CapabilityEvaluator.Evaluate(snapshot, Member("admin"))[Capability.UsersRevokeSessions]
+            .State.Should().Be(CapabilityState.ConsentRequired);
+    }
+
+    [Fact]
     public void Global_reader_can_view_users_but_mutations_are_read_only()
     {
         var snapshot = AvailableSnapshot(
@@ -19,6 +43,63 @@ public sealed class CapabilityEvaluatorTests
         capabilities[Capability.UsersUpdate].State.Should().Be(CapabilityState.ReadOnly);
         capabilities[Capability.UsersDisable].State.Should().Be(CapabilityState.ReadOnly);
         capabilities[Capability.UsersResetPassword].State.Should().Be(CapabilityState.ReadOnly);
+    }
+
+    [Fact]
+    public void PIM_eligible_global_reader_is_guided_to_activate_before_viewing_users()
+    {
+        var snapshot = AvailableSnapshot(
+            scopes: ["Directory.Read.All", "User.Read.All", "RoleManagement.Read.Directory"],
+            roles: [EligibleRole(EntraRoleCatalog.GlobalReaderTemplateId, PimRequirement.ActivationRequired)]);
+
+        var capabilities = CapabilityEvaluator.Evaluate(snapshot, Member());
+
+        capabilities[Capability.UsersView].State.Should().Be(CapabilityState.PimActivationRequired);
+        capabilities[Capability.UsersView].RequiredRoleTemplateId.Should().Be(EntraRoleCatalog.GlobalReaderTemplateId);
+        capabilities[Capability.UsersView].NextStep!.Href.Should().Be("/identity");
+    }
+
+    [Fact]
+    public void PIM_eligible_role_grants_self_activation_capability()
+    {
+        var snapshot = AvailableSnapshot(
+            scopes: ["Directory.Read.All", "RoleManagement.Read.Directory", "RoleManagement.ReadWrite.Directory"],
+            roles: [EligibleRole(EntraRoleCatalog.GlobalReaderTemplateId, PimRequirement.ActivationRequired)]);
+
+        var capabilities = CapabilityEvaluator.Evaluate(snapshot, Member());
+
+        capabilities[Capability.PimActivate].State.Should().Be(CapabilityState.PimActivationRequired);
+        capabilities[Capability.PimActivate].ReasonCode.Should().Be(CapabilityState.PimActivationRequired);
+        capabilities[Capability.PimActivate].RequiredRoleTemplateId.Should().Be(EntraRoleCatalog.GlobalReaderTemplateId);
+    }
+
+    [Fact]
+    public void Global_reader_can_view_license_overview_without_assignment_access()
+    {
+        var snapshot = AvailableSnapshot(
+            scopes: ["Directory.Read.All", "User.Read.All"],
+            roles: [ActiveRole(EntraRoleCatalog.GlobalReaderTemplateId)]);
+
+        var capabilities = CapabilityEvaluator.Evaluate(snapshot, Member());
+
+        capabilities[Capability.LicensesView].State.Should().Be(CapabilityState.Allowed);
+        capabilities[Capability.LicensesAssign].State.Should().Be(CapabilityState.ReadOnly);
+    }
+
+    [Fact]
+    public void User_administrator_does_not_receive_device_or_authentication_method_visibility()
+    {
+        var snapshot = AvailableSnapshot(
+            scopes: [
+                "DeviceManagementManagedDevices.Read.All",
+                "UserAuthenticationMethod.Read.All",
+                "Directory.Read.All"],
+            roles: [ActiveRole(EntraRoleCatalog.UserAdministratorTemplateId)]);
+
+        var capabilities = CapabilityEvaluator.Evaluate(snapshot, Member());
+
+        capabilities[Capability.DevicesView].State.Should().Be(CapabilityState.Hidden);
+        capabilities[Capability.AuthenticationMethodsView].State.Should().Be(CapabilityState.Hidden);
     }
 
     [Fact]
@@ -49,6 +130,57 @@ public sealed class CapabilityEvaluatorTests
         capabilities[Capability.UsersView].State.Should().Be(CapabilityState.Hidden);
         capabilities[Capability.UsersCreate].State.Should().Be(CapabilityState.Hidden);
         capabilities[Capability.UsersUpdate].State.Should().Be(CapabilityState.Hidden);
+    }
+
+    [Fact]
+    public void Missing_optional_module_scope_explains_that_delegated_consent_is_required()
+    {
+        var snapshot = AvailableSnapshot(
+            scopes: ["Directory.Read.All", "RoleManagement.Read.Directory"],
+            roles: [ActiveRole(EntraRoleCatalog.GlobalAdministratorTemplateId)]);
+
+        var capabilities = CapabilityEvaluator.Evaluate(snapshot, Member());
+
+        capabilities[Capability.DevicesView].State.Should().Be(CapabilityState.ConsentRequired);
+        capabilities[Capability.DevicesView].ReasonCode.Should().Be("delegated_scope_required");
+        capabilities[Capability.DevicesView].NextStep!.Label.Should().Be("Grant delegated consent");
+        capabilities[Capability.DevicesView].MissingScopes.Should().ContainSingle("DeviceManagementManagedDevices.Read.All");
+
+        var manageMissingScopes = capabilities[Capability.DevicesManage].MissingScopes!;
+        manageMissingScopes.Should().BeEquivalentTo([
+            "DeviceManagementManagedDevices.Read.All",
+            "DeviceManagementManagedDevices.ReadWrite.All"]);
+    }
+
+    [Fact]
+    public void Missing_user_write_scope_identifies_the_scope_required_for_editing_users()
+    {
+        var snapshot = AvailableSnapshot(
+            scopes: ["Directory.Read.All", "User.Read.All"],
+            roles: [ActiveRole(EntraRoleCatalog.UserAdministratorTemplateId)]);
+
+        var capabilities = CapabilityEvaluator.Evaluate(snapshot, Member());
+
+        capabilities[Capability.UsersUpdate].State.Should().Be(CapabilityState.ConsentRequired);
+        capabilities[Capability.UsersUpdate].MissingScopes.Should().ContainSingle("User.ReadWrite.All");
+    }
+
+    [Fact]
+    public void Transient_scope_probe_failure_is_not_reported_as_missing_consent()
+    {
+        var scope = "DeviceManagementManagedDevices.Read.All";
+        var snapshot = AvailableSnapshot(
+            scopes: ["Directory.Read.All"],
+            roles: [ActiveRole(EntraRoleCatalog.GlobalAdministratorTemplateId)],
+            scopeAvailability: new Dictionary<string, bool> { [scope] = false },
+            scopeProblems: new Dictionary<string, string> { [scope] = "temporarily_unavailable" });
+
+        var capabilities = CapabilityEvaluator.Evaluate(snapshot, Member());
+
+        capabilities[Capability.DevicesView].State.Should().Be(CapabilityState.TemporarilyUnavailable);
+        capabilities[Capability.DevicesView].ReasonCode.Should().Be("scope_probe_unavailable");
+        capabilities[Capability.DevicesView].NextStep!.Label.Should().Be("Retry authorization checks");
+        capabilities[Capability.DevicesView].MissingScopes.Should().ContainSingle(scope);
     }
 
     [Fact]
@@ -183,14 +315,20 @@ public sealed class CapabilityEvaluatorTests
         capabilities[Capability.AuditView].State.Should().Be(CapabilityState.Allowed);
     }
 
-    private static GraphAuthorizationSnapshot AvailableSnapshot(IReadOnlyCollection<string> scopes, IReadOnlyCollection<DirectoryRoleSnapshot> roles) =>
+    private static GraphAuthorizationSnapshot AvailableSnapshot(
+        IReadOnlyCollection<string> scopes,
+        IReadOnlyCollection<DirectoryRoleSnapshot> roles,
+        IReadOnlyDictionary<string, bool>? scopeAvailability = null,
+        IReadOnlyDictionary<string, string>? scopeProblems = null) =>
         new(
             IsAvailable: true,
             UserObjectId: "user-1",
             GrantedScopes: scopes,
             DirectoryRoles: roles,
             AdministrativeUnitScopeIds: [],
-            TenantPolicyFlags: new Dictionary<string, bool>());
+            TenantPolicyFlags: new Dictionary<string, bool>(),
+            ScopeAvailability: scopeAvailability,
+            ScopeProblems: scopeProblems);
 
     private static DirectoryRoleSnapshot ActiveRole(string templateId, string directoryScopeId = "/") =>
         new(templateId, "presentation only", DirectoryRoleAssignmentState.Active, DirectoryScopeId: directoryScopeId);
