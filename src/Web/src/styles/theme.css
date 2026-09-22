@@ -1353,10 +1353,32 @@ p {
   gap: var(--atea-space-3);
 }
 
-.device-detail-panel__actions button:first-child {
+.device-detail-panel__actions .button--primary {
   border-color: var(--uw-primary);
   background: var(--uw-primary);
   color: var(--uw-on-primary);
+}
+
+.device-permission-state {
+  padding: var(--atea-space-3) var(--atea-space-4);
+  border: 1px solid var(--uw-border);
+  border-radius: var(--atea-radius-sm);
+  background: var(--uw-surface-muted);
+}
+
+.device-detail-group {
+  display: grid;
+  gap: var(--atea-space-3);
+  padding-top: var(--atea-space-4);
+  border-top: 1px solid var(--uw-border);
+}
+
+.device-detail-group h3 {
+  margin: 0;
+}
+
+.device-detail-group--danger h3 {
+  color: var(--uw-danger-text);
 }
 
 .device-detail-panel__actions .table-action--danger {
