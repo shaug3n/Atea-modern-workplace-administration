@@ -177,10 +177,11 @@ public sealed class AuthenticationMethodService(
             async () =>
             {
                 var graph = await commands.CreateTemporaryAccessPassAsync(userObjectId, idempotencyKey, cancellationToken);
-                var result = graph.Error is null
+                var valid = graph.Error is null && !string.IsNullOrWhiteSpace(graph.TemporaryAccessPass) && !string.IsNullOrWhiteSpace(graph.Id) && graph.LifetimeInMinutes == 60 && graph.IsUsableOnce == true;
+                var result = valid
                     ? new TemporaryAccessPassCommandResult("succeeded", Capability.AuthenticationMethodsManage, graph.TemporaryAccessPass, graph.Id, graph.StartDateTime, graph.LifetimeInMinutes, graph.IsUsableOnce, GraphCorrelationId: graph.CorrelationId, GraphRequestId: graph.RequestId, Authorization: authorization)
-                    : new TemporaryAccessPassCommandResult("temporarily_unavailable", Capability.AuthenticationMethodsManage, Error: graph.Error.Category, GraphCorrelationId: graph.Error.CorrelationId, GraphRequestId: graph.Error.RequestId, Authorization: authorization);
-                liveResult = result with { AuditWarning = await AuditAsync(context, operation, userObjectId, result.Status, result.Error, cancellationToken) };
+                    : new TemporaryAccessPassCommandResult("temporarily_unavailable", Capability.AuthenticationMethodsManage, Error: graph.Error?.Category ?? "invalid_response", GraphCorrelationId: graph.Error?.CorrelationId ?? graph.CorrelationId, GraphRequestId: graph.Error?.RequestId ?? graph.RequestId, Authorization: authorization);
+                liveResult = result with { AuditWarning = await AuditAsync(context, operation, userObjectId, result.Status, result.Error, cancellationToken, result.GraphCorrelationId, result.GraphRequestId) };
                 var safe = liveResult with { TemporaryAccessPass = null, AuditWarning = null };
                 return new IdempotentOperationResult(StatusCodeFor(safe), safe.Status, JsonSerializer.Serialize(safe, JsonOptions), safe.GraphCorrelationId, safe.GraphRequestId);
             },
@@ -201,7 +202,7 @@ public sealed class AuthenticationMethodService(
     private AuthenticationMethodsResponse Response(string userObjectId, CapabilityDecision authorization, IReadOnlyList<AuthenticationMethodItem> items, string freshness, bool partialData, AuthenticationMethodsError? error = null) =>
         new(userObjectId, items, utcNow(), freshness, partialData, new AuthenticationMethodsAccess(authorization.State, authorization.ReasonCode, authorization), error);
 
-    private async Task<string?> AuditAsync(WorkspaceContext context, string action, string targetId, string result, string? failureCategory, CancellationToken cancellationToken)
+    private async Task<string?> AuditAsync(WorkspaceContext context, string action, string targetId, string result, string? failureCategory, CancellationToken cancellationToken, string? graphCorrelationId = null, string? graphRequestId = null)
     {
         try
         {
@@ -216,6 +217,8 @@ public sealed class AuthenticationMethodService(
                 TargetId = targetId,
                 Outcome = result,
                 Timestamp = utcNow(),
+                GraphCorrelationId = graphCorrelationId,
+                GraphRequestId = graphRequestId,
                 FailureCategory = failureCategory,
                 SafeMetadataJson = "{}"
             }, cancellationToken);

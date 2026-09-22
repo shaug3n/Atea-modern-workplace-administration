@@ -68,6 +68,41 @@ public sealed class UserSecurityCommandEndpointTests
         sessions.Calls.Should().Be(1);
     }
 
+    [Fact]
+    public async Task Missing_delegated_consent_denies_both_mutations_without_command_calls()
+    {
+        var authentication = new RecordingAuthenticationCommands();
+        var sessions = new RecordingSessionCommands();
+        using var factory = CreateFactory(authentication, sessions, GraphAuthorizationSnapshot.Available("actor-1", ["Directory.Read.All", "User.Read.All"], [new DirectoryRoleSnapshot(EntraRoleCatalog.GlobalAdministratorTemplateId, "Global Administrator", DirectoryRoleAssignmentState.Active, "/")]));
+        using var client = AuthenticatedClient(factory);
+
+        var tap = await SendAsync(client, "/api/users/user-1/authentication-methods/temporary-access-pass", "consent-tap");
+        var revoke = await SendAsync(client, "/api/users/user-1/revoke-sessions", "consent-session");
+
+        tap.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        revoke.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        authentication.Calls.Should().Be(0);
+        sessions.Calls.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task Inactive_pim_denies_both_mutations_without_command_calls()
+    {
+        var authentication = new RecordingAuthenticationCommands();
+        var sessions = new RecordingSessionCommands();
+        var eligible = new DirectoryRoleSnapshot(EntraRoleCatalog.GlobalAdministratorTemplateId, "Global Administrator", DirectoryRoleAssignmentState.Eligible, "/", new PimStateSnapshot(PimRequirement.ActivationRequired));
+        using var factory = CreateFactory(authentication, sessions, GraphAuthorizationSnapshot.Available("actor-1", ["Directory.Read.All", "User.Read.All", "UserAuthenticationMethod.Read.All", "UserAuthenticationMethod.ReadWrite.All", "User.RevokeSessions.All"], [eligible]));
+        using var client = AuthenticatedClient(factory);
+
+        var tap = await SendAsync(client, "/api/users/user-1/authentication-methods/temporary-access-pass", "pim-tap");
+        var revoke = await SendAsync(client, "/api/users/user-1/revoke-sessions", "pim-session");
+
+        tap.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        revoke.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        authentication.Calls.Should().Be(0);
+        sessions.Calls.Should().Be(0);
+    }
+
     private static StringContent Content(string key) { var content = new StringContent(string.Empty, Encoding.UTF8, "application/json"); content.Headers.Add("Idempotency-Key", key); return content; }
     private static Task<HttpResponseMessage> SendAsync(HttpClient client, string path, string key) { var request = new HttpRequestMessage(HttpMethod.Post, path); request.Headers.Add("Idempotency-Key", key); return client.SendAsync(request); }
     private static HttpClient AuthenticatedClient(WebApplicationFactory<Program> factory) { var client = factory.CreateClient(); client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Test"); return client; }

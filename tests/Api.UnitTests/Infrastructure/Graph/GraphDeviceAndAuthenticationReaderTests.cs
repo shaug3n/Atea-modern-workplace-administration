@@ -195,6 +195,40 @@ public sealed class GraphDeviceAndAuthenticationReaderTests
         factory.Scopes.Single().Should().Equal(GraphScopeCatalog.UserSessionWriteScopes);
     }
 
+    [Theory]
+    [InlineData("{\"id\":\"tap-1\",\"lifetimeInMinutes\":60,\"isUsableOnce\":true}")]
+    [InlineData("{\"temporaryAccessPass\":\"ABC123\",\"lifetimeInMinutes\":60,\"isUsableOnce\":true}")]
+    [InlineData("{\"temporaryAccessPass\":\"ABC123\",\"id\":\"tap-1\",\"lifetimeInMinutes\":30,\"isUsableOnce\":true}")]
+    [InlineData("{\"temporaryAccessPass\":\"ABC123\",\"id\":\"tap-1\",\"lifetimeInMinutes\":60,\"isUsableOnce\":false}")]
+    public async Task Temporary_access_pass_rejects_missing_or_contradictory_response_contract(string content)
+    {
+        var transport = new RecordingTransport(content);
+        var result = await new GraphAuthenticationMethodCommands(new RecordingFactory(transport))
+            .CreateTemporaryAccessPassAsync("user-1", "tap-key", CancellationToken.None);
+
+        result.Error.Should().NotBeNull();
+        result.Error!.Category.Should().Be("invalid_response");
+        result.TemporaryAccessPass.Should().BeNull();
+        transport.Requests.Should().ContainSingle();
+    }
+
+    [Theory]
+    [InlineData("user/1", "key-1")]
+    [InlineData("user\\1", "key-1")]
+    [InlineData("user\u0001", "key-1")]
+    [InlineData("user-1", "")]
+    public async Task Session_adapter_rejects_unsafe_target_or_blank_idempotency_without_graph_dispatch(string userObjectId, string idempotencyKey)
+    {
+        var transport = new RecordingTransport("{}");
+        var factory = new RecordingFactory(transport);
+
+        var result = await new GraphUserSessionCommands(factory).RevokeAsync(userObjectId, idempotencyKey, CancellationToken.None);
+
+        result.Category.Should().Be("invalid_request");
+        transport.Requests.Should().BeEmpty();
+        factory.Scopes.Should().BeEmpty();
+    }
+
     private sealed class RecordingFactory(IGraphTransport transport) : IDelegatedGraphClientFactory
     {
         public List<IReadOnlyCollection<string>> Scopes { get; } = [];

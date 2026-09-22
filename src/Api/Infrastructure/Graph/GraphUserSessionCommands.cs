@@ -1,3 +1,5 @@
+using Atea.UnifiedWorkplace.Api.Features.Users;
+
 namespace Atea.UnifiedWorkplace.Api.Infrastructure.Graph;
 
 public interface IUserSessionCommands
@@ -7,8 +9,15 @@ public interface IUserSessionCommands
 
 public sealed class GraphUserSessionCommands(IDelegatedGraphClientFactory clientFactory) : IUserSessionCommands
 {
-    public Task<GraphOperationResult> RevokeAsync(string userObjectId, string idempotencyKey, CancellationToken cancellationToken) =>
-        GraphMutationExecutor.ExecuteAsync(clientFactory, new RevokeUserSessionsMutation(userObjectId), idempotencyKey, cancellationToken);
+    public Task<GraphOperationResult> RevokeAsync(string userObjectId, string idempotencyKey, CancellationToken cancellationToken)
+    {
+        if (!UserSessionCommandValidation.IsValidTarget(userObjectId) || string.IsNullOrWhiteSpace(idempotencyKey))
+        {
+            return Task.FromResult(new GraphOperationResult(false, "invalid_request"));
+        }
+
+        return GraphMutationExecutor.ExecuteAsync(clientFactory, new RevokeUserSessionsMutation(userObjectId), idempotencyKey, cancellationToken);
+    }
 }
 
 internal sealed record RevokeUserSessionsMutation(string UserObjectId) : JsonGraphMutation(GraphScopeCatalog.UserSessionWriteScopes)

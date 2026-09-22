@@ -7,6 +7,11 @@ using Atea.UnifiedWorkplace.Api.Infrastructure.Security;
 
 namespace Atea.UnifiedWorkplace.Api.Features.Users;
 
+public static class UserSessionCommandValidation
+{
+    public static bool IsValidTarget(string? value) => !string.IsNullOrWhiteSpace(value) && !value.Any(character => char.IsControl(character) || character is '/' or '\\');
+}
+
 public sealed record UserSessionCommandResult(
     string Status,
     string RequiredCapability,
@@ -33,7 +38,7 @@ public sealed class UserSessionCommandService(
 
     public async Task<UserSessionCommandResult> RevokeAsync(WorkspaceContext context, string userObjectId, string idempotencyKey, CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(userObjectId)) return new("invalid_target", Capability.UsersRevokeSessions, "invalid_target");
+        if (!UserSessionCommandValidation.IsValidTarget(userObjectId)) return new("invalid_target", Capability.UsersRevokeSessions, "invalid_target");
         if (string.IsNullOrWhiteSpace(idempotencyKey)) return new("invalid_target", Capability.UsersRevokeSessions, "idempotency_key_required");
         var snapshot = await authorizationSnapshotReader.ReadAsync(context, cancellationToken);
         var authorization = CapabilityEvaluator.Evaluate(snapshot, context.Membership)[Capability.UsersRevokeSessions];

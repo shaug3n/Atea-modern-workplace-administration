@@ -58,15 +58,16 @@ public sealed class GraphAuthenticationMethodCommands(IDelegatedGraphClientFacto
             {
                 using var document = JsonDocument.Parse(response.Content);
                 var root = document.RootElement;
-                return new(
-                    Optional(root, "temporaryAccessPass"),
-                    Optional(root, "id"),
-                    Date(root, "startDateTime"),
-                    Integer(root, "lifetimeInMinutes"),
-                    Boolean(root, "isUsableOnce"),
-                    null,
-                    response.Result.CorrelationId,
-                    response.Result.RequestId);
+                var temporaryAccessPass = Optional(root, "temporaryAccessPass");
+                var id = Optional(root, "id");
+                var lifetimeInMinutes = Integer(root, "lifetimeInMinutes");
+                var isUsableOnce = Boolean(root, "isUsableOnce");
+                if (string.IsNullOrWhiteSpace(temporaryAccessPass) || string.IsNullOrWhiteSpace(id) || lifetimeInMinutes != 60 || isUsableOnce != true)
+                {
+                    return InvalidResponse(response.Result);
+                }
+
+                return new(temporaryAccessPass, id, Date(root, "startDateTime"), lifetimeInMinutes, isUsableOnce, null, response.Result.CorrelationId, response.Result.RequestId);
             }
             catch (JsonException)
             {
@@ -107,6 +108,7 @@ public sealed class GraphAuthenticationMethodCommands(IDelegatedGraphClientFacto
     private static DateTimeOffset? Date(JsonElement root, string name) => root.TryGetProperty(name, out var property) && property.ValueKind == JsonValueKind.String && DateTimeOffset.TryParse(property.GetString(), out var value) ? value : null;
     private static int? Integer(JsonElement root, string name) => root.TryGetProperty(name, out var property) && property.TryGetInt32(out var value) ? value : null;
     private static bool? Boolean(JsonElement root, string name) => root.TryGetProperty(name, out var property) && property.ValueKind is JsonValueKind.True or JsonValueKind.False ? property.GetBoolean() : null;
+    private static GraphTemporaryAccessPassResult InvalidResponse(GraphOperationResult result) => new(null, null, null, null, null, new GraphOperationResult(false, "invalid_response", result.StatusCode, CorrelationId: result.CorrelationId, RequestId: result.RequestId), result.CorrelationId, result.RequestId);
 }
 
 internal sealed record DeleteAuthenticationMethodMutation(string UserObjectId, string MethodObjectId, string Collection) : JsonGraphMutation(GraphScopeCatalog.AuthenticationMethodWriteScopes)
