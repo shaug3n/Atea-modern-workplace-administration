@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { messages } from '../../app/messages';
 import { useApi } from '../../auth/useApi';
 import { DataFreshness } from '../../components/DataFreshness';
@@ -25,12 +25,14 @@ export function DevicesPage({ loadDevices, capabilities = [] }: { loadDevices?: 
   const [actionPending, setActionPending] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionStatus, setActionStatus] = useState<string | null>(null);
+  const actionPendingRef = useRef(false);
   const loader = useMemo(() => loadDevices ?? ((nextFilters: DeviceFilters, nextContinuationToken?: string | null) => fetchDevices(api as ApiFetch, nextFilters, nextContinuationToken ?? null)), [api, loadDevices]);
   const viewDecision = capabilities.find((decision) => decision.capability === 'devices.view') ?? { capability: 'devices.view' as const, state: 'hidden' as const, reasonCode: 'capability_not_returned' };
   const privilegedDecision = capabilities.find((decision) => decision.capability === 'devices.privileged.manage') ?? { capability: 'devices.privileged.manage' as const, state: 'hidden' as const, reasonCode: 'capability_not_returned' };
+  const viewReadable = viewDecision.state === 'allowed' || viewDecision.state === 'read_only';
 
   useEffect(() => {
-    if (isPimCapabilityState(viewDecision.state)) {
+    if (!viewReadable) {
       setLoading(false);
       setFailed(false);
       return;
@@ -46,7 +48,7 @@ export function DevicesPage({ loadDevices, capabilities = [] }: { loadDevices?: 
         .finally(() => { if (!cancelled) setLoading(false); });
     }, 180);
     return () => { cancelled = true; window.clearTimeout(timeout); };
-  }, [continuationToken, filters, loader, refreshVersion, viewDecision.state]);
+  }, [continuationToken, filters, loader, refreshVersion, viewReadable]);
 
   useEffect(() => {
     setPreviousTokens([]);
@@ -54,6 +56,8 @@ export function DevicesPage({ loadDevices, capabilities = [] }: { loadDevices?: 
   }, [filters.search, filters.complianceState, filters.operatingSystem]);
 
   const runAction = async (device: ManagedDevice, action: DeviceAction) => {
+    if (actionPendingRef.current) return;
+    actionPendingRef.current = true;
     setActionPending(true);
     setActionError(null);
     setActionStatus(null);
@@ -62,9 +66,10 @@ export function DevicesPage({ loadDevices, capabilities = [] }: { loadDevices?: 
       setActionStatus(`${device.deviceName || messages.devicesUnknown}: ${messages.devicesActionSubmitted(action)}`);
       setActionTarget(null);
       setRefreshVersion((version) => version + 1);
-    } catch (error) {
-      setActionError(error instanceof Error ? error.message : messages.devicesActionFailed);
+    } catch {
+      setActionError(messages.devicesActionFailed);
     } finally {
+      actionPendingRef.current = false;
       setActionPending(false);
     }
   };
@@ -85,7 +90,7 @@ export function DevicesPage({ loadDevices, capabilities = [] }: { loadDevices?: 
     });
   };
 
-  if (isPimCapabilityState(viewDecision.state)) {
+  if (!viewReadable) {
     return (
       <section className="devices-page" aria-labelledby="devices-page-title">
         <header className="page-header">
@@ -95,11 +100,12 @@ export function DevicesPage({ loadDevices, capabilities = [] }: { loadDevices?: 
             <p>{messages.devicesIntro}</p>
           </div>
         </header>
-        <section className="permission-panel" role="status" aria-labelledby="devices-pim-title">
-          <h2 id="devices-pim-title">{messages.devicesPimRequiredTitle}</h2>
+        <section className="permission-panel" role="status" aria-labelledby="devices-permission-title">
+          <h2 id="devices-permission-title">{isPimCapabilityState(viewDecision.state) ? messages.devicesPimRequiredTitle : messages.devicesUnavailable}</h2>
           <PermissionState decision={viewDecision}>
             <p>{messages.devicesPimRequiredBody}</p>
           </PermissionState>
+          {viewDecision.state === 'hidden' && <p>{messages.permissionRequiredBody}</p>}
         </section>
       </section>
     );
@@ -184,6 +190,17 @@ function actionItems(device: ManagedDevice, onAction: (device: ManagedDevice, ac
 }
 
 function DeviceDetailsPanel({ device, canManage, onClose, onAction }: { device: ManagedDevice; canManage: boolean; onClose: () => void; onAction: (action: DeviceAction) => void }) {
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onClose]);
+
   return <section className="device-detail-panel" role="dialog" aria-modal="true" aria-labelledby="device-detail-title">
     <div className="device-detail-panel__header"><div><p className="eyebrow">{messages.devicesDetailsEyebrow}</p><h2 id="device-detail-title">{device.deviceName || messages.devicesUnknown}</h2><p>{[device.manufacturer, device.model].filter(Boolean).join(' ') || messages.devicesUnknown}</p></div><button type="button" aria-label={messages.devicesCloseDetails} onClick={onClose}>×</button></div>
     <section className="device-detail-group"><h3>Overview</h3><dl className="detail-list device-detail-list"><Detail label={messages.devicesDeviceIdLabel} value={device.id} /><Detail label={messages.devicesPlatformColumn} value={[device.operatingSystem, device.osVersion].filter(Boolean).join(' ') || messages.devicesUnknown} /><Detail label={messages.devicesOwnerColumn} value={device.managedDeviceOwnerType || messages.devicesUnknown} /><Detail label={messages.devicesPrimaryUserLabel} value={device.userId || messages.devicesNoPrimaryUser} /></dl></section>
