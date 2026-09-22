@@ -21,3 +21,10 @@ test('baseline provides semantic Atea theme tokens and user dark-mode control', 
   assert.match(app, /ThemeProvider|AppThemeProvider/);
   assert.match(toggle, /role="switch"/);
 });
+
+test('theme defines semantic action and spacious detail card classes', async () => {
+  const css = await readFile('../../src/Web/src/styles/theme.css', 'utf8');
+  assert.match(css, /\.button--primary/);
+  assert.match(css, /\.page-action-bar/);
+  assert.match(css, /\.detail-card/);
+});

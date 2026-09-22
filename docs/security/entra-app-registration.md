@@ -58,6 +58,18 @@ admin consent again.
 
 After adding them under **API permissions → Microsoft Graph → Delegated permissions**, a tenant administrator must select **Grant admin consent** for the development tenant. This consent authorizes the API to perform delegated-on-behalf-of calls; it does not grant a user any Entra role. The platform still evaluates the signed-in user's active or PIM-activated Entra roles and keeps unsupported actions read-only or hidden.
 
+For the local user/device demonstration, add both `User.RevokeSessions.All`
+and `DeviceManagementManagedDevices.PrivilegedOperations.All` before selecting
+**Grant admin consent**. Restart the local API and sign in again after consent
+so a fresh delegated OBO token is acquired; the configured API-permission list
+alone does not prove that either scope is present in the active token. The
+second scope is required for Sync, Remote lock, Restart, Retire, and Wipe;
+`DeviceManagementManagedDevices.ReadWrite.All` does not authorize those
+commands by itself. Follow
+`docs/testing/local-user-device-management.md` for the read-only, PIM, TAP,
+associated-device, and safe Sync checks. Never put TAP codes, tokens, client
+secrets, or other secret values in this document.
+
 The in-app consent handoff uses the tenant-specific Microsoft Entra
 `/v2.0/adminconsent` endpoint with `scope=https://graph.microsoft.com/.default`.
 That scope tells Entra to present the Graph permissions configured on this API
