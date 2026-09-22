@@ -1,0 +1,165 @@
+using System.Net;
+using System.Net.Http.Headers;
+using System.Security.Claims;
+using Atea.UnifiedWorkplace.Api.Authorization;
+using Atea.UnifiedWorkplace.Api.Features.Devices;
+using Atea.UnifiedWorkplace.Api.Infrastructure.Graph;
+using Atea.UnifiedWorkplace.Api.Infrastructure.Observability;
+using Atea.UnifiedWorkplace.Api.Infrastructure.Persistence.Repositories;
+using Atea.UnifiedWorkplace.Api.Infrastructure.Security;
+using FluentAssertions;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Options;
+using System.Text.Encodings.Web;
+
+namespace Atea.UnifiedWorkplace.Api.IntegrationTests.Devices;
+
+public sealed class DeviceCommandEndpointTests
+{
+    [Fact]
+    public async Task Read_write_only_access_is_denied_for_privileged_device_actions()
+    {
+        var commands = new RecordingCommands();
+        using var factory = CreateFactory(commands, ReadWriteOnlySnapshot);
+        using var client = AuthenticatedClient(factory);
+
+        var response = await PostAsync(client, DeviceActionNames.Sync, "read-write-key");
+        var body = await response.Content.ReadAsStringAsync();
+
+        response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        body.Should().Contain(Capability.DevicesPrivilegedManage);
+        commands.Calls.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task Duplicate_action_request_is_replayed_without_a_second_graph_call()
+    {
+        var commands = new RecordingCommands();
+        using var factory = CreateFactory(commands, AllowedSnapshot);
+        using var client = AuthenticatedClient(factory);
+
+        var first = await PostAsync(client, DeviceActionNames.Wipe, "same-key");
+        var replay = await PostAsync(client, DeviceActionNames.Wipe, "same-key");
+
+        first.StatusCode.Should().Be(HttpStatusCode.OK);
+        replay.StatusCode.Should().Be(HttpStatusCode.OK);
+        (await replay.Content.ReadAsStringAsync()).Should().Contain("\"replayed\":true");
+        commands.Calls.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Invalid_action_is_rejected_at_the_command_boundary()
+    {
+        var commands = new RecordingCommands();
+        using var factory = CreateFactory(commands, AllowedSnapshot);
+        using var client = AuthenticatedClient(factory);
+
+        var response = await PostAsync(client, "delete", "invalid-key");
+        var body = await response.Content.ReadAsStringAsync();
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        body.Should().Contain("invalid_action");
+        commands.Calls.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task Request_without_workspace_membership_is_denied_before_command_dispatch()
+    {
+        var commands = new RecordingCommands();
+        using var factory = CreateFactory(commands, AllowedSnapshot, hasMembership: false);
+        using var client = AuthenticatedClient(factory);
+
+        var response = await PostAsync(client, DeviceActionNames.Restart, "workspace-key");
+
+        response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        (await response.Content.ReadAsStringAsync()).Should().Contain("authorization_denied");
+        commands.Calls.Should().Be(0);
+    }
+
+    private static async Task<HttpResponseMessage> PostAsync(HttpClient client, string action, string key)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post, $"/api/devices/device-1/actions/{action}");
+        request.Headers.Add("Idempotency-Key", key);
+        return await client.SendAsync(request);
+    }
+
+    private static HttpClient AuthenticatedClient(WebApplicationFactory<Program> factory)
+    {
+        var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Test");
+        return client;
+    }
+
+    private static WebApplicationFactory<Program> CreateFactory(RecordingCommands commands, GraphAuthorizationSnapshot snapshot, bool hasMembership = true) =>
+        new WebApplicationFactory<Program>().WithWebHostBuilder(builder => builder
+            .ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["AzureAd:Audience"] = "api://atea-unified-workplace-api",
+                ["AzureAd:ClientId"] = "test-client-id"
+            }))
+            .ConfigureServices(services =>
+            {
+                services.AddAuthentication(options =>
+                {
+                    options.DefaultAuthenticateScheme = TestAuthenticationHandler.Scheme;
+                    options.DefaultChallengeScheme = TestAuthenticationHandler.Scheme;
+                }).AddScheme<AuthenticationSchemeOptions, TestAuthenticationHandler>(TestAuthenticationHandler.Scheme, _ => { });
+                services.RemoveAll<IWorkspaceMembershipReader>();
+                services.AddSingleton<IWorkspaceMembershipReader>(new FixtureMembershipReader(hasMembership));
+                services.RemoveAll<IGraphAuthorizationSnapshotReader>();
+                services.AddSingleton<IGraphAuthorizationSnapshotReader>(new StaticAuthorizationReader(snapshot));
+                services.RemoveAll<IManagedDeviceCommands>();
+                services.AddSingleton<IManagedDeviceCommands>(commands);
+                services.RemoveAll<IIdempotencyService>();
+                services.AddSingleton<IIdempotencyService, MemoryIdempotencyService>();
+                services.RemoveAll<IAuditWriter>();
+                services.AddSingleton<IAuditWriter, NoOpAuditWriter>();
+            }));
+
+    private static readonly Guid TenantId = Guid.Parse("11111111-1111-1111-1111-111111111111");
+    private static readonly Guid ObjectId = Guid.Parse("22222222-2222-2222-2222-222222222222");
+    private static readonly Guid WorkspaceId = Guid.Parse("55555555-5555-5555-5555-555555555555");
+
+    private static GraphAuthorizationSnapshot AllowedSnapshot => GraphAuthorizationSnapshot.Available(
+        "actor-1", ["DeviceManagementManagedDevices.Read.All", "DeviceManagementManagedDevices.PrivilegedOperations.All"],
+        [new DirectoryRoleSnapshot(EntraRoleCatalog.IntuneAdministratorTemplateId, "Intune Administrator", DirectoryRoleAssignmentState.Active, "/")]);
+
+    private static GraphAuthorizationSnapshot ReadWriteOnlySnapshot => GraphAuthorizationSnapshot.Available(
+        "actor-1", ["DeviceManagementManagedDevices.Read.All", "DeviceManagementManagedDevices.ReadWrite.All"],
+        [new DirectoryRoleSnapshot(EntraRoleCatalog.IntuneAdministratorTemplateId, "Intune Administrator", DirectoryRoleAssignmentState.Active, "/")]);
+
+    private sealed class StaticAuthorizationReader(GraphAuthorizationSnapshot snapshot) : IGraphAuthorizationSnapshotReader
+    {
+        public Task<GraphAuthorizationSnapshot> ReadAsync(WorkspaceContext context, CancellationToken cancellationToken = default) => Task.FromResult(snapshot);
+    }
+
+    private sealed class FixtureMembershipReader(bool hasMembership) : IWorkspaceMembershipReader
+    {
+        public Task<WorkspaceMembership?> FindMembershipAsync(Guid tenantId, Guid objectId, CancellationToken cancellationToken = default) =>
+            Task.FromResult<WorkspaceMembership?>(hasMembership ? new WorkspaceMembership(WorkspaceId, "Example", "member") : null);
+    }
+
+    private sealed class RecordingCommands : IManagedDeviceCommands
+    {
+        public int Calls { get; private set; }
+        public Task<GraphOperationResult> ExecuteAsync(string deviceObjectId, string action, string idempotencyKey, CancellationToken cancellationToken)
+        {
+            Calls++;
+            return Task.FromResult(GraphOperationResult.Success("corr-1", "req-1"));
+        }
+    }
+
+    private sealed class TestAuthenticationHandler(IOptionsMonitor<AuthenticationSchemeOptions> options, ILoggerFactory logger, UrlEncoder encoder) : AuthenticationHandler<AuthenticationSchemeOptions>(options, logger, encoder)
+    {
+        public new const string Scheme = "Test";
+        protected override Task<AuthenticateResult> HandleAuthenticateAsync()
+        {
+            if (!Request.Headers.ContainsKey("Authorization")) return Task.FromResult(AuthenticateResult.NoResult());
+            var claims = new[] { new Claim("oid", ObjectId.ToString()), new Claim("tid", TenantId.ToString()), new Claim("aud", "api://atea-unified-workplace-api") };
+            return Task.FromResult(AuthenticateResult.Success(new AuthenticationTicket(new ClaimsPrincipal(new ClaimsIdentity(claims, Scheme)), Scheme)));
+        }
+    }
+}

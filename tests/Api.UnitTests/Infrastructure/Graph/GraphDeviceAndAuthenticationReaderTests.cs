@@ -120,30 +120,36 @@ public sealed class GraphDeviceAndAuthenticationReaderTests
         transport.Requests.Single().PathAndQuery.Should().NotContain("keyMaterial");
     }
 
-    [Fact]
-    public async Task Managed_device_sync_uses_the_device_action_endpoint_and_write_scope()
+    [Theory]
+    [InlineData(DeviceActionNames.Sync, "syncDevice")]
+    [InlineData(DeviceActionNames.RemoteLock, "remoteLock")]
+    [InlineData(DeviceActionNames.Restart, "rebootNow")]
+    [InlineData(DeviceActionNames.Retire, "retire")]
+    [InlineData(DeviceActionNames.Wipe, "wipe")]
+    public async Task Privileged_actions_use_v1_intune_mapping(string action, string graphAction)
     {
         var transport = new RecordingTransport("{}");
         var factory = new RecordingFactory(transport);
 
-        var result = await new GraphManagedDeviceCommands(factory).ExecuteAsync("device-1", DeviceActionNames.Sync, "key-1", CancellationToken.None);
+        var result = await new GraphManagedDeviceCommands(factory).ExecuteAsync("device-1", action, "key-1", CancellationToken.None);
 
         result.IsSuccess.Should().BeTrue();
-        factory.Scopes.Single().Should().Equal(GraphScopeCatalog.DeviceWriteScopes);
+        factory.Scopes.Single().Should().Equal(GraphScopeCatalog.DevicePrivilegedOperationScopes);
         transport.Requests.Single().Method.Should().Be(HttpMethod.Post);
-        transport.Requests.Single().PathAndQuery.Should().Be("/v1.0/deviceManagement/managedDevices/device-1/sync");
+        transport.Requests.Single().PathAndQuery.Should().Be($"/v1.0/deviceManagement/managedDevices/device-1/{graphAction}");
         transport.Requests.Single().Headers!["Idempotency-Key"].Should().Be("key-1");
     }
 
     [Fact]
-    public async Task Remote_lock_uses_graphs_camel_case_action_name()
+    public async Task Wipe_uses_the_fixed_safe_payload()
     {
         var transport = new RecordingTransport("{}");
         var factory = new RecordingFactory(transport);
 
-        await new GraphManagedDeviceCommands(factory).ExecuteAsync("device-1", DeviceActionNames.RemoteLock, "key-remote", CancellationToken.None);
+        var result = await new GraphManagedDeviceCommands(factory).ExecuteAsync("device-1", DeviceActionNames.Wipe, "key-wipe", CancellationToken.None);
 
-        transport.Requests.Single().PathAndQuery.Should().EndWith("/remoteLock");
+        result.IsSuccess.Should().BeTrue();
+        transport.RequestBodies.Single().Should().Be("{\"keepEnrollmentData\":false,\"keepUserData\":false,\"persistEsimDataPlan\":false}");
     }
 
     [Fact]

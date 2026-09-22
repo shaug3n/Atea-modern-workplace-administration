@@ -66,6 +66,9 @@ public static class DeviceActionNames
 {
     public const string Sync = "sync";
     public const string RemoteLock = "remote-lock";
+    public const string Restart = "restart";
+    public const string Retire = "retire";
+    public const string Wipe = "wipe";
 
     public static bool TryNormalize(string? value, out string action)
     {
@@ -73,6 +76,9 @@ public static class DeviceActionNames
         {
             Sync => Sync,
             RemoteLock => RemoteLock,
+            Restart => Restart,
+            Retire => Retire,
+            Wipe => Wipe,
             _ => string.Empty
         };
         return action.Length > 0;
