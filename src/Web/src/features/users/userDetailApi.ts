@@ -94,6 +94,21 @@ export type UserDetailResponse = {
   pim: UserDetailSection<PimEligibility>;
 };
 
+export type AssociatedDevice = {
+  id: string;
+  deviceName?: string | null;
+  operatingSystem?: string | null;
+};
+
+export type AssociatedDevicesResponse = {
+  items: AssociatedDevice[];
+  fetchedAt: string;
+  freshness: string;
+  partialData: boolean;
+  access: { state: string; reasonCode?: string | null };
+  error?: { category: string; message: string } | null;
+};
+
 export type ApiFetch = (path: string, init?: RequestInit) => Promise<Response>;
 
 export async function fetchUserDetail(api: ApiFetch, userId: string) {
@@ -107,4 +122,20 @@ export async function fetchUserDetail(api: ApiFetch, userId: string) {
   }
 
   return await response.json() as UserDetailResponse;
+}
+
+export async function fetchAssociatedDevices(api: ApiFetch, userId: string) {
+  const response = await api(`/api/users/${encodeURIComponent(userId)}/devices`);
+  if (!response.ok) throw new Error('associated_devices_unavailable');
+  return await response.json() as AssociatedDevicesResponse;
+}
+
+export async function revokeUserSessions(api: ApiFetch, userId: string) {
+  const response = await api(`/api/users/${encodeURIComponent(userId)}/revoke-sessions`, {
+    method: 'POST',
+    headers: { 'Idempotency-Key': globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}` },
+  });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(body.error ?? 'revoke_sessions_failed');
+  return body as { status: string; replayed?: boolean };
 }

@@ -13,6 +13,8 @@ export type ConfirmationDialogProps = {
   onConfirm: () => void;
   onCancel?: () => void;
   children?: React.ReactNode;
+  embedded?: boolean;
+  showTitle?: boolean;
 };
 
 export function ConfirmationDialog({
@@ -27,6 +29,8 @@ export function ConfirmationDialog({
   onConfirm,
   onCancel,
   children,
+  embedded = false,
+  showTitle = true,
 }: ConfirmationDialogProps) {
   const [reviewed, setReviewed] = useState(false);
   const [phrase, setPhrase] = useState('');
@@ -38,9 +42,18 @@ export function ConfirmationDialog({
     setPhrase('');
   }, [target]);
 
-  return (
-    <section className="mutation-dialog" role="dialog" aria-modal="true" aria-labelledby="mutation-dialog-title">
-      <h2 id="mutation-dialog-title">{title}</h2>
+  useEffect(() => {
+    if (!onCancel || busy) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onCancel();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [busy, onCancel]);
+
+  const content = (
+    <>
+      {showTitle && <h2 id="mutation-dialog-title">{title}</h2>}
       <dl className="detail-list">
         <div>
           <dt>{messages.userMutationTarget}</dt>
@@ -68,10 +81,13 @@ export function ConfirmationDialog({
         <input type="checkbox" checked={reviewed} onChange={(event) => setReviewed(event.target.checked)} />
         {messages.userMutationReviewedConfirmation}
       </label>
-      <div className="users-page__actions">
-        {onCancel && <button type="button" onClick={onCancel}>{messages.userMutationCancel}</button>}
-        <button type="button" disabled={!canConfirm} onClick={onConfirm}>{busy ? messages.userMutationSaving : messages.userMutationConfirm}</button>
+      <div className="page-action-bar">
+        {onCancel && <button type="button" className="button button--quiet" onClick={onCancel}>{messages.userMutationCancel}</button>}
+        <button type="button" className="button button--primary" disabled={!canConfirm} onClick={onConfirm}>{busy ? messages.userMutationSaving : messages.userMutationConfirm}</button>
       </div>
-    </section>
+    </>
   );
+
+  if (embedded) return <div className="mutation-confirmation">{content}</div>;
+  return <div className="modal-backdrop"><section className="mutation-dialog" role="dialog" aria-modal="true" aria-labelledby="mutation-dialog-title">{content}</section></div>;
 }

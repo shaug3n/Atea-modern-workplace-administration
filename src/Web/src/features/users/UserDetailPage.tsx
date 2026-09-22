@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import type { CapabilityDecision } from '../../capabilities/capabilityTypes';
+import { isPimCapabilityState, type CapabilityDecision } from '../../capabilities/capabilityTypes';
 import { messages } from '../../app/messages';
 import { useApi } from '../../auth/useApi';
 import { AsyncState } from '../../components/AsyncState';
@@ -14,6 +14,12 @@ import { mutateUser, type UserCommandResponse } from './userMutationApi';
 import { ConfirmationDialog } from '../../components/ConfirmationDialog';
 import { GroupMembershipDialog } from './GroupMembershipDialog';
 import { LicenseAssignmentDialog } from './LicenseAssignmentDialog';
+import { PasswordResetDialog } from './PasswordResetDialog';
+import { AuthenticationMethodsSection } from './AuthenticationMethodsSection';
+import { PermissionState } from '../../components/PermissionState';
+import { ActionMenu } from '../../components/ActionMenu';
+import { AssociatedDevicesSection } from './AssociatedDevicesSection';
+import { RevokeSessionsDialog } from './RevokeSessionsDialog';
 
 export function UserDetailPage({ userId, loadUserDetail, capabilities = [] }: { userId?: string; loadUserDetail?: (userId: string) => Promise<UserDetailResponse>; capabilities?: CapabilityDecision[] }) {
   const api = useApi();
@@ -25,12 +31,19 @@ export function UserDetailPage({ userId, loadUserDetail, capabilities = [] }: { 
   const [refreshVersion, setRefreshVersion] = useState(0);
   const [editOpen, setEditOpen] = useState(false);
   const [reactivateOpen, setReactivateOpen] = useState(false);
+  const [resetPasswordOpen, setResetPasswordOpen] = useState(false);
   const [mutationError, setMutationError] = useState<string | null>(null);
   const [mutationPending, setMutationPending] = useState(false);
   const [groupAction, setGroupAction] = useState<{ id: string | null; target?: string; mode: 'add' | 'remove' } | null>(null);
   const [licenseAction, setLicenseAction] = useState<{ id: string | null; target?: string; mode: 'assign' | 'remove' } | null>(null);
+  const [revokeSessionsOpen, setRevokeSessionsOpen] = useState(false);
   const updateDecision = findDecision(capabilities, 'users.update');
   const disableDecision = findDecision(capabilities, 'users.disable');
+  const resetPasswordDecision = findDecision(capabilities, 'users.reset_password');
+  const authenticationMethodsDecision = findDecision(capabilities, 'authentication.methods.view');
+  const authenticationMethodsManageDecision = findDecision(capabilities, 'authentication.methods.manage');
+  const devicesViewDecision = findDecision(capabilities, 'devices.view');
+  const revokeSessionsDecision = findDecision(capabilities, 'users.sessions.revoke');
 
   useEffect(() => {
     let cancelled = false;
@@ -63,10 +76,22 @@ export function UserDetailPage({ userId, loadUserDetail, capabilities = [] }: { 
   }
 
   if (!detail?.user) {
+    const access = detail?.access.authorization;
+    const isPimGated = access ? isPimCapabilityState(access.state) : false;
+    const title = access?.state === 'consent_required'
+      ? messages.permissionConsentTitle
+      : isPimGated
+        ? messages.usersPimRequiredTitle
+        : messages.userDetailTitle;
+    const body = access?.state === 'consent_required'
+      ? messages.permissionConsentBody
+      : isPimGated
+        ? messages.usersPimRequiredBody
+        : detail?.access.error?.message ?? messages.userDetailUnavailable;
     return (
       <section className="permission-panel" role="status">
-        <h1>{messages.userDetailTitle}</h1>
-        <p>{detail?.access.error?.message ?? messages.userDetailUnavailable}</p>
+        <h1>{title}</h1>
+        {access && access.state !== 'hidden' ? <PermissionState decision={access}><p>{body}</p></PermissionState> : <p>{body}</p>}
       </section>
     );
   }
@@ -100,31 +125,52 @@ export function UserDetailPage({ userId, loadUserDetail, capabilities = [] }: { 
 
   return (
     <section className="user-detail-page" aria-labelledby="user-detail-title">
-      <div className="users-page__header">
-        <div>
-          <p className="eyebrow">{messages.userDetailTitle}</p>
-          <h1 id="user-detail-title">{detail.user.displayName || detail.user.userPrincipalName || messages.usersUnnamedUser}</h1>
-          <p>{user.userPrincipalName || messages.usersUnavailableValue}</p>
-          <div className="users-page__actions">
-            {updateDecision.state === 'allowed' && !user.isReadOnly && <button type="button" onClick={() => { setMutationError(null); setEditOpen(true); }}>Edit user</button>}
-            {disableDecision.state === 'allowed' && user.accountEnabled === false && <button type="button" onClick={() => { setMutationError(null); setReactivateOpen(true); }}>Reactivate user</button>}
+      <div className="user-detail-hero">
+        <a className="back-link" href="/users">← {messages.navUsers}</a>
+        <div className="user-detail-hero__main">
+          <div className="user-avatar" aria-hidden="true">{initials(user.displayName || user.userPrincipalName || '')}</div>
+          <div>
+            <p className="eyebrow">{messages.userDetailTitle}</p>
+            <h1 id="user-detail-title">{detail.user.displayName || detail.user.userPrincipalName || messages.usersUnnamedUser}</h1>
+            <p className="user-detail-hero__upn">{user.userPrincipalName || messages.usersUnavailableValue}</p>
+            <div className="user-detail-hero__status" aria-label="User status">
+              <span className="status-badge" data-tone={user.accountEnabled === false ? 'danger' : 'success'}>{user.accountEnabled === false ? messages.userAccountDisabled : messages.userAccountEnabled}</span>
+              {user.userType && <span className="status-badge" data-tone="info">{user.userType}</span>}
+              {user.isReadOnly && <span className="status-badge" data-tone="warning">Read-only source</span>}
+            </div>
           </div>
+        </div>
+        <div className="page-action-bar user-detail-hero__actions" aria-label="User management actions">
+            {updateDecision.state === 'allowed' && !user.isReadOnly && <button className="button button--secondary" type="button" onClick={() => { setMutationError(null); setEditOpen(true); }}>Edit user</button>}
+            {disableDecision.state === 'allowed' && user.accountEnabled === false && <button className="button button--secondary" type="button" onClick={() => { setMutationError(null); setReactivateOpen(true); }}>Reactivate user</button>}
+            {resetPasswordDecision.state === 'allowed' && !user.isReadOnly && <button className="button button--primary" type="button" onClick={() => { setMutationError(null); setResetPasswordOpen(true); }}>Reset password</button>}
+            {revokeSessionsDecision.state === 'allowed' && !user.isReadOnly && <ActionMenu label="Actions" items={[{ label: 'Revoke sessions', danger: true, onSelect: () => setRevokeSessionsOpen(true) }]} />}
         </div>
       </div>
       {mutationError && <p role="alert">{mutationError}</p>}
-      {editOpen && <UserEditDialog user={user} onCompleted={(response) => response.status === 'succeeded' ? refreshAfterSuccess() : setMutationError(formatMutationError(response))} />}
+      {editOpen && <UserEditDialog user={user} onCancel={() => { if (!mutationPending) setEditOpen(false); }} onCompleted={(response) => response.status === 'succeeded' ? refreshAfterSuccess() : setMutationError(formatMutationError(response))} />}
       {reactivateOpen && <ConfirmationDialog title="Reactivate user" target={user.displayName || user.userPrincipalName || user.id} proposedChange="Restore sign-in for this user." requiredCapability="users.disable" busy={mutationPending} onConfirm={submitReactivate} onCancel={() => { if (!mutationPending) setReactivateOpen(false); }} />}
-      <div className="detail-grid">
+      {resetPasswordOpen && <PasswordResetDialog user={user} onClose={() => setResetPasswordOpen(false)} />}
+      {revokeSessionsOpen && <RevokeSessionsDialog userId={user.id} target={user.displayName || user.userPrincipalName || user.id} onClose={() => setRevokeSessionsOpen(false)} />}
+      <div className="user-detail-grid">
         <IdentitySection user={user} access={detail.access} />
         <JobInformationSection user={user} access={detail.access} />
         <LicensesSection section={detail.licenses} canManage={findDecision(capabilities, 'licenses.assign').state === 'allowed'} onAdd={() => setLicenseAction({ id: null, mode: 'assign' })} onRemove={(item) => setLicenseAction({ id: item.skuId, target: item.displayName || item.skuId, mode: 'remove' })} />
         <GroupsSection section={detail.groups} canManage={findDecision(capabilities, 'groups.manage_members').state === 'allowed'} onAdd={() => setGroupAction({ id: null, mode: 'add' })} onRemove={(item) => setGroupAction({ id: item.id, target: item.displayName || item.id, mode: 'remove' })} />
         <RolesAndPimSection roles={detail.roles} pim={detail.pim} />
+        {authenticationMethodsDecision.state !== 'hidden' && <AuthenticationMethodsSection userId={user.id} userLabel={user.displayName || user.userPrincipalName || user.id} decision={authenticationMethodsDecision} manageDecision={authenticationMethodsManageDecision} />}
+        <AssociatedDevicesSection userId={user.id} decision={devicesViewDecision} />
       </div>
-      {groupAction && <GroupMembershipDialog userId={user.id} groupId={groupAction.id} target={groupAction.target} assignedGroupIds={detail.groups.items.map((item) => item.id)} mode={groupAction.mode} onCompleted={(response) => response.status === 'succeeded' ? (setGroupAction(null), refreshAfterSuccess()) : setMutationError(formatMutationError(response))} />}
-      {licenseAction && <LicenseAssignmentDialog userId={user.id} skuId={licenseAction.id} target={licenseAction.target} assignedSkuIds={detail.licenses.items.map((item) => item.skuId)} mode={licenseAction.mode} onCompleted={(response) => response.status === 'succeeded' ? (setLicenseAction(null), refreshAfterSuccess()) : setMutationError(formatMutationError(response))} />}
+      {groupAction && <GroupMembershipDialog userId={user.id} groupId={groupAction.id} target={groupAction.target} assignedGroupIds={detail.groups.items.map((item) => item.id)} mode={groupAction.mode} onCancel={() => setGroupAction(null)} onCompleted={(response) => response.status === 'succeeded' ? (setGroupAction(null), refreshAfterSuccess()) : setMutationError(formatMutationError(response))} />}
+      {licenseAction && <LicenseAssignmentDialog userId={user.id} skuId={licenseAction.id} target={licenseAction.target} assignedSkuIds={detail.licenses.items.map((item) => item.skuId)} mode={licenseAction.mode} onCancel={() => setLicenseAction(null)} onCompleted={(response) => response.status === 'succeeded' ? (setLicenseAction(null), refreshAfterSuccess()) : setMutationError(formatMutationError(response))} />}
     </section>
   );
+}
+
+function initials(value: string) {
+  const words = value.trim().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return '?';
+  return words.slice(0, 2).map(word => word[0]).join('').toUpperCase();
 }
 
 function findDecision(capabilities: CapabilityDecision[], capability: CapabilityDecision['capability']): CapabilityDecision {

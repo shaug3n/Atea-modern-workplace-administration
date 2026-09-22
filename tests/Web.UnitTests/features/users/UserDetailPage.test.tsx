@@ -123,12 +123,44 @@ describe('UserDetailPage', () => {
     await waitFor(() => expect(loadUserDetail).toHaveBeenCalledTimes(2));
   });
 
+  it('resets a user password and displays the temporary credential once', async () => {
+    apiMock.mockResolvedValue(new Response(JSON.stringify({
+      status: 'succeeded',
+      requiredCapability: 'users.reset_password',
+      replayed: false,
+      temporaryCredentialNotice: { temporaryPassword: 'Temp-Password-12345!', forceChangePasswordNextSignIn: true },
+    }), { status: 200 }));
+
+    render(<UserDetailPage userId="user-1" loadUserDetail={async () => ({ ...detail, user: { ...detail.user, isReadOnly: false, sourceOfAuthorityReason: null } })} capabilities={[{ capability: 'users.reset_password', state: 'allowed', reasonCode: 'active_role' }]} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Reset password' }));
+    fireEvent.click(screen.getByLabelText('I reviewed the target, change and required capability.'));
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm action' }));
+
+    await waitFor(() => expect(apiMock).toHaveBeenCalledWith('/api/users/user-1/reset-password', expect.objectContaining({ method: 'POST' })));
+    expect(await screen.findByText('Temp-Password-12345!')).toBeTruthy();
+    expect(screen.getByText('The user must change this password at next sign-in.')).toBeTruthy();
+  });
+
   it('does not render group or license mutation controls for read-only sections', async () => {
     render(<UserDetailPage userId="user-1" loadUserDetail={async () => detail} capabilities={[]} />);
 
     expect(await screen.findByRole('heading', { name: 'Ada Lovelace' })).toBeTruthy();
     expect(screen.queryByRole('button', { name: /add group/i })).toBeNull();
     expect(screen.queryByRole('button', { name: /assign license/i })).toBeNull();
+  });
+
+  it('does not render user security mutations for a Global Reader capability snapshot', async () => {
+    render(<UserDetailPage userId="user-1" loadUserDetail={async () => detail} capabilities={[{
+      capability: 'users.view', state: 'read_only', reasonCode: 'role_read_only',
+    }, {
+      capability: 'authentication.methods.manage', state: 'read_only', reasonCode: 'role_read_only',
+    }, {
+      capability: 'users.sessions.revoke', state: 'read_only', reasonCode: 'role_read_only',
+    }]} />);
+
+    expect(await screen.findByRole('heading', { name: 'Ada Lovelace' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Grant Temporary Access Pass' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Revoke sessions' })).toBeNull();
   });
 
   it('does not infer mutation permission from section access when the capability snapshot omits it', async () => {
@@ -142,6 +174,44 @@ describe('UserDetailPage', () => {
     expect(await screen.findByRole('heading', { name: 'Ada Lovelace' })).toBeTruthy();
     expect(screen.queryByRole('button', { name: /add group/i })).toBeNull();
     expect(screen.queryByRole('button', { name: /assign license/i })).toBeNull();
+  });
+
+  it('guides direct user-detail routes through PIM when directory access is gated', async () => {
+    const gatedDetail: UserDetailResponse = {
+      ...detail,
+      access: {
+        authorization: {
+          capability: 'users.view',
+          state: 'pim_activation_required',
+          reasonCode: 'pim_activation_required',
+          nextStep: { label: 'Activate the required Entra role', href: '/identity' },
+        },
+        fetchedAt: '2026-09-21T08:00:00Z',
+        freshness: 'unavailable',
+        partialData: true,
+        error: { category: 'capability_required', message: 'User details cannot be read until the role is active.', state: 'pim_activation_required' },
+      },
+      user: null,
+    };
+
+    render(<UserDetailPage userId="user-1" loadUserDetail={async () => gatedDetail} />);
+
+    expect(await screen.findByRole('heading', { name: 'Activate an Entra role to view users' })).toBeTruthy();
+    expect(screen.getByText('Your eligible Entra role must be active before the directory can be read.')).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Activate the required Entra role' }).getAttribute('href')).toBe('/identity');
+  });
+
+  it('keeps the MFA and passkey section visible when delegated consent is required', async () => {
+    render(<UserDetailPage userId="user-1" loadUserDetail={async () => detail} capabilities={[{
+      capability: 'authentication.methods.view',
+      state: 'consent_required',
+      reasonCode: 'consent_required',
+      nextStep: { label: 'Grant delegated consent', href: '/api/workspaces/current/consent/start' },
+    }]} />);
+
+    expect(await screen.findByRole('heading', { name: 'Ada Lovelace' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Authentication methods' })).toBeTruthy();
+    expect(screen.getByText('Delegated Microsoft Graph consent is required before this action can run.')).toBeTruthy();
   });
 
   it('refreshes detail after an allowed group mutation', async () => {
