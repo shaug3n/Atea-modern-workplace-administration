@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Security.Claims;
 using Atea.UnifiedWorkplace.Api.Authorization;
+using Atea.UnifiedWorkplace.Api.Features.Devices;
 using Atea.UnifiedWorkplace.Api.Features.Users;
 using Atea.UnifiedWorkplace.Api.Infrastructure.Graph;
 using FluentAssertions;
@@ -88,6 +89,19 @@ public sealed class UserDetailEndpointTests
         graph.LicenseReader.Calls.Should().Be(0);
         graph.GroupReader.Calls.Should().Be(0);
         graph.RoleReader.Calls.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task User_associated_devices_endpoint_rejects_unsafe_user_id()
+    {
+        using var factory = CreateFactory(DetailGraphFixture.Permitted());
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Test");
+
+        var response = await client.GetAsync("/api/users/user%5C1/devices");
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await response.Content.ReadAsStringAsync()).Should().Contain("invalid_target");
     }
 
     [Fact]
@@ -181,6 +195,8 @@ public sealed class UserDetailEndpointTests
                 services.AddSingleton<IGroupMembershipReader>(graph.GroupReader);
                 services.RemoveAll<IRoleAndPimReader>();
                 services.AddSingleton<IRoleAndPimReader>(graph.RoleReader);
+                services.RemoveAll<IManagedDeviceReader>();
+                services.AddSingleton<IManagedDeviceReader>(new RecordingManagedDeviceReader());
             });
         });
 
@@ -224,7 +240,7 @@ public sealed class UserDetailEndpointTests
             return new DetailGraphFixture(
                 new StaticCapabilityReader(snapshot ?? GraphAuthorizationSnapshot.Available(
                     "actor-1",
-                    ["Directory.Read.All", "User.Read.All", "Group.Read.All", "RoleManagement.Read.Directory", "LicenseAssignment.ReadWrite.All", "GroupMember.ReadWrite.All", "RoleManagement.ReadWrite.Directory"],
+                    ["Directory.Read.All", "User.Read.All", "Group.Read.All", "RoleManagement.Read.Directory", "LicenseAssignment.ReadWrite.All", "GroupMember.ReadWrite.All", "RoleManagement.ReadWrite.Directory", .. GraphScopeCatalog.DeviceReadScopes],
                     [
                         new DirectoryRoleSnapshot(EntraRoleCatalog.GlobalAdministratorTemplateId, "Global Administrator", DirectoryRoleAssignmentState.Active, "/"),
                         new DirectoryRoleSnapshot(EntraRoleCatalog.PrivilegedRoleAdministratorTemplateId, "Privileged Role Administrator", DirectoryRoleAssignmentState.Active, "/")
@@ -299,6 +315,15 @@ public sealed class UserDetailEndpointTests
 
         public Task<GraphReadResult<IReadOnlyList<PimEligibility>>> ReadUserPimEligibilityAsync(string userObjectId, CancellationToken cancellationToken) =>
             Task.FromResult(Pim);
+    }
+
+    private sealed class RecordingManagedDeviceReader : IManagedDeviceReader
+    {
+        public Task<GraphReadResult<PagedResult<ManagedDeviceSummary>>> ReadAsync(DeviceSearchQuery query, CancellationToken cancellationToken) =>
+            Task.FromResult(GraphReadResult<PagedResult<ManagedDeviceSummary>>.Succeeded(new PagedResult<ManagedDeviceSummary>([], [], null)));
+
+        public Task<GraphReadResult<IReadOnlyList<ManagedDeviceSummary>>> ReadForUserAsync(string userObjectId, CancellationToken cancellationToken) =>
+            Task.FromResult(GraphReadResult<IReadOnlyList<ManagedDeviceSummary>>.Succeeded([]));
     }
 
     private sealed class StaticCapabilityReader(GraphAuthorizationSnapshot snapshot) : IGraphAuthorizationSnapshotReader

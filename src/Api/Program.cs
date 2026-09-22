@@ -17,6 +17,8 @@ using Atea.UnifiedWorkplace.Api.Infrastructure.Security;
 using Atea.UnifiedWorkplace.Api.Features.Audit;
 using Atea.UnifiedWorkplace.Api.Features.Overview;
 using Atea.UnifiedWorkplace.Api.Features.AdminAuth;
+using Atea.UnifiedWorkplace.Api.Features.Devices;
+using Atea.UnifiedWorkplace.Api.Features.Identity;
 using Atea.UnifiedWorkplace.Api.Infrastructure.Http;
 using Microsoft.Extensions.Options;
 
@@ -36,6 +38,7 @@ builder.Services.AddScoped<IUserPreferenceRepository, UserPreferenceRepository>(
 builder.Services.AddScoped<IThemePreferenceService, ThemePreferenceService>();
 builder.Services.AddScoped<IWorkspaceProvisioningService, WorkspaceProvisioningService>();
 builder.Services.AddScoped<IWorkspaceSettingsService, WorkspaceSettingsService>();
+builder.Services.AddSingleton<WorkspaceSettingsMemoryCache>();
 builder.Services.AddScoped<WorkspaceOnboardingRepository>();
 builder.Services.AddScoped<IOnboardingRepository>(services => services.GetRequiredService<WorkspaceOnboardingRepository>());
 builder.Services.AddScoped<IInvitationRepository>(services => services.GetRequiredService<WorkspaceOnboardingRepository>());
@@ -68,6 +71,7 @@ builder.Services.AddDataProtection();
 builder.Services.AddSingleton<AuditContinuationTokenProtector>();
 builder.Services.AddSingleton(_ => new UserContinuationTokenProtector(
     UserContinuationConfiguration.ResolveSigningKey(builder.Configuration, builder.Environment.IsDevelopment())));
+builder.Services.AddSingleton<DeviceContinuationTokenProtector>();
 builder.Services.AddScoped<GraphUserLifecycle>();
 builder.Services.AddScoped<IUserLifecycleCommands>(services => services.GetRequiredService<GraphUserLifecycle>());
 builder.Services.AddScoped<GraphGroupMembershipService>();
@@ -79,6 +83,14 @@ builder.Services.AddScoped<IUserLicenseReader>(services => services.GetRequiredS
 builder.Services.AddScoped<ILicenseAssignmentCommands>(services => services.GetRequiredService<GraphLicenseService>());
 builder.Services.AddScoped<ILicenseOverviewReader, GraphLicenseOverviewReader>();
 builder.Services.AddScoped<ILicenseOverviewService, LicenseOverviewService>();
+builder.Services.AddScoped<IManagedDeviceReader, GraphManagedDeviceReader>();
+builder.Services.AddScoped<IManagedDeviceCommands, GraphManagedDeviceCommands>();
+builder.Services.AddScoped<IDeviceService, DeviceService>();
+builder.Services.AddScoped<IDeviceCommandService, DeviceCommandService>();
+builder.Services.AddScoped<UserAssociatedDeviceService>();
+builder.Services.AddScoped<IAuthenticationMethodReader, GraphAuthenticationMethodReader>();
+builder.Services.AddScoped<IAuthenticationMethodCommands, GraphAuthenticationMethodCommands>();
+builder.Services.AddScoped<IAuthenticationMethodService, AuthenticationMethodService>();
 builder.Services.AddScoped<GraphRoleAndPimService>();
 builder.Services.AddScoped<IRoleAndPimReader>(services => services.GetRequiredService<GraphRoleAndPimService>());
 builder.Services.AddScoped<IPimActivationCommands>(services => services.GetRequiredService<GraphRoleAndPimService>());
@@ -111,9 +123,10 @@ app.UseMiddleware<ApiProblemDetailsMiddleware>();
 app.UsePlatformAuthorization();
 app.MapGet("/api/ping", () => Results.Ok(new { status = "ok" }));
 app.MapAdminAuthEndpoints();
-app.MapGet("/api/session", (IWorkspaceContextAccessor accessor) =>
+app.MapGet("/api/session", async (IWorkspaceContextAccessor accessor, IWorkspaceSettingsService settingsService, CancellationToken cancellationToken) =>
 {
     var context = accessor.Current!;
+    var configuration = await settingsService.GetConfigurationAsync(context, cancellationToken);
     return Results.Ok(new
     {
         user = new
@@ -125,7 +138,16 @@ app.MapGet("/api/session", (IWorkspaceContextAccessor accessor) =>
             userType = context.User.UserType,
             homeTenantId = context.User.HomeTenantId
         },
-        workspace = new { id = context.Membership.WorkspaceId, name = context.Membership.WorkspaceName }
+        workspace = new
+        {
+            id = context.Membership.WorkspaceId,
+            name = context.Membership.WorkspaceName,
+            enabledModules = configuration.EnabledModules,
+            defaultColumns = configuration.DefaultColumns,
+            defaultFilters = configuration.DefaultFilters,
+            supportInstructions = configuration.SupportInstructions,
+            defaultTheme = configuration.DefaultTheme
+        }
     });
 }).RequireAuthorization();
 app.MapWorkspaceEndpoints();
@@ -141,6 +163,9 @@ app.MapRoleEndpoints();
 app.MapPimEndpoints();
 app.MapAuditEndpoints();
 app.MapOverviewEndpoints();
+app.MapDeviceEndpoints();
+app.MapUserAssociatedDeviceEndpoints();
+app.MapAuthenticationMethodEndpoints();
 app.MapFallbackToFile("index.html");
 
 app.Run();
