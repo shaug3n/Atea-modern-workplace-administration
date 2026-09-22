@@ -131,9 +131,9 @@ Run: `dotnet test tests/Api.UnitTests/Api.UnitTests.csproj --filter "FullyQualif
 
 Expected: PASS; the scope probe test asserts both new scopes are probed.
 
-Run: `npm test -- capabilities/PermissionState.test.tsx`
+Run: `npm run test:behavior -- ../tests/Web.UnitTests/capabilities/PermissionState.test.tsx`
 
-Working directory: `tests/Web.UnitTests`
+Working directory: `src/Web`
 
 Expected: PASS; existing consent-required rendering remains intact for the expanded union.
 
@@ -481,9 +481,9 @@ it('does not render user mutations for the Global Reader capability snapshot', a
 
 - [ ] **Step 2: Run focused web tests and confirm they fail**
 
-Run: `npm test -- features/users/UserDetailPage.test.tsx features/users/AuthenticationMethodsSection.test.tsx features/users/AssociatedDevicesSection.test.tsx components/ActionMenu.test.tsx`
+Run: `npm run test:behavior -- ../tests/Web.UnitTests/features/users/UserDetailPage.test.tsx ../tests/Web.UnitTests/features/users/AuthenticationMethodsSection.test.tsx ../tests/Web.UnitTests/features/users/AssociatedDevicesSection.test.tsx ../tests/Web.UnitTests/components/ActionMenu.test.tsx`
 
-Working directory: `tests/Web.UnitTests`
+Working directory: `src/Web`
 
 Expected: FAIL because the action menu, associated-device section and secure action dialogs do not exist.
 
@@ -513,15 +513,15 @@ Refactor `UserDetailPage` to the chosen profile/security/access layout while ret
 
 - [ ] **Step 4: Run focused UI tests and the full web unit suite**
 
-Run: `npm test -- features/users/UserDetailPage.test.tsx features/users/AuthenticationMethodsSection.test.tsx features/users/AssociatedDevicesSection.test.tsx components/ActionMenu.test.tsx`
+Run: `npm run test:behavior -- ../tests/Web.UnitTests/features/users/UserDetailPage.test.tsx ../tests/Web.UnitTests/features/users/AuthenticationMethodsSection.test.tsx ../tests/Web.UnitTests/features/users/AssociatedDevicesSection.test.tsx ../tests/Web.UnitTests/components/ActionMenu.test.tsx`
 
-Working directory: `tests/Web.UnitTests`
+Working directory: `src/Web`
 
 Expected: PASS; reveal-once TAP, action permissions, associated devices, Escape/cancel, light/dark classes and action hierarchy are covered.
 
-Run: `npm test`
+Run: `npm run test:behavior`
 
-Working directory: `tests/Web.UnitTests`
+Working directory: `src/Web`
 
 Expected: PASS; no regression across the existing SPA component suite.
 
@@ -568,9 +568,9 @@ it('requires WIPE and reviewed confirmation before issuing a wipe request', asyn
 
 - [ ] **Step 2: Run the focused device UI tests and verify they fail**
 
-Run: `npm test -- features/devices/DevicesPage.test.tsx`
+Run: `npm run test:behavior -- ../tests/Web.UnitTests/features/devices/DevicesPage.test.tsx`
 
-Working directory: `tests/Web.UnitTests`
+Working directory: `src/Web`
 
 Expected: FAIL because the actions and `devices.privileged.manage` gating are not implemented.
 
@@ -594,15 +594,15 @@ Change `executeDeviceAction` to accept the five-action union. Show the device pa
 
 - [ ] **Step 4: Run device tests, full SPA tests and build**
 
-Run: `npm test -- features/devices/DevicesPage.test.tsx`
+Run: `npm run test:behavior -- ../tests/Web.UnitTests/features/devices/DevicesPage.test.tsx`
 
-Working directory: `tests/Web.UnitTests`
+Working directory: `src/Web`
 
 Expected: PASS; reader view, missing consent, menu actions, typed dangerous confirmations, success/error state and Escape cancellation are covered.
 
-Run: `npm test`
+Run: `npm run test:behavior`
 
-Working directory: `tests/Web.UnitTests`
+Working directory: `src/Web`
 
 Expected: PASS.
 
@@ -651,9 +651,9 @@ test('theme defines semantic action and spacious detail card classes', async () 
 
 - [ ] **Step 2: Run the contract tests and verify they fail**
 
-Run: `npm test -- theme-and-catalog.test.mjs`
+Run: `npm run test:behavior -- ../tests/Web.UnitTests/theme-and-catalog.test.mjs`
 
-Working directory: `tests/Web.UnitTests`
+Working directory: `src/Web`
 
 Expected: FAIL because the semantic action CSS classes have not been added.
 
@@ -679,9 +679,9 @@ Run: `dotnet test tests/Api.IntegrationTests/Api.IntegrationTests.csproj`
 
 Expected: PASS.
 
-Run: `npm test`
+Run: `npm run test:behavior`
 
-Working directory: `tests/Web.UnitTests`
+Working directory: `src/Web`
 
 Expected: PASS.
 
