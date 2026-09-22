@@ -9,6 +9,7 @@ export type ConfirmationDialogProps = {
   sourceLimitation?: string | null;
   auditNotice?: string;
   destructivePhrase?: string | null;
+  destructivePhraseLabel?: string;
   busy?: boolean;
   onConfirm: () => void;
   onCancel?: () => void;
@@ -25,6 +26,7 @@ export function ConfirmationDialog({
   sourceLimitation,
   auditNotice = messages.userMutationAuditNotice,
   destructivePhrase,
+  destructivePhraseLabel = messages.userMutationDestructivePhraseLabel,
   busy = false,
   onConfirm,
   onCancel,
@@ -73,8 +75,8 @@ export function ConfirmationDialog({
       <p>{auditNotice}</p>
       {destructivePhrase && (
         <label>
-          {messages.userMutationDestructivePhraseLabel}
-          <input value={phrase} onChange={(event) => setPhrase(event.target.value)} aria-label={messages.userMutationDestructivePhraseLabel} />
+          {destructivePhraseLabel}
+          <input value={phrase} onChange={(event) => setPhrase(event.target.value)} aria-label={destructivePhraseLabel} />
         </label>
       )}
       <label>

@@ -211,7 +211,8 @@ function DeviceDetailsPanel({ device, canManage, onClose, onAction }: { device: 
 
 function DeviceActionConfirmation({ target, busy, onConfirm, onCancel }: { target: { device: ManagedDevice; action: DeviceAction }; busy: boolean; onConfirm: () => void; onCancel: () => void }) {
   const phrase = target.action === 'sync' ? null : target.action === 'remote-lock' ? 'REMOTE LOCK' : target.action.toUpperCase();
-  return <ConfirmationDialog title={messages.devicesActionTitles[target.action]} target={target.device.deviceName || target.device.id} proposedChange={messages.devicesActionDescriptions[target.action]} requiredCapability="devices.privileged.manage" destructivePhrase={phrase} busy={busy} onConfirm={onConfirm} onCancel={onCancel} />;
+  const phraseLabel = phrase ? `Type ${phrase} to confirm` : undefined;
+  return <ConfirmationDialog title={messages.devicesActionTitles[target.action]} target={target.device.deviceName || target.device.id} proposedChange={messages.devicesActionDescriptions[target.action]} requiredCapability="devices.privileged.manage" destructivePhrase={phrase} destructivePhraseLabel={phraseLabel} busy={busy} onConfirm={onConfirm} onCancel={onCancel} />;
 }
 
 function Detail({ label, value }: { label: string; value: string }) {

@@ -280,6 +280,20 @@ describe('DevicesPage', () => {
     expect((screen.getByRole('button', { name: 'Confirm action' }) as HTMLButtonElement).disabled).toBe(true);
   });
 
+  it('labels the destructive confirmation with the exact action phrase and omits phrase input for Sync', async () => {
+    render(<DevicesPage capabilities={[{ capability: 'devices.view', state: 'allowed', reasonCode: 'active_role' }, { capability: 'devices.privileged.manage', state: 'allowed', reasonCode: 'active_role' }]} loadDevices={loadDevices} />);
+    await screen.findByText('WIN-TEST-01');
+    fireEvent.click(screen.getByRole('button', { name: 'Actions for WIN-TEST-01' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Wipe device' }));
+    expect(screen.getByLabelText('Type WIPE to confirm')).toBeTruthy();
+    expect(screen.getByText('Type WIPE to confirm')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Actions for WIN-TEST-01' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Sync device' }));
+    expect(screen.queryByLabelText(/type .* to confirm/i)).toBeNull();
+  });
+
   it.each([
     ['sync', '/api/devices/device%2F1/actions/sync'],
     ['remote-lock', '/api/devices/device%2F1/actions/remote-lock'],
