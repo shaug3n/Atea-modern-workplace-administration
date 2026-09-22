@@ -160,6 +160,41 @@ public sealed class GraphDeviceAndAuthenticationReaderTests
         transport.Requests.Single().PathAndQuery.Should().Be("/v1.0/users/user-1/authentication/fido2Methods/method-1");
     }
 
+    [Fact]
+    public async Task Temporary_access_pass_uses_single_use_sixty_minute_payload_and_maps_only_safe_fields()
+    {
+        var transport = new RecordingTransport("""
+            {"temporaryAccessPass":"ABC123","id":"tap-1","startDateTime":"2026-09-23T10:00:00Z","lifetimeInMinutes":60,"isUsableOnce":true,"secret":"must-not-be-exposed"}
+            """);
+        var factory = new RecordingFactory(transport);
+
+        var result = await new GraphAuthenticationMethodCommands(factory)
+            .CreateTemporaryAccessPassAsync("user-1", "tap-key", CancellationToken.None);
+
+        result.TemporaryAccessPass.Should().Be("ABC123");
+        result.Id.Should().Be("tap-1");
+        result.LifetimeInMinutes.Should().Be(60);
+        result.IsUsableOnce.Should().BeTrue();
+        factory.Scopes.Single().Should().Equal(GraphScopeCatalog.AuthenticationMethodWriteScopes);
+        transport.Requests.Single().PathAndQuery.Should().Be("/v1.0/users/user-1/authentication/temporaryAccessPassMethods");
+        transport.Requests.Single().Headers!["Idempotency-Key"].Should().Be("tap-key");
+        transport.RequestBodies.Single().Should().Be("{\"lifetimeInMinutes\":60,\"isUsableOnce\":true}");
+        result.Should().NotBeNull();
+    }
+
+    [Fact]
+    public async Task Revoke_sessions_uses_the_v1_user_action_and_session_scope()
+    {
+        var transport = new RecordingTransport("{}");
+        var factory = new RecordingFactory(transport);
+
+        await new GraphUserSessionCommands(factory).RevokeAsync("user-1", "key-1", CancellationToken.None);
+
+        transport.Requests.Single().PathAndQuery.Should().Be("/v1.0/users/user-1/revokeSignInSessions");
+        transport.Requests.Single().Method.Should().Be(HttpMethod.Post);
+        factory.Scopes.Single().Should().Equal(GraphScopeCatalog.UserSessionWriteScopes);
+    }
+
     private sealed class RecordingFactory(IGraphTransport transport) : IDelegatedGraphClientFactory
     {
         public List<IReadOnlyCollection<string>> Scopes { get; } = [];
@@ -175,10 +210,12 @@ public sealed class GraphDeviceAndAuthenticationReaderTests
     {
         public IReadOnlyCollection<string> Scopes { get; } = [];
         public List<GraphRequest> Requests { get; } = [];
+        public List<string> RequestBodies { get; } = [];
 
         public Task<GraphTransportResponse> SendAsync(GraphRequest request, CancellationToken cancellationToken)
         {
             Requests.Add(request);
+            RequestBodies.Add(request.Content?.ReadAsStringAsync().GetAwaiter().GetResult() ?? string.Empty);
             return Task.FromResult(new GraphTransportResponse(GraphOperationResult.Success(), content, 1, new Dictionary<string, IReadOnlyCollection<string>>()));
         }
     }

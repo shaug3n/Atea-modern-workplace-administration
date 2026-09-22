@@ -91,6 +91,8 @@ builder.Services.AddScoped<UserAssociatedDeviceService>();
 builder.Services.AddScoped<IAuthenticationMethodReader, GraphAuthenticationMethodReader>();
 builder.Services.AddScoped<IAuthenticationMethodCommands, GraphAuthenticationMethodCommands>();
 builder.Services.AddScoped<IAuthenticationMethodService, AuthenticationMethodService>();
+builder.Services.AddScoped<IUserSessionCommands, GraphUserSessionCommands>();
+builder.Services.AddScoped<IUserSessionCommandService, UserSessionCommandService>();
 builder.Services.AddScoped<GraphRoleAndPimService>();
 builder.Services.AddScoped<IRoleAndPimReader>(services => services.GetRequiredService<GraphRoleAndPimService>());
 builder.Services.AddScoped<IPimActivationCommands>(services => services.GetRequiredService<GraphRoleAndPimService>());
@@ -166,6 +168,7 @@ app.MapOverviewEndpoints();
 app.MapDeviceEndpoints();
 app.MapUserAssociatedDeviceEndpoints();
 app.MapAuthenticationMethodEndpoints();
+app.MapUserSessionCommandEndpoints();
 app.MapFallbackToFile("index.html");
 
 app.Run();
