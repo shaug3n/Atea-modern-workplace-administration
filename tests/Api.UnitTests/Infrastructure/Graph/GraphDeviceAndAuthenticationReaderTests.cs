@@ -65,6 +65,45 @@ public sealed class GraphDeviceAndAuthenticationReaderTests
     }
 
     [Fact]
+    public async Task Associated_device_reader_maps_graph_unsupported_user_id_filter_to_safe_category()
+    {
+        var transport = new FailedTransport("""
+            {"error":{"code":"Request_BadRequest","message":"The userId filter is not supported for this resource."}}
+            """);
+        var reader = new GraphManagedDeviceReader(new RecordingFactory(transport));
+
+        var result = await reader.ReadForUserAsync("user-1", CancellationToken.None);
+
+        result.Error!.Category.Should().Be("association_query_unsupported");
+    }
+
+    [Fact]
+    public async Task Associated_device_reader_preserves_not_provisioned_for_target_tenant_400()
+    {
+        var transport = new FailedTransport("""
+            {"error":{"code":"BadRequest","message":"Request not applicable to target tenant."}}
+            """);
+        var reader = new GraphManagedDeviceReader(new RecordingFactory(transport));
+
+        var result = await reader.ReadForUserAsync("user-1", CancellationToken.None);
+
+        result.Error!.Category.Should().Be("not_provisioned");
+    }
+
+    [Fact]
+    public async Task Associated_device_reader_preserves_safe_category_for_unrelated_bad_request()
+    {
+        var transport = new FailedTransport("""
+            {"error":{"code":"BadRequest","message":"The request is invalid for this tenant."}}
+            """);
+        var reader = new GraphManagedDeviceReader(new RecordingFactory(transport));
+
+        var result = await reader.ReadForUserAsync("user-1", CancellationToken.None);
+
+        result.Error!.Category.Should().Be("temporarily_unavailable");
+    }
+
+    [Fact]
     public async Task Authentication_method_reader_normalizes_method_type_without_returning_secret_values()
     {
         var transport = new RecordingTransport("""

@@ -13,7 +13,18 @@ public sealed class GraphManagedDeviceReader(IDelegatedGraphClientFactory client
 {
     private const string Select = "id,deviceName,operatingSystem,osVersion,complianceState,managementState,managedDeviceOwnerType,lastSyncDateTime,userId,azureADDeviceId,serialNumber,manufacturer,model";
 
-    public async Task<GraphReadResult<PagedResult<ManagedDeviceSummary>>> ReadAsync(DeviceSearchQuery query, CancellationToken cancellationToken)
+    public async Task<GraphReadResult<PagedResult<ManagedDeviceSummary>>> ReadAsync(DeviceSearchQuery query, CancellationToken cancellationToken) =>
+        (await ReadPageAsync(query, cancellationToken)).Result;
+
+    public async Task<GraphReadResult<IReadOnlyList<ManagedDeviceSummary>>> ReadForUserAsync(string userObjectId, CancellationToken cancellationToken)
+    {
+        var page = await ReadPageAsync(new DeviceSearchQuery(PageSize: 100, UserObjectId: userObjectId), cancellationToken);
+        return page.Result.Error is null
+            ? GraphReadResult<IReadOnlyList<ManagedDeviceSummary>>.Succeeded(page.Result.Value.Items)
+            : GraphReadResult<IReadOnlyList<ManagedDeviceSummary>>.Failed(MapAssociationError(page.Result.Error, page.ResponseContent));
+    }
+
+    private async Task<ReadPageResult> ReadPageAsync(DeviceSearchQuery query, CancellationToken cancellationToken)
     {
         await using var lease = await clientFactory.CreateForCurrentUserAsync(GraphScopeCatalog.DeviceReadScopes, cancellationToken);
         var path = query.ContinuationPath;
@@ -46,7 +57,7 @@ public sealed class GraphManagedDeviceReader(IDelegatedGraphClientFactory client
             var result = IsTargetTenantNotApplicable(response.Content)
                 ? response.Result with { Category = "not_provisioned" }
                 : response.Result;
-            return GraphReadResult<PagedResult<ManagedDeviceSummary>>.Failed(result);
+            return new(GraphReadResult<PagedResult<ManagedDeviceSummary>>.Failed(result), response.Content);
         }
 
         try
@@ -58,20 +69,12 @@ public sealed class GraphManagedDeviceReader(IDelegatedGraphClientFactory client
             var continuationLink = document.RootElement.TryGetProperty("@odata.nextLink", out var nextLink)
                 ? NormalizeGraphPath(nextLink.GetString())
                 : null;
-            return GraphReadResult<PagedResult<ManagedDeviceSummary>>.Succeeded(new PagedResult<ManagedDeviceSummary>(items, [], continuationLink));
+            return new(GraphReadResult<PagedResult<ManagedDeviceSummary>>.Succeeded(new PagedResult<ManagedDeviceSummary>(items, [], continuationLink)), null);
         }
         catch (JsonException)
         {
-            return GraphReadResult<PagedResult<ManagedDeviceSummary>>.Failed(new GraphOperationResult(false, "invalid_response"));
+            return new(GraphReadResult<PagedResult<ManagedDeviceSummary>>.Failed(new GraphOperationResult(false, "invalid_response")), response.Content);
         }
-    }
-
-    public async Task<GraphReadResult<IReadOnlyList<ManagedDeviceSummary>>> ReadForUserAsync(string userObjectId, CancellationToken cancellationToken)
-    {
-        var page = await ReadAsync(new DeviceSearchQuery(PageSize: 100, UserObjectId: userObjectId), cancellationToken);
-        return page.Error is null
-            ? GraphReadResult<IReadOnlyList<ManagedDeviceSummary>>.Succeeded(page.Value.Items)
-            : GraphReadResult<IReadOnlyList<ManagedDeviceSummary>>.Failed(MapAssociationError(page.Error));
     }
 
     private static ManagedDeviceSummary Map(JsonElement element) => new(
@@ -90,8 +93,15 @@ public sealed class GraphManagedDeviceReader(IDelegatedGraphClientFactory client
         Optional(element, "model"));
 
     private static string EscapeOData(string value) => value.Trim().Replace("'", "''", StringComparison.Ordinal);
-    private static GraphOperationResult MapAssociationError(GraphOperationResult error) =>
-        error.StatusCode == 400 ? error with { Category = "association_query_unsupported" } : error;
+    private static GraphOperationResult MapAssociationError(GraphOperationResult error, string? responseContent) =>
+        IsUnsupportedAssociationFilter(responseContent)
+            ? error with { Category = "association_query_unsupported" }
+            : error;
+    private static bool IsUnsupportedAssociationFilter(string? content) =>
+        !string.IsNullOrWhiteSpace(content)
+        && content.Contains("filter", StringComparison.OrdinalIgnoreCase)
+        && (content.Contains("not supported", StringComparison.OrdinalIgnoreCase)
+            || content.Contains("unsupported", StringComparison.OrdinalIgnoreCase));
     private static bool IsTargetTenantNotApplicable(string content) =>
         content.Contains("Request not applicable to target tenant", StringComparison.OrdinalIgnoreCase);
     private static string? NormalizeGraphPath(string? nextLink) =>
@@ -101,4 +111,8 @@ public sealed class GraphManagedDeviceReader(IDelegatedGraphClientFactory client
     private static string Required(JsonElement element, string property) => Optional(element, property) ?? string.Empty;
     private static string? Optional(JsonElement element, string property) => element.TryGetProperty(property, out var value) && value.ValueKind != JsonValueKind.Null ? value.GetString() : null;
     private static DateTimeOffset? OptionalDate(JsonElement element, string property) => element.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.String && DateTimeOffset.TryParse(value.GetString(), out var result) ? result : null;
+
+    private sealed record ReadPageResult(
+        GraphReadResult<PagedResult<ManagedDeviceSummary>> Result,
+        string? ResponseContent);
 }
