@@ -21,6 +21,7 @@ public static class Capability
     public const string AuthenticationMethodsManage = "authentication.methods.manage";
     public const string AuditView = "audit.view";
     public const string WorkspaceSettingsManage = "workspace.settings.manage";
+    public const string WorkspaceMembersManage = "workspace.members.manage";
 
     public static readonly IReadOnlyList<string> All =
     [
@@ -42,7 +43,8 @@ public static class Capability
         AuthenticationMethodsView,
         AuthenticationMethodsManage,
         AuditView,
-        WorkspaceSettingsManage
+        WorkspaceSettingsManage,
+        WorkspaceMembersManage
     ];
 }
 

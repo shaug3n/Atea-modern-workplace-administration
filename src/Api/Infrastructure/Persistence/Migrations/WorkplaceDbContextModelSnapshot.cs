@@ -215,7 +215,16 @@ namespace Atea.UnifiedWorkplace.Api.Infrastructure.Persistence.Migrations
                         .HasMaxLength(128)
                         .HasColumnType("character varying(128)");
 
+                    b.Property<string>("Role")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasDefaultValue("customer_admin")
+                        .HasColumnType("character varying(32)");
+
                     b.Property<DateTimeOffset?>("RedeemedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset?>("RevokedAt")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<Guid>("WorkspaceId")

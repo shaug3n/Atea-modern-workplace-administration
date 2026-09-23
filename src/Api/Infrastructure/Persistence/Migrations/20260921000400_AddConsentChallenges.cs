@@ -1,9 +1,13 @@
+using Atea.UnifiedWorkplace.Api.Infrastructure.Persistence;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
 namespace Atea.UnifiedWorkplace.Api.Infrastructure.Persistence.Migrations;
 
+[DbContext(typeof(WorkplaceDbContext))]
+[Migration("20260921000400_AddConsentChallenges")]
 public partial class AddConsentChallenges : Migration
 {
     protected override void Up(MigrationBuilder migrationBuilder)

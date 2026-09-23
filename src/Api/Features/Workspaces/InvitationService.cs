@@ -12,12 +12,16 @@ public sealed class InvitationService(IInvitationRepository repository, Uri publ
     public Task<InvitationCreationResult> CreateAsync(Guid workspaceId, string email, string displayName, DateTimeOffset expiresAt, CancellationToken cancellationToken = default) =>
         CreateAsync(workspaceId, email, displayName, expiresAt, null, cancellationToken);
 
-    public async Task<InvitationCreationResult> CreateAsync(Guid workspaceId, string email, string displayName, DateTimeOffset expiresAt, Guid? approvedTenantObjectId, CancellationToken cancellationToken = default)
+    public Task<InvitationCreationResult> CreateAsync(Guid workspaceId, string email, string displayName, DateTimeOffset expiresAt, Guid? approvedTenantObjectId, CancellationToken cancellationToken = default) =>
+        CreateForRoleAsync(workspaceId, email, displayName, expiresAt, "customer_admin", approvedTenantObjectId, cancellationToken);
+
+    public async Task<InvitationCreationResult> CreateForRoleAsync(Guid workspaceId, string email, string displayName, DateTimeOffset expiresAt, string role, Guid? approvedTenantObjectId = null, CancellationToken cancellationToken = default)
     {
+        if (role is not ("member" or "customer_admin")) throw new ArgumentOutOfRangeException(nameof(role));
         var nonce = ToBase64Url(RandomNumberGenerator.GetBytes(32));
         var invitation = new PlatformInvitation
         {
-            Id = Guid.NewGuid(), WorkspaceId = workspaceId, Email = email.Trim(), DisplayName = displayName.Trim(), ApprovedTenantObjectId = approvedTenantObjectId,
+            Id = Guid.NewGuid(), WorkspaceId = workspaceId, Email = email.Trim(), DisplayName = displayName.Trim(), ApprovedTenantObjectId = approvedTenantObjectId, Role = role,
             NonceHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(nonce))).ToLowerInvariant(),
             ExpiresAt = expiresAt, CreatedAt = DateTimeOffset.UtcNow
         };

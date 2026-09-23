@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Data;
 using Atea.UnifiedWorkplace.Api.Infrastructure.Persistence.Entities;
 using Microsoft.EntityFrameworkCore;
 
@@ -50,8 +51,20 @@ public sealed class WorkspaceOnboardingRepository(WorkplaceDbContext db) : IOnbo
 
     public async Task<PlatformInvitation> CreateAsync(PlatformInvitation invitation, CancellationToken cancellationToken = default)
     {
+        await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
+        var normalizedEmail = invitation.Email.Trim().ToLowerInvariant();
+        var now = DateTimeOffset.UtcNow;
+        await db.PlatformInvitations
+            .Where(x => x.WorkspaceId == invitation.WorkspaceId
+                && x.Email.ToLower() == normalizedEmail
+                && x.RedeemedAt == null
+                && x.RevokedAt == null)
+            .ExecuteUpdateAsync(update => update.SetProperty(x => x.RevokedAt, now), cancellationToken);
+
+        invitation.Email = invitation.Email.Trim();
         db.PlatformInvitations.Add(invitation);
         await db.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
         return invitation;
     }
 
@@ -60,15 +73,22 @@ public sealed class WorkspaceOnboardingRepository(WorkplaceDbContext db) : IOnbo
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
         var now = DateTimeOffset.UtcNow;
         var claimed = await db.PlatformInvitations
-            .Where(x => x.NonceHash == nonceHash && x.RedeemedAt == null && x.ExpiresAt > now && x.Workspace.TenantId == tenantId && (x.ApprovedTenantObjectId == tenantObjectId || (x.ApprovedTenantObjectId == null && email != null && x.Email.ToLower() == email.ToLower())))
+            .Where(x => x.NonceHash == nonceHash && x.RedeemedAt == null && x.RevokedAt == null && x.ExpiresAt > now && x.Workspace.TenantId == tenantId && (x.ApprovedTenantObjectId == tenantObjectId || (x.ApprovedTenantObjectId == null && email != null && x.Email.ToLower() == email.Trim().ToLower())))
             .ExecuteUpdateAsync(updates => updates.SetProperty(x => x.RedeemedAt, now), cancellationToken);
         if (claimed != 1) return null;
 
         var invitation = await db.PlatformInvitations.Include(x => x.Workspace).SingleAsync(x => x.NonceHash == nonceHash, cancellationToken);
+        await db.PlatformInvitations
+            .Where(x => x.WorkspaceId == invitation.WorkspaceId
+                && x.Id != invitation.Id
+                && x.Email.ToLower() == invitation.Email.ToLower()
+                && x.RedeemedAt == null
+                && x.RevokedAt == null)
+            .ExecuteUpdateAsync(update => update.SetProperty(x => x.RevokedAt, now), cancellationToken);
         var membership = await db.WorkspaceMemberships.SingleOrDefaultAsync(x => x.WorkspaceId == invitation.WorkspaceId && x.TenantObjectId == tenantObjectId, cancellationToken);
         if (membership is null)
         {
-            membership = new WorkspaceMembership { Id = Guid.NewGuid(), WorkspaceId = invitation.WorkspaceId, TenantObjectId = tenantObjectId, Email = email ?? $"object:{tenantObjectId}", PlatformRole = "customer_admin", CreatedAt = DateTimeOffset.UtcNow };
+            membership = new WorkspaceMembership { Id = Guid.NewGuid(), WorkspaceId = invitation.WorkspaceId, TenantObjectId = tenantObjectId, Email = email ?? $"object:{tenantObjectId}", PlatformRole = invitation.Role, CreatedAt = DateTimeOffset.UtcNow };
             db.WorkspaceMemberships.Add(membership);
         }
         invitation.Workspace.ConnectionStatus = Atea.UnifiedWorkplace.Api.Features.Workspaces.ConnectionState.ConsentRequired;

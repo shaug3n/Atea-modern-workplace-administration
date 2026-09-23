@@ -59,8 +59,10 @@ public sealed class WorkplaceDbContext(DbContextOptions<WorkplaceDbContext> opti
             entity.HasIndex(x => x.NonceHash).IsUnique();
             entity.Property(x => x.NonceHash).HasMaxLength(128).IsRequired();
             entity.Property(x => x.ApprovedTenantObjectId);
+            entity.Property(x => x.Role).HasMaxLength(32).HasDefaultValue("customer_admin").IsRequired();
             ConfigureUtc(entity.Property(x => x.ExpiresAt));
             ConfigureUtc(entity.Property(x => x.RedeemedAt));
+            ConfigureUtc(entity.Property(x => x.RevokedAt));
             ConfigureUtc(entity.Property(x => x.CreatedAt));
             entity.HasOne(x => x.Workspace).WithMany().HasForeignKey(x => x.WorkspaceId).OnDelete(DeleteBehavior.Cascade);
         });

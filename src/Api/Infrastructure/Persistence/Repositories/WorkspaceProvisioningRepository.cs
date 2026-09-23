@@ -29,7 +29,7 @@ public sealed class WorkspaceProvisioningRepository(WorkplaceDbContext db) : IWo
                 workspace.TenantConnection == null ? null : workspace.TenantConnection.LastVerifiedAt,
                 workspace.TenantConnection == null ? null : workspace.TenantConnection.LastFailureCategory,
                 workspace.Memberships.OrderBy(membership => membership.Email).Select(membership => new WorkspaceMembershipDto(membership.Id, membership.TenantObjectId, membership.Email, membership.PlatformRole, membership.IsAteaOperator)).ToArray(),
-                db.PlatformInvitations.Where(invitation => invitation.WorkspaceId == workspace.Id).OrderByDescending(invitation => invitation.CreatedAt).Select(invitation => new InvitationSummaryDto(invitation.Id, invitation.Email, invitation.DisplayName, invitation.ExpiresAt, invitation.RedeemedAt)).ToArray()))
+                db.PlatformInvitations.Where(invitation => invitation.WorkspaceId == workspace.Id).OrderByDescending(invitation => invitation.CreatedAt).Select(invitation => new InvitationSummaryDto(invitation.Id, invitation.Email, invitation.DisplayName, invitation.ExpiresAt, invitation.RedeemedAt, invitation.Role, invitation.RevokedAt)).ToArray()))
             .SingleOrDefaultAsync(cancellationToken);
     }
 
