@@ -13,8 +13,18 @@ test('local Compose startup supplies Development onboarding and admin configurat
   assert.match(compose, /AzureAd__ClientId:\s*\$\{AzureAd__ClientId:-/);
   assert.match(compose, /AzureAd__Audience:\s*\$\{AzureAd__Audience:-/);
   assert.match(compose, /AzureAd__ClientSecret:\s*\$\{AzureAd__ClientSecret:-/);
+  assert.match(compose, /VITE_ENTRA_CLIENT_ID:\s*\$\{VITE_ENTRA_CLIENT_ID:-\}/);
+  assert.match(compose, /VITE_ENTRA_AUTHORITY:\s*\$\{VITE_ENTRA_AUTHORITY:-\}/);
+  assert.match(compose, /VITE_ENTRA_API_SCOPE:\s*\$\{VITE_ENTRA_API_SCOPE:-\}/);
+  assert.match(compose, /VITE_ENTRA_REDIRECT_URI:\s*\$\{VITE_ENTRA_REDIRECT_URI:-\}/);
   assert.match(compose, /AteaAdmin__LocalDevelopment__Enabled:\s*\$\{AteaAdmin__LocalDevelopment__Enabled:-true\}/);
   assert.match(compose, /condition: service_healthy/);
+});
+
+test('Vite proxies both API and health requests to the local API service', async () => {
+  const viteConfig = await readFile('../../src/Web/vite.config.ts', 'utf8');
+  assert.match(viteConfig, /'\/api':\s*target/);
+  assert.match(viteConfig, /'\/health':\s*target/);
 });
 
 test('local user-device guidance identifies the two additional delegated permissions', async () => {
