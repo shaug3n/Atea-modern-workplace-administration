@@ -43,8 +43,8 @@ function AuthenticatedContent({ children }: { children: ReactNode }) {
   const value = useMemo(() => createAuthActions(instance, account, setError), [account, instance]);
 
   if (!isAuthenticated) {
-    const initializing = inProgress === InteractionStatus.Startup;
-    return <main role="main"><h1>{messages.authSignInTitle}</h1><button type="button" disabled={initializing} onClick={() => value.signIn().catch(() => { console.error('MSAL sign-in failed'); setError(messages.authSignInError); })}>{initializing ? messages.authPreparing : messages.authSignIn}</button>{error && <p role="alert">{error}</p>}</main>;
+    const signInInProgress = inProgress !== InteractionStatus.None;
+    return <main role="main"><h1>{messages.authSignInTitle}</h1><button type="button" disabled={signInInProgress} onClick={() => value.signIn().catch(() => { console.error('MSAL sign-in failed'); setError(messages.authSignInError); })}>{inProgress === InteractionStatus.Startup ? messages.authPreparing : messages.authSignIn}</button>{error && <p role="alert">{error}</p>}</main>;
   }
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

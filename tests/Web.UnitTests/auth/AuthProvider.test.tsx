@@ -17,7 +17,7 @@ const auth = vi.hoisted(() => ({
 
 vi.mock('@azure/msal-browser', () => ({
   InteractionRequiredAuthError: class InteractionRequiredAuthError extends Error {},
-  InteractionStatus: { Startup: 'startup' },
+  InteractionStatus: { None: 'none', Startup: 'startup' },
   PublicClientApplication: class PublicClientApplication {}
 }));
 vi.mock('@azure/msal-react', () => ({
@@ -27,6 +27,7 @@ vi.mock('@azure/msal-react', () => ({
 }));
 
 import { AuthProvider, useAuth } from '../../../src/Web/src/auth/AuthProvider';
+import { msalConfig } from '../../../src/Web/src/auth/msalConfig';
 import { useApi } from '../../../src/Web/src/auth/useApi';
 
 function Harness() {
@@ -60,6 +61,17 @@ describe('AuthProvider behavior', () => {
     render(<AuthProvider instance={auth.instance as never}><Harness /></AuthProvider>);
     expect((screen.getByRole('button', { name: 'Preparing sign-in…' }) as HTMLButtonElement).disabled).toBe(true);
     expect(auth.instance.loginRedirect).not.toHaveBeenCalled();
+  });
+
+  it('does not begin a second sign-in while MSAL handles a redirect', () => {
+    auth.authenticated = false;
+    auth.inProgress = 'handleRedirect';
+    render(<AuthProvider instance={auth.instance as never}><Harness /></AuthProvider>);
+    expect((screen.getByRole('button', { name: 'Sign in' }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('uses tab-scoped storage so redirect authentication can complete after navigation', () => {
+    expect(msalConfig.cache?.cacheLocation).toBe('sessionStorage');
   });
 
   it('shows an accessible sign-in error when redirect cannot start', async () => {
