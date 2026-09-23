@@ -185,14 +185,14 @@ public sealed class GraphDeviceAndAuthenticationReaderTests
     public async Task Temporary_access_pass_uses_single_use_sixty_minute_payload_and_maps_only_safe_fields()
     {
         var transport = new RecordingTransport("""
-            {"temporaryAccessPass":"ABC123","id":"tap-1","startDateTime":"2026-09-23T10:00:00Z","lifetimeInMinutes":60,"isUsableOnce":true,"secret":"must-not-be-exposed"}
+            {"temporaryAccessPass":"fixture-tap-value","id":"tap-1","startDateTime":"2026-09-23T10:00:00Z","lifetimeInMinutes":60,"isUsableOnce":true,"secret":"must-not-be-exposed"}
             """);
         var factory = new RecordingFactory(transport);
 
         var result = await new GraphAuthenticationMethodCommands(factory)
             .CreateTemporaryAccessPassAsync("user-1", "tap-key", CancellationToken.None);
 
-        result.TemporaryAccessPass.Should().Be("ABC123");
+        result.TemporaryAccessPass.Should().Be("fixture-tap-value");
         result.Id.Should().Be("tap-1");
         result.LifetimeInMinutes.Should().Be(60);
         result.IsUsableOnce.Should().BeTrue();
@@ -218,9 +218,9 @@ public sealed class GraphDeviceAndAuthenticationReaderTests
 
     [Theory]
     [InlineData("{\"id\":\"tap-1\",\"lifetimeInMinutes\":60,\"isUsableOnce\":true}")]
-    [InlineData("{\"temporaryAccessPass\":\"ABC123\",\"lifetimeInMinutes\":60,\"isUsableOnce\":true}")]
-    [InlineData("{\"temporaryAccessPass\":\"ABC123\",\"id\":\"tap-1\",\"lifetimeInMinutes\":30,\"isUsableOnce\":true}")]
-    [InlineData("{\"temporaryAccessPass\":\"ABC123\",\"id\":\"tap-1\",\"lifetimeInMinutes\":60,\"isUsableOnce\":false}")]
+    [InlineData("{\"temporaryAccessPass\":\"fixture-tap-value\",\"lifetimeInMinutes\":60,\"isUsableOnce\":true}")]
+    [InlineData("{\"temporaryAccessPass\":\"fixture-tap-value\",\"id\":\"tap-1\",\"lifetimeInMinutes\":30,\"isUsableOnce\":true}")]
+    [InlineData("{\"temporaryAccessPass\":\"fixture-tap-value\",\"id\":\"tap-1\",\"lifetimeInMinutes\":60,\"isUsableOnce\":false}")]
     public async Task Temporary_access_pass_rejects_missing_or_contradictory_response_contract(string content)
     {
         var transport = new RecordingTransport(content);

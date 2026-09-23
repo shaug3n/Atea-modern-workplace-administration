@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { messages } from '../app/messages';
+import { useFocusContainment } from './useFocusContainment';
 
 export type ConfirmationDialogProps = {
   title: string;
@@ -38,6 +39,7 @@ export function ConfirmationDialog({
   const [phrase, setPhrase] = useState('');
   const phraseMatches = !destructivePhrase || phrase === destructivePhrase;
   const canConfirm = reviewed && phraseMatches && !busy && !sourceLimitation;
+  const dialogRef = useFocusContainment<HTMLElement>(!embedded, onCancel && !busy ? onCancel : undefined);
 
   useEffect(() => {
     setReviewed(false);
@@ -91,5 +93,5 @@ export function ConfirmationDialog({
   );
 
   if (embedded) return <div className="mutation-confirmation">{content}</div>;
-  return <div className="modal-backdrop"><section className="mutation-dialog" role="dialog" aria-modal="true" aria-labelledby="mutation-dialog-title">{content}</section></div>;
+  return <div className="modal-backdrop"><section ref={dialogRef} className="mutation-dialog" role="dialog" aria-modal="true" aria-labelledby="mutation-dialog-title">{content}</section></div>;
 }

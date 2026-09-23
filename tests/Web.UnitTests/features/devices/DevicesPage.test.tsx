@@ -120,7 +120,7 @@ describe('DevicesPage', () => {
     expect(loader).not.toHaveBeenCalled();
   });
 
-  it('places all five privileged device actions in one accessible action menu per row', async () => {
+  it('keeps only routine device actions in the row menu and destructive actions in the detail danger zone', async () => {
     render(<DevicesPage
       capabilities={[
         { capability: 'devices.view', state: 'allowed', reasonCode: 'active_role' },
@@ -135,10 +135,31 @@ describe('DevicesPage', () => {
     expect(screen.getByRole('menuitem', { name: 'Sync device' })).toBeTruthy();
     expect(screen.getByRole('menuitem', { name: 'Remote lock' })).toBeTruthy();
     expect(screen.getByRole('menuitem', { name: 'Restart device' })).toBeTruthy();
-    expect(screen.getByRole('menuitem', { name: 'Retire device' })).toBeTruthy();
-    expect(screen.getByRole('menuitem', { name: 'Wipe device' })).toBeTruthy();
+    expect(screen.queryByRole('menuitem', { name: 'Retire device' })).toBeNull();
+    expect(screen.queryByRole('menuitem', { name: 'Wipe device' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Sync' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Remote lock' })).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open details for WIN-TEST-01' }));
+    expect(screen.getByRole('button', { name: 'Retire device' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Wipe device' })).toBeTruthy();
+  });
+
+  it('opens the device from a valid query id after the device list loads', async () => {
+    window.history.pushState({}, '', '/devices?device=device-1');
+    render(<DevicesPage capabilities={[{ capability: 'devices.view', state: 'allowed', reasonCode: 'active_role' }]} loadDevices={loadDevices} />);
+
+    expect(await screen.findByRole('dialog', { name: 'WIN-TEST-01' })).toBeTruthy();
+    window.history.pushState({}, '', '/devices');
+  });
+
+  it('ignores unknown and malformed device query ids without bypassing the loaded list', async () => {
+    window.history.pushState({}, '', '/devices?device=%00');
+    render(<DevicesPage capabilities={[{ capability: 'devices.view', state: 'allowed', reasonCode: 'active_role' }]} loadDevices={loadDevices} />);
+
+    await screen.findByText('WIN-TEST-01');
+    expect(screen.queryByRole('dialog')).toBeNull();
+    window.history.pushState({}, '', '/devices');
   });
 
   it('shows privileged permission state without leaving failing action buttons for consent or PIM users', async () => {
@@ -199,6 +220,20 @@ describe('DevicesPage', () => {
     expect(screen.queryByRole('dialog')).toBeNull();
   });
 
+  it('focuses and contains the device detail panel, then restores the row trigger', async () => {
+    render(<DevicesPage capabilities={[{ capability: 'devices.view', state: 'allowed', reasonCode: 'active_role' }]} loadDevices={loadDevices} />);
+    await screen.findByText('WIN-TEST-01');
+    const trigger = screen.getByRole('button', { name: 'Open details for WIN-TEST-01' });
+    fireEvent.click(trigger);
+    const panel = screen.getByRole('dialog', { name: 'WIN-TEST-01' });
+    const close = screen.getByRole('button', { name: 'Close device details' });
+    expect(document.activeElement).toBe(close);
+    fireEvent.keyDown(panel, { key: 'Tab', shiftKey: true });
+    expect(document.activeElement).toBe(close);
+    fireEvent.click(close);
+    expect(document.activeElement).toBe(trigger);
+  });
+
   it.each([
     ['Remote lock', 'REMOTE LOCK'],
     ['Restart device', 'RESTART'],
@@ -214,9 +249,14 @@ describe('DevicesPage', () => {
     />);
 
     await screen.findByText('WIN-TEST-01');
-    fireEvent.click(screen.getByRole('button', { name: 'Actions for WIN-TEST-01' }));
-    fireEvent.click(screen.getByRole('menuitem', { name: label }));
-    expect(screen.getByRole('dialog')).toBeTruthy();
+    if (label === 'Retire device' || label === 'Wipe device') {
+      fireEvent.click(screen.getByRole('button', { name: 'Open details for WIN-TEST-01' }));
+      fireEvent.click(screen.getByRole('button', { name: label }));
+    } else {
+      fireEvent.click(screen.getByRole('button', { name: 'Actions for WIN-TEST-01' }));
+      fireEvent.click(screen.getByRole('menuitem', { name: label }));
+    }
+    expect(screen.getByRole('dialog', { name: new RegExp(label.split(' ')[0]) })).toBeTruthy();
     expect(screen.getByLabelText(/type .* to confirm/i)).toBeTruthy();
     expect((screen.getByRole('button', { name: 'Confirm action' }) as HTMLButtonElement).disabled).toBe(true);
     fireEvent.change(screen.getByLabelText(/type .* to confirm/i), { target: { value: phrase } });
@@ -272,8 +312,8 @@ describe('DevicesPage', () => {
   it('keeps wrong-case and partial-whitespace phrases disabled', async () => {
     render(<DevicesPage capabilities={[{ capability: 'devices.view', state: 'allowed', reasonCode: 'active_role' }, { capability: 'devices.privileged.manage', state: 'allowed', reasonCode: 'active_role' }]} loadDevices={loadDevices} />);
     await screen.findByText('WIN-TEST-01');
-    fireEvent.click(screen.getByRole('button', { name: 'Actions for WIN-TEST-01' }));
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Wipe device' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Open details for WIN-TEST-01' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Wipe device' }));
     const phraseInput = screen.getByLabelText(/type .* to confirm/i);
     fireEvent.change(phraseInput, { target: { value: ' wipe ' } });
     fireEvent.click(screen.getByLabelText(/I reviewed the target/i));
@@ -283,8 +323,8 @@ describe('DevicesPage', () => {
   it('labels the destructive confirmation with the exact action phrase and omits phrase input for Sync', async () => {
     render(<DevicesPage capabilities={[{ capability: 'devices.view', state: 'allowed', reasonCode: 'active_role' }, { capability: 'devices.privileged.manage', state: 'allowed', reasonCode: 'active_role' }]} loadDevices={loadDevices} />);
     await screen.findByText('WIN-TEST-01');
-    fireEvent.click(screen.getByRole('button', { name: 'Actions for WIN-TEST-01' }));
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Wipe device' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Open details for WIN-TEST-01' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Wipe device' }));
     expect(screen.getByLabelText('Type WIPE to confirm')).toBeTruthy();
     expect(screen.getByText('Type WIPE to confirm')).toBeTruthy();
 

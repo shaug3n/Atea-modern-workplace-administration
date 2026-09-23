@@ -60,7 +60,7 @@ public sealed class UserSecurityCommandEndpointTests
         var revokeBody = await revoke.Content.ReadAsStringAsync();
 
         tap.StatusCode.Should().Be(HttpStatusCode.OK);
-        tapBody.Should().Contain("ABC123");
+        tapBody.Should().Contain("fixture-tap-value");
         tapBody.Should().NotContain("secret");
         revoke.StatusCode.Should().Be(HttpStatusCode.OK);
         revokeBody.Should().Contain("users.sessions.revoke");
@@ -140,7 +140,7 @@ public sealed class UserSecurityCommandEndpointTests
     {
         public int Calls { get; private set; }
         public Task<GraphOperationResult> RemoveAsync(string userObjectId, string methodObjectId, string methodType, string idempotencyKey, CancellationToken cancellationToken) => Task.FromResult(GraphOperationResult.Success());
-        public Task<GraphTemporaryAccessPassResult> CreateTemporaryAccessPassAsync(string userObjectId, string idempotencyKey, CancellationToken cancellationToken) { Calls++; return Task.FromResult(new GraphTemporaryAccessPassResult("ABC123", "tap-1", DateTimeOffset.Parse("2026-09-23T10:00:00Z"), 60, true)); }
+        public Task<GraphTemporaryAccessPassResult> CreateTemporaryAccessPassAsync(string userObjectId, string idempotencyKey, CancellationToken cancellationToken) { Calls++; return Task.FromResult(new GraphTemporaryAccessPassResult("fixture-tap-value", "tap-1", DateTimeOffset.Parse("2026-09-23T10:00:00Z"), 60, true)); }
     }
     private sealed class RecordingSessionCommands : IUserSessionCommands { public int Calls { get; private set; } public Task<GraphOperationResult> RevokeAsync(string userObjectId, string idempotencyKey, CancellationToken cancellationToken) { Calls++; return Task.FromResult(GraphOperationResult.Success()); } }
     private sealed class StaticReader(GraphAuthorizationSnapshot snapshot) : IGraphAuthorizationSnapshotReader { public Task<GraphAuthorizationSnapshot> ReadAsync(WorkspaceContext context, CancellationToken cancellationToken = default) => Task.FromResult(snapshot); }

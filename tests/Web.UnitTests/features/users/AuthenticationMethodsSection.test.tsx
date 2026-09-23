@@ -57,7 +57,7 @@ describe('AuthenticationMethodsSection', () => {
 
   it('reveals a temporary access pass only on the first successful response', async () => {
     apiMock.mockImplementation(async (path: string) => path.includes('temporary-access-pass')
-      ? new Response(JSON.stringify({ status: 'succeeded', temporaryAccessPass: 'ABC123' }), { status: 200 })
+      ? new Response(JSON.stringify({ status: 'succeeded', temporaryAccessPass: 'fixture-tap-value' }), { status: 200 })
       : new Response(JSON.stringify({ userObjectId: 'user-1', items: [], fetchedAt: '2026-09-23T08:00:00Z', freshness: 'live', partialData: false, access: { state: 'allowed' } }), { status: 200 }));
     render(<AuthenticationMethodsSection userId="user-1" userLabel="Ada Lovelace" decision={allowed} manageDecision={manage} />);
 
@@ -65,8 +65,8 @@ describe('AuthenticationMethodsSection', () => {
     fireEvent.click(screen.getByLabelText('I reviewed the target, change and required capability.'));
     fireEvent.click(screen.getByRole('button', { name: 'Confirm action' }));
 
-    expect(await screen.findByText('ABC123')).toBeTruthy();
+    expect(await screen.findByText('fixture-tap-value')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Close' }));
-    expect(screen.queryByText('ABC123')).toBeNull();
+    expect(screen.queryByText('fixture-tap-value')).toBeNull();
   });
 });

@@ -41,6 +41,28 @@ describe('UserMutationDialogs', () => {
     expect(onConfirm).toHaveBeenCalledTimes(1);
   });
 
+  it('focuses the confirmation dialog and contains Tab navigation', () => {
+    const trigger = document.createElement('button');
+    trigger.textContent = 'Open';
+    document.body.appendChild(trigger);
+    trigger.focus();
+    const { unmount } = render(<ConfirmationDialog title="Confirm" target="Ada" proposedChange="Change" requiredCapability="users.edit" onConfirm={vi.fn()} onCancel={vi.fn()} />);
+
+    const dialog = screen.getByRole('dialog');
+    const cancel = screen.getByRole('button', { name: 'Cancel' });
+    const confirm = screen.getByRole('button', { name: 'Confirm action' });
+    const reviewed = screen.getByLabelText('I reviewed the target, change and required capability.');
+    reviewed.focus();
+    fireEvent.keyDown(dialog, { key: 'Tab', shiftKey: true });
+    expect(document.activeElement).toBe(cancel);
+    fireEvent.keyDown(dialog, { key: 'Tab' });
+    expect(document.activeElement).toBe(reviewed);
+
+    unmount();
+    expect(document.activeElement).toBe(trigger);
+    trigger.remove();
+  });
+
   it('explains source-of-authority read-only limitations and blocks confirmation', () => {
     const readOnlyUser: UserDetails = {
       id: 'user-1',

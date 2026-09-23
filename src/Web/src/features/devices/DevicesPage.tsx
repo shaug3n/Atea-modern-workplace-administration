@@ -8,6 +8,7 @@ import type { ApiFetch } from '../users/userDetailApi';
 import { isPimCapabilityState, type CapabilityDecision } from '../../capabilities/capabilityTypes';
 import { PermissionState } from '../../components/PermissionState';
 import { ActionMenu } from '../../components/ActionMenu';
+import { useFocusContainment } from '../../components/useFocusContainment';
 
 const emptyFilters: DeviceFilters = { search: '', complianceState: '', operatingSystem: '' };
 
@@ -26,6 +27,7 @@ export function DevicesPage({ loadDevices, capabilities = [] }: { loadDevices?: 
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionStatus, setActionStatus] = useState<string | null>(null);
   const actionPendingRef = useRef(false);
+  const detailsTriggerRef = useRef<HTMLElement | null>(null);
   const loader = useMemo(() => loadDevices ?? ((nextFilters: DeviceFilters, nextContinuationToken?: string | null) => fetchDevices(api as ApiFetch, nextFilters, nextContinuationToken ?? null)), [api, loadDevices]);
   const viewDecision = capabilities.find((decision) => decision.capability === 'devices.view') ?? { capability: 'devices.view' as const, state: 'hidden' as const, reasonCode: 'capability_not_returned' };
   const privilegedDecision = capabilities.find((decision) => decision.capability === 'devices.privileged.manage') ?? { capability: 'devices.privileged.manage' as const, state: 'hidden' as const, reasonCode: 'capability_not_returned' };
@@ -54,6 +56,13 @@ export function DevicesPage({ loadDevices, capabilities = [] }: { loadDevices?: 
     setPreviousTokens([]);
     setContinuationToken(null);
   }, [filters.search, filters.complianceState, filters.operatingSystem]);
+
+  useEffect(() => {
+    const requestedId = new URLSearchParams(window.location.search).get('device');
+    if (!requestedId || !result) return;
+    const requestedDevice = result.items.find((device) => device.id === requestedId);
+    if (requestedDevice) setDetailsTarget((current) => current ?? requestedDevice);
+  }, [result]);
 
   const runAction = async (device: ManagedDevice, action: DeviceAction) => {
     if (actionPendingRef.current) return;
@@ -143,14 +152,14 @@ export function DevicesPage({ loadDevices, capabilities = [] }: { loadDevices?: 
       {!failed && result?.error && <section className="permission-panel" role="alert"><h2>{deviceErrorTitle}</h2><p>{result.error.message}</p><button type="button" onClick={() => setRefreshVersion((version) => version + 1)}>{messages.retry}</button></section>}
       {!failed && loading && !result && <div className="async-state async-state--loading" role="status"><span className="async-state__bar" /><span className="async-state__bar" /><span className="async-state__bar" />{messages.devicesLoading}</div>}
       {!failed && !result?.error && !loading && result && result.items.length === 0 && <div className="async-state">{messages.devicesNoResults}</div>}
-      {!failed && !result?.error && result && result.items.length > 0 && <DevicesTable devices={result.items} canManage={privilegedDecision.state === 'allowed'} onOpenDetails={setDetailsTarget} onAction={(device, action) => setActionTarget({ device, action })} />}
+      {!failed && !result?.error && result && result.items.length > 0 && <DevicesTable devices={result.items} canManage={privilegedDecision.state === 'allowed'} onOpenDetails={(device, trigger) => { detailsTriggerRef.current = trigger; setDetailsTarget(device); }} onAction={(device, action) => setActionTarget({ device, action })} />}
       {!failed && !result?.error && result && <div className="table-pagination" aria-label={messages.devicesPaginationLabel}><span>{messages.devicesPageLabel(previousTokens.length + 1)}</span><div><button type="button" onClick={goPrevious} disabled={previousTokens.length === 0 || loading}>{messages.devicesPreviousPage}</button><button type="button" onClick={goNext} disabled={!result.continuationToken || loading}>{messages.devicesNextPage}</button></div></div>}
 
       {privilegedDecision.state !== 'allowed' && privilegedDecision.state !== 'hidden' && <div className="device-permission-state"><PermissionState decision={privilegedDecision}><span>{messages.devicesPrivilegedUnavailable}</span></PermissionState></div>}
 
       {actionStatus && <p className="action-feedback action-feedback--success" role="status">{actionStatus}</p>}
       {actionError && <p className="action-feedback action-feedback--error" role="alert">{actionError}</p>}
-      {detailsTarget && <DeviceDetailsPanel device={detailsTarget} canManage={privilegedDecision.state === 'allowed'} onClose={() => setDetailsTarget(null)} onAction={(action) => setActionTarget({ device: detailsTarget, action })} />}
+      {detailsTarget && <DeviceDetailsPanel device={detailsTarget} canManage={privilegedDecision.state === 'allowed'} restoreFocusRef={detailsTriggerRef} onClose={() => setDetailsTarget(null)} onAction={(action) => setActionTarget({ device: detailsTarget, action })} />}
       {actionTarget && <DeviceActionConfirmation target={actionTarget} busy={actionPending} onConfirm={() => void runAction(actionTarget.device, actionTarget.action)} onCancel={() => { if (!actionPending) setActionTarget(null); }} />}
     </section>
   );
@@ -160,7 +169,7 @@ function SummaryCard({ label, value, detail }: { label: string; value: string; d
   return <article className="summary-card"><span className="summary-card__label">{label}</span><strong>{value}</strong><span className="summary-card__detail">{detail}</span></article>;
 }
 
-function DevicesTable({ devices, canManage, onOpenDetails, onAction }: { devices: ManagedDevice[]; canManage: boolean; onOpenDetails: (device: ManagedDevice) => void; onAction: (device: ManagedDevice, action: DeviceAction) => void }) {
+function DevicesTable({ devices, canManage, onOpenDetails, onAction }: { devices: ManagedDevice[]; canManage: boolean; onOpenDetails: (device: ManagedDevice, trigger: HTMLElement) => void; onAction: (device: ManagedDevice, action: DeviceAction) => void }) {
   return (
     <div className="users-table-wrap">
       <table className="users-table" aria-label={messages.devicesTableLabel}>
@@ -172,7 +181,7 @@ function DevicesTable({ devices, canManage, onOpenDetails, onAction }: { devices
           <td>{device.managedDeviceOwnerType || messages.devicesUnknown}<small>{device.userId || ''}</small></td>
           <td>{device.lastSyncDateTime ? new Date(device.lastSyncDateTime).toLocaleString() : messages.devicesNotSynced}</td>
           <td>{[device.manufacturer, device.model].filter(Boolean).join(' ') || messages.devicesUnknown}<small>{device.serialNumber || ''}</small></td>
-          <td className="detail-table__actions"><button type="button" className="table-action" aria-label={`${messages.devicesOpenDetails} for ${device.deviceName || device.id}`} onClick={() => onOpenDetails(device)}>{messages.devicesOpenDetails}</button>{canManage && <ActionMenu label={`${messages.devicesActionsFor} ${device.deviceName || device.id}`} items={actionItems(device, onAction)} />}</td>
+          <td className="detail-table__actions"><button type="button" className="table-action" aria-label={`${messages.devicesOpenDetails} for ${device.deviceName || device.id}`} onClick={(event) => onOpenDetails(device, event.currentTarget)}>{messages.devicesOpenDetails}</button>{canManage && <ActionMenu label={`${messages.devicesActionsFor} ${device.deviceName || device.id}`} items={actionItems(device, onAction)} />}</td>
         </tr>)}</tbody>
       </table>
     </div>
@@ -184,24 +193,13 @@ function actionItems(device: ManagedDevice, onAction: (device: ManagedDevice, ac
     { label: messages.devicesSyncAction, onSelect: () => onAction(device, 'sync') },
     { label: messages.devicesRemoteLockAction, onSelect: () => onAction(device, 'remote-lock') },
     { label: messages.devicesRestartAction, onSelect: () => onAction(device, 'restart') },
-    { label: messages.devicesRetireAction, danger: true, onSelect: () => onAction(device, 'retire') },
-    { label: messages.devicesWipeAction, danger: true, onSelect: () => onAction(device, 'wipe') },
   ];
 }
 
-function DeviceDetailsPanel({ device, canManage, onClose, onAction }: { device: ManagedDevice; canManage: boolean; onClose: () => void; onAction: (action: DeviceAction) => void }) {
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        event.preventDefault();
-        onClose();
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [onClose]);
+function DeviceDetailsPanel({ device, canManage, restoreFocusRef, onClose, onAction }: { device: ManagedDevice; canManage: boolean; restoreFocusRef: React.RefObject<HTMLElement | null>; onClose: () => void; onAction: (action: DeviceAction) => void }) {
+  const panelRef = useFocusContainment<HTMLElement>(true, onClose, restoreFocusRef);
 
-  return <section className="device-detail-panel" role="dialog" aria-modal="true" aria-labelledby="device-detail-title">
+  return <section ref={panelRef} className="device-detail-panel" role="dialog" aria-modal="true" aria-labelledby="device-detail-title">
     <div className="device-detail-panel__header"><div><p className="eyebrow">{messages.devicesDetailsEyebrow}</p><h2 id="device-detail-title">{device.deviceName || messages.devicesUnknown}</h2><p>{[device.manufacturer, device.model].filter(Boolean).join(' ') || messages.devicesUnknown}</p></div><button type="button" aria-label={messages.devicesCloseDetails} onClick={onClose}>×</button></div>
     <section className="device-detail-group"><h3>Overview</h3><dl className="detail-list device-detail-list"><Detail label={messages.devicesDeviceIdLabel} value={device.id} /><Detail label={messages.devicesPlatformColumn} value={[device.operatingSystem, device.osVersion].filter(Boolean).join(' ') || messages.devicesUnknown} /><Detail label={messages.devicesOwnerColumn} value={device.managedDeviceOwnerType || messages.devicesUnknown} /><Detail label={messages.devicesPrimaryUserLabel} value={device.userId || messages.devicesNoPrimaryUser} /></dl></section>
     <section className="device-detail-group"><h3>Security</h3><dl className="detail-list device-detail-list"><Detail label={messages.devicesComplianceColumn} value={device.complianceState || messages.devicesUnknown} /><Detail label={messages.devicesManagementStateLabel} value={device.managementState || messages.devicesUnknown} /><Detail label={messages.devicesLastSyncColumn} value={device.lastSyncDateTime ? new Date(device.lastSyncDateTime).toLocaleString() : messages.devicesNotSynced} /><Detail label={messages.devicesAzureAdDeviceIdLabel} value={device.azureAdDeviceId || messages.devicesUnknown} /></dl>{canManage && <div className="device-detail-panel__actions"><button type="button" className="button button--primary" onClick={() => onAction('sync')}>{messages.devicesSyncAction}</button><button type="button" className="button button--secondary" onClick={() => onAction('remote-lock')}>{messages.devicesRemoteLockAction}</button><button type="button" className="button button--secondary" onClick={() => onAction('restart')}>{messages.devicesRestartAction}</button></div>}</section>

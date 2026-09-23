@@ -17,12 +17,12 @@ public sealed class UserSecurityCommandServiceTests
     {
         var idempotency = new MemoryIdempotencyService();
         var audit = new RecordingAuditWriter();
-        var service = CreateAuthenticationService(idempotency, audit, new GraphTemporaryAccessPassResult("ABC123", "tap-1", null, 60, true));
+        var service = CreateAuthenticationService(idempotency, audit, new GraphTemporaryAccessPassResult("fixture-tap-value", "tap-1", null, 60, true));
 
         var result = await service.CreateTemporaryAccessPassAsync(Context(), "user-1", "key-1", CancellationToken.None);
 
-        result.TemporaryAccessPass.Should().Be("ABC123");
-        idempotency.Records.Single().SafeResultJson.Should().NotContain("ABC123");
+        result.TemporaryAccessPass.Should().Be("fixture-tap-value");
+        idempotency.Records.Single().SafeResultJson.Should().NotContain("fixture-tap-value");
         audit.Events.Single().SafeMetadataJson.Should().Be("{}");
     }
 
@@ -30,7 +30,7 @@ public sealed class UserSecurityCommandServiceTests
     public async Task Replayed_tap_request_never_returns_the_original_code()
     {
         var idempotency = new MemoryIdempotencyService();
-        var service = CreateAuthenticationService(idempotency, new RecordingAuditWriter(), new GraphTemporaryAccessPassResult("ABC123", "tap-1", null, 60, true));
+        var service = CreateAuthenticationService(idempotency, new RecordingAuditWriter(), new GraphTemporaryAccessPassResult("fixture-tap-value", "tap-1", null, 60, true));
 
         _ = await service.CreateTemporaryAccessPassAsync(Context(), "user-1", "key-1", CancellationToken.None);
         var result = await service.CreateTemporaryAccessPassAsync(Context(), "user-1", "key-1", CancellationToken.None);
@@ -51,27 +51,27 @@ public sealed class UserSecurityCommandServiceTests
         result.Status.Should().Be("temporarily_unavailable");
         result.Error.Should().Be("invalid_response");
         result.TemporaryAccessPass.Should().BeNull();
-        idempotency.Records.Single().SafeResultJson.Should().NotContain("ABC123");
+        idempotency.Records.Single().SafeResultJson.Should().NotContain("fixture-tap-value");
     }
 
     [Fact]
     public async Task Tap_audit_preserves_only_graph_correlation_identifiers()
     {
         var audit = new RecordingAuditWriter();
-        var service = CreateAuthenticationService(new MemoryIdempotencyService(), audit, new GraphTemporaryAccessPassResult("ABC123", "tap-1", null, 60, true, CorrelationId: "corr-1", RequestId: "req-1"));
+        var service = CreateAuthenticationService(new MemoryIdempotencyService(), audit, new GraphTemporaryAccessPassResult("fixture-tap-value", "tap-1", null, 60, true, null, "corr-1", "req-1"));
 
         await service.CreateTemporaryAccessPassAsync(Context(), "user-1", "audit-tap", CancellationToken.None);
 
         audit.Events.Single().GraphCorrelationId.Should().Be("corr-1");
         audit.Events.Single().GraphRequestId.Should().Be("req-1");
         audit.Events.Single().SafeMetadataJson.Should().Be("{}");
-        audit.Events.Single().SafeMetadataJson.Should().NotContain("ABC123");
+        audit.Events.Single().SafeMetadataJson.Should().NotContain("fixture-tap-value");
     }
 
     [Fact]
     public async Task Missing_tap_consent_denies_direct_service_call_without_command_dispatch()
     {
-        var commands = new StubAuthenticationMethodCommands(new GraphTemporaryAccessPassResult("ABC123", "tap-1", null, 60, true));
+        var commands = new StubAuthenticationMethodCommands(new GraphTemporaryAccessPassResult("fixture-tap-value", "tap-1", null, 60, true));
         var service = CreateAuthenticationService(new MemoryIdempotencyService(), new RecordingAuditWriter(), commands: commands, snapshot: ConsentMissingSnapshot);
 
         var result = await service.CreateTemporaryAccessPassAsync(Context(), "user-1", "consent-tap", CancellationToken.None);
@@ -118,7 +118,7 @@ public sealed class UserSecurityCommandServiceTests
         new(
             new StubAuthenticationMethodReader(),
             new StaticAuthorizationReader(snapshot ?? AllowedSnapshot),
-            commands ?? new StubAuthenticationMethodCommands(tap ?? new GraphTemporaryAccessPassResult("ABC123", "tap-1", null, 60, true)),
+            commands ?? new StubAuthenticationMethodCommands(tap ?? new GraphTemporaryAccessPassResult("fixture-tap-value", "tap-1", null, 60, true)),
             idempotency,
             audit);
 

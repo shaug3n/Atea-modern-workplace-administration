@@ -36,15 +36,39 @@ describe('user security dialogs', () => {
 
   it('posts TAP without a body, does not use storage, and never reveals replayed code', async () => {
     const setItem = vi.spyOn(Storage.prototype, 'setItem');
-    apiMock.mockResolvedValue(new Response(JSON.stringify({ status: 'succeeded', replayed: true, temporaryAccessPass: 'REPLAYED-SECRET' }), { status: 200 }));
+    apiMock.mockResolvedValue(new Response(JSON.stringify({ status: 'succeeded', replayed: true, temporaryAccessPass: 'fixture-replayed-value' }), { status: 200 }));
     render(<TemporaryAccessPassDialog userId="user-1" target="Ada Lovelace" onClose={vi.fn()} />);
     confirmDialog();
 
     await screen.findByRole('alert');
     expect(apiMock).toHaveBeenCalledWith('/api/users/user-1/authentication-methods/temporary-access-pass', expect.objectContaining({ method: 'POST' }));
     expect(apiMock.mock.calls[0][1]).not.toHaveProperty('body');
-    expect(screen.queryByText('REPLAYED-SECRET')).toBeNull();
+    expect(screen.queryByText('fixture-replayed-value')).toBeNull();
     expect(setItem).not.toHaveBeenCalled();
     setItem.mockRestore();
+  });
+
+  it('focuses and contains the one-time TAP result, then restores the prior trigger', async () => {
+    const trigger = document.createElement('button');
+    trigger.textContent = 'Grant Temporary Access Pass';
+    document.body.appendChild(trigger);
+    trigger.focus();
+    apiMock.mockResolvedValue(new Response(JSON.stringify({ status: 'succeeded', temporaryAccessPass: 'fixture-tap-value' }), { status: 200 }));
+    const onClose = vi.fn();
+    const { unmount } = render(<TemporaryAccessPassDialog userId="user-1" target="Ada Lovelace" onClose={onClose} />);
+    confirmDialog();
+
+    const result = await screen.findByRole('dialog', { name: 'Temporary access pass issued' });
+    const close = within(result).getByRole('button', { name: 'Close' });
+    expect(document.activeElement).toBe(within(result).getByRole('button', { name: 'Copy code' }));
+    fireEvent.keyDown(result, { key: 'Tab', shiftKey: true });
+    expect(document.activeElement).toBe(close);
+    fireEvent.keyDown(result, { key: 'Tab' });
+    expect(document.activeElement).toBe(within(result).getByRole('button', { name: 'Copy code' }));
+    fireEvent.click(close);
+    expect(onClose).toHaveBeenCalledTimes(1);
+    unmount();
+    expect(document.activeElement).toBe(trigger);
+    trigger.remove();
   });
 });
