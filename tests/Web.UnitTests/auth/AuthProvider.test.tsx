@@ -6,6 +6,7 @@ import type { ReactNode } from 'react';
 const auth = vi.hoisted(() => ({
   account: { homeAccountId: 'account-1', localAccountId: 'object-1', username: 'alex@example.com' },
   authenticated: true,
+  inProgress: 'none',
   instance: {
     loginRedirect: vi.fn(),
     logoutRedirect: vi.fn(),
@@ -16,11 +17,12 @@ const auth = vi.hoisted(() => ({
 
 vi.mock('@azure/msal-browser', () => ({
   InteractionRequiredAuthError: class InteractionRequiredAuthError extends Error {},
+  InteractionStatus: { Startup: 'startup' },
   PublicClientApplication: class PublicClientApplication {}
 }));
 vi.mock('@azure/msal-react', () => ({
   MsalProvider: ({ children }: { children: ReactNode }) => children,
-  useMsal: () => ({ instance: auth.instance, accounts: auth.authenticated ? [auth.account] : [] }),
+  useMsal: () => ({ instance: auth.instance, accounts: auth.authenticated ? [auth.account] : [], inProgress: auth.inProgress }),
   useIsAuthenticated: () => auth.authenticated
 }));
 
@@ -38,6 +40,7 @@ describe('AuthProvider behavior', () => {
 
   beforeEach(() => {
     auth.authenticated = true;
+    auth.inProgress = 'none';
     vi.clearAllMocks();
     auth.instance.acquireTokenSilent.mockResolvedValue({ accessToken: 'api-token' });
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('{}')));
@@ -49,6 +52,14 @@ describe('AuthProvider behavior', () => {
     fireEvent.click(screen.getByText('sign-out'));
     await waitFor(() => expect(auth.instance.loginRedirect).toHaveBeenCalledWith({ scopes: [expect.any(String)] }));
     expect(auth.instance.logoutRedirect).toHaveBeenCalledOnce();
+  });
+
+  it('waits for MSAL initialization before enabling sign-in', () => {
+    auth.authenticated = false;
+    auth.inProgress = 'startup';
+    render(<AuthProvider instance={auth.instance as never}><Harness /></AuthProvider>);
+    expect((screen.getByRole('button', { name: 'Preparing sign-in…' }) as HTMLButtonElement).disabled).toBe(true);
+    expect(auth.instance.loginRedirect).not.toHaveBeenCalled();
   });
 
   it('shows an accessible sign-in error when redirect cannot start', async () => {

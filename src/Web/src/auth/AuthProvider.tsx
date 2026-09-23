@@ -1,4 +1,4 @@
-import { InteractionRequiredAuthError, PublicClientApplication, type AccountInfo } from '@azure/msal-browser';
+import { InteractionRequiredAuthError, InteractionStatus, PublicClientApplication, type AccountInfo } from '@azure/msal-browser';
 import { MsalProvider, useIsAuthenticated, useMsal } from '@azure/msal-react';
 import { createContext, useContext, useMemo, useState, type ReactNode } from 'react';
 import { messages } from '../app/messages';
@@ -36,13 +36,16 @@ export function createAuthActions(instance: Pick<PublicClientApplication, 'login
 }
 
 function AuthenticatedContent({ children }: { children: ReactNode }) {
-  const { instance, accounts } = useMsal();
+  const { instance, accounts, inProgress } = useMsal();
   const isAuthenticated = useIsAuthenticated();
   const [error, setError] = useState<string | null>(null);
   const account = accounts[0] ?? null;
   const value = useMemo(() => createAuthActions(instance, account, setError), [account, instance]);
 
-  if (!isAuthenticated) return <main role="main"><h1>{messages.authSignInTitle}</h1><button type="button" onClick={() => value.signIn().catch(() => { console.error('MSAL sign-in failed'); setError(messages.authSignInError); })}>{messages.authSignIn}</button>{error && <p role="alert">{error}</p>}</main>;
+  if (!isAuthenticated) {
+    const initializing = inProgress === InteractionStatus.Startup;
+    return <main role="main"><h1>{messages.authSignInTitle}</h1><button type="button" disabled={initializing} onClick={() => value.signIn().catch(() => { console.error('MSAL sign-in failed'); setError(messages.authSignInError); })}>{initializing ? messages.authPreparing : messages.authSignIn}</button>{error && <p role="alert">{error}</p>}</main>;
+  }
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
