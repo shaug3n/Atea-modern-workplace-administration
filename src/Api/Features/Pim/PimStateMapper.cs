@@ -2,6 +2,11 @@ namespace Atea.UnifiedWorkplace.Api.Features.Pim;
 
 public static class PimStateMapper
 {
+    public static string ToPimRequirement(DateTimeOffset? endDateTime, DateTimeOffset? now = null) =>
+        endDateTime is not null && endDateTime <= (now ?? DateTimeOffset.UtcNow)
+            ? "eligibility_expired"
+            : "activation_required";
+
     public static string ToCapabilityState(string? graphStatus) => ToPimRequirement(graphStatus) switch
     {
         "approval_required" => "pim_approval_required",

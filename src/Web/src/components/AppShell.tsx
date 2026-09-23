@@ -24,7 +24,7 @@ export function AppShell({ children, capabilities, currentPath, session, onNavig
           <img className="brand-logo" src={logo} alt="" data-logo-asset={theme === 'dark' ? 'atea-logo-white.svg' : 'atea-logo-grey.svg'} />
           <span>{messages.appTitle}</span>
         </a>
-        <TenantContextHeader session={session} connectionFresh={capabilities.sourceState === 'graph_authoritative'} />
+        <TenantContextHeader session={session} capabilitySnapshotFresh={capabilities.sourceState === 'graph_authoritative'} />
         <ThemeToggle />
       </header>
       <div className="app-body">

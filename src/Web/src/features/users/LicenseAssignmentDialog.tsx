@@ -7,12 +7,13 @@ import { mutateUser, type UserCommandResponse } from './userMutationApi';
 type LicenseChoice = { skuId: string; partNumber: string; displayName: string };
 type LicenseCatalogPayload = { items?: LicenseChoice[]; error?: string | { category?: string; code?: string }; access?: { state?: string } };
 
-export function LicenseAssignmentDialog({ userId, skuId, target, mode, assignedSkuIds = [], disabledPlans = [], onCompleted }: { userId: string; skuId: string | null; target?: string; mode: 'assign' | 'remove'; assignedSkuIds?: string[]; disabledPlans?: string[]; onCompleted?: (result: UserCommandResponse) => void }) {
+export function LicenseAssignmentDialog({ userId, skuId, target, mode, assignedSkuIds = [], disabledPlans = [], onCancel, onCompleted }: { userId: string; skuId: string | null; target?: string; mode: 'assign' | 'remove'; assignedSkuIds?: string[]; disabledPlans?: string[]; onCancel?: () => void; onCompleted?: (result: UserCommandResponse) => void }) {
   const api = useApi();
   const [choices, setChoices] = useState<LicenseChoice[]>([]);
   const [selectedId, setSelectedId] = useState(skuId ?? '');
   const [catalogError, setCatalogError] = useState<string | null>(null);
   const [catalogLoading, setCatalogLoading] = useState(mode === 'assign');
+  const [pending, setPending] = useState(false);
   useEffect(() => {
     if (mode !== 'assign') return;
     let cancelled = false;
@@ -31,10 +32,15 @@ export function LicenseAssignmentDialog({ userId, skuId, target, mode, assignedS
   const effectiveId = mode === 'assign' ? selectedId : skuId;
   const effectiveTarget = mode === 'assign' ? selected?.displayName || selected?.partNumber || selected?.skuId || 'Select a license' : target || skuId || '';
   const submit = async () => {
-    if (!effectiveId) return;
+    if (!effectiveId || pending) return;
     const path = `/api/users/${encodeURIComponent(userId)}/licenses/${encodeURIComponent(effectiveId)}`;
-    try { onCompleted?.(await mutateUser(api, path, mode === 'assign' ? 'POST' : 'DELETE', { skuId: effectiveId, disabledPlans })); }
+    setPending(true);
+    try {
+      const result = await mutateUser(api, path, mode === 'assign' ? 'POST' : 'DELETE', { skuId: effectiveId, disabledPlans });
+      onCompleted?.(result);
+    }
     catch { onCompleted?.({ status: 'temporarily_unavailable', requiredCapability: 'licenses.assign', replayed: false, error: 'temporarily_unavailable' }); }
+    finally { setPending(false); }
   };
 
   return (
@@ -43,7 +49,9 @@ export function LicenseAssignmentDialog({ userId, skuId, target, mode, assignedS
       target={effectiveTarget}
       proposedChange={mode === 'assign' ? messages.userLicenseAssignProposedChange : messages.userLicenseRemoveProposedChange}
       requiredCapability="licenses.assign"
+      busy={pending}
       onConfirm={submit}
+      onCancel={onCancel}
       sourceLimitation={catalogError || (mode === 'assign' && !catalogLoading && choices.length === 0 ? 'No eligible licenses are available for this user.' : mode === 'assign' && !selectedId ? 'Select a license before confirming.' : null)}
     >
       {mode === 'assign' && <label>License<select aria-label="License" value={selectedId} onChange={(event) => setSelectedId(event.target.value)}><option value="">Select a license</option>{selectable.map((choice) => <option key={choice.skuId} value={choice.skuId}>{choice.displayName || choice.partNumber || choice.skuId}</option>)}</select></label>}

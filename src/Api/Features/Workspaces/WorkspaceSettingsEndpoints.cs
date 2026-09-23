@@ -9,17 +9,27 @@ namespace Atea.UnifiedWorkplace.Api.Features.Workspaces;
 
 public sealed record WorkspaceSettingsRequest(string? DisplayName = null, IReadOnlyCollection<string>? EnabledModules = null, IReadOnlyCollection<string>? DefaultColumns = null, IReadOnlyDictionary<string, string>? DefaultFilters = null, string? SupportInstructions = null, string? DefaultTheme = null);
 public sealed record WorkspaceSettingsResponse(string DisplayName, IReadOnlyCollection<string> EnabledModules, IReadOnlyCollection<string> DefaultColumns, IReadOnlyDictionary<string, string> DefaultFilters, string SupportInstructions, string DefaultTheme, CapabilityDecision Access);
+public sealed record WorkspaceConfiguration(IReadOnlyCollection<string> EnabledModules, IReadOnlyCollection<string> DefaultColumns, IReadOnlyDictionary<string, string> DefaultFilters, string SupportInstructions, string DefaultTheme);
+
+public sealed class WorkspaceSettingsMemoryCache
+{
+    private readonly ConcurrentDictionary<Guid, WorkspaceConfiguration> entries = new();
+
+    public bool TryGet(Guid workspaceId, out WorkspaceConfiguration configuration) => entries.TryGetValue(workspaceId, out configuration!);
+
+    public void Set(Guid workspaceId, WorkspaceConfiguration configuration) => entries[workspaceId] = configuration;
+}
 
 public interface IWorkspaceSettingsService
 {
     Task<WorkspaceSettingsResponse> GetAsync(WorkspaceContext context, CancellationToken cancellationToken);
+    Task<WorkspaceConfiguration> GetConfigurationAsync(WorkspaceContext context, CancellationToken cancellationToken);
     Task<WorkspaceSettingsResponse> UpdateAsync(WorkspaceContext context, WorkspaceSettingsRequest request, CancellationToken cancellationToken);
 }
 
-public sealed class WorkspaceSettingsService(WorkplaceDbContext db, IConfiguration configuration) : IWorkspaceSettingsService
+public sealed class WorkspaceSettingsService(WorkplaceDbContext db, IConfiguration configuration, WorkspaceSettingsMemoryCache memoryCache) : IWorkspaceSettingsService
 {
-    private static readonly ConcurrentDictionary<Guid, WorkspaceSettingsResponse> Memory = new();
-    private static readonly HashSet<string> AllowedModules = new(StringComparer.OrdinalIgnoreCase) { "overview", "users", "licenses", "audit", "workspace-settings" };
+    private static readonly HashSet<string> AllowedModules = new(StringComparer.OrdinalIgnoreCase) { "overview", "users", "licenses", "devices", "identity", "audit", "workspace-settings" };
     private static readonly HashSet<string> AllowedColumns = new(StringComparer.OrdinalIgnoreCase) { "displayName", "userPrincipalName", "mail", "accountStatus", "userType" };
     private static readonly HashSet<string> AllowedFilters = new(StringComparer.OrdinalIgnoreCase) { "accountStatus", "tenantRole", "license", "userType" };
 
@@ -27,21 +37,29 @@ public sealed class WorkspaceSettingsService(WorkplaceDbContext db, IConfigurati
     {
         var access = CapabilityEvaluator.EvaluatePlatformCapability(Capability.WorkspaceSettingsManage, context.Membership);
         if (access.State != CapabilityState.Allowed) return new WorkspaceSettingsResponse(string.Empty, [], [], new Dictionary<string, string>(), string.Empty, "light", access);
+        var configuration = await GetConfigurationAsync(context, cancellationToken);
+        return new WorkspaceSettingsResponse(context.Membership.WorkspaceName, configuration.EnabledModules, configuration.DefaultColumns, configuration.DefaultFilters, configuration.SupportInstructions, configuration.DefaultTheme, access);
+    }
+
+    public async Task<WorkspaceConfiguration> GetConfigurationAsync(WorkspaceContext context, CancellationToken cancellationToken)
+    {
         if (HasDatabase())
         {
-            var settings = await db.WorkspaceSettings.AsNoTracking().Include(x => x.Workspace).SingleOrDefaultAsync(x => x.WorkspaceId == context.Membership.WorkspaceId, cancellationToken);
-            if (settings is not null) return FromEntity(settings, access);
+            var settings = await db.WorkspaceSettings.AsNoTracking().SingleOrDefaultAsync(x => x.WorkspaceId == context.Membership.WorkspaceId, cancellationToken);
+            if (settings is not null) return FromEntity(settings);
         }
-        return Memory.GetOrAdd(context.Membership.WorkspaceId, _ => Defaults(context, access));
+        return memoryCache.TryGet(context.Membership.WorkspaceId, out var cached)
+            ? cached
+            : DefaultsConfiguration();
     }
 
     public async Task<WorkspaceSettingsResponse> UpdateAsync(WorkspaceContext context, WorkspaceSettingsRequest request, CancellationToken cancellationToken)
     {
         var access = CapabilityEvaluator.EvaluatePlatformCapability(Capability.WorkspaceSettingsManage, context.Membership);
         if (access.State != CapabilityState.Allowed) throw new WorkspaceSettingsForbiddenException();
-        var current = await GetAsync(context, cancellationToken);
+        var current = await GetConfigurationAsync(context, cancellationToken);
         var updated = new WorkspaceSettingsResponse(
-            ValidateDisplayName(request.DisplayName ?? current.DisplayName),
+            ValidateDisplayName(request.DisplayName ?? context.Membership.WorkspaceName),
             ValidateList(request.EnabledModules ?? current.EnabledModules, AllowedModules, "enabledModules"),
             ValidateList(request.DefaultColumns ?? current.DefaultColumns, AllowedColumns, "defaultColumns"),
             ValidateFilters(request.DefaultFilters ?? current.DefaultFilters),
@@ -60,13 +78,14 @@ public sealed class WorkspaceSettingsService(WorkplaceDbContext db, IConfigurati
             entity.SupportInstructions = updated.SupportInstructions;
             await db.SaveChangesAsync(cancellationToken);
         }
-        Memory[context.Membership.WorkspaceId] = updated;
+        var updatedConfiguration = new WorkspaceConfiguration(updated.EnabledModules, updated.DefaultColumns, updated.DefaultFilters, updated.SupportInstructions, updated.DefaultTheme);
+        memoryCache.Set(context.Membership.WorkspaceId, updatedConfiguration);
         return updated;
     }
 
     private bool HasDatabase() => !string.IsNullOrWhiteSpace(configuration.GetConnectionString("WorkplaceDb"));
-    private static WorkspaceSettingsResponse Defaults(WorkspaceContext context, CapabilityDecision access) => new(context.Membership.WorkspaceName, ["overview", "users", "licenses"], ["displayName", "userPrincipalName"], new Dictionary<string, string>(), string.Empty, "light", access);
-    private static WorkspaceSettingsResponse FromEntity(WorkspaceSettings entity, CapabilityDecision access) => new(entity.Workspace.DisplayName, ParseList(entity.EnabledModulesJson), ParseList(entity.DefaultColumnsJson), ParseFilters(entity.DefaultFiltersJson), entity.SupportInstructions, entity.DefaultTheme, access);
+    private static WorkspaceConfiguration DefaultsConfiguration() => new(["overview", "users", "licenses", "devices", "identity", "audit", "workspace-settings"], ["displayName", "userPrincipalName"], new Dictionary<string, string>(), string.Empty, "light");
+    private static WorkspaceConfiguration FromEntity(WorkspaceSettings entity) => new(ParseList(entity.EnabledModulesJson), ParseList(entity.DefaultColumnsJson), ParseFilters(entity.DefaultFiltersJson), entity.SupportInstructions, entity.DefaultTheme);
     private static IReadOnlyCollection<string> ParseList(string value) { try { return JsonSerializer.Deserialize<string[]>(value) ?? []; } catch (JsonException) { return []; } }
     private static IReadOnlyDictionary<string, string> ParseFilters(string value) { try { return JsonSerializer.Deserialize<Dictionary<string, string>>(value) ?? new Dictionary<string, string>(); } catch (JsonException) { return new Dictionary<string, string>(); } }
     private static string ValidateDisplayName(string value) => !string.IsNullOrWhiteSpace(value) && value.Length <= 200 && !value.Any(char.IsControl) ? value.Trim() : throw new WorkspaceSettingsValidationException("displayName is invalid.", "displayName");

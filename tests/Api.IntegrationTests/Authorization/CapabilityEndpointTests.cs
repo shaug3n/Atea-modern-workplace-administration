@@ -56,7 +56,7 @@ public sealed class CapabilityEndpointTests
     }
 
     [Fact]
-    public async Task Guard_denies_direct_endpoint_call_when_workspace_settings_capability_is_hidden_without_reading_graph()
+    public async Task Consent_start_allows_a_nominated_customer_admin_without_platform_settings_access()
     {
         var reader = new RecordingSnapshotReader(GraphAuthorizationSnapshot.Available("user-1", ["Directory.Read.All"], []));
         using var factory = CreateFactory(reader: reader, platformRole: "member");
@@ -66,11 +66,8 @@ public sealed class CapabilityEndpointTests
         var response = await client.PostAsync("/api/workspaces/current/consent/start", null);
         var body = await response.Content.ReadAsStringAsync();
 
-        response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
-        response.Content.Headers.ContentType!.MediaType.Should().Be("application/problem+json");
-        body.Should().Contain("\"capability\":\"workspace.settings.manage\"");
-        body.Should().Contain("\"state\":\"hidden\"");
-        body.Should().Contain("\"reasonCode\":\"workspace_platform_role_required\"");
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        body.Should().Contain("\"authorizationUrl\"");
         reader.Calls.Should().Be(0);
     }
 

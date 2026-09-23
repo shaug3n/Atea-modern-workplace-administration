@@ -1,5 +1,7 @@
-import React, { cloneElement, isValidElement, type ReactElement, type ReactNode } from 'react';
+import React, { cloneElement, isValidElement, useState, type ReactElement, type ReactNode } from 'react';
 import type { CapabilityDecision } from '../capabilities/capabilityTypes';
+import { useApi } from '../auth/useApi';
+import { messages } from '../app/messages';
 
 const explanations: Record<string, string> = {
   read_only: 'This action is read-only for your current Entra role.',
@@ -22,13 +24,47 @@ export function PermissionState({ decision, children }: { decision: CapabilityDe
   }
 
   const content = disableInteractiveChildren(children);
+  const interactiveConsent = decision.nextStep?.href === '/api/workspaces/current/consent/start';
+  const scopeStatus = decision.reasonCode === 'scope_probe_unavailable'
+    ? messages.permissionScopeCheckUnavailable
+    : decision.missingScopes?.length
+      ? <> {messages.permissionMissingScopes} <code>{decision.missingScopes.join(', ')}</code></>
+      : null;
+
   return (
     <span data-capability={decision.capability} data-capability-state={decision.state}>
       {content}
-      <span role="status">{explanations[decision.state] ?? 'This action is not available.'}</span>
-      {decision.nextStep?.href && <a href={decision.nextStep.href}>{decision.nextStep.label}</a>}
+      <span role="status">{explanations[decision.state] ?? 'This action is not available.'}{scopeStatus}</span>
+      {decision.nextStep?.href && (interactiveConsent
+        ? <InteractiveConsentNextStep label={decision.nextStep.label} />
+        : <a href={decision.nextStep.href}>{decision.nextStep.label}</a>)}
     </span>
   );
+}
+
+function InteractiveConsentNextStep({ label }: { label: string }) {
+  const api = useApi();
+  const [consentUrl, setConsentUrl] = useState<string | null>(null);
+  const [consentError, setConsentError] = useState(false);
+
+  const startConsent = async () => {
+    setConsentError(false);
+    try {
+      const response = await api('/api/workspaces/current/consent/start', { method: 'POST' });
+      if (!response.ok) throw new Error('consent_start_failed');
+      const result = await response.json() as { authorizationUrl?: string };
+      if (!result.authorizationUrl) throw new Error('consent_url_missing');
+      setConsentUrl(result.authorizationUrl);
+    } catch {
+      setConsentError(true);
+    }
+  };
+
+  return <>
+    <button type="button" onClick={() => void startConsent()} disabled={Boolean(consentUrl)}>{label}</button>
+    {consentUrl && <a href={consentUrl}>Continue consent</a>}
+    {consentError && <span role="alert">Consent could not be started. Try again from the workspace overview.</span>}
+  </>;
 }
 
 function disableInteractiveChildren(children: ReactNode): ReactNode {

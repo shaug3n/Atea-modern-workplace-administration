@@ -17,7 +17,8 @@ public sealed record CapabilityDecision(
     string ReasonCode,
     string? RequiredRoleTemplateId = null,
     CapabilityPimState? Pim = null,
-    CapabilityNextStep? NextStep = null);
+    CapabilityNextStep? NextStep = null,
+    IReadOnlyCollection<string>? MissingScopes = null);
 
 public sealed record CapabilityPimState(string State, string? ActivationUrl = null);
 
@@ -31,21 +32,27 @@ public sealed record GraphAuthorizationSnapshot(
     IReadOnlyCollection<string> AdministrativeUnitScopeIds,
     IReadOnlyDictionary<string, bool> TenantPolicyFlags,
     string? ProblemCategory = null,
-    bool ConsentRequired = false)
+    bool ConsentRequired = false,
+    IReadOnlyDictionary<string, bool>? ScopeAvailability = null,
+    IReadOnlyDictionary<string, string>? ScopeProblems = null)
 {
     public static GraphAuthorizationSnapshot Available(
         string userObjectId,
         IReadOnlyCollection<string> grantedScopes,
         IReadOnlyCollection<DirectoryRoleSnapshot> directoryRoles,
         IReadOnlyCollection<string>? administrativeUnitScopeIds = null,
-        IReadOnlyDictionary<string, bool>? tenantPolicyFlags = null) =>
+        IReadOnlyDictionary<string, bool>? tenantPolicyFlags = null,
+        IReadOnlyDictionary<string, bool>? scopeAvailability = null,
+        IReadOnlyDictionary<string, string>? scopeProblems = null) =>
         new(
             IsAvailable: true,
             UserObjectId: userObjectId,
             GrantedScopes: grantedScopes,
             DirectoryRoles: directoryRoles,
             AdministrativeUnitScopeIds: administrativeUnitScopeIds ?? [],
-            TenantPolicyFlags: tenantPolicyFlags ?? new Dictionary<string, bool>());
+            TenantPolicyFlags: tenantPolicyFlags ?? new Dictionary<string, bool>(),
+            ScopeAvailability: scopeAvailability,
+            ScopeProblems: scopeProblems);
 
     public static GraphAuthorizationSnapshot Unavailable(string problemCategory, bool consentRequired = false) =>
         new(

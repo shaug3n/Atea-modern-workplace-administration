@@ -20,7 +20,7 @@ public static class WorkspaceEndpoints
         endpoints.MapGet("/api/workspaces/current", GetCurrentWorkspaceAsync).RequireAuthorization();
         endpoints.MapGet("/api/workspaces/current/connection-health", GetConnectionHealthAsync).RequireAuthorization();
         endpoints.MapPost("/api/workspaces/current/connection-health/check", CheckConnectionHealthAsync).RequireAuthorization();
-        endpoints.MapPost("/api/workspaces/current/consent/start", StartConsentAsync).RequireAuthorization().RequireCapability(Capability.WorkspaceSettingsManage);
+        endpoints.MapPost("/api/workspaces/current/consent/start", StartConsentAsync).RequireAuthorization();
         endpoints.MapPost("/api/workspaces/current/consent/complete", CompleteConsentAsync).RequireAuthorization();
         endpoints.MapPost("/api/invitations/{nonce}/redeem", RedeemInvitationAsync).RequireAuthorization();
         return endpoints;
@@ -141,8 +141,9 @@ public static class WorkspaceEndpoints
         var redirectUri = onboardingOptions.Value.ConsentRedirectUri;
         var challenge = challenges.Create(context.Membership.WorkspaceId, context.User.TenantId);
         await challengeRepository.CreateAsync(context.Membership.WorkspaceId, context.User.TenantId, ConsentChallengeService.HashState(challenge.Challenge), challenge.CorrelationId, challenge.ExpiresAt, cancellationToken);
-        var url = $"https://login.microsoftonline.com/{context.User.TenantId}/v2.0/adminconsent?client_id={Uri.EscapeDataString(clientId)}&redirect_uri={Uri.EscapeDataString(redirectUri)}&state={Uri.EscapeDataString(challenge.Challenge)}";
-        return Results.Ok(new ConsentStartResponse(url, GraphScopeCatalog.V1DelegatedScopes, challenge.Challenge, challenge.CorrelationId));
+        const string graphDefaultScope = "https://graph.microsoft.com/.default";
+        var url = $"https://login.microsoftonline.com/{context.User.TenantId}/v2.0/adminconsent?client_id={Uri.EscapeDataString(clientId)}&scope={Uri.EscapeDataString(graphDefaultScope)}&redirect_uri={Uri.EscapeDataString(redirectUri)}&state={Uri.EscapeDataString(challenge.Challenge)}";
+        return Results.Ok(new ConsentStartResponse(url, GraphScopeCatalog.CapabilityEvaluationScopes, challenge.Challenge, challenge.CorrelationId));
     }
 
     private static async Task<IResult> CompleteConsentAsync(ConsentCompletionRequest request, IWorkspaceContextAccessor accessor, ConsentChallengeService challenges, IConsentChallengeRepository challengeRepository, CancellationToken cancellationToken)

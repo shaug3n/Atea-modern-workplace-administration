@@ -2,6 +2,8 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import React from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ConfirmationDialog } from '../../../../src/Web/src/components/ConfirmationDialog';
+import { DataFreshness } from '../../../../src/Web/src/components/DataFreshness';
+import { PasswordResetDialog } from '../../../../src/Web/src/features/users/PasswordResetDialog';
 import { UserCreateDialog } from '../../../../src/Web/src/features/users/UserCreateDialog';
 import { UserEditDialog } from '../../../../src/Web/src/features/users/UserEditDialog';
 import type { UserDetails } from '../../../../src/Web/src/features/users/userDetailApi';
@@ -13,6 +15,14 @@ vi.mock('../../../../src/Web/src/auth/useApi', () => ({
 }));
 
 describe('UserMutationDialogs', () => {
+  const user: UserDetails = {
+    id: 'user-1',
+    displayName: 'Ada Lovelace',
+    userPrincipalName: 'ada@example.com',
+    accountEnabled: true,
+    isReadOnly: false,
+  };
+
   afterEach(() => {
     cleanup();
     apiMock.mockReset();
@@ -83,6 +93,28 @@ describe('UserMutationDialogs', () => {
     expect((screen.getByRole('button', { name: 'Confirm action' }) as HTMLButtonElement).disabled).toBe(true);
   });
 
+  it('uses feature-specific labels for data freshness', () => {
+    render(<DataFreshness freshness="fresh" partialData={false} labels={{ fresh: 'Device data is fresh' }} />);
+
+    expect(screen.getByText('Device data is fresh')).toBeTruthy();
+  });
+
+  it('exposes a cancel action for editable user details', () => {
+    const onCancel = vi.fn();
+    const user: UserDetails = {
+      id: 'user-1',
+      displayName: 'Ada Lovelace',
+      userPrincipalName: 'ada@example.com',
+      accountEnabled: true,
+      isReadOnly: false,
+    };
+
+    render(<UserEditDialog user={user} onCancel={onCancel} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+
+    expect(onCancel).toHaveBeenCalledTimes(1);
+  });
+
   it('posts create mutations to the BFF with an idempotency key and displays the temporary password once', async () => {
     apiMock.mockResolvedValue(new Response(JSON.stringify({
       status: 'succeeded',
@@ -104,5 +136,55 @@ describe('UserMutationDialogs', () => {
     expect(init.headers['Idempotency-Key']).toBeTruthy();
     expect(await screen.findByText('Temp-Password-12345!')).toBeTruthy();
     expect(screen.getByText('The user must change this password at next sign-in.')).toBeTruthy();
+  });
+
+  it('opens the password reset confirmation and cancels without calling the API', () => {
+    const onClose = vi.fn();
+
+    render(<PasswordResetDialog user={user} onClose={onClose} />);
+
+    expect(screen.getByRole('dialog')).toBeTruthy();
+    expect(screen.getByText('Generate a temporary password and require the user to change it at next sign-in.')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(apiMock).not.toHaveBeenCalled();
+  });
+
+  it('submits a password reset and shows the temporary password only in the result view', async () => {
+    apiMock.mockResolvedValue(new Response(JSON.stringify({
+      status: 'succeeded',
+      requiredCapability: 'users.reset_password',
+      replayed: false,
+      temporaryCredentialNotice: { temporaryPassword: 'Temp-Reset-12345!', forceChangePasswordNextSignIn: true },
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+
+    render(<PasswordResetDialog user={user} onClose={vi.fn()} />);
+    fireEvent.click(screen.getByLabelText('I reviewed the target, change and required capability.'));
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm action' }));
+
+    await waitFor(() => expect(apiMock).toHaveBeenCalledTimes(1));
+    const [path, init] = apiMock.mock.calls[0];
+    expect(path).toBe('/api/users/user-1/reset-password');
+    expect(init.headers['Idempotency-Key']).toBeTruthy();
+    expect(await screen.findByText('Temp-Reset-12345!')).toBeTruthy();
+    expect(screen.getByText('The user must change this password at next sign-in.')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Confirm action' })).toBeNull();
+  });
+
+  it('shows a recoverable error when password reset fails', async () => {
+    apiMock.mockResolvedValue(new Response(JSON.stringify({
+      status: 'forbidden',
+      requiredCapability: 'users.reset_password',
+      replayed: false,
+      error: 'consent_required',
+    }), { status: 403, headers: { 'Content-Type': 'application/json' } }));
+
+    render(<PasswordResetDialog user={user} onClose={vi.fn()} />);
+    fireEvent.click(screen.getByLabelText('I reviewed the target, change and required capability.'));
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm action' }));
+
+    expect((await screen.findByRole('alert')).textContent).toContain('Microsoft Graph consent is required before this action can be completed.');
+    expect(screen.getByRole('dialog')).toBeTruthy();
   });
 });

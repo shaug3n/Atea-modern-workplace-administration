@@ -1,4 +1,6 @@
 using System.Security.Claims;
+using Atea.UnifiedWorkplace.Api.Authorization;
+using Atea.UnifiedWorkplace.Api.Features.Workspaces;
 using Atea.UnifiedWorkplace.Api.Infrastructure.Persistence.Repositories;
 
 namespace Atea.UnifiedWorkplace.Api.Features.UserPreferences;
@@ -15,7 +17,7 @@ public static class UserPreferenceEndpoints
         return endpoints;
     }
 
-    private static async Task<IResult> GetThemeAsync(HttpContext httpContext, IThemePreferenceService preferences, CancellationToken cancellationToken)
+    private static async Task<IResult> GetThemeAsync(HttpContext httpContext, IWorkspaceContextAccessor workspaceAccessor, IThemePreferenceService preferences, IWorkspaceSettingsService workspaceSettings, CancellationToken cancellationToken)
     {
         if (!TryReadUserKey(httpContext.User, out var tenantId, out var userObjectId))
         {
@@ -23,6 +25,10 @@ public static class UserPreferenceEndpoints
         }
 
         var theme = await preferences.GetThemeAsync(tenantId, userObjectId, cancellationToken);
+        if (theme is null && workspaceAccessor.Current is { } context)
+        {
+            theme = (await workspaceSettings.GetConfigurationAsync(context, cancellationToken)).DefaultTheme;
+        }
         return Results.Ok(new ThemePreferenceResponse(theme));
     }
 

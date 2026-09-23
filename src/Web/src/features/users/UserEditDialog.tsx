@@ -5,7 +5,7 @@ import { ConfirmationDialog } from '../../components/ConfirmationDialog';
 import type { UserDetails } from './userDetailApi';
 import { mutateUser, type UpdateUserCommand, type UserCommandResponse } from './userMutationApi';
 
-export function UserEditDialog({ user, onCompleted }: { user: UserDetails; onCompleted?: (result: UserCommandResponse) => void }) {
+export function UserEditDialog({ user, onCompleted, onCancel }: { user: UserDetails; onCompleted?: (result: UserCommandResponse) => void; onCancel?: () => void }) {
   const api = useApi();
   const [displayName, setDisplayName] = useState(user.displayName ?? '');
   const [jobTitle, setJobTitle] = useState(user.jobTitle ?? '');
@@ -38,11 +38,7 @@ export function UserEditDialog({ user, onCompleted }: { user: UserDetails; onCom
   };
 
   return (
-    <div>
-      <label>{messages.usersNameColumn}<input value={displayName} onChange={(event) => setDisplayName(event.target.value)} /></label>
-      <label>{messages.userJobTitle}<input value={jobTitle} onChange={(event) => setJobTitle(event.target.value)} /></label>
-      {error && <p role="alert">{error}</p>}
-      <ConfirmationDialog
+    <ConfirmationDialog
       title={messages.userEditDialogTitle}
       target={user.displayName || user.userPrincipalName || user.id}
       proposedChange={messages.userEditProposedChange}
@@ -50,8 +46,12 @@ export function UserEditDialog({ user, onCompleted }: { user: UserDetails; onCom
       sourceLimitation={sourceLimitation}
       busy={pending}
       onConfirm={submit}
-      />
-    </div>
+      onCancel={onCancel}
+    >
+      <label>{messages.usersNameColumn}<input value={displayName} onChange={(event) => setDisplayName(event.target.value)} /></label>
+      <label>{messages.userJobTitle}<input value={jobTitle} onChange={(event) => setJobTitle(event.target.value)} /></label>
+      {error && <p role="alert">{error}</p>}
+    </ConfirmationDialog>
   );
 }
 

@@ -4,6 +4,11 @@ services:
     environment:
       ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Development}
       ConnectionStrings__WorkplaceDb: Host=postgres;Port=5432;Database=workplace;Username=workplace;Password=workplace
+      AzureAd__Instance: ${AzureAd__Instance:-https://login.microsoftonline.com/}
+      AzureAd__TenantId: ${AzureAd__TenantId:-organizations}
+      AzureAd__ClientId: ${AzureAd__ClientId:-00000000-0000-0000-0000-000000000000}
+      AzureAd__Audience: ${AzureAd__Audience:-api://00000000-0000-0000-0000-000000000000}
+      AzureAd__ClientSecret: ${AzureAd__ClientSecret:-}
       AteaAdmin__LocalDevelopment__Enabled: ${AteaAdmin__LocalDevelopment__Enabled:-true}
       AteaAdmin__LocalDevelopment__Username: ${AteaAdmin__LocalDevelopment__Username:-local-admin}
       AteaAdmin__LocalDevelopment__Password: ${AteaAdmin__LocalDevelopment__Password:-change-me-locally}

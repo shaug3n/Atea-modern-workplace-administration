@@ -7,12 +7,13 @@ import { mutateUser, type UserCommandResponse } from './userMutationApi';
 type GroupChoice = { id: string; displayName: string | null; mailNickname?: string | null };
 type GroupCatalogPayload = { items?: GroupChoice[]; error?: string | { category?: string; code?: string }; access?: { state?: string } };
 
-export function GroupMembershipDialog({ userId, groupId, target, mode, assignedGroupIds = [], onCompleted }: { userId: string; groupId: string | null; target?: string; mode: 'add' | 'remove'; assignedGroupIds?: string[]; onCompleted?: (result: UserCommandResponse) => void }) {
+export function GroupMembershipDialog({ userId, groupId, target, mode, assignedGroupIds = [], onCancel, onCompleted }: { userId: string; groupId: string | null; target?: string; mode: 'add' | 'remove'; assignedGroupIds?: string[]; onCancel?: () => void; onCompleted?: (result: UserCommandResponse) => void }) {
   const api = useApi();
   const [choices, setChoices] = useState<GroupChoice[]>([]);
   const [selectedId, setSelectedId] = useState(groupId ?? '');
   const [catalogError, setCatalogError] = useState<string | null>(null);
   const [catalogLoading, setCatalogLoading] = useState(mode === 'add');
+  const [pending, setPending] = useState(false);
   useEffect(() => {
     if (mode !== 'add') return;
     let cancelled = false;
@@ -31,10 +32,15 @@ export function GroupMembershipDialog({ userId, groupId, target, mode, assignedG
   const effectiveId = mode === 'add' ? selectedId : groupId;
   const effectiveTarget = mode === 'add' ? selected?.displayName || selected?.id || 'Select a group' : target || groupId || '';
   const submit = async () => {
-    if (!effectiveId) return;
+    if (!effectiveId || pending) return;
     const path = `/api/users/${encodeURIComponent(userId)}/groups/${encodeURIComponent(effectiveId)}`;
-    try { onCompleted?.(await mutateUser(api, path, mode === 'add' ? 'POST' : 'DELETE', { groupObjectId: effectiveId })); }
+    setPending(true);
+    try {
+      const result = await mutateUser(api, path, mode === 'add' ? 'POST' : 'DELETE', { groupObjectId: effectiveId });
+      onCompleted?.(result);
+    }
     catch { onCompleted?.({ status: 'temporarily_unavailable', requiredCapability: 'groups.manage_members', replayed: false, error: 'temporarily_unavailable' }); }
+    finally { setPending(false); }
   };
 
   return (
@@ -43,7 +49,9 @@ export function GroupMembershipDialog({ userId, groupId, target, mode, assignedG
       target={effectiveTarget}
       proposedChange={mode === 'add' ? messages.userGroupAddProposedChange : messages.userGroupRemoveProposedChange}
       requiredCapability="groups.manage_members"
+      busy={pending}
       onConfirm={submit}
+      onCancel={onCancel}
       sourceLimitation={catalogError || (mode === 'add' && !catalogLoading && choices.length === 0 ? 'No eligible groups are available for this user.' : mode === 'add' && !selectedId ? 'Select a group before confirming.' : null)}
     >
       {mode === 'add' && <label>Group<select aria-label="Group" value={selectedId} onChange={(event) => setSelectedId(event.target.value)}><option value="">Select a group</option>{selectable.map((choice) => <option key={choice.id} value={choice.id}>{choice.displayName || choice.mailNickname || choice.id}</option>)}</select></label>}
