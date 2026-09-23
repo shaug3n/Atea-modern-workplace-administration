@@ -1,7 +1,6 @@
 using System.Net.Mail;
 using System.Text.Json;
 using Atea.UnifiedWorkplace.Api.Authorization;
-using Atea.UnifiedWorkplace.Api.Infrastructure.Observability;
 using Atea.UnifiedWorkplace.Api.Infrastructure.Persistence.Entities;
 using Atea.UnifiedWorkplace.Api.Infrastructure.Persistence.Repositories;
 
@@ -43,7 +42,6 @@ public static class WorkspaceAccessEndpoints
         IWorkspaceContextAccessor accessor,
         IWorkspaceAccessRepository accessRepository,
         InvitationService invitations,
-        IAuditWriter auditWriter,
         CancellationToken cancellationToken)
     {
         if (accessor.Current is not { } context) return Results.StatusCode(StatusCodes.Status403Forbidden);
@@ -54,8 +52,8 @@ public static class WorkspaceAccessEndpoints
         if (memberships.Any(x => string.Equals(x.Email, email, StringComparison.OrdinalIgnoreCase)))
             return Results.Conflict(new { error = "user_already_has_workspace_access" });
 
-        var result = await invitations.CreateForRoleAsync(context.Membership.WorkspaceId, email, displayName, DateTimeOffset.UtcNow.Add(InvitationLifetime), role, cancellationToken: cancellationToken);
-        await WriteAuditAsync(auditWriter, context, "workspace.invitation.created", "invitation", result.InvitationId, role, cancellationToken);
+        var result = await invitations.CreateForRoleAsync(context.Membership.WorkspaceId, email, displayName, DateTimeOffset.UtcNow.Add(InvitationLifetime), role, cancellationToken: cancellationToken,
+            auditEvent: CreateAuditEvent(context, "workspace.invitation.created", "invitation", Guid.Empty, role));
         return Results.Created($"/api/workspaces/current/access/invitations/{result.InvitationId}", new WorkspaceInvitationLink(result.InvitationId, result.InvitationUrl, result.ExpiresAt));
     }
 
@@ -64,7 +62,6 @@ public static class WorkspaceAccessEndpoints
         IWorkspaceContextAccessor accessor,
         IWorkspaceAccessRepository accessRepository,
         InvitationService invitations,
-        IAuditWriter auditWriter,
         CancellationToken cancellationToken)
     {
         if (accessor.Current is not { } context) return Results.StatusCode(StatusCodes.Status403Forbidden);
@@ -72,8 +69,8 @@ public static class WorkspaceAccessEndpoints
         if (current is null || current.RedeemedAt is not null || current.RevokedAt is not null)
             return Results.NotFound();
 
-        var result = await invitations.CreateForRoleAsync(context.Membership.WorkspaceId, current.Email, current.DisplayName, DateTimeOffset.UtcNow.Add(InvitationLifetime), NormalizeLegacyRole(current.Role), cancellationToken: cancellationToken);
-        await WriteAuditAsync(auditWriter, context, "workspace.invitation.reissued", "invitation", result.InvitationId, NormalizeLegacyRole(current.Role), cancellationToken);
+        var result = await invitations.CreateForRoleAsync(context.Membership.WorkspaceId, current.Email, current.DisplayName, DateTimeOffset.UtcNow.Add(InvitationLifetime), NormalizeLegacyRole(current.Role), cancellationToken: cancellationToken,
+            auditEvent: CreateAuditEvent(context, "workspace.invitation.reissued", "invitation", Guid.Empty, NormalizeLegacyRole(current.Role)));
         return Results.Ok(new WorkspaceInvitationLink(result.InvitationId, result.InvitationUrl, result.ExpiresAt));
     }
 
@@ -81,12 +78,10 @@ public static class WorkspaceAccessEndpoints
         Guid invitationId,
         IWorkspaceContextAccessor accessor,
         IWorkspaceAccessRepository repository,
-        IAuditWriter auditWriter,
         CancellationToken cancellationToken)
     {
         if (accessor.Current is not { } context) return Results.StatusCode(StatusCodes.Status403Forbidden);
-        if (!await repository.RevokeInvitationAsync(context.Membership.WorkspaceId, invitationId, cancellationToken)) return Results.NotFound();
-        await WriteAuditAsync(auditWriter, context, "workspace.invitation.revoked", "invitation", invitationId, null, cancellationToken);
+        if (!await repository.RevokeInvitationAsync(context.Membership.WorkspaceId, invitationId, CreateAuditEvent(context, "workspace.invitation.revoked", "invitation", invitationId, null), cancellationToken)) return Results.NotFound();
         return Results.NoContent();
     }
 
@@ -95,16 +90,15 @@ public static class WorkspaceAccessEndpoints
         WorkspaceAccessRoleRequest request,
         IWorkspaceContextAccessor accessor,
         IWorkspaceAccessRepository repository,
-        IAuditWriter auditWriter,
         CancellationToken cancellationToken)
     {
         if (accessor.Current is not { } context) return Results.StatusCode(StatusCodes.Status403Forbidden);
+        if (string.IsNullOrWhiteSpace(request.Role)) return Results.BadRequest(new { error = "invalid_workspace_role" });
         var role = request.Role.Trim().ToLowerInvariant();
         if (!AllowedRoles.Contains(role)) return Results.BadRequest(new { error = "invalid_workspace_role" });
-        var result = await repository.ChangeRoleAsync(context.Membership.WorkspaceId, membershipId, role, cancellationToken);
+        var result = await repository.ChangeRoleAsync(context.Membership.WorkspaceId, membershipId, role, CreateAuditEvent(context, "workspace.membership.role_changed", "membership", membershipId, role), cancellationToken);
         if (result == WorkspaceAccessMutationResult.NotFound) return Results.NotFound();
         if (result == WorkspaceAccessMutationResult.FinalAdministrator) return Results.Conflict(new { error = "last_customer_admin_required" });
-        await WriteAuditAsync(auditWriter, context, "workspace.membership.role_changed", "membership", membershipId, role, cancellationToken);
         return Results.NoContent();
     }
 
@@ -112,20 +106,18 @@ public static class WorkspaceAccessEndpoints
         Guid membershipId,
         IWorkspaceContextAccessor accessor,
         IWorkspaceAccessRepository repository,
-        IAuditWriter auditWriter,
         CancellationToken cancellationToken)
     {
         if (accessor.Current is not { } context) return Results.StatusCode(StatusCodes.Status403Forbidden);
-        var result = await repository.RemoveMembershipAsync(context.Membership.WorkspaceId, membershipId, cancellationToken);
+        var result = await repository.RemoveMembershipAsync(context.Membership.WorkspaceId, membershipId, CreateAuditEvent(context, "workspace.membership.removed", "membership", membershipId, null), cancellationToken);
         if (result == WorkspaceAccessMutationResult.NotFound) return Results.NotFound();
         if (result == WorkspaceAccessMutationResult.FinalAdministrator) return Results.Conflict(new { error = "last_customer_admin_required" });
-        await WriteAuditAsync(auditWriter, context, "workspace.membership.removed", "membership", membershipId, null, cancellationToken);
         return Results.NoContent();
     }
 
-    private static async Task WriteAuditAsync(IAuditWriter writer, WorkspaceContext context, string action, string targetType, Guid targetId, string? role, CancellationToken cancellationToken)
+    private static AuditEvent CreateAuditEvent(WorkspaceContext context, string action, string targetType, Guid targetId, string? role)
     {
-        await writer.WriteAsync(new AuditEvent
+        return new AuditEvent
         {
             WorkspaceId = context.Membership.WorkspaceId,
             TenantId = context.User.TenantId,
@@ -137,7 +129,7 @@ public static class WorkspaceAccessEndpoints
             Outcome = "success",
             Timestamp = DateTimeOffset.UtcNow,
             SafeMetadataJson = JsonSerializer.Serialize(new { resource = targetType, role })
-        }, cancellationToken);
+        };
     }
 
     private static bool TryNormalizeInvitation(string rawEmail, string rawDisplayName, string rawRole, out string email, out string displayName, out string role)

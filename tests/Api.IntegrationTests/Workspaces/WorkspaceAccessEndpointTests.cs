@@ -5,6 +5,8 @@ using System.Text.Encodings.Web;
 using System.Text.Json;
 using Atea.UnifiedWorkplace.Api.Infrastructure.Persistence;
 using Atea.UnifiedWorkplace.Api.Infrastructure.Persistence.Entities;
+using Atea.UnifiedWorkplace.Api.Infrastructure.Observability;
+using Atea.UnifiedWorkplace.Api.Infrastructure.Persistence.Repositories;
 using FluentAssertions;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
@@ -87,6 +89,40 @@ public sealed class WorkspaceAccessEndpointTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Legacy_invitation_applies_its_role_to_an_existing_workspace_membership()
+    {
+        await SeedWorkspaceAsync();
+        const string nonce = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<WorkplaceDbContext>();
+            db.PlatformInvitations.Add(new PlatformInvitation
+            {
+                Id = Guid.NewGuid(), WorkspaceId = WorkspaceId, Email = "member@example.com", DisplayName = "Member",
+                Role = "customer_admin", NonceHash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(nonce))).ToLowerInvariant(),
+                ExpiresAt = DateTimeOffset.UtcNow.AddDays(1), CreatedAt = DateTimeOffset.UtcNow
+            });
+            await db.SaveChangesAsync();
+        }
+
+        using var invitee = AuthenticatedClient(TenantId, MemberObjectId, "member@example.com", "Member");
+        (await invitee.PostAsync($"/api/invitations/{nonce}/redeem", null)).StatusCode.Should().Be(HttpStatusCode.OK);
+        await using var verifyScope = factory.Services.CreateAsyncScope();
+        var verifyDb = verifyScope.ServiceProvider.GetRequiredService<WorkplaceDbContext>();
+        (await verifyDb.WorkspaceMemberships.SingleAsync(x => x.WorkspaceId == WorkspaceId && x.TenantObjectId == MemberObjectId)).PlatformRole.Should().Be("customer_admin");
+        (await verifyDb.AuditEvents.AnyAsync(x => x.Action == "workspace.invitation.redeemed" && x.TargetType == "invitation")).Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Null_role_returns_validation_error_instead_of_server_error()
+    {
+        await SeedWorkspaceAsync();
+        using var admin = AuthenticatedClient(TenantId, AdminObjectId);
+        var response = await admin.PatchAsJsonAsync($"/api/workspaces/current/access/memberships/{Guid.NewGuid()}", new { role = (string?)null });
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
     public async Task Reissuing_an_invitation_invalidates_the_previous_link_and_redeeming_invalidates_siblings()
     {
         await SeedWorkspaceAsync();
@@ -159,6 +195,31 @@ public sealed class WorkspaceAccessEndpointTests : IAsyncLifetime
         auditJson.Should().Contain("invitation").And.NotContain(invitation.Nonce).And.NotContain(invitation.Url);
     }
 
+    [Fact]
+    public async Task Membership_change_rolls_back_when_audit_write_fails()
+    {
+        await SeedWorkspaceAsync();
+        Guid memberMembershipId;
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<WorkplaceDbContext>();
+            memberMembershipId = await db.WorkspaceMemberships.Where(x => x.WorkspaceId == WorkspaceId && x.TenantObjectId == MemberObjectId).Select(x => x.Id).SingleAsync();
+            var repository = new WorkspaceAccessRepository(db, new FailingAuditWriter());
+            var audit = new AuditEvent
+            {
+                WorkspaceId = WorkspaceId, TenantId = TenantId, ActorTenantId = TenantId, ActorObjectId = AdminObjectId,
+                Action = "workspace.membership.role_changed", TargetType = "membership", TargetId = memberMembershipId.ToString("D"),
+                Outcome = "success", Timestamp = DateTimeOffset.UtcNow, SafeMetadataJson = "{}"
+            };
+
+            await Assert.ThrowsAsync<InvalidOperationException>(() => repository.ChangeRoleAsync(WorkspaceId, memberMembershipId, "customer_admin", audit));
+        }
+
+        await using var verifyScope = factory.Services.CreateAsyncScope();
+        var verifyDb = verifyScope.ServiceProvider.GetRequiredService<WorkplaceDbContext>();
+        (await verifyDb.WorkspaceMemberships.SingleAsync(x => x.Id == memberMembershipId)).PlatformRole.Should().Be("member");
+    }
+
     private async Task SeedWorkspaceAsync()
     {
         await ResetDatabaseAsync();
@@ -215,5 +276,10 @@ public sealed class WorkspaceAccessEndpointTests : IAsyncLifetime
             };
             return Task.FromResult(AuthenticateResult.Success(new AuthenticationTicket(new ClaimsPrincipal(new ClaimsIdentity(claims, Scheme)), Scheme)));
         }
+    }
+
+    private sealed class FailingAuditWriter : IAuditWriter
+    {
+        public Task WriteAsync(AuditEvent auditEvent, CancellationToken cancellationToken) => throw new InvalidOperationException("Injected audit failure.");
     }
 }

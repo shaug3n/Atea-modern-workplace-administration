@@ -15,7 +15,7 @@ public sealed class InvitationService(IInvitationRepository repository, Uri publ
     public Task<InvitationCreationResult> CreateAsync(Guid workspaceId, string email, string displayName, DateTimeOffset expiresAt, Guid? approvedTenantObjectId, CancellationToken cancellationToken = default) =>
         CreateForRoleAsync(workspaceId, email, displayName, expiresAt, "customer_admin", approvedTenantObjectId, cancellationToken);
 
-    public async Task<InvitationCreationResult> CreateForRoleAsync(Guid workspaceId, string email, string displayName, DateTimeOffset expiresAt, string role, Guid? approvedTenantObjectId = null, CancellationToken cancellationToken = default)
+    public async Task<InvitationCreationResult> CreateForRoleAsync(Guid workspaceId, string email, string displayName, DateTimeOffset expiresAt, string role, Guid? approvedTenantObjectId = null, CancellationToken cancellationToken = default, AuditEvent? auditEvent = null)
     {
         if (role is not ("member" or "customer_admin")) throw new ArgumentOutOfRangeException(nameof(role));
         var nonce = ToBase64Url(RandomNumberGenerator.GetBytes(32));
@@ -25,7 +25,10 @@ public sealed class InvitationService(IInvitationRepository repository, Uri publ
             NonceHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(nonce))).ToLowerInvariant(),
             ExpiresAt = expiresAt, CreatedAt = DateTimeOffset.UtcNow
         };
-        await repository.CreateAsync(invitation, cancellationToken);
+        if (auditEvent is not null) auditEvent.TargetId = invitation.Id.ToString("D");
+        await (auditEvent is null
+            ? repository.CreateAsync(invitation, cancellationToken)
+            : repository.CreateAsync(invitation, auditEvent, cancellationToken));
         return new InvitationCreationResult(invitation.Id, new Uri(publicBaseUri, $"invitations/{nonce}").ToString(), invitation.ExpiresAt);
     }
 

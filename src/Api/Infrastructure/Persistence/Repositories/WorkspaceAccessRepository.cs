@@ -1,5 +1,6 @@
 using System.Data;
 using Atea.UnifiedWorkplace.Api.Infrastructure.Persistence.Entities;
+using Atea.UnifiedWorkplace.Api.Infrastructure.Observability;
 using Microsoft.EntityFrameworkCore;
 
 namespace Atea.UnifiedWorkplace.Api.Infrastructure.Persistence.Repositories;
@@ -16,11 +17,14 @@ public interface IWorkspaceAccessRepository
     Task<(IReadOnlyList<WorkspaceMembership> Memberships, IReadOnlyList<PlatformInvitation> Invitations)> ListAsync(Guid workspaceId, CancellationToken cancellationToken = default);
     Task<PlatformInvitation?> GetInvitationAsync(Guid workspaceId, Guid invitationId, CancellationToken cancellationToken = default);
     Task<bool> RevokeInvitationAsync(Guid workspaceId, Guid invitationId, CancellationToken cancellationToken = default);
+    Task<bool> RevokeInvitationAsync(Guid workspaceId, Guid invitationId, AuditEvent auditEvent, CancellationToken cancellationToken = default) => RevokeInvitationAsync(workspaceId, invitationId, cancellationToken);
     Task<WorkspaceAccessMutationResult> ChangeRoleAsync(Guid workspaceId, Guid membershipId, string role, CancellationToken cancellationToken = default);
+    Task<WorkspaceAccessMutationResult> ChangeRoleAsync(Guid workspaceId, Guid membershipId, string role, AuditEvent auditEvent, CancellationToken cancellationToken = default) => ChangeRoleAsync(workspaceId, membershipId, role, cancellationToken);
     Task<WorkspaceAccessMutationResult> RemoveMembershipAsync(Guid workspaceId, Guid membershipId, CancellationToken cancellationToken = default);
+    Task<WorkspaceAccessMutationResult> RemoveMembershipAsync(Guid workspaceId, Guid membershipId, AuditEvent auditEvent, CancellationToken cancellationToken = default) => RemoveMembershipAsync(workspaceId, membershipId, cancellationToken);
 }
 
-public sealed class WorkspaceAccessRepository(WorkplaceDbContext db) : IWorkspaceAccessRepository
+public sealed class WorkspaceAccessRepository(WorkplaceDbContext db, IAuditWriter auditWriter) : IWorkspaceAccessRepository
 {
     public async Task<(IReadOnlyList<WorkspaceMembership> Memberships, IReadOnlyList<PlatformInvitation> Invitations)> ListAsync(
         Guid workspaceId,
@@ -38,12 +42,19 @@ public sealed class WorkspaceAccessRepository(WorkplaceDbContext db) : IWorkspac
     }
 
     public async Task<bool> RevokeInvitationAsync(Guid workspaceId, Guid invitationId, CancellationToken cancellationToken = default)
+        => await RevokeInvitationAsync(workspaceId, invitationId, auditEvent: null, cancellationToken);
+
+    public async Task<bool> RevokeInvitationAsync(Guid workspaceId, Guid invitationId, AuditEvent? auditEvent, CancellationToken cancellationToken = default)
     {
+        await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
         var now = DateTimeOffset.UtcNow;
         var count = await db.PlatformInvitations
             .Where(x => x.WorkspaceId == workspaceId && x.Id == invitationId && x.RevokedAt == null && x.RedeemedAt == null)
             .ExecuteUpdateAsync(update => update.SetProperty(x => x.RevokedAt, now), cancellationToken);
-        return count == 1;
+        if (count != 1) return false;
+        if (auditEvent is not null) await auditWriter.WriteAsync(auditEvent, cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return true;
     }
 
     public Task<PlatformInvitation?> GetInvitationAsync(Guid workspaceId, Guid invitationId, CancellationToken cancellationToken = default) =>
@@ -52,16 +63,23 @@ public sealed class WorkspaceAccessRepository(WorkplaceDbContext db) : IWorkspac
             cancellationToken);
 
     public Task<WorkspaceAccessMutationResult> ChangeRoleAsync(Guid workspaceId, Guid membershipId, string role, CancellationToken cancellationToken = default) =>
-        MutateMembershipAsync(workspaceId, membershipId, role, remove: false, cancellationToken);
+        MutateMembershipAsync(workspaceId, membershipId, role, remove: false, auditEvent: null, cancellationToken);
+
+    public Task<WorkspaceAccessMutationResult> ChangeRoleAsync(Guid workspaceId, Guid membershipId, string role, AuditEvent auditEvent, CancellationToken cancellationToken = default) =>
+        MutateMembershipAsync(workspaceId, membershipId, role, remove: false, auditEvent, cancellationToken);
 
     public Task<WorkspaceAccessMutationResult> RemoveMembershipAsync(Guid workspaceId, Guid membershipId, CancellationToken cancellationToken = default) =>
-        MutateMembershipAsync(workspaceId, membershipId, role: null, remove: true, cancellationToken);
+        MutateMembershipAsync(workspaceId, membershipId, role: null, remove: true, auditEvent: null, cancellationToken);
+
+    public Task<WorkspaceAccessMutationResult> RemoveMembershipAsync(Guid workspaceId, Guid membershipId, AuditEvent auditEvent, CancellationToken cancellationToken = default) =>
+        MutateMembershipAsync(workspaceId, membershipId, role: null, remove: true, auditEvent, cancellationToken);
 
     private async Task<WorkspaceAccessMutationResult> MutateMembershipAsync(
         Guid workspaceId,
         Guid membershipId,
         string? role,
         bool remove,
+        AuditEvent? auditEvent,
         CancellationToken cancellationToken)
     {
         await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
@@ -98,6 +116,7 @@ public sealed class WorkspaceAccessRepository(WorkplaceDbContext db) : IWorkspac
             membership.PlatformRole = role!;
         }
         await db.SaveChangesAsync(cancellationToken);
+        if (auditEvent is not null) await auditWriter.WriteAsync(auditEvent, cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         return WorkspaceAccessMutationResult.Updated;
     }
