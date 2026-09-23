@@ -27,6 +27,11 @@ test('Vite proxies both API and health requests to the local API service', async
   assert.match(viteConfig, /'\/health':\s*target/);
 });
 
+test('the local SPA callback URI matches the documented Entra registration', async () => {
+  const environment = await readFile('../../.env.example', 'utf8');
+  assert.match(environment, /^VITE_ENTRA_REDIRECT_URI=http:\/\/localhost:5173\/auth\/callback$/m);
+});
+
 test('local user-device guidance identifies the two additional delegated permissions', async () => {
   const runbook = await readFile('../../docs/testing/local-user-device-management.md', 'utf8');
   assert.match(runbook, /User\.RevokeSessions\.All/);
