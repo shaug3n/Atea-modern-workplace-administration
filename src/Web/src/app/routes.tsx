@@ -1,11 +1,13 @@
 import React from 'react';
 import type { ReactNode } from 'react';
-import { workspaceSettingsCapability, type Capability, type CapabilityDecision } from '../capabilities/capabilityTypes';
+import { type Capability, type CapabilityDecision } from '../capabilities/capabilityTypes';
 import { OverviewPage, type ConnectionHealthLoader, type OverviewLoader } from '../features/overview/OverviewPage';
 import { AuditActivityPage } from '../features/audit/AuditActivityPage';
 import { LicensesPage } from '../features/licenses/LicensesPage';
 import { WorkspaceSettingsPage } from '../features/workspace-settings/WorkspaceSettingsPage';
 import { ConsentCallbackPage } from '../features/workspace-settings/ConsentCallbackPage';
+import { OnboardingPage } from '../features/workspace-settings/OnboardingPage';
+import { WorkspaceAccessPage } from '../features/workspace-access/WorkspaceAccessPage';
 import { UserDetailPage } from '../features/users/UserDetailPage';
 import { UsersPage } from '../features/users/UsersPage';
 import { messages } from './messages';
@@ -14,6 +16,7 @@ export type AppRoute = {
   path: string;
   label: string;
   capability?: Capability;
+  workspaceAccess?: 'members' | 'settings';
   render: (options?: { loadConnectionHealth?: ConnectionHealthLoader; loadOverview?: OverviewLoader; capabilities?: CapabilityDecision[]; navigate?: (path: string) => void }) => ReactNode;
 };
 
@@ -34,6 +37,7 @@ function WorkInProgressPage({ title, description }: { title: string; description
 export const appRoutes: AppRoute[] = [
   { path: '/consent-callback', label: messages.connectionTitle, render: () => <ConsentCallbackPage /> },
   { path: '/onboarding/consent/callback', label: messages.connectionTitle, render: () => <ConsentCallbackPage /> },
+  { path: '/onboarding', label: messages.navOnboarding, render: (options) => <OnboardingPage onNavigate={options?.navigate} /> },
   {
     path: '/overview',
     label: messages.navOverview,
@@ -64,9 +68,15 @@ export const appRoutes: AppRoute[] = [
     render: () => <AuditActivityPage />,
   },
   {
+    path: '/workspace-access',
+    label: messages.navWorkspaceAccess,
+    workspaceAccess: 'members',
+    render: () => <WorkspaceAccessPage />,
+  },
+  {
     path: '/workspace-settings',
     label: messages.navWorkspaceSettings,
-    capability: workspaceSettingsCapability,
+    workspaceAccess: 'settings',
     render: () => <WorkspaceSettingsPage />,
   },
 ];
