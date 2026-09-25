@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useApi } from '../auth/useApi';
 import type { CapabilitySnapshot } from './capabilityTypes';
 
@@ -9,6 +9,8 @@ export function useCapabilities(loadCapabilities?: CapabilityLoader) {
   const [capabilities, setCapabilities] = useState<CapabilitySnapshot | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
+  const [attempt, setAttempt] = useState(0);
+  const refresh = useCallback(async () => { setAttempt(value => value + 1); }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -34,7 +36,7 @@ export function useCapabilities(loadCapabilities?: CapabilityLoader) {
       });
 
     return () => { cancelled = true; };
-  }, [api, loadCapabilities]);
+  }, [api, loadCapabilities, attempt]);
 
-  return { capabilities, loading, error };
+  return { capabilities, loading, error, refresh };
 }

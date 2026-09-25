@@ -6,6 +6,8 @@ import { TenantContextHeader, type AppSession } from './TenantContextHeader';
 import { ThemeToggle, useTheme } from './ThemeToggle';
 import greyLogo from '../assets/logos/atea-logo-grey.svg';
 import whiteLogo from '../assets/logos/atea-logo-white.svg';
+import { NotificationsMenu } from './NotificationsMenu';
+import { useWorkspaceNotifications } from '../notifications/WorkspaceNotifications';
 
 export function AppShell({ children, capabilities, currentPath, session, onNavigate }: { children: ReactNode; capabilities: CapabilitySnapshot | null; currentPath: string; session: AppSession; onNavigate?: (path: string) => void }) {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
@@ -20,6 +22,7 @@ export function AppShell({ children, capabilities, currentPath, session, onNavig
     return () => document.removeEventListener('keydown', closeOnEscape);
   }, [mobileNavOpen]);
   const { theme } = useTheme();
+  const notifications = useWorkspaceNotifications();
   const logo = theme === 'dark' ? whiteLogo : greyLogo;
   const labels: Record<string, string> = { overview: 'Overview', users: 'Users', licenses: 'Licenses', devices: 'Devices', services: 'Services', exchange: 'Exchange', activity: 'Activity', settings: 'Workspace Settings', setup: 'Setup', general: 'General', modules: 'Modules', access: 'Access' };
   const segments = currentPath.split('/').filter(Boolean);
@@ -39,6 +42,7 @@ export function AppShell({ children, capabilities, currentPath, session, onNavig
           <span>{messages.appTitle}</span>
         </a>
         <TenantContextHeader session={session} capabilitySnapshotFresh={capabilities?.sourceState === 'graph_authoritative'} />
+        <NotificationsMenu issues={notifications.issues} onRefresh={notifications.refresh} />
         <ThemeToggle />
         <button ref={menuButton} type="button" className="mobile-menu-toggle" aria-expanded={mobileNavOpen} aria-controls="primary-navigation" onClick={() => setMobileNavOpen(open => !open)}>{mobileNavOpen ? 'Close menu' : 'Menu'}</button>
       </header>

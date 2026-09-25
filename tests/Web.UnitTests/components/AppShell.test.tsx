@@ -104,4 +104,29 @@ describe('AppShell', () => {
     expect(screen.queryByRole('heading', { name: 'Exchange' })).toBeNull();
     expect(screen.queryByRole('link', { name: 'Exchange' })).toBeNull();
   });
+
+  it('refreshes injected capabilities from the notifications menu', async () => {
+    window.history.pushState(null, '', '/overview');
+    let calls = 0;
+    render(<App loadSession={async () => session} loadCapabilities={async () => {
+      calls++;
+      return calls === 1 ? { ...allowedCapabilities, capabilities: [{ capability: 'users.view', state: 'consent_required', reasonCode: 'consent_required' }] } : allowedCapabilities;
+    }} loadConnectionHealth={async () => ({ status: 'connected', lastVerifiedAt: null })} />);
+    fireEvent.click(await screen.findByRole('button', { name: /notifications, 1 warnings/i }));
+    expect(screen.getByText('Microsoft Graph consent required')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: /notifications, 0 warnings/i })).toBeTruthy());
+  });
+
+  it('rechecks capabilities when returning to the workspace tab', async () => {
+    window.history.pushState(null, '', '/overview');
+    let calls = 0;
+    render(<App loadSession={async () => session} loadCapabilities={async () => {
+      calls++;
+      return calls === 1 ? { ...allowedCapabilities, capabilities: [{ capability: 'users.view', state: 'consent_required', reasonCode: 'consent_required' }] } : allowedCapabilities;
+    }} loadConnectionHealth={async () => ({ status: 'connected', lastVerifiedAt: null })} />);
+    await screen.findByRole('button', { name: /notifications, 1 warnings/i });
+    fireEvent.focus(window);
+    await waitFor(() => expect(screen.getByRole('button', { name: /notifications, 0 warnings/i })).toBeTruthy());
+  });
 });

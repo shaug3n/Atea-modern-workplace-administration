@@ -11,6 +11,7 @@ import { useCapabilities, type CapabilityLoader } from '../capabilities/useCapab
 import { InvitationRedemptionPage } from '../features/invitations/InvitationRedemptionPage';
 import type { ConnectionHealthLoader } from '../features/overview/OverviewPage';
 import { messages } from './messages';
+import { WorkspaceNotificationsProvider } from '../notifications/WorkspaceNotifications';
 
 export type SessionLoader = () => Promise<AppSession>;
 
@@ -32,7 +33,12 @@ function AuthenticatedApp({ loadConnectionHealth }: { loadConnectionHealth?: Con
     }
     return await response.json() as AppSession;
   }, [api]);
-  return <AppThemeProvider><AppExperience loadSession={loadSession} loadConnectionHealth={loadConnectionHealth} signInAction={signIn} /></AppThemeProvider>;
+  const loadHealth = useCallback(async () => {
+    const response = await api('/api/workspaces/current/connection-health');
+    if (!response.ok) throw new Error('connection_health_unavailable');
+    return await response.json() as Awaited<ReturnType<ConnectionHealthLoader>>;
+  }, [api]);
+  return <AppThemeProvider><AppExperience loadSession={loadSession} loadConnectionHealth={loadConnectionHealth ?? loadHealth} signInAction={signIn} /></AppThemeProvider>;
 }
 
 async function safeProblem(response: Response): Promise<{ title?: string; correlationId?: string }> {
@@ -66,18 +72,20 @@ function WorkspaceExperience({ path, navigate, loadCapabilities, loadSession, lo
 
 function ApiWorkspaceExperience(props: { path: string; navigate: (path: string) => void; loadSession: SessionLoader; loadConnectionHealth?: ConnectionHealthLoader; signInAction?: () => Promise<void> }) {
   const state = useCapabilities();
-  return <LoadedWorkspaceExperience {...props} capabilities={state.capabilities} capabilitiesLoading={state.loading} capabilitiesError={state.error} />;
+  return <LoadedWorkspaceExperience {...props} capabilities={state.capabilities} capabilitiesLoading={state.loading} capabilitiesError={state.error} refreshCapabilities={state.refresh} />;
 }
 
 function InjectedWorkspaceExperience(props: { path: string; navigate: (path: string) => void; loadCapabilities: CapabilityLoader; loadSession: SessionLoader; loadConnectionHealth?: ConnectionHealthLoader; signInAction?: () => Promise<void> }) {
   const state = useInjectedCapabilities(props.loadCapabilities);
-  return <LoadedWorkspaceExperience {...props} capabilities={state.capabilities} capabilitiesLoading={state.loading} capabilitiesError={state.error} />;
+  return <LoadedWorkspaceExperience {...props} capabilities={state.capabilities} capabilitiesLoading={state.loading} capabilitiesError={state.error} refreshCapabilities={state.refresh} />;
 }
 
 function useInjectedCapabilities(loadCapabilities: CapabilityLoader) {
   const [capabilities, setCapabilities] = useState<CapabilitySnapshot | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
+  const [attempt, setAttempt] = useState(0);
+  const refresh = useCallback(async () => { setAttempt(value => value + 1); }, []);
   useEffect(() => {
     let cancelled = false;
     setLoading(true); setError(null);
@@ -85,11 +93,11 @@ function useInjectedCapabilities(loadCapabilities: CapabilityLoader) {
       if (!cancelled) setError(reason instanceof Error ? reason : new Error('capabilities_unavailable'));
     }).finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [loadCapabilities]);
-  return { capabilities, loading, error };
+  }, [loadCapabilities, attempt]);
+  return { capabilities, loading, error, refresh };
 }
 
-function LoadedWorkspaceExperience({ path, navigate, capabilities, capabilitiesLoading, capabilitiesError, loadSession, loadConnectionHealth, signInAction }: { path: string; navigate: (path: string) => void; capabilities: CapabilitySnapshot | null; capabilitiesLoading: boolean; capabilitiesError: Error | null; loadSession: SessionLoader; loadConnectionHealth?: ConnectionHealthLoader; signInAction?: () => Promise<void> }) {
+function LoadedWorkspaceExperience({ path, navigate, capabilities, capabilitiesLoading, capabilitiesError, refreshCapabilities, loadSession, loadConnectionHealth, signInAction }: { path: string; navigate: (path: string) => void; capabilities: CapabilitySnapshot | null; capabilitiesLoading: boolean; capabilitiesError: Error | null; refreshCapabilities: () => Promise<void>; loadSession: SessionLoader; loadConnectionHealth?: ConnectionHealthLoader; signInAction?: () => Promise<void> }) {
   const { session, loading: sessionLoading, error: sessionError, retry } = useSession(loadSession);
   const hasModuleContract = Array.isArray(session?.workspace.enabledModules) || Array.isArray(session?.workspace.moduleAccess);
   const legacyRedirect = hasModuleContract && (path === '/onboarding' ? '/settings/setup' : path === '/workspace-settings' ? '/settings' : path === '/workspace-access' ? '/settings/access' : null);
@@ -124,7 +132,7 @@ function LoadedWorkspaceExperience({ path, navigate, capabilities, capabilitiesL
       : route.render({ loadConnectionHealth, capabilities: unavailableSnapshot.capabilities, navigate, session });
   }
 
-  return <AppShell capabilities={capabilities} currentPath={path} session={session} onNavigate={navigate}>{routeContent}</AppShell>;
+  return <WorkspaceNotificationsProvider key={`${session.workspace.id}:${session.user.userPrincipalName ?? session.user.displayName ?? ''}`} session={session} capabilities={capabilities} capabilitiesError={capabilitiesError} onRefresh={refreshCapabilities} loadConnectionHealth={loadConnectionHealth}><AppShell capabilities={capabilities} currentPath={path} session={session} onNavigate={navigate}>{routeContent}</AppShell></WorkspaceNotificationsProvider>;
 }
 
 function SessionFailure({ error, onRetry, onSignIn }: { error: Error; onRetry: () => void; onSignIn?: () => Promise<void> }) {
