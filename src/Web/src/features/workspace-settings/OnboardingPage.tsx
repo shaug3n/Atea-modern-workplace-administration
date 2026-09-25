@@ -5,7 +5,7 @@ import { messages, type ConnectionState } from '../../messages/en';
 
 type Health = { status: ConnectionState; lastVerifiedAt: string | null; correlationId?: string | null };
 
-export function OnboardingPage({ onNavigate }: { onNavigate?: (path: string) => void }) {
+export function OnboardingPage({ onNavigate, embedded = false }: { onNavigate?: (path: string) => void; embedded?: boolean }) {
   const api = useApi();
   const [health, setHealth] = useState<Health | null>(null);
   const [failed, setFailed] = useState(false);
@@ -50,15 +50,15 @@ export function OnboardingPage({ onNavigate }: { onNavigate?: (path: string) => 
   };
 
   return <section className="content-panel onboarding-page" aria-labelledby="onboarding-title">
-    <p className="eyebrow">{messages.onboardingEyebrow}</p>
-    <h1 id="onboarding-title">{messages.onboardingTitle}</h1>
+    {!embedded && <p className="eyebrow">{messages.onboardingEyebrow}</p>}
+    {embedded ? <h2 id="onboarding-title" tabIndex={-1}>Connection</h2> : <h1 id="onboarding-title">{messages.onboardingTitle}</h1>}
     <p>{messages.onboardingDescription}</p>
     {failed ? <div role="alert"><p>{messages.connectionUnavailable}</p>{correlationId && <p>{messages.correlationIdLabel}: <code>{correlationId}</code></p>}<button type="button" onClick={() => void load()}>{messages.retry}</button></div>
       : !health ? <p role="status">{messages.connectionLoading}</p>
         : <ConnectionStatusCard state={health.status} lastVerifiedAt={health.lastVerifiedAt} onCheck={() => void check()} onConsent={() => void consent()} consentUrl={consentUrl} actionPending={busy} actionError={error} />}
     {health?.status === 'connected' && <a href="/overview" onClick={event => { if (onNavigate) { event.preventDefault(); onNavigate('/overview'); } }}>{messages.onboardingContinue}</a>}
-    <section className="setup-permissions" aria-labelledby="setup-permissions-title">
-      <h2 id="setup-permissions-title">Delegated permissions and tenant consent</h2>
+    <details className="setup-permissions" open={!embedded}>
+      <summary>Delegated permissions and tenant consent</summary>
       <p>These are separate steps: Atea configures delegated scopes on the API app registration first; a customer Entra administrator then grants tenant consent. Tenant consent cannot add scopes that are missing from the app registration.</p>
       <ul>
         <li><strong>Users, groups and licenses:</strong> <code>User.Read.All</code>, <code>Group.Read.All</code>, <code>Directory.Read.All</code>.</li>
@@ -69,7 +69,7 @@ export function OnboardingPage({ onNavigate }: { onNavigate?: (path: string) => 
       </ul>
       <p>These four recovery scopes must first be added as Microsoft Graph delegated permissions to the API app registration by the Atea app owner. A customer tenant administrator must then grant tenant consent separately. Consent cannot add a scope missing from the registration. An eligible Entra PIM role may need activation; Graph makes the final access decision for the specific device and recovery record.</p>
       <p>If a scope is absent from the API registration, ask the Atea app owner to add it before retrying consent. If the scope is present but not granted in this tenant, use the consent action above with an appropriately authorized tenant administrator. If the permission check reports PIM activation required, activate the eligible role in Entra PIM and retry.</p>
-    </section>
+    </details>
     {correlationId && !failed && <p>{messages.correlationIdLabel}: <code>{correlationId}</code></p>}
     <p>{messages.onboardingHelp}</p>
   </section>;

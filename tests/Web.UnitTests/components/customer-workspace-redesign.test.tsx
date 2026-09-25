@@ -29,8 +29,8 @@ describe('customer workspace redesign', () => {
     expect(screen.getByRole('link', { name: 'Licenses' })).toBeTruthy();
     expect(screen.getByRole('link', { name: 'Devices' })).toBeTruthy();
     expect(screen.queryByRole('link', { name: 'Exchange' })).toBeNull();
-    expect(screen.getByRole('heading', { name: 'Settings' })).toBeTruthy();
-    expect(screen.getByRole('link', { name: 'Modules' })).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Workspace Settings' }).getAttribute('href')).toBe('/settings');
+    expect(screen.queryByRole('link', { name: 'Modules' })).toBeNull();
   });
 
   it('shows Exchange only when the workspace and person both have access', () => {
@@ -40,13 +40,13 @@ describe('customer workspace redesign', () => {
   });
 
   it.each([
-    ['/onboarding', '/settings/setup'],
-    ['/workspace-settings', '/settings'],
-    ['/workspace-access', '/settings/access'],
+    ['/onboarding', '/settings#connection'],
+    ['/workspace-settings', '/settings#general'],
+    ['/workspace-access', '/settings#access'],
   ])('redirects %s to %s', async (legacyPath, nextPath) => {
     window.history.replaceState({}, '', legacyPath);
     render(<App loadSession={async () => session} loadCapabilities={async () => ({ evaluatedAt: '2026-09-25T00:00:00Z', capabilities: [] })} />);
-    await waitFor(() => expect(window.location.pathname).toBe(nextPath));
+    await waitFor(() => expect(window.location.pathname + window.location.hash).toBe(nextPath));
   });
 
   it('allows Devices read-only and PIM-eligible states without treating them as hidden', async () => {

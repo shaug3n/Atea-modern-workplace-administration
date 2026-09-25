@@ -14,7 +14,7 @@ import { DevicesPage } from '../features/devices/DevicesPage';
 import { DeviceDetailPage } from '../features/devices/DeviceDetailPage';
 import { ExchangeOverviewPage } from '../features/exchange/ExchangeOverviewPage';
 import { WorkspaceModulesPage } from '../features/workspace-settings/WorkspaceModulesPage';
-import { SettingsSummaryPage } from '../features/workspace-settings/SettingsSummaryPage';
+import { WorkspaceSettingsHub } from '../features/workspace-settings/WorkspaceSettingsHub';
 import { messages } from './messages';
 import type { AppSession } from '../components/TenantContextHeader';
 
@@ -24,7 +24,7 @@ export type AppRoute = {
   pageTitle?: string;
   capability?: Capability;
   module?: 'users' | 'devices' | 'licenses' | 'exchange';
-  workspaceAccess?: 'members' | 'settings' | 'modules';
+  workspaceAccess?: 'members' | 'settings' | 'modules' | 'any';
   render: (options?: { loadConnectionHealth?: ConnectionHealthLoader; loadOverview?: OverviewLoader; capabilities?: CapabilityDecision[]; navigate?: (path: string) => void; session?: AppSession }) => ReactNode;
 };
 
@@ -46,7 +46,7 @@ export const appRoutes: AppRoute[] = [
   { path: '/consent-callback', label: messages.connectionTitle, render: () => <ConsentCallbackPage /> },
   { path: '/onboarding/consent/callback', label: messages.connectionTitle, render: () => <ConsentCallbackPage /> },
   { path: '/onboarding', label: messages.navOnboarding, render: (options) => <OnboardingPage onNavigate={options?.navigate} /> },
-  { path: '/settings', label: 'Settings', workspaceAccess: 'settings', render: () => <SettingsSummaryPage /> },
+  { path: '/settings', label: 'Workspace Settings', workspaceAccess: 'any', render: (options) => options?.session ? <WorkspaceSettingsHub session={options.session} /> : null },
   { path: '/settings/setup', label: 'Setup', workspaceAccess: 'settings', render: (options) => <OnboardingPage onNavigate={options?.navigate} /> },
   { path: '/settings/general', label: 'General', workspaceAccess: 'settings', render: () => <WorkspaceSettingsPage /> },
   { path: '/settings/modules', label: 'Modules', workspaceAccess: 'modules', render: () => <WorkspaceModulesPage /> },

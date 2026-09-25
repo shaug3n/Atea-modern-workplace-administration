@@ -131,7 +131,7 @@ describe('AppShell', () => {
   it('keeps workspace settings available when the Graph capability check fails', async () => {
     window.history.pushState(null, '', '/settings');
     render(<App loadCapabilities={async () => { throw new Error('Graph unavailable'); }} loadSession={async () => ({ ...session, workspaceAccess: { role: 'workspace_owner', canManageSettings: true } })} />);
-    expect(await screen.findByRole('heading', { name: 'Settings' })).toBeTruthy();
+    expect(await screen.findByRole('heading', { level: 1, name: 'Workspace Settings' })).toBeTruthy();
     expect(screen.getByRole('heading', { name: 'General' })).toBeTruthy();
     expect(screen.getByRole('navigation', { name: 'Primary navigation' })).toBeTruthy();
   });

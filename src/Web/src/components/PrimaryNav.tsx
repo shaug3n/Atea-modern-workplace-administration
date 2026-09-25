@@ -13,7 +13,7 @@ export function PrimaryNav({ capabilities, session = { user: {}, workspace: { id
   const moduleAccess = session.workspace.moduleAccess ?? session.workspace.enabledModules ?? ['users', 'devices', 'licenses', 'exchange'];
   const enabledModules = session.workspace.enabledModules ? moduleAccess.filter(key => session.workspace.enabledModules?.includes(key)) : moduleAccess;
   const enabled = (key: string) => enabledModules.includes(key);
-  const settings = session.workspaceAccess?.canManageSettings === true;
+  const settings = session.workspaceAccess?.canManageSettings === true || session.workspaceAccess?.canManageMembers === true || session.workspaceAccess?.canManageModules === true;
   const groups: NavGroup[] = [
     { key: 'overview', items: [{ href: '/overview', label: messages.navOverview }] },
     { key: 'people', label: 'People', disclosure: true, items: [

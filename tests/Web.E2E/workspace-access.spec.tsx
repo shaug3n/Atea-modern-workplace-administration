@@ -22,15 +22,17 @@ describe('workspace access management', () => {
       if (path === '/api/workspaces/current/access/invitations') return Response.json({ id: 'new-invite', invitationUrl: 'http://localhost:5173/invitations/one-time-secret', expiresAt: '2026-10-01T10:00:00Z' }, { status: 201 });
       return new Response(null, { status: 204 });
     });
-    render(<WorkspaceAccessPage />);
+    render(<WorkspaceAccessPage canManageModules availableModules={['users', 'devices']} />);
 
     fireEvent.change(await screen.findByLabelText('Email address'), { target: { value: 'new.user@example.com' } });
     fireEvent.change(screen.getByLabelText('Display name'), { target: { value: 'New User' } });
     fireEvent.change(screen.getByLabelText('Workspace role'), { target: { value: 'member' } });
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Users' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Devices' }));
     fireEvent.click(screen.getByRole('button', { name: 'Create invitation' }));
 
     expect(await screen.findByText('http://localhost:5173/invitations/one-time-secret')).toBeTruthy();
-    expect(requests.find(request => request.method === 'POST')?.body).toEqual({ email: 'new.user@example.com', displayName: 'New User', role: 'member' });
+    expect(requests.find(request => request.method === 'POST')?.body).toEqual({ email: 'new.user@example.com', displayName: 'New User', role: 'member', moduleKeys: ['users', 'devices'] });
   });
 
   it('changes a workspace role and confirms removal before sending the request', async () => {
@@ -39,7 +41,7 @@ describe('workspace access management', () => {
       requests.push({ path, method: init.method ?? 'GET' });
       return path === '/api/workspaces/current/access' ? Response.json(access) : new Response(null, { status: 204 });
     });
-    render(<WorkspaceAccessPage />);
+    render(<WorkspaceAccessPage isOwner />);
 
     fireEvent.change(await screen.findByLabelText('Role for member@example.com'), { target: { value: 'customer_admin' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save role for member@example.com' }));

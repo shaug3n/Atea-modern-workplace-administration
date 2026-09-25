@@ -49,9 +49,9 @@ async function safeProblem(response: Response): Promise<{ title?: string; correl
 }
 
 function AppExperience({ loadCapabilities, loadSession, loadConnectionHealth, signInAction }: { loadCapabilities?: CapabilityLoader; loadSession: SessionLoader; loadConnectionHealth?: ConnectionHealthLoader; signInAction?: () => Promise<void> }) {
-  const [path, setPath] = useState(() => window.location.pathname);
+  const [path, setPath] = useState(() => window.location.pathname + window.location.hash);
   useEffect(() => {
-    const onPopState = () => setPath(window.location.pathname);
+    const onPopState = () => setPath(window.location.pathname + window.location.hash);
     window.addEventListener('popstate', onPopState);
     if (window.location.pathname === '/') {
       window.history.replaceState(null, '', '/overview');
@@ -60,7 +60,7 @@ function AppExperience({ loadCapabilities, loadSession, loadConnectionHealth, si
     return () => window.removeEventListener('popstate', onPopState);
   }, []);
   const navigate = useCallback((nextPath: string) => {
-    if (window.location.pathname !== nextPath) window.history.pushState(null, '', nextPath);
+    if (window.location.pathname + window.location.hash !== nextPath) window.history.pushState(null, '', nextPath);
     setPath(nextPath);
   }, []);
 
@@ -102,8 +102,12 @@ function useInjectedCapabilities(loadCapabilities: CapabilityLoader) {
 
 function LoadedWorkspaceExperience({ path, navigate, capabilities, capabilitiesLoading, capabilitiesError, refreshCapabilities, loadSession, loadConnectionHealth, signInAction }: { path: string; navigate: (path: string) => void; capabilities: CapabilitySnapshot | null; capabilitiesLoading: boolean; capabilitiesError: Error | null; refreshCapabilities: () => Promise<void>; loadSession: SessionLoader; loadConnectionHealth?: ConnectionHealthLoader; signInAction?: () => Promise<void> }) {
   const { session, sessionRevision, loading: sessionLoading, error: sessionError, retry } = useSession(loadSession);
-  const hasModuleContract = Array.isArray(session?.workspace.enabledModules) || Array.isArray(session?.workspace.moduleAccess);
-  const legacyRedirect = hasModuleContract && (path === '/onboarding' ? '/settings/setup' : path === '/workspace-settings' ? '/settings' : path === '/workspace-access' ? '/settings/access' : null);
+  const legacyDestinations: Record<string, string> = {
+    '/onboarding': '/settings#connection', '/settings/setup': '/settings#connection',
+    '/workspace-settings': '/settings#general', '/settings/general': '/settings#general',
+    '/settings/modules': '/settings#modules', '/workspace-access': '/settings#access', '/settings/access': '/settings#access',
+  };
+  const legacyRedirect = legacyDestinations[path] ?? null;
   useEffect(() => {
     if (legacyRedirect) navigate(legacyRedirect);
   }, [legacyRedirect, navigate]);
@@ -111,12 +115,12 @@ function LoadedWorkspaceExperience({ path, navigate, capabilities, capabilitiesL
   if (sessionLoading) return <main className="loading-state" role="status">{messages.shellLoading}</main>;
   if (sessionError || !session) return <SessionFailure error={sessionError ?? new Error('session_unavailable')} onRetry={retry} onSignIn={signInAction} />;
 
-  const route = matchRoute(path);
+  const route = matchRoute(path.split('#')[0]);
   if (legacyRedirect) return <main className="loading-state" role="status">Redirecting…</main>;
   const canManageMembers = session.workspaceAccess?.canManageMembers === true;
   const canManageSettings = session.workspaceAccess?.canManageSettings === true;
   const canManageModules = session.workspaceAccess?.canManageModules === true;
-  const hasWorkspaceAccess = route.workspaceAccess === 'members' ? canManageMembers : route.workspaceAccess === 'modules' ? canManageModules : route.workspaceAccess === 'settings' ? canManageSettings : true;
+  const hasWorkspaceAccess = route.workspaceAccess === 'members' ? canManageMembers : route.workspaceAccess === 'modules' ? canManageModules : route.workspaceAccess === 'settings' ? canManageSettings : route.workspaceAccess === 'any' ? canManageMembers || canManageSettings || canManageModules : true;
   const availableModules = session.workspace.moduleAccess ?? session.workspace.enabledModules;
   const isDeviceSetupAdmin = route.module === 'devices' && canManageSettings;
   const hasAssignedModuleAccess = !route.module || !availableModules || ((!session.workspace.enabledModules || session.workspace.enabledModules.includes(route.module)) && availableModules.includes(route.module));
@@ -140,7 +144,7 @@ function LoadedWorkspaceExperience({ path, navigate, capabilities, capabilitiesL
       : route.render({ loadConnectionHealth, capabilities: unavailableSnapshot.capabilities, navigate, session });
   }
 
-  return <WorkspaceNotificationsProvider key={`${session.workspace.id}:${sessionRevision}`} session={session} sessionScope={sessionRevision} capabilities={capabilities} capabilitiesError={capabilitiesError} onRefresh={refreshCapabilities} loadConnectionHealth={loadConnectionHealth}><AppShell capabilities={capabilities} currentPath={path} session={session} onNavigate={navigate}>{routeContent}</AppShell></WorkspaceNotificationsProvider>;
+  return <WorkspaceNotificationsProvider key={`${session.workspace.id}:${sessionRevision}`} session={session} sessionScope={sessionRevision} capabilities={capabilities} capabilitiesError={capabilitiesError} onRefresh={refreshCapabilities} loadConnectionHealth={loadConnectionHealth}><AppShell capabilities={capabilities} currentPath={path.split('#')[0]} session={session} onNavigate={navigate}>{routeContent}</AppShell></WorkspaceNotificationsProvider>;
 }
 
 function SessionFailure({ error, onRetry, onSignIn }: { error: Error; onRetry: () => void; onSignIn?: () => Promise<void> }) {

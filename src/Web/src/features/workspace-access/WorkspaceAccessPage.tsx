@@ -7,7 +7,7 @@ type Invitation = { id: string; email: string; displayName: string; role: 'membe
 type AccessResponse = { memberships: Membership[]; invitations: Invitation[] };
 type OneTimeLink = { invitationUrl: string; expiresAt: string };
 
-export function WorkspaceAccessPage({ isOwner = false, canManageModules = false, availableModules = ['users', 'devices', 'licenses', 'exchange'] }: { isOwner?: boolean; canManageModules?: boolean; availableModules?: string[] } = {}) {
+export function WorkspaceAccessPage({ isOwner = false, canManageModules = false, availableModules = ['users', 'devices', 'licenses', 'exchange'], embedded = false }: { isOwner?: boolean; canManageModules?: boolean; availableModules?: string[]; embedded?: boolean } = {}) {
   const api = useApi();
   const [data, setData] = useState<AccessResponse | null>(null);
   const [loadError, setLoadError] = useState(false);
@@ -133,7 +133,7 @@ export function WorkspaceAccessPage({ isOwner = false, canManageModules = false,
     finally { setBusy(false); }
   };
 
-  const header = <header className="page-header"><div><p className="eyebrow">Settings</p><h1 id="workspace-access-title">Workspace access</h1><p>Grant application access to people who already exist in your Microsoft Entra tenant. Microsoft 365 actions still follow each person’s Entra roles and PIM activation.</p></div></header>;
+  const header = <header className="page-header"><div>{!embedded && <p className="eyebrow">Settings</p>}{embedded ? <h2 id="workspace-access-title" tabIndex={-1}>Access</h2> : <h1 id="workspace-access-title">Workspace access</h1>}<p>Grant application access to people who already exist in your Microsoft Entra tenant. Microsoft 365 actions still follow each person’s Entra roles and PIM activation.</p></div></header>;
   if (loading || loadError || !data) return <section className="content-panel workspace-access-page" aria-labelledby="workspace-access-title">{header}{loading ? <p role="status">Loading workspace access…</p> : <div className="async-state" role="alert">Workspace members and invitations are unavailable right now. <button type="button" onClick={() => setRetry(value => value + 1)}>Retry</button></div>}</section>;
 
   const pendingInvitations = data.invitations.filter(invitation => !invitation.redeemedAt && !invitation.revokedAt);

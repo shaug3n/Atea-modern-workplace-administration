@@ -83,6 +83,37 @@ body {
   max-width: 78rem;
 }
 
+.workspace-settings-hub {
+  display: grid;
+  gap: var(--atea-space-5);
+  max-width: 78rem;
+}
+
+.workspace-settings-hub > [id] {
+  min-width: 0;
+  scroll-margin-top: var(--atea-space-5);
+}
+
+.settings-index {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--atea-space-3);
+  padding: var(--atea-space-3) 0;
+  border-block: 1px solid var(--uw-border);
+}
+
+.settings-index a {
+  padding: var(--atea-space-2) var(--atea-space-3);
+  border-radius: var(--atea-radius-md);
+  background: var(--uw-surface-subtle);
+  font-weight: 700;
+}
+
+.workspace-settings-hub .setup-permissions summary {
+  cursor: pointer;
+  font-weight: 700;
+}
+
 .settings-summary-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

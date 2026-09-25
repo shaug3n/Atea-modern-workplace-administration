@@ -1,0 +1,90 @@
+import React from 'react';
+import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { App } from '../../../../src/Web/src/app/App';
+import type { AppSession } from '../../../../src/Web/src/components/TenantContextHeader';
+
+const api = vi.hoisted(() => vi.fn());
+vi.mock('../../../../src/Web/src/auth/useApi', () => ({ useApi: () => api }));
+
+const owner: AppSession = {
+  user: { displayName: 'Owner' },
+  workspace: { id: 'w-1', name: 'Contoso', enabledModules: ['users'], moduleAccess: ['users'] },
+  workspaceAccess: { role: 'workspace_owner', isOwner: true, canManageMembers: true, canManageSettings: true, canManageModules: true, canManageMemberModules: true },
+};
+
+function renderAt(path: string, session: AppSession = owner) {
+  window.history.replaceState(null, '', path);
+  return render(<App loadSession={async () => session} loadCapabilities={async () => ({ workspaceId: 'w-1', evaluatedAt: '2026-09-25T00:00:00Z', sourceState: 'graph_authoritative', capabilities: [] })} />);
+}
+
+afterEach(() => { cleanup(); api.mockReset(); window.history.replaceState(null, '', '/'); });
+
+describe('Workspace Settings hub', () => {
+  it('shows one page heading and independently loaded sections for an owner', async () => {
+    api.mockImplementation(async (path: string) => {
+      if (path.endsWith('/modules')) return Response.json({ enabledModules: ['users'] });
+      if (path.endsWith('/access')) return Response.json({ memberships: [], invitations: [] });
+      if (path.endsWith('/settings')) return Response.json({ displayName: 'Contoso', enabledModules: ['users'], defaultColumns: [], defaultFilters: {}, supportInstructions: '', defaultTheme: 'light', access: { state: 'allowed' } });
+      if (path.endsWith('/connection-health')) return Response.json({ status: 'connected', lastVerifiedAt: null });
+      return new Response(null, { status: 404 });
+    });
+    renderAt('/settings');
+    expect(await screen.findByRole('heading', { level: 1, name: 'Workspace Settings' })).toBeTruthy();
+    expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
+    for (const section of ['Connection', 'General', 'Modules', 'Access']) {
+      expect(screen.getByRole('heading', { level: 2, name: section })).toBeTruthy();
+    }
+    await screen.findByText('No workspace members have been added yet.');
+    expect(api).toHaveBeenCalledWith('/api/workspaces/current/access');
+  });
+
+  it('keeps General and Access available when Modules fails', async () => {
+    api.mockImplementation(async (path: string) => {
+      if (path.endsWith('/modules')) return new Response(null, { status: 503 });
+      if (path.endsWith('/access')) return Response.json({ memberships: [], invitations: [] });
+      if (path.endsWith('/settings')) return Response.json({ displayName: 'Contoso', enabledModules: [], defaultColumns: [], defaultFilters: {}, supportInstructions: '', defaultTheme: 'light', access: { state: 'allowed' } });
+      return Response.json({ status: 'connected', lastVerifiedAt: null });
+    });
+    renderAt('/settings');
+    expect(await screen.findByText('Workspace modules are unavailable.')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Save settings' })).toBeTruthy();
+    expect(screen.getByText('No workspace members have been added yet.')).toBeTruthy();
+  });
+
+  it('shows Access to a member manager without requesting unauthorized sections', async () => {
+    api.mockResolvedValue(Response.json({ memberships: [], invitations: [] }));
+    renderAt('/settings#access', { ...owner, workspaceAccess: { role: 'customer_admin', canManageMembers: true, canManageSettings: false, canManageModules: false } });
+    expect(await screen.findByRole('heading', { level: 1, name: 'Workspace Settings' })).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Workspace Settings' })).toBeTruthy();
+    expect(screen.getByRole('heading', { level: 2, name: 'Access' })).toBeTruthy();
+    expect(screen.queryByRole('heading', { level: 2, name: 'General' })).toBeNull();
+    expect(screen.queryByRole('heading', { level: 2, name: 'Modules' })).toBeNull();
+    await waitFor(() => expect(api.mock.calls.map(call => call[0])).toEqual(['/api/workspaces/current/access']));
+  });
+
+  it('denies a member without any settings permissions', async () => {
+    renderAt('/settings', { ...owner, workspaceAccess: { role: 'member', canManageMembers: false, canManageSettings: false, canManageModules: false } });
+    expect(await screen.findByRole('heading', { name: 'Workspace access is managed by an administrator' })).toBeTruthy();
+    expect(screen.queryByRole('heading', { name: 'Connection' })).toBeNull();
+    expect(api).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['/onboarding', 'connection'], ['/settings/setup', 'connection'],
+    ['/workspace-settings', 'general'], ['/settings/general', 'general'],
+    ['/settings/modules', 'modules'], ['/workspace-access', 'access'], ['/settings/access', 'access'],
+    ['/settings#access', 'access'],
+  ])('focuses %s on the %s section after direct load', async (path, section) => {
+    api.mockImplementation(async (url: string) => {
+      if (url.endsWith('/access')) return Response.json({ memberships: [], invitations: [] });
+      if (url.endsWith('/modules')) return Response.json({ enabledModules: [] });
+      if (url.endsWith('/settings')) return Response.json({ displayName: 'Contoso', enabledModules: [], defaultColumns: [], defaultFilters: {}, supportInstructions: '', defaultTheme: 'light', access: { state: 'allowed' } });
+      return Response.json({ status: 'connected', lastVerifiedAt: null });
+    });
+    renderAt(path);
+    await waitFor(() => expect(window.location.pathname + window.location.hash).toBe(`/settings#${section}`));
+    const heading = await screen.findByRole('heading', { level: 2, name: section[0].toUpperCase() + section.slice(1) });
+    await waitFor(() => expect(document.activeElement).toBe(heading));
+  });
+});

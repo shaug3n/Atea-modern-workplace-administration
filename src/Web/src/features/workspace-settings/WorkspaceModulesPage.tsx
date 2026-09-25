@@ -10,7 +10,7 @@ export const workspaceModules = [
 
 export type WorkspaceModulesResponse = { enabledModules: string[]; dormantGrantCount?: number; restoredDormantGrants?: boolean };
 
-export function WorkspaceModulesPage() {
+export function WorkspaceModulesPage({ embedded = false }: { embedded?: boolean } = {}) {
   const api = useApi();
   const [enabledModules, setEnabledModules] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
@@ -52,7 +52,7 @@ export function WorkspaceModulesPage() {
     } catch { setError('Modules could not be saved. Review owner permissions and try again.'); } finally { setSaving(false); }
   };
   return <section className="settings-page" aria-labelledby="modules-title">
-    <header className="page-header"><div><p className="eyebrow">Settings</p><h1 id="modules-title">Modules</h1><p>Enable services for this workspace. People only see modules that are enabled here and assigned to them.</p></div></header>
+    <header className="page-header"><div>{!embedded && <p className="eyebrow">Settings</p>}{embedded ? <h2 id="modules-title" tabIndex={-1}>Modules</h2> : <h1 id="modules-title">Modules</h1>}<p>Enable services for this workspace. People only see modules that are enabled here and assigned to them.</p></div></header>
     {loading && <p className="async-state" role="status">Loading modules…</p>}
     {!loading && error && <div className="async-state" role="alert">{error} <button type="button" onClick={() => void load()}>Retry</button></div>}
     {!loading && !error && <p className="data-freshness">Source: Workspace module configuration. Retrieved: {retrievedAt ? new Date(retrievedAt).toLocaleString() : 'Not retrieved'}</p>}
