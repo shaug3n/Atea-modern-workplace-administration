@@ -69,7 +69,13 @@ public sealed class WorkspaceOnboardingRepository(WorkplaceDbContext db) : IOnbo
 
         invitation.Email = invitation.Email.Trim();
         db.PlatformInvitations.Add(invitation);
-        if (auditEvent is not null) db.AuditEvents.Add(auditEvent);
+        if (auditEvent is not null)
+        {
+            auditEvent.WorkspaceId = invitation.WorkspaceId;
+            auditEvent.TenantId = await db.Workspaces.Where(x => x.Id == invitation.WorkspaceId).Select(x => x.TenantId).SingleAsync(cancellationToken);
+            auditEvent.TargetId = invitation.Id.ToString("D");
+            db.AuditEvents.Add(auditEvent);
+        }
         await db.SaveChangesAsync(cancellationToken);
         if (ownsTransaction) await transaction!.CommitAsync(cancellationToken);
         return invitation;

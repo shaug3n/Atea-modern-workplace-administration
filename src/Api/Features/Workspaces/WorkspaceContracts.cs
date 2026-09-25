@@ -1,11 +1,13 @@
 namespace Atea.UnifiedWorkplace.Api.Features.Workspaces;
 
 public sealed record CreateWorkspaceRequest(Guid TenantId, string DisplayName);
+public sealed record OnboardWorkspaceRequest(Guid TenantId, string? DisplayName, string? AdminUpn, string? AdminDisplayName = null);
+public sealed record WorkspaceOnboardingResponse(WorkspaceDto Workspace, string InvitationUrl, DateTimeOffset ExpiresAt);
 public sealed record AddWorkspaceMembershipRequest(Guid TenantObjectId, string Email, string PlatformRole, bool IsAteaOperator);
 public sealed record WorkspaceDto(Guid Id, Guid TenantId, string DisplayName, string ConnectionStatus);
 public sealed record InvitationRequest(string Email, string DisplayName, DateTimeOffset ExpiresAt, Guid? ApprovedTenantObjectId = null);
-public sealed record WorkspaceAccessInvitationRequest(string Email, string DisplayName, string Role);
-public sealed record WorkspaceAccessRoleRequest(string Role);
+public sealed record WorkspaceAccessInvitationRequest(string? Email, string? DisplayName, string? Role);
+public sealed record WorkspaceAccessRoleRequest(string? Role);
 public sealed record ConsentStartResponse(string AuthorizationUrl, IReadOnlyCollection<string> Scopes, string Challenge, string CorrelationId);
 public sealed record ConsentCompletionRequest(string State, Guid Tenant, string? ErrorCode = null);
 public sealed record ConsentCompletionResponse(bool Valid, string Status, string CorrelationId);

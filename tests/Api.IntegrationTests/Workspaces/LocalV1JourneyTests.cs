@@ -210,11 +210,13 @@ public sealed class LocalV1JourneyTests
             state.Workspace = new Workspace { Id = WorkspaceId, TenantId = tenantId, DisplayName = displayName, ConnectionStatus = "awaiting_invitation" };
             return Task.FromResult(WorkspaceProvisioningResult.Created(state.Workspace));
         }
+        public Task<WorkspaceOnboardingProvisioningResult> OnboardAsync(Guid tenantId, string displayName, string adminUpn, string adminDisplayName, AuditEvent auditEvent, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<PersistenceWorkspaceMembership> AddMembershipAsync(Guid workspaceId, Guid tenantObjectId, string email, string platformRole, bool isAteaOperator, CancellationToken cancellationToken = default)
         {
             state.Membership = new PersistenceWorkspaceMembership { Id = Guid.NewGuid(), WorkspaceId = workspaceId, TenantObjectId = tenantObjectId, Email = email, PlatformRole = platformRole, IsAteaOperator = isAteaOperator };
             return Task.FromResult(state.Membership);
         }
+        public Task<PersistenceWorkspaceMembership> AddMembershipAsync(Guid workspaceId, Guid tenantObjectId, string email, string platformRole, bool isAteaOperator, AuditEvent auditEvent, CancellationToken cancellationToken = default) => AddMembershipAsync(workspaceId, tenantObjectId, email, platformRole, isAteaOperator, cancellationToken);
         public Task<Workspace?> GetAsync(Guid workspaceId, CancellationToken cancellationToken = default) => Task.FromResult(state.Workspace);
     }
 

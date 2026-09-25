@@ -7,6 +7,7 @@ using Atea.UnifiedWorkplace.Api.Infrastructure.Persistence;
 using Atea.UnifiedWorkplace.Api.Infrastructure.Persistence.Entities;
 using Atea.UnifiedWorkplace.Api.Infrastructure.Observability;
 using Atea.UnifiedWorkplace.Api.Infrastructure.Persistence.Repositories;
+using Atea.UnifiedWorkplace.Api.Features.Workspaces;
 using FluentAssertions;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
@@ -14,10 +15,12 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 using Testcontainers.PostgreSql;
 using DotNet.Testcontainers.Builders;
 using Xunit.Sdk;
+using PlatformWorkspaceScope = Atea.UnifiedWorkplace.Api.Authorization.PlatformWorkspaceScope;
 
 namespace Atea.UnifiedWorkplace.Api.IntegrationTests.Workspaces;
 
@@ -46,15 +49,28 @@ public sealed class WorkspaceAccessEndpointTests : IAsyncLifetime
                 ["AzureAd:Audience"] = "api://atea-unified-workplace-api",
                 ["AzureAd:ClientId"] = "test-client-id",
                 ["Onboarding:PublicBaseUrl"] = "http://localhost:5173/",
-                ["Onboarding:ConsentSigningKey"] = "dGVzdC1zaWduaW5nLWtleS13aXRoLWF0LWxlYXN0LTMyLWNoYXJhY3RlcnM="
+                ["Onboarding:ConsentSigningKey"] = "dGVzdC1zaWduaW5nLWtleS13aXRoLWF0LWxlYXN0LTMyLWNoYXJhY3RlcnM=",
+                ["PlatformAuthorization:AdminObjectIds:0"] = AdminObjectId.ToString(),
+                [$"PlatformAuthorization:AdminWorkspaceScopes:{AdminObjectId}:0"] = WorkspaceId.ToString()
             }));
             builder.ConfigureServices(services => services.AddAuthentication(options =>
             {
                 options.DefaultAuthenticateScheme = AccessTestAuthenticationHandler.Scheme;
                 options.DefaultChallengeScheme = AccessTestAuthenticationHandler.Scheme;
             }).AddScheme<AuthenticationSchemeOptions, AccessTestAuthenticationHandler>(AccessTestAuthenticationHandler.Scheme, _ => { }));
-            builder.ConfigureServices(services => services.AddAuthorization(options =>
-                options.FallbackPolicy = new AuthorizationPolicyBuilder(AccessTestAuthenticationHandler.Scheme).RequireAuthenticatedUser().Build()));
+            builder.ConfigureServices(services =>
+            {
+                services.AddAuthorization(options =>
+                {
+                    options.FallbackPolicy = new AuthorizationPolicyBuilder(AccessTestAuthenticationHandler.Scheme).RequireAuthenticatedUser().Build();
+                    options.AddPolicy("PlatformAdminPolicy", policy => policy
+                        .AddAuthenticationSchemes(AccessTestAuthenticationHandler.Scheme)
+                        .RequireAuthenticatedUser()
+                        .RequireClaim("oid"));
+                });
+                services.RemoveAll<Atea.UnifiedWorkplace.Api.Authorization.IPlatformAuthorization>();
+                services.AddSingleton<Atea.UnifiedWorkplace.Api.Authorization.IPlatformAuthorization, WorkspaceAccessTestPlatformAuthorization>();
+            });
         });
         _ = factory.Services;
         await ResetDatabaseAsync();
@@ -120,6 +136,222 @@ public sealed class WorkspaceAccessEndpointTests : IAsyncLifetime
         using var admin = AuthenticatedClient(TenantId, AdminObjectId);
         var response = await admin.PatchAsJsonAsync($"/api/workspaces/current/access/memberships/{Guid.NewGuid()}", new { role = (string?)null });
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    [Theory]
+    [InlineData(null, "Invitee", "member")]
+    [InlineData("invitee@example.com", null, "member")]
+    [InlineData("invitee@example.com", "Invitee", null)]
+    public async Task Null_customer_invitation_fields_return_validation_error(string? email, string? displayName, string? role)
+    {
+        await SeedWorkspaceAsync();
+        using var admin = AuthenticatedClient(TenantId, AdminObjectId);
+
+        var response = await admin.PostAsJsonAsync("/api/workspaces/current/access/invitations", new { email, displayName, role });
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    public async Task Atea_onboarding_creates_workspace_and_first_admin_invitation_atomically()
+    {
+        await ResetDatabaseAsync();
+        using var admin = AuthenticatedClient(TenantId, AdminObjectId);
+
+        var response = await admin.PostAsJsonAsync("/api/platform/workspaces/onboard", new
+        {
+            tenantId = TenantId,
+            displayName = "New customer",
+            adminUpn = "owner@customer.example",
+            adminDisplayName = "Workspace Owner"
+        });
+
+        response.StatusCode.Should().Be(HttpStatusCode.Created);
+        using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        body.RootElement.GetProperty("workspace").GetProperty("tenantId").GetGuid().Should().Be(TenantId);
+        body.RootElement.GetProperty("workspace").GetProperty("displayName").GetString().Should().Be("New customer");
+        var invitationUrl = body.RootElement.GetProperty("invitationUrl").GetString()!;
+        invitationUrl.Should().StartWith("http://localhost:5173/invitations/");
+        var expiresAt = body.RootElement.GetProperty("expiresAt").GetDateTimeOffset();
+        expiresAt.Should().BeAfter(DateTimeOffset.UtcNow.AddDays(6)).And.BeBefore(DateTimeOffset.UtcNow.AddDays(8));
+
+        await using var scope = factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<WorkplaceDbContext>();
+        var workspace = await db.Workspaces.SingleAsync(x => x.TenantId == TenantId);
+        var invitation = await db.PlatformInvitations.SingleAsync(x => x.WorkspaceId == workspace.Id);
+        invitation.Email.Should().Be("owner@customer.example");
+        invitation.DisplayName.Should().Be("Workspace Owner");
+        invitation.Role.Should().Be("customer_admin");
+        invitation.ExpiresAt.Should().Be(expiresAt);
+        invitation.NonceHash.Should().NotContain(invitationUrl.Split('/').Last());
+    }
+
+    [Fact]
+    public async Task Atea_onboarding_rejects_duplicate_tenant_without_adding_an_invitation()
+    {
+        await SeedWorkspaceAsync();
+        using var admin = AuthenticatedClient(TenantId, AdminObjectId);
+
+        var response = await admin.PostAsJsonAsync("/api/platform/workspaces/onboard", new
+        {
+            tenantId = TenantId,
+            displayName = "Duplicate",
+            adminUpn = "owner@customer.example"
+        });
+
+        response.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        await using var scope = factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<WorkplaceDbContext>();
+        (await db.Workspaces.CountAsync(x => x.TenantId == TenantId)).Should().Be(1);
+        (await db.PlatformInvitations.CountAsync()).Should().Be(0);
+    }
+
+    [Fact]
+    public async Task Atea_onboarding_rejects_requests_from_non_platform_admins()
+    {
+        await ResetDatabaseAsync();
+        using var customer = AuthenticatedClient(TenantId, MemberObjectId);
+
+        var response = await customer.PostAsJsonAsync("/api/platform/workspaces/onboard", new
+        {
+            tenantId = TenantId,
+            displayName = "Unauthorized",
+            adminUpn = "owner@customer.example"
+        });
+
+        response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+    }
+
+    [Fact]
+    public async Task Failed_first_invitation_persistence_rolls_back_workspace_creation()
+    {
+        await ResetDatabaseAsync();
+        var workspace = new Workspace
+        {
+            Id = Guid.NewGuid(), TenantId = TenantId, DisplayName = "Atomic customer",
+            ConnectionStatus = "awaiting_invitation", CreatedAt = DateTimeOffset.UtcNow, UpdatedAt = DateTimeOffset.UtcNow
+        };
+        var invitation = new PlatformInvitation
+        {
+            Id = Guid.NewGuid(), WorkspaceId = workspace.Id, Email = "admin@example.com", DisplayName = "Admin",
+            Role = "customer_admin", NonceHash = new string('a', 129), ExpiresAt = DateTimeOffset.UtcNow.AddDays(7), CreatedAt = DateTimeOffset.UtcNow
+        };
+        var audit = new AuditEvent
+        {
+            WorkspaceId = workspace.Id, TenantId = TenantId, ActorTenantId = TenantId, ActorObjectId = AdminObjectId,
+            Action = "workspace.onboarded", TargetType = "workspace", Outcome = "success", Timestamp = DateTimeOffset.UtcNow
+        };
+
+        await using (var writeScope = factory.Services.CreateAsyncScope())
+        {
+            var repository = writeScope.ServiceProvider.GetRequiredService<IWorkspaceProvisioningRepository>();
+            await Assert.ThrowsAsync<WorkspaceProvisioningDatabaseException>(() => repository.CreateWithInvitationAsync(workspace, invitation, audit));
+        }
+        await using var verifyScope = factory.Services.CreateAsyncScope();
+        var verifyDb = verifyScope.ServiceProvider.GetRequiredService<WorkplaceDbContext>();
+        (await verifyDb.Workspaces.AnyAsync(x => x.Id == workspace.Id)).Should().BeFalse();
+        (await verifyDb.PlatformInvitations.AnyAsync(x => x.Id == invitation.Id)).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Atea_workspace_invitation_reissue_preserves_invitee_and_role_and_invalidates_old_link()
+    {
+        await SeedWorkspaceAsync();
+        using var admin = AuthenticatedClient(TenantId, AdminObjectId);
+        var original = await CreateInvitationAsync(admin, "person@example.com", "Person", "member");
+        var response = await admin.PostAsync($"/api/platform/workspaces/{WorkspaceId}/invitations/{original.Id}/reissue", null);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var replacementUrl = body.RootElement.GetProperty("invitationUrl").GetString()!;
+        var replacementId = body.RootElement.GetProperty("id").GetGuid();
+        var replacementExpiry = body.RootElement.GetProperty("expiresAt").GetDateTimeOffset();
+        replacementExpiry.Should().BeAfter(DateTimeOffset.UtcNow.AddDays(6)).And.BeBefore(DateTimeOffset.UtcNow.AddDays(8));
+        replacementUrl.Should().NotBe(original.Url);
+
+        await using var scope = factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<WorkplaceDbContext>();
+        var prior = await db.PlatformInvitations.SingleAsync(x => x.Id == original.Id);
+        var replacement = await db.PlatformInvitations.SingleAsync(x => x.Id == replacementId);
+        prior.RevokedAt.Should().NotBeNull();
+        replacement.Email.Should().Be("person@example.com");
+        replacement.DisplayName.Should().Be("Person");
+        replacement.Role.Should().Be("member");
+        replacement.ExpiresAt.Should().Be(replacementExpiry);
+    }
+
+    [Fact]
+    public async Task Atea_workspace_invitation_recovery_is_denied_outside_platform_workspace_scope()
+    {
+        await SeedWorkspaceAsync();
+        using var admin = AuthenticatedClient(TenantId, AdminObjectId);
+        var invitation = await CreateInvitationAsync(admin, "person@example.com", "Person", "member");
+
+        var response = await admin.PostAsync($"/api/platform/workspaces/{Guid.NewGuid()}/invitations/{invitation.Id}/reissue", null);
+
+        response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        (await admin.DeleteAsync($"/api/platform/workspaces/{Guid.NewGuid()}/invitations/{invitation.Id}")).StatusCode.Should().Be(HttpStatusCode.Forbidden);
+    }
+
+    [Fact]
+    public async Task Atea_workspace_invitation_recovery_audits_without_plaintext_link_and_revokes_transactionally()
+    {
+        await SeedWorkspaceAsync();
+        using var admin = AuthenticatedClient(TenantId, AdminObjectId);
+        var invitation = await CreateInvitationAsync(admin, "person@example.com", "Person", "member");
+        var reissue = await admin.PostAsync($"/api/platform/workspaces/{WorkspaceId}/invitations/{invitation.Id}/reissue", null);
+        reissue.StatusCode.Should().Be(HttpStatusCode.OK);
+        using var body = JsonDocument.Parse(await reissue.Content.ReadAsStringAsync());
+        var newId = body.RootElement.GetProperty("id").GetGuid();
+        var newUrl = body.RootElement.GetProperty("invitationUrl").GetString()!;
+        var delete = await admin.DeleteAsync($"/api/platform/workspaces/{WorkspaceId}/invitations/{newId}");
+        delete.StatusCode.Should().Be(HttpStatusCode.NoContent);
+
+        await using var scope = factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<WorkplaceDbContext>();
+        (await db.PlatformInvitations.SingleAsync(x => x.Id == newId)).RevokedAt.Should().NotBeNull();
+        var audit = string.Join("\n", await db.AuditEvents.Select(x => x.SafeMetadataJson).ToArrayAsync());
+        audit.Should().Contain("invitation").And.NotContain(newUrl).And.NotContain(invitation.Nonce);
+    }
+
+    [Fact]
+    public async Task Legacy_platform_membership_add_is_audited()
+    {
+        await SeedWorkspaceAsync();
+        using var admin = AuthenticatedClient(TenantId, AdminObjectId);
+
+        var response = await admin.PostAsJsonAsync($"/api/platform/workspaces/{WorkspaceId}/memberships", new
+        {
+            tenantObjectId = InviteeObjectId,
+            email = "recovery@example.com",
+            platformRole = "member",
+            isAteaOperator = false
+        });
+
+        response.StatusCode.Should().Be(HttpStatusCode.Created);
+        await using var scope = factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<WorkplaceDbContext>();
+        (await db.AuditEvents.AnyAsync(x => x.Action == "workspace.membership.added" && x.TenantId == TenantId)).Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Legacy_platform_membership_add_rolls_back_when_audit_write_fails()
+    {
+        await SeedWorkspaceAsync();
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<WorkplaceDbContext>();
+            var repository = new WorkspaceProvisioningRepository(db, new FailingWorkspaceAuditWriter());
+            var audit = new AuditEvent
+            {
+                WorkspaceId = WorkspaceId, TenantId = TenantId, ActorTenantId = TenantId, ActorObjectId = AdminObjectId,
+                Action = "workspace.membership.added", TargetType = "membership", Outcome = "success", Timestamp = DateTimeOffset.UtcNow
+            };
+            await Assert.ThrowsAsync<InvalidOperationException>(() => repository.AddMembershipAsync(WorkspaceId, InviteeObjectId, "recovery@example.com", "member", false, audit));
+        }
+        await using var verifyScope = factory.Services.CreateAsyncScope();
+        var verifyDb = verifyScope.ServiceProvider.GetRequiredService<WorkplaceDbContext>();
+        (await verifyDb.WorkspaceMemberships.AnyAsync(x => x.WorkspaceId == WorkspaceId && x.TenantObjectId == InviteeObjectId)).Should().BeFalse();
     }
 
     [Fact]
@@ -279,6 +511,18 @@ public sealed class WorkspaceAccessEndpointTests : IAsyncLifetime
     }
 
     private sealed class FailingAuditWriter : IAuditWriter
+    {
+        public Task WriteAsync(AuditEvent auditEvent, CancellationToken cancellationToken) => throw new InvalidOperationException("Injected audit failure.");
+    }
+
+    private sealed class WorkspaceAccessTestPlatformAuthorization : Atea.UnifiedWorkplace.Api.Authorization.IPlatformAuthorization
+    {
+        public bool IsAuthorized(ClaimsPrincipal principal) => Guid.TryParse(principal.FindFirst("oid")?.Value, out var id) && id == AdminObjectId;
+        public PlatformWorkspaceScope GetWorkspaceScope(ClaimsPrincipal principal) => IsAuthorized(principal) ? new(false, new HashSet<Guid> { WorkspaceId }) : new(false, new HashSet<Guid>());
+        public bool CanManageWorkspace(ClaimsPrincipal principal, Guid workspaceId) => IsAuthorized(principal) && workspaceId == WorkspaceId;
+    }
+
+    private sealed class FailingWorkspaceAuditWriter : Atea.UnifiedWorkplace.Api.Infrastructure.Observability.IAuditWriter
     {
         public Task WriteAsync(AuditEvent auditEvent, CancellationToken cancellationToken) => throw new InvalidOperationException("Injected audit failure.");
     }

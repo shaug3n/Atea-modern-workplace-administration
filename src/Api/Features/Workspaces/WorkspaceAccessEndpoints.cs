@@ -132,11 +132,11 @@ public static class WorkspaceAccessEndpoints
         };
     }
 
-    private static bool TryNormalizeInvitation(string rawEmail, string rawDisplayName, string rawRole, out string email, out string displayName, out string role)
+    private static bool TryNormalizeInvitation(string? rawEmail, string? rawDisplayName, string? rawRole, out string email, out string displayName, out string role)
     {
-        email = rawEmail.Trim();
-        displayName = rawDisplayName.Trim();
-        role = rawRole.Trim().ToLowerInvariant();
+        email = rawEmail?.Trim() ?? string.Empty;
+        displayName = rawDisplayName?.Trim() ?? string.Empty;
+        role = rawRole?.Trim().ToLowerInvariant() ?? string.Empty;
         try
         {
             return email.Length is > 0 and <= 320
