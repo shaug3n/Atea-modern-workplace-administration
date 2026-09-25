@@ -45,17 +45,20 @@ function LoadedOverviewMetrics({ loadOverview, loadConnectionHealth, actions, se
   const usersVisible = modules.includes('users');
   const devicesVisible = modules.includes('devices');
   const licensesVisible = modules.includes('licenses');
-  const graphReady = overview.access.state === 'allowed' && !overview.partialData && overview.freshness !== 'unavailable';
+  const accessReadable = overview.access.state === 'allowed' || overview.access.state === 'read_only';
+  const summaryAvailable = accessReadable && overview.freshness !== 'unavailable';
+  const permissionGuidance = overview.access.state === 'hidden' || overview.access.state === 'consent_required' || overview.access.state.startsWith('pim_');
+  const unavailableSummaryMessage = permissionGuidance ? 'Entra permission needed' : 'Summary data temporarily unavailable.';
   const validCount = (value: number) => Number.isSafeInteger(value) && value >= 0;
   const attention = [
     ...(usersVisible && overview.pimAttention.requiresAttention ? [messages.overviewPimAttention] : []),
     ...(usersVisible && overview.permissionHealth.state === 'incomplete' && validCount(overview.permissionHealth.allowedCount) && validCount(overview.permissionHealth.totalCount) && overview.permissionHealth.allowedCount <= overview.permissionHealth.totalCount ? [`Workspace permissions need attention (${overview.permissionHealth.allowedCount} of ${overview.permissionHealth.totalCount} available).`] : []),
     ...(overview.partialData ? ['Some summary data is unavailable.'] : []),
   ];
-  return <div className="overview-page"><section className="content-panel" aria-labelledby="overview-title"><p className="eyebrow">{messages.overviewEyebrow}</p><h1 id="overview-title">{messages.overviewTitle}</h1><p>{messages.overviewFreshness}: {overview.freshness}</p><div className="overview-metrics">
-    {usersVisible && <article className="overview-metric"><span className="overview-metric__label">Users</span><strong>{graphReady && validCount(overview.totalUsers) ? overview.totalUsers : 'Unavailable'}</strong>{!graphReady && <small>Entra permission needed</small>}</article>}
+  return <div className="overview-page"><section className="content-panel" aria-labelledby="overview-title"><p className="eyebrow">{messages.overviewEyebrow}</p><h1 id="overview-title">{messages.overviewTitle}</h1><p>{messages.overviewFreshness}: {overview.freshness}. Retrieved {new Date(overview.fetchedAt).toLocaleString()}.</p><div className="overview-metrics">
+    {usersVisible && <article className="overview-metric"><span className="overview-metric__label">Users</span><strong>{summaryAvailable && validCount(overview.totalUsers) ? overview.totalUsers : 'Unavailable'}</strong>{!summaryAvailable && <small>{unavailableSummaryMessage}</small>}</article>}
     {devicesVisible && <article className="overview-metric"><span className="overview-metric__label">Devices</span><strong>Unavailable</strong><small>No verified tenant total</small></article>}
-    {licensesVisible && <article className="overview-metric"><span className="overview-metric__label">{messages.overviewLicenseCoverage}</span><strong>{graphReady && validCount(overview.licenseCoverage.percentage) && overview.licenseCoverage.percentage <= 100 ? `${overview.licenseCoverage.percentage}%` : 'Unavailable'}</strong>{!graphReady && <small>Entra permission needed</small>}</article>}
+    {licensesVisible && <article className="overview-metric"><span className="overview-metric__label">{messages.overviewLicenseCoverage}</span><strong>{summaryAvailable && validCount(overview.licenseCoverage.percentage) && overview.licenseCoverage.percentage <= 100 ? `${overview.licenseCoverage.percentage}%` : 'Unavailable'}</strong>{!summaryAvailable && <small>{unavailableSummaryMessage}</small>}</article>}
     {usersVisible && <article className="overview-metric"><span className="overview-metric__label">{messages.overviewPermissionHealth}</span><strong>{['healthy', 'incomplete'].includes(overview.permissionHealth.state) && validCount(overview.permissionHealth.allowedCount) && validCount(overview.permissionHealth.totalCount) && overview.permissionHealth.allowedCount <= overview.permissionHealth.totalCount ? `${overview.permissionHealth.allowedCount}/${overview.permissionHealth.totalCount}` : 'Unavailable'}</strong></article>}
   </div>{!modules.length && <p>You do not currently have an operational module assigned. Ask a workspace administrator to grant access.</p>}</section><section className="overview-card overview-card--attention" aria-labelledby="overview-attention-title"><h2 id="overview-attention-title">Needs attention</h2>{attention.length ? <ul>{attention.map(item => <li key={item}>{item}</li>)}</ul> : <p>No issues need attention right now.</p>}</section>{health}</div>;
 }

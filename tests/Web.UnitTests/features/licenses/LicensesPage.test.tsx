@@ -1,7 +1,7 @@
 import React from 'react';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { LicensesPage } from '../../../../src/Web/src/features/licenses/LicensesPage';
+import { LicensesPage, type LicenseOverview } from '../../../../src/Web/src/features/licenses/LicensesPage';
 import type { UsersDirectoryResponse } from '../../../../src/Web/src/features/users/usersApi';
 
 describe('LicensesPage', () => {
@@ -19,6 +19,9 @@ describe('LicensesPage', () => {
     expect(screen.getByText('8')).toBeTruthy();
     expect(screen.getByText('2')).toBeTruthy();
     expect((await screen.findByRole('link', { name: 'Ada Lovelace' })).getAttribute('href')).toBe('/users/user-1');
+    const rosterRow = screen.getByRole('link', { name: 'Ada Lovelace' }).closest('tr');
+    expect(rosterRow?.querySelector('th')?.getAttribute('data-label')).toBe('User');
+    expect(rosterRow?.querySelector('td')?.getAttribute('data-label')).toBe('User principal name');
     expect(screen.getByRole('button', { name: 'Next page' })).toBeTruthy();
   });
 
@@ -40,6 +43,43 @@ describe('LicensesPage', () => {
 
     expect(await screen.findByText('Microsoft 365 E5')).toBeTruthy();
     expect(screen.getAllByText('4')).toHaveLength(2);
+  });
+
+  it('hides old inventory rows and roster actions while a new search is loading', async () => {
+    let finishSearch!: (value: LicenseOverview) => void;
+    const loader = vi.fn((search = '', page = 1) => search || page !== 1
+      ? new Promise<LicenseOverview>((resolve) => { finishSearch = resolve; })
+      : Promise.resolve({
+        items: [{ skuId: 'old-sku', partNumber: 'OLD', displayName: 'Old license', purchased: 10, assigned: 4, available: 6 }],
+        total: 50, page: 1, pageSize: 25, fetchedAt: '2026-09-21T10:00:00Z', freshness: 'live', partialData: false, access: { state: 'allowed' },
+      }));
+    render(<LicensesPage loadLicenses={loader} />);
+
+    expect(await screen.findByText('Old license')).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('Search SKUs'), { target: { value: 'new' } });
+
+    expect(screen.queryByText('Old license')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'View assigned users' })).toBeNull();
+    expect(screen.getByRole('status').textContent).toContain('Loading licenses');
+    finishSearch({ items: [], total: 0, page: 1, pageSize: 25, fetchedAt: '2026-09-21T10:01:00Z', freshness: 'live', partialData: false, access: { state: 'allowed' } });
+  });
+
+  it('hides old inventory rows while a new page is loading', async () => {
+    let finishPage!: (value: LicenseOverview) => void;
+    const loader = vi.fn((search = '', page = 1) => page === 1
+      ? Promise.resolve({
+        items: [{ skuId: 'page-one-sku', partNumber: 'ONE', displayName: 'Page one license', purchased: 10, assigned: 4, available: 6 }],
+        total: 50, page: 1, pageSize: 25, fetchedAt: '2026-09-21T10:00:00Z', freshness: 'live', partialData: false, access: { state: 'allowed' } },)
+      : new Promise<LicenseOverview>((resolve) => { finishPage = resolve; }));
+    render(<LicensesPage loadLicenses={loader} />);
+
+    expect(await screen.findByText('Page one license')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Next page' }));
+
+    expect(screen.queryByText('Page one license')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'View assigned users' })).toBeNull();
+    expect(screen.getByRole('status').textContent).toContain('Loading licenses');
+    finishPage({ items: [], total: 50, page: 2, pageSize: 25, fetchedAt: '2026-09-21T10:01:00Z', freshness: 'live', partialData: false, access: { state: 'allowed' } });
   });
 
   it('clears stale roster rows and blocks repeated paging until the next page arrives', async () => {
@@ -105,7 +145,7 @@ describe('LicensesPage', () => {
     render(<LicensesPage loadLicenses={loader} loadAssignees={async () => ({ items: [], continuationToken: null, fetchedAt: '2026-09-21T10:00:00Z', freshness: 'fresh', partialData: false })} exportCsv={exportCsv} />);
 
     fireEvent.change(await screen.findByLabelText('Search SKUs'), { target: { value: 'E3' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Export filtered CSV' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Export filtered CSV' }));
     await waitFor(() => expect(exportCsv).toHaveBeenCalledWith('/api/licenses/export.csv?search=E3', 'licenses.csv'));
     expect(await screen.findByText(/10,000.*maximum.*truncated/i)).toBeTruthy();
 

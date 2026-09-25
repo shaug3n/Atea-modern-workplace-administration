@@ -3,6 +3,7 @@ import React from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { UserDetailPage } from '../../../../src/Web/src/features/users/UserDetailPage';
 import type { UserDetailResponse } from '../../../../src/Web/src/features/users/userDetailApi';
+import { appRoutes } from '../../../../src/Web/src/app/routes';
 
 const apiMock = vi.hoisted(() => vi.fn());
 
@@ -66,9 +67,24 @@ describe('UserDetailPage', () => {
   it('omits license and device sections when their modules are unassigned, including nested fetches', async () => {
     render(<UserDetailPage userId="user-1" modules={['users']} loadUserDetail={async () => detail} capabilities={[{ capability: 'devices.view', state: 'allowed', reasonCode: 'active_role' }]} />);
     expect(await screen.findByRole('heading', { name: 'Ada Lovelace' })).toBeTruthy();
-    expect(screen.queryByRole('heading', { name: 'Licenses' })).toBeNull();
+    expect(screen.queryByRole('heading', { name: 'Assigned licenses' })).toBeNull();
     expect(screen.queryByRole('heading', { name: 'Associated devices' })).toBeNull();
     expect(apiMock).not.toHaveBeenCalled();
+  });
+
+  it('does not render a retained license grant when the route session has disabled the module', async () => {
+    window.history.replaceState({}, '', '/users/user-1');
+    apiMock.mockResolvedValue(new Response(JSON.stringify(detail), { status: 200 }));
+    const route = appRoutes.find((candidate) => candidate.path === '/users/:userId');
+
+    render(<>{route?.render({
+      capabilities: [],
+      session: { user: {}, workspace: { id: 'workspace-1', name: 'Contoso', moduleAccess: ['users', 'licenses'], enabledModules: ['users'] } },
+    })}</>);
+
+    expect(await screen.findByRole('heading', { name: 'Ada Lovelace' })).toBeTruthy();
+    expect(screen.queryByRole('heading', { name: 'Assigned licenses' })).toBeNull();
+    expect(apiMock).toHaveBeenCalledWith('/api/users/user-1');
   });
 
   it('summarizes only verified account and license data and guides MFA review', async () => {

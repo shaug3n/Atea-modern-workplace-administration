@@ -56,4 +56,29 @@ describe('OverviewPage', () => {
     expect(screen.getByText('Workspace permissions need attention (3 of 4 available).')).toBeTruthy();
     expect(screen.queryByText('No issues need attention right now.')).toBeNull();
   });
+
+  it('shows cached counts and the retrieval timestamp when authorized summary data is stale', async () => {
+    render(<OverviewPage loadOverview={async () => ({
+      ...overview,
+      freshness: 'stale',
+      partialData: true,
+    })} />);
+
+    await waitFor(() => expect(screen.getByText('42')).toBeTruthy());
+    expect(screen.getByText(/Freshness: stale/i)).toBeTruthy();
+    expect(screen.getByText(new Date(overview.fetchedAt).toLocaleString(), { exact: false })).toBeTruthy();
+    expect(screen.queryByText('Entra permission needed')).toBeNull();
+  });
+
+  it('describes authorized unavailable summary data without claiming missing permission', async () => {
+    render(<OverviewPage loadOverview={async () => ({
+      ...overview,
+      freshness: 'unavailable',
+      partialData: true,
+    })} />);
+
+    await waitFor(() => expect(screen.getAllByText('Unavailable').length).toBeGreaterThan(0));
+    expect(screen.getAllByText('Summary data temporarily unavailable.').length).toBeGreaterThan(0);
+    expect(screen.queryByText('Entra permission needed')).toBeNull();
+  });
 });

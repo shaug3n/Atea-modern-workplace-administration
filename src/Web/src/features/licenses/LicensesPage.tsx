@@ -37,6 +37,7 @@ function AuthenticatedLicensesPage() {
 
 function LoadedLicensesPage({ loader, loadAssignees, exportCsv }: { loader: LicenseLoader; loadAssignees?: AssigneeLoader; exportCsv?: Exporter }) {
   const [result, setResult] = useState<LicenseOverview | null>(null);
+  const [loadedQueryKey, setLoadedQueryKey] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
   const [retry, setRetry] = useState(0);
   const [search, setSearch] = useState('');
@@ -52,13 +53,14 @@ function LoadedLicensesPage({ loader, loadAssignees, exportCsv }: { loader: Lice
   const [exportMessage, setExportMessage] = useState<string | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
   const [exportPending, setExportPending] = useState(false);
+  const queryKey = `${search}\u0000${page}`;
 
   useEffect(() => {
     let cancelled = false;
     setFailed(false);
-    loader(search, page).then(value => { if (!cancelled) setResult(value); }).catch(() => { if (!cancelled) setFailed(true); });
+    loader(search, page).then(value => { if (!cancelled) { setResult(value); setLoadedQueryKey(queryKey); } }).catch(() => { if (!cancelled) setFailed(true); });
     return () => { cancelled = true; };
-  }, [loader, search, page, retry]);
+  }, [loader, search, page, retry, queryKey]);
 
   useEffect(() => {
     if (tab !== 'assignees' || !selected || !loadAssignees) return;
@@ -106,7 +108,7 @@ function LoadedLicensesPage({ loader, loadAssignees, exportCsv }: { loader: Lice
   };
 
   if (failed) return <section className="content-panel"><p role="alert">License data is unavailable. Try again later.</p><button type="button" onClick={() => setRetry(value => value + 1)}>{messages.retry}</button></section>;
-  if (!result) return <section className="content-panel"><p role="status">Loading licenses…</p></section>;
+  if (!result || loadedQueryKey !== queryKey) return <section className="content-panel"><p role="status">Loading licenses…</p></section>;
   if (result.access.state !== 'allowed' && result.access.state !== 'read_only') return <section className="content-panel"><h1>{messages.permissionRequiredTitle}</h1><p>{messages.permissionRequiredBody}</p></section>;
   if (result.error) return <section className="content-panel"><h1>Licenses</h1><p role="alert">{result.error.message}</p><button type="button" onClick={() => setRetry(value => value + 1)}>{messages.retry}</button></section>;
 
@@ -126,7 +128,7 @@ function LoadedLicensesPage({ loader, loadAssignees, exportCsv }: { loader: Lice
       {selected && <><h2>{selected.displayName}</h2><dl className="license-counts"><div><dt>Purchased</dt><dd>{selected.purchased}</dd></div><div><dt>Assigned</dt><dd>{selected.assigned}</dd></div><div><dt>Available</dt><dd>{selected.available}</dd></div></dl>
       {exportCsv && <button type="button" onClick={() => void runExport('assignees')} disabled={exportPending}>Export assignees CSV</button>}
       {!loadAssignees ? <p>Assigned-user roster is unavailable.</p> : <>
-        {assigneeLoading ? <p role="status">Loading assigned users…</p> : assigneeError || assignees?.error ? <><p role="alert">Assigned-user roster is unavailable.</p><button type="button" onClick={retryAssignees}>{messages.retry}</button></> : assignees ? <><p>Source: Microsoft Graph users assigned to this SKU. Retrieved {new Date(assignees.fetchedAt).toLocaleString()}.</p>{assignees.items.length === 0 ? <p>No assigned users were returned.</p> : <div className="users-table-wrap"><table className="users-table"><thead><tr><th>User</th><th>User principal name</th></tr></thead><tbody>{assignees.items.map(user => <tr key={user.id}><th scope="row"><a href={`/users/${encodeURIComponent(user.id)}`}>{user.displayName || user.userPrincipalName || user.id}</a></th><td>{user.userPrincipalName}</td></tr>)}</tbody></table></div>}</> : null}
+        {assigneeLoading ? <p role="status">Loading assigned users…</p> : assigneeError || assignees?.error ? <><p role="alert">Assigned-user roster is unavailable.</p><button type="button" onClick={retryAssignees}>{messages.retry}</button></> : assignees ? <><p>Source: Microsoft Graph users assigned to this SKU. Retrieved {new Date(assignees.fetchedAt).toLocaleString()}.</p>{assignees.items.length === 0 ? <p>No assigned users were returned.</p> : <div className="users-table-wrap"><table className="users-table"><thead><tr><th>User</th><th>User principal name</th></tr></thead><tbody>{assignees.items.map(user => <tr key={user.id}><th scope="row" data-label="User"><a href={`/users/${encodeURIComponent(user.id)}`}>{user.displayName || user.userPrincipalName || user.id}</a></th><td data-label="User principal name">{user.userPrincipalName}</td></tr>)}</tbody></table></div>}</> : null}
         <nav className="table-pagination" aria-label="Assignee pages"><span>Page {history.length + 1}</span><button type="button" onClick={previousAssignees} disabled={assigneeLoading || assigneeError || !!assignees?.error || history.length === 0}>Previous page</button><button type="button" onClick={nextAssignees} disabled={assigneeLoading || assigneeError || !assignees?.continuationToken}>Next page</button></nav>
       </>}
       </>}

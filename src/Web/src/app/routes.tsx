@@ -67,7 +67,7 @@ export const appRoutes: AppRoute[] = [
     label: messages.navUsers,
     module: 'users',
     capability: 'users.view',
-    render: (options) => <UserDetailPage capabilities={options?.capabilities} modules={options?.session?.workspace.moduleAccess} />,
+    render: (options) => <UserDetailPage capabilities={options?.capabilities} modules={effectiveAssignedModules(options?.session)} />,
   },
   {
     path: '/licenses',
@@ -161,4 +161,12 @@ function normalizePath(pathname: string) {
   }
 
   return pathname.endsWith('/') ? pathname.slice(0, -1) : pathname;
+}
+
+function effectiveAssignedModules(session?: AppSession) {
+  const assignedModules = session?.workspace.moduleAccess;
+  const enabledModules = session?.workspace.enabledModules;
+  return assignedModules && enabledModules
+    ? assignedModules.filter((module) => enabledModules.includes(module))
+    : assignedModules;
 }
