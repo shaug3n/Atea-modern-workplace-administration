@@ -37,6 +37,8 @@ describe('UsersPage', () => {
   afterEach(() => {
     cleanup();
     apiMock.mockReset();
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
     window.history.replaceState(null, '', '/users');
   });
 
@@ -51,11 +53,17 @@ describe('UsersPage', () => {
     await waitFor(() => expect(new URLSearchParams(window.location.search).get('search')).toBe('Grace'));
   });
 
-  it('offers a disabled filtered CSV export with the Task 4 endpoint explanation', async () => {
+  it('exports active user filters and makes truncation visible', async () => {
+    apiMock.mockResolvedValue(new Response('"Id"\n"user-1"\n', { status: 200, headers: { 'X-Export-Row-Count': '10000', 'X-Export-Max-Rows': '10000', 'X-Export-Truncated': 'true', 'Content-Type': 'text/csv' } }));
+    vi.stubGlobal('URL', Object.assign(URL, { createObjectURL: vi.fn(() => 'blob:test'), revokeObjectURL: vi.fn() }));
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
     render(<UsersPage capabilities={allowedCapabilities} loadUsers={async () => usersResponse} />);
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search users' }), { target: { value: 'Grace' } });
     const button = screen.getByRole('button', { name: /export filtered csv/i }) as HTMLButtonElement;
-    expect(button.disabled).toBe(true);
-    expect(screen.getByText(/export endpoint.*Task 4/i)).toBeTruthy();
+    expect(button.disabled).toBe(false);
+    fireEvent.click(button);
+    await waitFor(() => expect(apiMock).toHaveBeenCalledWith(expect.stringContaining('/api/users/export.csv?search=Grace'), expect.anything()));
+    expect(await screen.findByText(/10,000.*maximum.*truncated/i)).toBeTruthy();
   });
 
   it('announces the page number and disables paging while loading', async () => {

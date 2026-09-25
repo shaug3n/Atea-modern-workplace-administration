@@ -20,6 +20,7 @@ using Atea.UnifiedWorkplace.Api.Features.AdminAuth;
 using Atea.UnifiedWorkplace.Api.Features.Devices;
 using Atea.UnifiedWorkplace.Api.Features.Identity;
 using Atea.UnifiedWorkplace.Api.Features.Exchange;
+using Atea.UnifiedWorkplace.Api.Features.Exports;
 using Atea.UnifiedWorkplace.Api.Infrastructure.Http;
 using Microsoft.Extensions.Options;
 
@@ -85,6 +86,8 @@ builder.Services.AddScoped<IUserLicenseReader>(services => services.GetRequiredS
 builder.Services.AddScoped<ILicenseAssignmentCommands>(services => services.GetRequiredService<GraphLicenseService>());
 builder.Services.AddScoped<ILicenseOverviewReader, GraphLicenseOverviewReader>();
 builder.Services.AddScoped<ILicenseOverviewService, LicenseOverviewService>();
+builder.Services.AddScoped<ILicenseAssigneeService, LicenseAssigneeService>();
+builder.Services.AddScoped<CsvExportService>();
 builder.Services.AddScoped<GraphManagedDeviceReader>();
 builder.Services.AddScoped<IManagedDeviceReader>(services => services.GetRequiredService<GraphManagedDeviceReader>());
 builder.Services.AddScoped<IManagedDeviceDetailReader>(services => services.GetRequiredService<GraphManagedDeviceReader>());
@@ -178,6 +181,7 @@ app.MapUserEndpoints();
 app.MapUserDetailEndpoints();
 app.MapUserCommandEndpoints();
 app.MapLicenseEndpoints();
+app.MapCsvExportEndpoints();
 app.MapGroupEndpoints();
 app.MapRoleEndpoints();
 app.MapPimEndpoints();

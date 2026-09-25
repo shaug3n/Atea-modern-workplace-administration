@@ -26,7 +26,8 @@ public sealed class GraphDirectoryReader(IDelegatedGraphClientFactory clientFact
 
     public async Task<PagedResult<UserSummary>> SearchAsync(WorkspaceContext context, UserSearchQuery query, CancellationToken cancellationToken)
     {
-        await using var lease = await clientFactory.CreateForCurrentUserAsync(GraphScopeCatalog.DirectoryReadScopes, cancellationToken);
+        await using var lease = await clientFactory.CreateForCurrentUserAsync(
+            string.IsNullOrWhiteSpace(query.License) ? GraphScopeCatalog.DirectoryReadScopes : ["Directory.Read.All"], cancellationToken);
         var path = BuildSearchPath(query);
         var users = new List<UserSummary>();
         var correlations = new List<string>();
@@ -144,29 +145,29 @@ public sealed class GraphDirectoryReader(IDelegatedGraphClientFactory clientFact
         string licenseInput,
         CancellationToken cancellationToken)
     {
-        var response = await transport.SendAsync(
-            new GraphRequest(HttpMethod.Get, "/v1.0/subscribedSkus?$select=skuId,skuPartNumber"),
-            cancellationToken);
-        if (!response.Result.IsSuccess)
-        {
-            return (null, response.Result);
-        }
-
         try
         {
-            using var document = JsonDocument.Parse(response.Content);
             var normalized = licenseInput.Trim();
-            var match = document.RootElement.TryGetProperty("value", out var value) && value.ValueKind == JsonValueKind.Array
-                ? value.EnumerateArray().FirstOrDefault(item =>
+            string? path = "/v1.0/subscribedSkus?$select=skuId,skuPartNumber";
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            while (path is not null)
+            {
+                if (!seen.Add(path)) return (null, new GraphOperationResult(false, "invalid_response"));
+                var response = await transport.SendAsync(new GraphRequest(HttpMethod.Get, path), cancellationToken);
+                if (!response.Result.IsSuccess) return (null, response.Result);
+                using var document = JsonDocument.Parse(response.Content);
+                if (!document.RootElement.TryGetProperty("value", out var value) || value.ValueKind != JsonValueKind.Array)
+                    return (null, new GraphOperationResult(false, "invalid_response"));
+                var match = value.EnumerateArray().FirstOrDefault(item =>
                     string.Equals(OptionalString(item, "skuId"), normalized, StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(OptionalString(item, "skuPartNumber"), normalized, StringComparison.OrdinalIgnoreCase))
-                : default;
-            var skuId = match.ValueKind == JsonValueKind.Undefined ? null : OptionalString(match, "skuId");
-            return skuId is null
-                ? (null, new GraphOperationResult(false, "invalid_license_filter", 400))
-                : (skuId, null);
+                    || string.Equals(OptionalString(item, "skuPartNumber"), normalized, StringComparison.OrdinalIgnoreCase));
+                if (match.ValueKind != JsonValueKind.Undefined && OptionalString(match, "skuId") is { } skuId)
+                    return (skuId, null);
+                path = GraphLicenseOverviewReader.ContinuationPath(document.RootElement);
+            }
+            return (null, new GraphOperationResult(false, "invalid_license_filter", 400));
         }
-        catch (JsonException)
+        catch (Exception exception) when (exception is JsonException or InvalidOperationException)
         {
             return (null, new GraphOperationResult(false, "invalid_response"));
         }

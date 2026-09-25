@@ -3,6 +3,8 @@ using System.Net.Http.Headers;
 using System.Security.Claims;
 using Atea.UnifiedWorkplace.Api.Authorization;
 using Atea.UnifiedWorkplace.Api.Features.Licenses;
+using Atea.UnifiedWorkplace.Api.Features.Users;
+using Atea.UnifiedWorkplace.Api.Infrastructure.Observability;
 using Atea.UnifiedWorkplace.Api.Infrastructure.Graph;
 using FluentAssertions;
 using Microsoft.AspNetCore.Authentication;
@@ -69,7 +71,83 @@ public sealed class LicenseEndpointTests
         reader.Calls.Should().Be(0);
     }
 
-    private static WebApplicationFactory<Program> CreateFactory(RecordingLicenseOverviewReader reader, GraphAuthorizationSnapshot snapshot) =>
+    [Fact]
+    public async Task Assignee_route_is_available_to_license_reader_and_returns_paged_roster()
+    {
+        using var factory = CreateFactory(new RecordingLicenseOverviewReader(), AllowedSnapshot());
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Test");
+
+        var response = await client.GetAsync("/api/licenses/11111111-1111-1111-1111-111111111111/assignees?pageSize=1");
+        var body = await response.Content.ReadAsStringAsync();
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        body.Should().Contain("user-1");
+        body.Should().Contain("next-page");
+    }
+
+    [Fact]
+    public async Task Users_export_has_csv_and_explicit_limit_headers()
+    {
+        using var factory = CreateFactory(new RecordingLicenseOverviewReader(), AllowedSnapshot());
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Test");
+
+        var response = await client.GetAsync("/api/users/export.csv?search=Ada");
+        var body = await response.Content.ReadAsStringAsync();
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        response.Content.Headers.ContentType!.MediaType.Should().Be("text/csv");
+        response.Headers.GetValues("X-Export-Row-Count").Should().ContainSingle().Which.Should().Be("1");
+        response.Headers.GetValues("X-Export-Truncated").Should().ContainSingle().Which.Should().Be("false");
+        body.Should().Contain("Ada Lovelace");
+    }
+
+    [Fact]
+    public async Task License_module_grant_allows_roster_but_does_not_open_users_export()
+    {
+        using var factory = CreateFactory(new RecordingLicenseOverviewReader(), AllowedSnapshot(), ["licenses"]);
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Test");
+
+        (await client.GetAsync("/api/licenses/11111111-1111-1111-1111-111111111111/assignees")).StatusCode.Should().Be(HttpStatusCode.OK);
+        (await client.GetAsync("/api/users/export.csv")).StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        (await client.GetAsync("/api/devices/export.csv")).StatusCode.Should().Be(HttpStatusCode.Forbidden);
+    }
+
+    [Fact]
+    public async Task Read_only_license_viewer_can_read_inventory_but_cannot_assign_a_license()
+    {
+        var reader = new RecordingLicenseOverviewReader { Result = GraphReadResult<IReadOnlyList<LicenseOverviewItem>>.Succeeded([new("sku-1", "E3", "E3", 7, 3, 10)]) };
+        using var factory = CreateFactory(reader, AllowedSnapshot(), ["licenses"]);
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Test");
+
+        (await client.GetAsync("/api/licenses")).StatusCode.Should().Be(HttpStatusCode.OK);
+        var assign = new HttpRequestMessage(HttpMethod.Post, "/api/users/user-1/licenses/11111111-1111-1111-1111-111111111111");
+        assign.Headers.Add("Idempotency-Key", "read-only-attempt");
+        assign.Content = new StringContent("{}", System.Text.Encoding.UTF8, "application/json");
+        (await client.SendAsync(assign)).StatusCode.Should().Be(HttpStatusCode.Forbidden);
+    }
+
+    [Fact]
+    public async Task License_and_assignee_exports_are_separate_authorized_csv_routes()
+    {
+        var reader = new RecordingLicenseOverviewReader { Result = GraphReadResult<IReadOnlyList<LicenseOverviewItem>>.Succeeded([new("sku-1", "E3", "E3", 7, 3, 10)]) };
+        using var factory = CreateFactory(reader, AllowedSnapshot(), ["licenses"]);
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Test");
+
+        var inventory = await client.GetAsync("/api/licenses/export.csv?search=E3");
+        var assignees = await client.GetAsync("/api/licenses/11111111-1111-1111-1111-111111111111/assignees/export.csv");
+
+        inventory.StatusCode.Should().Be(HttpStatusCode.OK);
+        (await inventory.Content.ReadAsStringAsync()).Should().Contain("\"10\",\"7\",\"3\"");
+        assignees.StatusCode.Should().Be(HttpStatusCode.OK);
+        (await assignees.Content.ReadAsStringAsync()).Should().Contain("Ada Lovelace");
+    }
+
+    private static WebApplicationFactory<Program> CreateFactory(RecordingLicenseOverviewReader reader, GraphAuthorizationSnapshot snapshot, string[]? modules = null) =>
         new WebApplicationFactory<Program>().WithWebHostBuilder(builder => builder.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
         {
             ["AzureAd:Audience"] = "api://atea-unified-workplace-api",
@@ -82,11 +160,17 @@ public sealed class LicenseEndpointTests
                 options.DefaultChallengeScheme = TestAuthenticationHandler.Scheme;
             }).AddScheme<AuthenticationSchemeOptions, TestAuthenticationHandler>(TestAuthenticationHandler.Scheme, _ => { });
             services.RemoveAll<IWorkspaceMembershipReader>();
-            services.AddSingleton<IWorkspaceMembershipReader>(new FixtureMembershipReader());
+            services.AddSingleton<IWorkspaceMembershipReader>(new FixtureMembershipReader(modules ?? ["users", "devices", "licenses"]));
             services.RemoveAll<IGraphAuthorizationSnapshotReader>();
             services.AddSingleton<IGraphAuthorizationSnapshotReader>(new StaticAuthorizationReader(snapshot));
             services.RemoveAll<ILicenseOverviewReader>();
             services.AddSingleton<ILicenseOverviewReader>(reader);
+            services.RemoveAll<ILicenseAssigneeService>();
+            services.AddSingleton<ILicenseAssigneeService>(new FakeAssignees());
+            services.RemoveAll<IUserQueryService>();
+            services.AddSingleton<IUserQueryService>(new FakeUsers());
+            services.RemoveAll<IAuditWriter>();
+            services.AddSingleton<IAuditWriter>(new NoOpAuditWriter());
         }));
 
     private static readonly Guid TenantId = Guid.Parse("11111111-1111-1111-1111-111111111111");
@@ -95,13 +179,23 @@ public sealed class LicenseEndpointTests
 
     private static GraphAuthorizationSnapshot AllowedSnapshot() => GraphAuthorizationSnapshot.Available("user-1", ["Directory.Read.All", "User.Read.All"], [new DirectoryRoleSnapshot(EntraRoleCatalog.GlobalReaderTemplateId, "Global Reader", DirectoryRoleAssignmentState.Active, "/")]);
     private sealed class StaticAuthorizationReader(GraphAuthorizationSnapshot snapshot) : IGraphAuthorizationSnapshotReader { public Task<GraphAuthorizationSnapshot> ReadAsync(WorkspaceContext context, CancellationToken cancellationToken = default) => Task.FromResult(snapshot); }
-    private sealed class FixtureMembershipReader : IWorkspaceMembershipReader { public Task<WorkspaceMembership?> FindMembershipAsync(Guid tenantId, Guid objectId, CancellationToken cancellationToken = default) => Task.FromResult<WorkspaceMembership?>(new WorkspaceMembership(WorkspaceId, "Example", "member", ModuleKeys: ["users", "devices", "licenses"])); }
+    private sealed class FixtureMembershipReader(string[] modules) : IWorkspaceMembershipReader { public Task<WorkspaceMembership?> FindMembershipAsync(Guid tenantId, Guid objectId, CancellationToken cancellationToken = default) => Task.FromResult<WorkspaceMembership?>(new WorkspaceMembership(WorkspaceId, "Example", "member", ModuleKeys: modules)); }
     private sealed class RecordingLicenseOverviewReader : ILicenseOverviewReader
     {
         public int Calls { get; private set; }
         public LicenseOverviewQuery? Query { get; private set; }
         public GraphReadResult<IReadOnlyList<LicenseOverviewItem>> Result { get; init; } = GraphReadResult<IReadOnlyList<LicenseOverviewItem>>.Succeeded([]);
         public Task<GraphReadResult<IReadOnlyList<LicenseOverviewItem>>> ReadAsync(WorkspaceContext context, LicenseOverviewQuery query, CancellationToken cancellationToken) { Calls++; Query = query; return Task.FromResult(Result); }
+    }
+    private sealed class FakeAssignees : ILicenseAssigneeService
+    {
+        public Task<UserDirectoryResponse> SearchAsync(WorkspaceContext context, string skuId, int pageSize, string? continuationToken, CancellationToken cancellationToken) =>
+            Task.FromResult(new UserDirectoryResponse([new UserSummary("user-1", "Ada Lovelace", "ada@example.com", null)], continuationToken is null ? "next-page" : null, DateTimeOffset.UtcNow, "fresh", false));
+    }
+    private sealed class FakeUsers : IUserQueryService
+    {
+        public Task<UserDirectoryResponse> SearchAsync(WorkspaceContext context, UserSearchRequest request, CancellationToken cancellationToken) =>
+            Task.FromResult(new UserDirectoryResponse([new UserSummary("user-1", "Ada Lovelace", "ada@example.com", null)], null, DateTimeOffset.UtcNow, "fresh", false));
     }
     private sealed class TestAuthenticationHandler(IOptionsMonitor<AuthenticationSchemeOptions> options, ILoggerFactory logger, UrlEncoder encoder) : AuthenticationHandler<AuthenticationSchemeOptions>(options, logger, encoder)
     {

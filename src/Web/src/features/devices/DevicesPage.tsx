@@ -9,6 +9,7 @@ import { isPimCapabilityState, type CapabilityDecision } from '../../capabilitie
 import { PermissionState } from '../../components/PermissionState';
 import { ActionMenu } from '../../components/ActionMenu';
 import { useFocusContainment } from '../../components/useFocusContainment';
+import { downloadCsv, exportStatus } from '../exports/csvExport';
 
 const emptyFilters: DeviceFilters = { search: '', complianceState: '', operatingSystem: '' };
 
@@ -26,6 +27,9 @@ export function DevicesPage({ loadDevices, capabilities = [], moduleAssigned = t
   const [actionPending, setActionPending] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionStatus, setActionStatus] = useState<string | null>(null);
+  const [exportPending, setExportPending] = useState(false);
+  const [exportMessage, setExportMessage] = useState<string | null>(null);
+  const [exportError, setExportError] = useState<string | null>(null);
   const actionPendingRef = useRef(false);
   const detailsTriggerRef = useRef<HTMLElement | null>(null);
   const loader = useMemo(() => loadDevices ?? ((nextFilters: DeviceFilters, nextContinuationToken?: string | null) => fetchDevices(api as ApiFetch, nextFilters, nextContinuationToken ?? null)), [api, loadDevices]);
@@ -103,6 +107,22 @@ export function DevicesPage({ loadDevices, capabilities = [], moduleAssigned = t
     });
   };
 
+  const exportDevices = async () => {
+    if (!viewReadable || exportPending) return;
+    setExportPending(true);
+    setExportMessage(null);
+    setExportError(null);
+    try {
+      const params = new URLSearchParams();
+      for (const key of ['search', 'complianceState', 'operatingSystem'] as const) {
+        if (filters[key].trim()) params.set(key, filters[key].trim());
+      }
+      setExportMessage(exportStatus(await downloadCsv(api as ApiFetch, `/api/devices/export.csv${params.size ? `?${params}` : ''}`, 'devices.csv')));
+    } catch {
+      setExportError('Filtered devices export failed. Check your permissions and try again.');
+    } finally { setExportPending(false); }
+  };
+
   if (!viewReadable) {
     return (
       <section className="devices-page" aria-labelledby="devices-page-title">
@@ -134,8 +154,12 @@ export function DevicesPage({ loadDevices, capabilities = [], moduleAssigned = t
         </div>
         <div className="page-header__actions">
           <button type="button" onClick={() => setRefreshVersion((version) => version + 1)} disabled={loading}>{messages.usersRefreshAction}</button>
+          <button type="button" onClick={() => void exportDevices()} disabled={exportPending}>Export filtered CSV</button>
         </div>
       </header>
+
+      {exportMessage && <p role="status">{exportMessage}</p>}
+      {exportError && <p role="alert">{exportError}</p>}
 
       {result && <DataFreshness fetchedAt={result.fetchedAt} freshness={result.freshness === 'live' ? 'fresh' : result.freshness === 'stale' ? 'stale' : 'unavailable'} partialData={result.partialData} message={result.error?.message} labels={{ fresh: 'Device data is fresh', stale: 'Device data may be stale', unavailable: 'Device data is unavailable' }} />}
       {result && <div className="device-summary-grid" aria-label="Device summary">

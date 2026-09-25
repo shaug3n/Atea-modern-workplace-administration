@@ -18,7 +18,8 @@ public sealed record LicenseOverviewItem(
     string PartNumber,
     string DisplayName,
     int Assigned,
-    int Available);
+    int Available,
+    int Purchased = 0);
 
 public sealed record LicenseOverviewAccess(
     string State,

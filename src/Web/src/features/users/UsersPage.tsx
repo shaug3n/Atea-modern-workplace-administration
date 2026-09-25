@@ -11,6 +11,7 @@ import { UserCreateDialog } from './UserCreateDialog';
 import { UsersTable } from './UsersTable';
 import { mutateUser, type UserCommandResponse } from './userMutationApi';
 import { fetchUsers, type ApiFetch, type UserFiltersState, type UsersDirectoryResponse, type UserSummary } from './usersApi';
+import { downloadCsv, exportStatus } from '../exports/csvExport';
 
 const emptyFilters: UserFiltersState = {
   search: '',
@@ -35,6 +36,9 @@ export function UsersPage({ capabilities, onNavigate, loadUsers }: { capabilitie
   const [disableError, setDisableError] = useState<string | null>(null);
   const [disableStatus, setDisableStatus] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
+  const [exportPending, setExportPending] = useState(false);
+  const [exportMessage, setExportMessage] = useState<string | null>(null);
+  const [exportError, setExportError] = useState<string | null>(null);
 
   const usersView = findDecision(capabilities, 'users.view');
   const usersCreate = findDecision(capabilities, 'users.create');
@@ -152,6 +156,25 @@ export function UsersPage({ capabilities, onNavigate, loadUsers }: { capabilitie
   const state = loading ? 'loading' : loadFailed ? 'error' : result && result.items.length === 0 ? 'empty' : 'ready';
   const readable = usersView.state === 'allowed' || usersView.state === 'read_only';
 
+  const exportUsers = async () => {
+    if (!readable || exportPending) return;
+    setExportPending(true);
+    setExportMessage(null);
+    setExportError(null);
+    try {
+      const parameters = new URLSearchParams();
+      for (const key of ['search', 'accountStatus', 'license', 'userType'] as const) {
+        if (filters[key].trim()) parameters.set(key, filters[key].trim());
+      }
+      const path = `/api/users/export.csv${parameters.size ? `?${parameters}` : ''}`;
+      setExportMessage(exportStatus(await downloadCsv(api as ApiFetch, path, 'users.csv')));
+    } catch {
+      setExportError('Filtered users export failed. Check your permissions and try again.');
+    } finally {
+      setExportPending(false);
+    }
+  };
+
   return (
     <section className="users-page" aria-labelledby="users-page-title">
       <div className="users-page__header">
@@ -165,9 +188,12 @@ export function UsersPage({ capabilities, onNavigate, loadUsers }: { capabilitie
             <button type="button" onClick={() => setCreateOpen(true)}>{messages.usersCreateAction}</button>
           </PermissionState>
           <button type="button" onClick={() => setRefreshVersion((version) => version + 1)}>{messages.usersRefreshAction}</button>
-          <span className="users-export"><button type="button" disabled aria-describedby="users-export-note">Export filtered CSV</button><small id="users-export-note">Filtered CSV export will be available when the export endpoint lands in Task 4.</small></span>
+          <button type="button" onClick={() => void exportUsers()} disabled={!readable || exportPending}>Export filtered CSV</button>
         </div>
       </div>
+
+      {exportMessage && <p role="status">{exportMessage}</p>}
+      {exportError && <p role="alert">{exportError}</p>}
 
       <UserFilters filters={filters} onChange={setFilters} />
 

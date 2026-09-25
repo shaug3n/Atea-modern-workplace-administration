@@ -25,7 +25,7 @@ public sealed class LicenseOverviewService(
     {
         var query = LicenseOverviewFilterContract.Normalize(request);
         var snapshot = await authorizationSnapshotReader.ReadAsync(context, cancellationToken);
-        var authorization = CapabilityEvaluator.Evaluate(snapshot, context.Membership)[Capability.LicensesAssign];
+        var authorization = CapabilityEvaluator.Evaluate(snapshot, context.Membership)[Capability.LicensesView];
 
         if (authorization.State is not (CapabilityState.Allowed or CapabilityState.ReadOnly))
         {

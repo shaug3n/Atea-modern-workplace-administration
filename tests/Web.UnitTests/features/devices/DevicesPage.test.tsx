@@ -12,7 +12,7 @@ vi.mock('../../../../src/Web/src/auth/useApi', () => ({
 }));
 
 describe('DevicesPage', () => {
-  afterEach(() => { cleanup(); vi.clearAllMocks(); });
+  afterEach(() => { cleanup(); vi.clearAllMocks(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
   const devices = {
     items: [
@@ -26,6 +26,19 @@ describe('DevicesPage', () => {
   } as const;
 
   const loadDevices = async () => devices;
+
+  it('exports active device filters and shows completion metadata', async () => {
+    apiMock.mockResolvedValue(new Response('"Id"\n"device-1"\n', { status: 200, headers: { 'X-Export-Row-Count': '1', 'X-Export-Max-Rows': '10000', 'X-Export-Truncated': 'false', 'Content-Type': 'text/csv' } }));
+    vi.stubGlobal('URL', Object.assign(URL, { createObjectURL: vi.fn(() => 'blob:test'), revokeObjectURL: vi.fn() }));
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+    render(<DevicesPage capabilities={[{ capability: 'devices.view', state: 'allowed', reasonCode: 'active_role' }]} loadDevices={loadDevices} />);
+
+    fireEvent.change(screen.getByLabelText('Search devices'), { target: { value: 'WIN' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Export filtered CSV' }));
+
+    await waitFor(() => expect(apiMock).toHaveBeenCalledWith(expect.stringContaining('/api/devices/export.csv?search=WIN'), expect.anything()));
+    expect(await screen.findByText(/1 row exported.*Complete filtered result/i)).toBeTruthy();
+  });
 
   it('renders operational device summary and keeps actions hidden for a read-only user', async () => {
     render(<DevicesPage

@@ -9,8 +9,26 @@ public static class LicenseEndpoints
     public static IEndpointRouteBuilder MapLicenseEndpoints(this IEndpointRouteBuilder endpoints)
     {
         endpoints.MapGet("/api/licenses", GetOverviewAsync).RequireAuthorization().RequireWorkspaceModule("licenses");
+        endpoints.MapGet("/api/licenses/{skuId}/assignees", GetAssigneesAsync).RequireAuthorization().RequireWorkspaceModule("licenses");
         endpoints.MapGet("/api/users/{userObjectId}/licenses", GetUserLicensesAsync).RequireAuthorization().RequireWorkspaceModule("licenses");
         return endpoints;
+    }
+
+    private static async Task<IResult> GetAssigneesAsync(string skuId, IWorkspaceContextAccessor accessor, ILicenseAssigneeService service, HttpRequest request, CancellationToken cancellationToken)
+    {
+        if (accessor.Current is not { } context) return Results.Forbid();
+        try
+        {
+            return Results.Ok(await service.SearchAsync(context, skuId, PageSize(request), Query(request, "continuationToken"), cancellationToken));
+        }
+        catch (Atea.UnifiedWorkplace.Api.Features.Users.UserSearchValidationException exception)
+        {
+            return Results.BadRequest(new { error = "invalid_query", message = exception.Message });
+        }
+        catch (LicenseOverviewValidationException exception)
+        {
+            return Results.BadRequest(new { error = "invalid_query", message = exception.Message });
+        }
     }
 
     private static async Task<IResult> GetOverviewAsync(

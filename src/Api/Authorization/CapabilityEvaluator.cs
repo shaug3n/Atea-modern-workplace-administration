@@ -59,7 +59,7 @@ public static class CapabilityEvaluator
             WriteScopes: GraphScopeCatalog.GroupMembershipWriteScopes,
             RoleTemplateIds: [EntraRoleCatalog.GlobalAdministratorTemplateId, EntraRoleCatalog.GroupsAdministratorTemplateId]),
         [Capability.LicensesView] = new(
-            ReadScopes: ["Directory.Read.All", "User.Read.All"],
+            ReadScopes: ["Directory.Read.All"],
             RoleTemplateIds: ReaderRoles,
             MissingReadState: CapabilityState.Hidden),
         [Capability.LicensesAssign] = new(

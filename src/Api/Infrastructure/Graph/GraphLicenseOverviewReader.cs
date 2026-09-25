@@ -19,21 +19,23 @@ public sealed class GraphLicenseOverviewReader(IDelegatedGraphClientFactory clie
         LicenseOverviewQuery query,
         CancellationToken cancellationToken)
     {
-        await using var lease = await clientFactory.CreateForCurrentUserAsync(GraphScopeCatalog.DirectoryReadScopes, cancellationToken);
-        var response = await lease.Transport.SendAsync(
-            new GraphRequest(HttpMethod.Get, "/v1.0/subscribedSkus?$select=skuId,skuPartNumber,consumedUnits,prepaidUnits"),
-            cancellationToken);
-        if (!response.Result.IsSuccess)
-        {
-            return GraphReadResult<IReadOnlyList<LicenseOverviewItem>>.Failed(response.Result);
-        }
-
+        await using var lease = await clientFactory.CreateForCurrentUserAsync(["Directory.Read.All"], cancellationToken);
         try
         {
-            using var document = JsonDocument.Parse(response.Content);
-            var items = document.RootElement.TryGetProperty("value", out var value) && value.ValueKind == JsonValueKind.Array
-                ? value.EnumerateArray().Select(MapLicense).ToArray()
-                : [];
+            var items = new List<LicenseOverviewItem>();
+            string? path = "/v1.0/subscribedSkus?$select=skuId,skuPartNumber,consumedUnits,prepaidUnits";
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            while (path is not null)
+            {
+                if (!seen.Add(path)) return GraphReadResult<IReadOnlyList<LicenseOverviewItem>>.Failed(new GraphOperationResult(false, "invalid_response"));
+                var response = await lease.Transport.SendAsync(new GraphRequest(HttpMethod.Get, path), cancellationToken);
+                if (!response.Result.IsSuccess) return GraphReadResult<IReadOnlyList<LicenseOverviewItem>>.Failed(response.Result);
+                using var document = JsonDocument.Parse(response.Content);
+                if (!document.RootElement.TryGetProperty("value", out var value) || value.ValueKind != JsonValueKind.Array)
+                    return GraphReadResult<IReadOnlyList<LicenseOverviewItem>>.Failed(new GraphOperationResult(false, "invalid_response"));
+                items.AddRange(value.EnumerateArray().Select(MapLicense));
+                path = ContinuationPath(document.RootElement);
+            }
             return GraphReadResult<IReadOnlyList<LicenseOverviewItem>>.Succeeded(items);
         }
         catch (JsonException)
@@ -48,26 +50,39 @@ public sealed class GraphLicenseOverviewReader(IDelegatedGraphClientFactory clie
 
     private static LicenseOverviewItem MapLicense(JsonElement element)
     {
-        var partNumber = OptionalString(element, "skuPartNumber") ?? string.Empty;
-        var assigned = OptionalInt(element, "consumedUnits");
-        var enabled = element.TryGetProperty("prepaidUnits", out var prepaid)
-            ? OptionalInt(prepaid, "enabled")
-            : 0;
+        var skuId = RequiredString(element, "skuId");
+        var partNumber = OptionalString(element, "skuPartNumber") ?? skuId;
+        var assigned = RequiredInt(element, "consumedUnits");
+        if (!element.TryGetProperty("prepaidUnits", out var prepaid) || prepaid.ValueKind != JsonValueKind.Object)
+            throw new InvalidOperationException("Subscribed SKU prepaid units are missing.");
+        var enabled = RequiredInt(prepaid, "enabled");
 
         return new LicenseOverviewItem(
-            RequiredString(element, "skuId"),
+            skuId,
             partNumber,
-            OptionalString(element, "displayName") ?? partNumber,
+            partNumber,
             assigned,
-            Math.Max(enabled - assigned, 0));
+            Math.Max(enabled - assigned, 0),
+            enabled);
+    }
+
+    internal static string? ContinuationPath(JsonElement root)
+    {
+        if (!root.TryGetProperty("@odata.nextLink", out var next)) return null;
+        var link = next.GetString();
+        if (!Uri.TryCreate(link, UriKind.Absolute, out var uri) || uri.Scheme != Uri.UriSchemeHttps || uri.Host != "graph.microsoft.com"
+            || !uri.PathAndQuery.StartsWith("/v1.0/subscribedSkus?", StringComparison.Ordinal))
+            throw new InvalidOperationException("Invalid subscribed SKU continuation.");
+        return uri.PathAndQuery;
     }
 
     private static string RequiredString(JsonElement element, string property) =>
-        element.TryGetProperty(property, out var value) ? value.GetString() ?? string.Empty : string.Empty;
+        OptionalString(element, property) is { Length: > 0 } value ? value : throw new InvalidOperationException($"Subscribed SKU {property} is missing.");
 
     private static string? OptionalString(JsonElement element, string property) =>
         element.TryGetProperty(property, out var value) && value.ValueKind != JsonValueKind.Null ? value.GetString() : null;
 
-    private static int OptionalInt(JsonElement element, string property) =>
-        element.TryGetProperty(property, out var value) && value.TryGetInt32(out var result) ? result : 0;
+    private static int RequiredInt(JsonElement element, string property) =>
+        element.TryGetProperty(property, out var value) && value.TryGetInt32(out var count) && count >= 0
+            ? count : throw new InvalidOperationException($"Subscribed SKU {property} is invalid.");
 }
