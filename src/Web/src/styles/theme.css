@@ -2897,7 +2897,18 @@ p {
   }
 }
 
-.licenses-page { max-width: 90rem; }
+.licenses-page { max-width: 90rem; min-width: 0; }
+.licenses-page .responsive-data-view__table .users-table { table-layout: fixed; }
+.licenses-page .responsive-data-view__table th, .licenses-page .responsive-data-view__table td { overflow-wrap: anywhere; }
+.licenses-page .responsive-data-view__table th:first-child { width: 38%; }
+.licenses-page .responsive-data-view__table th:last-child { width: 11rem; }
+.licenses-page .responsive-data-view__table td:not(:last-child) { text-align: right; font-variant-numeric: tabular-nums; }
+.license-identifiers { display: grid; gap: var(--atea-space-1); color: var(--uw-muted); font-size: var(--atea-text-s); overflow-wrap: anywhere; }
+.license-identifiers small { font-size: inherit; }
+.license-unavailable { display: block; color: var(--uw-muted); font-size: var(--atea-text-s); font-weight: 400; }
+.license-item-counts dd { font-variant-numeric: tabular-nums; }
+.license-source, .license-partial { color: var(--uw-muted); }
+.license-state { padding: var(--atea-space-4) 0; }
 .license-tabs { display: flex; flex-wrap: wrap; gap: var(--atea-space-2); border-bottom: 1px solid var(--uw-border); }
 .license-tabs button { border: 0; border-bottom: 3px solid transparent; border-radius: 0; background: transparent; color: var(--uw-text); }
 .license-tabs button[aria-selected='true'] { border-bottom-color: var(--uw-primary); color: var(--uw-heading); font-weight: 700; }
@@ -2908,4 +2919,4 @@ p {
 .license-counts > div { min-width: 0; padding: var(--atea-space-4); border: 1px solid var(--uw-border); border-radius: var(--atea-radius-sm); background: var(--uw-surface-subtle); }
 .license-counts dt { color: var(--uw-muted); font-size: var(--atea-text-s); }
 .license-counts dd { margin: var(--atea-space-2) 0 0; font-size: var(--atea-ui-m); font-weight: 700; font-variant-numeric: tabular-nums; }
-@media (max-width: 40rem) { .license-counts { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 40rem) { .license-counts { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--atea-space-2); } .license-counts > div { padding: var(--atea-space-2); } .license-toolbar label, .license-toolbar input { width: 100%; } }

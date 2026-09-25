@@ -7,6 +7,23 @@ namespace Atea.UnifiedWorkplace.Api.UnitTests.Licenses;
 
 public sealed class LicenseInventoryTests
 {
+    [Theory]
+    [InlineData("SPE_E5", "Microsoft 365 E5")]
+    [InlineData("SPE_E3", "Microsoft 365 E3")]
+    [InlineData("DEVELOPERPACK_E5", "Microsoft 365 E5 Developer (without Windows and Audio Conferencing)")]
+    [InlineData("ENTERPRISEPREMIUM", "Office 365 E5")]
+    [InlineData("ENTERPRISEPACK", "Office 365 E3")]
+    [InlineData("VISIOCLIENT", "Visio Plan 2")]
+    public void Resolves_verified_product_names(string partNumber, string expected) =>
+        LicenseDisplayNameResolver.Resolve(partNumber).Should().Be(expected);
+
+    [Fact]
+    public void Resolution_ignores_part_number_case_and_does_not_guess_unknown_codes()
+    {
+        LicenseDisplayNameResolver.Resolve("enterprisePack").Should().Be("Office 365 E3");
+        LicenseDisplayNameResolver.Resolve("UNRECOGNIZED_PRODUCT_WITH_A_VERY_LONG_PART_NUMBER_2026").Should().BeNull();
+    }
+
     private static readonly WorkspaceContext Context = new(
         new AuthenticatedUser(Guid.NewGuid(), Guid.NewGuid(), "reader@example.com", "Reader", "Member"),
         new WorkspaceMembership(Guid.NewGuid(), "Workspace", "member", ModuleKeys: ["licenses"]));
@@ -58,11 +75,15 @@ public sealed class LicenseInventoryTests
 
         result.Error.Should().BeNull();
         result.Value.Should().HaveCount(3);
-        result.Value[0].DisplayName.Should().Be("ENTERPRISEPACK");
+        result.Value[0].DisplayName.Should().Be("Office 365 E3");
+        result.Value[0].PartNumber.Should().Be("ENTERPRISEPACK");
+        result.Value[0].SkuId.Should().Be("11111111-1111-1111-1111-111111111111");
         result.Value[0].Purchased.Should().Be(10);
         result.Value[0].Assigned.Should().Be(7);
         result.Value[0].Available.Should().Be(3);
         result.Value[1].Available.Should().Be(0);
+        result.Value[1].DisplayName.Should().Be("OVERALLOCATED");
+        result.Value[2].DisplayName.Should().Be("Visio Plan 2");
         transport.Paths.Should().ContainInOrder(
             "/v1.0/subscribedSkus?$select=skuId,skuPartNumber,consumedUnits,prepaidUnits",
             "/v1.0/subscribedSkus?$skiptoken=next");

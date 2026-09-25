@@ -24,7 +24,7 @@ public sealed class LicenseEndpointTests
         var reader = new RecordingLicenseOverviewReader
         {
             Result = GraphReadResult<IReadOnlyList<LicenseOverviewItem>>.Succeeded([
-                new("sku-1", "ENTERPRISEPACK", "Microsoft 365 E3", 10, 5),
+                new("sku-1", "ENTERPRISEPACK", "Office 365 E3", 10, 5),
                 new("sku-2", "VISIO", "Visio", 2, 0)])
         };
         using var factory = CreateFactory(reader, AllowedSnapshot());
@@ -35,10 +35,40 @@ public sealed class LicenseEndpointTests
         var body = await response.Content.ReadAsStringAsync();
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
-        body.Should().Contain("Microsoft 365 E3");
+        body.Should().Contain("Office 365 E3");
         body.Should().NotContain("VISIO");
         reader.Query!.Search.Should().Be("E3");
         reader.Query.PageSize.Should().Be(1);
+    }
+
+    [Theory]
+    [InlineData("Office 365 E3")]
+    [InlineData("ENTERPRISEPACK")]
+    public async Task Search_finds_license_by_friendly_name_or_part_number_without_changing_contract(string search)
+    {
+        var reader = new RecordingLicenseOverviewReader
+        {
+            Result = GraphReadResult<IReadOnlyList<LicenseOverviewItem>>.Succeeded([
+                new("sku-1", "ENTERPRISEPACK", "Office 365 E3", 7, 3, 10),
+                new("sku-2", "LONG_UNKNOWN_PRODUCT_CODE_2026", "LONG_UNKNOWN_PRODUCT_CODE_2026", 1, 2, 3)])
+        };
+        using var factory = CreateFactory(reader, AllowedSnapshot());
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Test");
+
+        var response = await client.GetAsync($"/api/licenses?search={Uri.EscapeDataString(search)}");
+        using var body = System.Text.Json.JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var root = body.RootElement;
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        root.GetProperty("total").GetInt32().Should().Be(1);
+        var item = root.GetProperty("items")[0];
+        item.GetProperty("skuId").GetString().Should().Be("sku-1");
+        item.GetProperty("partNumber").GetString().Should().Be("ENTERPRISEPACK");
+        item.GetProperty("displayName").GetString().Should().Be("Office 365 E3");
+        item.GetProperty("purchased").GetInt32().Should().Be(10);
+        item.GetProperty("assigned").GetInt32().Should().Be(7);
+        item.GetProperty("available").GetInt32().Should().Be(3);
     }
 
     [Fact]

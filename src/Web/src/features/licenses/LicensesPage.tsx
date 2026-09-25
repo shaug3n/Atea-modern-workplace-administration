@@ -3,6 +3,9 @@ import { useApi } from '../../auth/useApi';
 import { messages } from '../../messages/en';
 import type { ApiFetch, UsersDirectoryResponse } from '../users/usersApi';
 import { downloadCsv, exportStatus, type CsvExportInfo } from '../exports/csvExport';
+import { WorkspacePageHeader } from '../../components/WorkspacePageHeader';
+import { ResponsiveDataView } from '../../components/ResponsiveDataView';
+import { useWorkspaceIssueReporter } from '../../notifications/WorkspaceNotifications';
 
 export type LicenseItem = { skuId: string; partNumber: string; displayName: string; purchased: number; assigned: number; available: number };
 export type LicenseOverview = { items: LicenseItem[]; total: number; page: number; pageSize: number; fetchedAt: string; freshness: string; partialData: boolean; access: { state: string }; error?: { message: string } | null };
@@ -36,6 +39,7 @@ function AuthenticatedLicensesPage() {
 }
 
 function LoadedLicensesPage({ loader, loadAssignees, exportCsv }: { loader: LicenseLoader; loadAssignees?: AssigneeLoader; exportCsv?: Exporter }) {
+  const issueReporter = useWorkspaceIssueReporter();
   const [result, setResult] = useState<LicenseOverview | null>(null);
   const [loadedQueryKey, setLoadedQueryKey] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
@@ -58,9 +62,9 @@ function LoadedLicensesPage({ loader, loadAssignees, exportCsv }: { loader: Lice
   useEffect(() => {
     let cancelled = false;
     setFailed(false);
-    loader(search, page).then(value => { if (!cancelled) { setResult(value); setLoadedQueryKey(queryKey); } }).catch(() => { if (!cancelled) setFailed(true); });
+    loader(search, page).then(value => { if (!cancelled) { setResult(value); setLoadedQueryKey(queryKey); if (value.error && (value.access.state === 'allowed' || value.access.state === 'read_only')) issueReporter.report({ key: 'licenses:read', area: 'licenses', kind: 'service', severity: 'warning', title: 'License data unavailable', detail: 'Try loading licenses again.' }); else issueReporter.clear('licenses:read'); } }).catch(() => { if (!cancelled) { setFailed(true); issueReporter.report({ key: 'licenses:read', area: 'licenses', kind: 'service', severity: 'warning', title: 'License data unavailable', detail: 'Try loading licenses again.' }); } });
     return () => { cancelled = true; };
-  }, [loader, search, page, retry, queryKey]);
+  }, [loader, search, page, retry, queryKey, issueReporter]);
 
   useEffect(() => {
     if (tab !== 'assignees' || !selected || !loadAssignees) return;
@@ -69,11 +73,11 @@ function LoadedLicensesPage({ loader, loadAssignees, exportCsv }: { loader: Lice
     setAssigneeLoading(true);
     setAssignees(null);
     loadAssignees(selected.skuId, token)
-      .then(value => { if (!cancelled) setAssignees(value); })
-      .catch(() => { if (!cancelled) setAssigneeError(true); })
+      .then(value => { if (!cancelled) { setAssignees(value); if (value.error) issueReporter.report({ key: 'licenses:assignees', area: 'licenses', kind: 'service', severity: 'warning', title: 'License roster unavailable', detail: 'Try loading assigned users again.' }); else issueReporter.clear('licenses:assignees'); } })
+      .catch(() => { if (!cancelled) { setAssigneeError(true); issueReporter.report({ key: 'licenses:assignees', area: 'licenses', kind: 'service', severity: 'warning', title: 'License roster unavailable', detail: 'Try loading assigned users again.' }); } })
       .finally(() => { if (!cancelled) setAssigneeLoading(false); });
     return () => { cancelled = true; };
-  }, [tab, selected, token, loadAssignees, assigneeRetry]);
+  }, [tab, selected, token, loadAssignees, assigneeRetry, issueReporter]);
 
   const choose = (item: LicenseItem) => {
     setSelected(item); setToken(null); setHistory([]); setAssignees(null); setAssigneeLoading(true); setTab('assignees');
@@ -107,14 +111,15 @@ function LoadedLicensesPage({ loader, loadAssignees, exportCsv }: { loader: Lice
     finally { setExportPending(false); }
   };
 
-  if (failed) return <section className="content-panel"><p role="alert">License data is unavailable. Try again later.</p><button type="button" onClick={() => setRetry(value => value + 1)}>{messages.retry}</button></section>;
-  if (!result || loadedQueryKey !== queryKey) return <section className="content-panel"><p role="status">Loading licenses…</p></section>;
-  if (result.access.state !== 'allowed' && result.access.state !== 'read_only') return <section className="content-panel"><h1>{messages.permissionRequiredTitle}</h1><p>{messages.permissionRequiredBody}</p></section>;
-  if (result.error) return <section className="content-panel"><h1>Licenses</h1><p role="alert">{result.error.message}</p><button type="button" onClick={() => setRetry(value => value + 1)}>{messages.retry}</button></section>;
-
-  return <section className="content-panel licenses-page" aria-labelledby="licenses-title">
-    <p className="eyebrow">Licenses</p><h1 id="licenses-title">License inventory</h1>
-    <p>Source: Microsoft Graph subscribed SKUs. Retrieved {new Date(result.fetchedAt).toLocaleString()}.</p>
+  return <section className="content-panel licenses-page" aria-label="License inventory">
+    <WorkspacePageHeader eyebrow="Licenses" title="License inventory" description="Review purchased seats, assignments, and license rosters." />
+    {failed ? <div className="license-state"><p role="alert">License data is unavailable. Try again later.</p><button type="button" onClick={() => setRetry(value => value + 1)}>{messages.retry}</button></div>
+    : !result || loadedQueryKey !== queryKey ? <p role="status">Loading licenses…</p>
+    : result.access.state !== 'allowed' && result.access.state !== 'read_only' ? <div className="license-state"><h2>{messages.permissionRequiredTitle}</h2><p>{messages.permissionRequiredBody}</p></div>
+    : result.error && result.items.length === 0 ? <div className="license-state"><p role="alert">License data is unavailable. {result.error.message}</p><button type="button" onClick={() => setRetry(value => value + 1)}>{messages.retry}</button></div>
+    : <>
+    <p className="license-source">Source: Microsoft Graph subscribed SKUs. Retrieved {new Date(result.fetchedAt).toLocaleString()}.</p>
+    {result.partialData && <p role="alert" className="license-partial">Some license data could not be loaded. Showing available results.</p>}
     <div className="license-tabs" role="tablist" aria-label="License view">
       <button type="button" role="tab" aria-selected={tab === 'inventory'} onClick={() => setTab('inventory')}>Inventory</button>
       <button type="button" role="tab" aria-selected={tab === 'assignees'} onClick={showAssignees} disabled={result.items.length === 0 && !selected}>Assigned users</button>
@@ -122,10 +127,13 @@ function LoadedLicensesPage({ loader, loadAssignees, exportCsv }: { loader: Lice
     {tab === 'inventory' ? <section role="tabpanel" aria-label="Inventory">
       <div className="license-toolbar"><label>Search SKUs <input value={search} onChange={event => { setSearch(event.target.value); setPage(1); }} /></label>
       {exportCsv && <button type="button" onClick={() => void runExport('inventory')} disabled={exportPending}>Export filtered CSV</button>}</div>
-      {result.items.length === 0 ? <p>No license data is available.</p> : <div className="users-table-wrap"><table className="users-table"><thead><tr><th>License</th><th>Purchased</th><th>Assigned</th><th>Available</th><th>Roster</th></tr></thead><tbody>{result.items.map(item => <tr key={item.skuId}><th scope="row" data-label="License">{item.displayName}<small>{item.skuId}</small></th><td data-label="Purchased">{item.purchased}</td><td data-label="Assigned">{item.assigned}</td><td data-label="Available">{item.available}</td><td data-label="Roster"><button type="button" onClick={() => choose(item)}>View assigned users</button></td></tr>)}</tbody></table></div>}
+      {result.items.length === 0 ? <p>No license data is available.</p> : <ResponsiveDataView items={result.items} keyOf={item => item.skuId} label="Licenses"
+        renderCompact={item => <><strong>{item.displayName}</strong>{item.displayName === item.partNumber && <span className="license-unavailable">Product name unavailable</span>}<div className="license-identifiers"><span>{item.partNumber}</span><small>SKU ID: {item.skuId}</small></div><dl className="responsive-data-view__details license-item-counts"><div><dt>Purchased</dt><dd>{item.purchased}</dd></div><div><dt>Assigned</dt><dd>{item.assigned}</dd></div><div><dt>Available</dt><dd>{item.available}</dd></div></dl><div className="responsive-data-view__actions"><button type="button" className="table-action" aria-label={`View assigned users for ${item.displayName}`} onClick={() => choose(item)}>View assigned users</button></div></>}
+        renderTable={items => <div className="users-table-wrap"><table className="users-table"><thead><tr><th scope="col">License</th><th scope="col">Purchased</th><th scope="col">Assigned</th><th scope="col">Available</th><th scope="col">Roster</th></tr></thead><tbody>{items.map(item => <tr key={item.skuId}><th scope="row" data-label="License"><strong>{item.displayName}</strong>{item.displayName === item.partNumber && <span className="license-unavailable">Product name unavailable</span>}<span className="license-identifiers"><span>{item.partNumber}</span><small>SKU ID: {item.skuId}</small></span></th><td data-label="Purchased">{item.purchased}</td><td data-label="Assigned">{item.assigned}</td><td data-label="Available">{item.available}</td><td data-label="Roster"><button type="button" className="table-action" aria-label={`View assigned users for ${item.displayName}`} onClick={() => choose(item)}>View assigned users</button></td></tr>)}</tbody></table></div>}
+      />}
       <nav className="table-pagination" aria-label="License pages"><span>Page {page} of {Math.max(1, Math.ceil(result.total / result.pageSize))}</span><button type="button" onClick={() => setPage(value => value - 1)} disabled={page <= 1}>Previous page</button><button type="button" onClick={() => setPage(value => value + 1)} disabled={page * result.pageSize >= result.total}>Next page</button></nav>
     </section> : <section role="tabpanel" aria-label="Assigned users">
-      {selected && <><h2>{selected.displayName}</h2><dl className="license-counts"><div><dt>Purchased</dt><dd>{selected.purchased}</dd></div><div><dt>Assigned</dt><dd>{selected.assigned}</dd></div><div><dt>Available</dt><dd>{selected.available}</dd></div></dl>
+      {selected && <><h2>{selected.displayName}</h2>{selected.displayName === selected.partNumber && <p className="license-unavailable">Product name unavailable</p>}<p className="license-identifiers">{selected.partNumber} · SKU ID: {selected.skuId}</p><dl className="license-counts"><div><dt>Purchased</dt><dd>{selected.purchased}</dd></div><div><dt>Assigned</dt><dd>{selected.assigned}</dd></div><div><dt>Available</dt><dd>{selected.available}</dd></div></dl>
       {exportCsv && <button type="button" onClick={() => void runExport('assignees')} disabled={exportPending}>Export assignees CSV</button>}
       {!loadAssignees ? <p>Assigned-user roster is unavailable.</p> : <>
         {assigneeLoading ? <p role="status">Loading assigned users…</p> : assigneeError || assignees?.error ? <><p role="alert">Assigned-user roster is unavailable.</p><button type="button" onClick={retryAssignees}>{messages.retry}</button></> : assignees ? <><p>Source: Microsoft Graph users assigned to this SKU. Retrieved {new Date(assignees.fetchedAt).toLocaleString()}.</p>{assignees.items.length === 0 ? <p>No assigned users were returned.</p> : <div className="users-table-wrap"><table className="users-table"><thead><tr><th>User</th><th>User principal name</th></tr></thead><tbody>{assignees.items.map(user => <tr key={user.id}><th scope="row" data-label="User"><a href={`/users/${encodeURIComponent(user.id)}`}>{user.displayName || user.userPrincipalName || user.id}</a></th><td data-label="User principal name">{user.userPrincipalName}</td></tr>)}</tbody></table></div>}</> : null}
@@ -134,5 +142,6 @@ function LoadedLicensesPage({ loader, loadAssignees, exportCsv }: { loader: Lice
       </>}
     </section>}
     {exportMessage && <p role="status">{exportMessage}</p>}{exportError && <p role="alert">{exportError}</p>}
+  </>}
   </section>;
 }

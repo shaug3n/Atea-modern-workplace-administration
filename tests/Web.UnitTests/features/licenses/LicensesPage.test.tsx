@@ -4,16 +4,64 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { LicensesPage, type LicenseOverview } from '../../../../src/Web/src/features/licenses/LicensesPage';
 import type { UsersDirectoryResponse } from '../../../../src/Web/src/features/users/usersApi';
 
+const issueReport = vi.fn();
+const issueClear = vi.fn();
+const reporter = { report: issueReport, clear: issueClear };
+vi.mock('../../../../src/Web/src/notifications/WorkspaceNotifications', () => ({ useWorkspaceIssueReporter: () => reporter }));
+
 describe('LicensesPage', () => {
-  afterEach(cleanup);
+  afterEach(() => { cleanup(); vi.unstubAllGlobals(); issueReport.mockClear(); issueClear.mockClear(); });
+
+  it('shows a friendly name with the original part number and SKU ID', async () => {
+    render(<LicensesPage loadLicenses={async () => ({ items: [{ skuId: 'sku-1', partNumber: 'ENTERPRISEPACK', displayName: 'Office 365 E3', purchased: 10, assigned: 7, available: 3 }], total: 1, page: 1, pageSize: 25, fetchedAt: '2026-09-21T10:00:00Z', freshness: 'live', partialData: false, access: { state: 'allowed' } })} />);
+    const row = (await screen.findByText('Office 365 E3')).closest('tr');
+    expect(row?.textContent).toContain('ENTERPRISEPACK');
+    expect(row?.textContent).toContain('sku-1');
+    expect(row?.textContent).not.toContain('Product name unavailable');
+    expect(screen.getByRole('button', { name: 'View assigned users for Office 365 E3' })).toBeTruthy();
+  });
+
+  it('keeps an unknown long code visible and explicitly marks its product name unavailable', async () => {
+    const code = 'LONG_UNKNOWN_PRODUCT_CODE_WITH_MANY_SEGMENTS_2026';
+    render(<LicensesPage loadLicenses={async () => ({ items: [{ skuId: 'opaque-sku', partNumber: code, displayName: code, purchased: 1, assigned: 0, available: 1 }], total: 1, page: 1, pageSize: 25, fetchedAt: '2026-09-21T10:00:00Z', freshness: 'live', partialData: false, access: { state: 'allowed' } })} />);
+    const row = (await screen.findAllByText(code))[0].closest('tr');
+    expect(row?.textContent).toContain('Product name unavailable');
+    expect(row?.textContent).toContain('opaque-sku');
+  });
+
+  it('uses the compact result view with counts and roster action at narrow widths', async () => {
+    vi.stubGlobal('matchMedia', () => ({ matches: true, addEventListener: () => {}, removeEventListener: () => {} }));
+    render(<LicensesPage loadLicenses={async () => ({ items: [{ skuId: 'sku-1', partNumber: 'SPE_E5', displayName: 'Microsoft 365 E5', purchased: 10, assigned: 7, available: 3 }], total: 1, page: 1, pageSize: 25, fetchedAt: '2026-09-21T10:00:00Z', freshness: 'live', partialData: false, access: { state: 'allowed' } })} />);
+    const list = await screen.findByRole('list', { name: 'Licenses' });
+    expect(list.textContent).toContain('Microsoft 365 E5');
+    expect(list.textContent).toContain('SPE_E5');
+    expect(list.textContent).toContain('sku-1');
+    expect(list.textContent).toContain('10');
+    expect(list.textContent).toContain('7');
+    expect(list.textContent).toContain('3');
+    expect(screen.getByRole('button', { name: 'View assigned users for Microsoft 365 E5' })).toBeTruthy();
+  });
+
+  it('retains the page heading and reports an unavailable inventory read', async () => {
+    render(<LicensesPage loadLicenses={async () => { throw new Error('Graph unavailable'); }} />);
+    expect(await screen.findByRole('heading', { name: 'License inventory' })).toBeTruthy();
+    expect(screen.getByRole('alert').textContent).toContain('License data is unavailable');
+    await waitFor(() => expect(issueReport).toHaveBeenCalledWith(expect.objectContaining({ key: 'licenses:read', area: 'licenses', kind: 'service' })));
+  });
+
+  it('shows denied access without reporting it as a service failure', async () => {
+    render(<LicensesPage loadLicenses={async () => ({ items: [], total: 0, page: 1, pageSize: 25, fetchedAt: '2026-09-21T10:00:00Z', freshness: 'unavailable', partialData: true, access: { state: 'consent_required' }, error: { message: 'Capability required' } })} />);
+    expect(await screen.findByText(/permission/i)).toBeTruthy();
+    expect(issueReport).not.toHaveBeenCalled();
+  });
 
   it('shows purchased, assigned, available counts and paged roster for selected SKU', async () => {
     render(<LicensesPage loadLicenses={async () => ({
-      items: [{ skuId: '11111111-1111-1111-1111-111111111111', partNumber: 'ENTERPRISEPACK', displayName: 'ENTERPRISEPACK', purchased: 10, assigned: 8, available: 2 }],
+      items: [{ skuId: '11111111-1111-1111-1111-111111111111', partNumber: 'ENTERPRISEPACK', displayName: 'Office 365 E3', purchased: 10, assigned: 8, available: 2 }],
       total: 1, page: 1, pageSize: 25, fetchedAt: '2026-09-21T10:00:00Z', freshness: 'live', partialData: false, access: { state: 'allowed' }
     })} loadAssignees={async () => ({ items: [{ id: 'user-1', displayName: 'Ada Lovelace', userPrincipalName: 'ada@example.com', mail: null, accountEnabled: true, userType: 'Member' }], continuationToken: 'next', fetchedAt: '2026-09-21T10:00:00Z', freshness: 'fresh', partialData: false })} />);
 
-    await waitFor(() => expect(screen.getByText('ENTERPRISEPACK')).toBeTruthy());
+    await waitFor(() => expect(screen.getByText('Office 365 E3')).toBeTruthy());
     fireEvent.click(screen.getByRole('tab', { name: 'Assigned users' }));
     expect(screen.getByText('10')).toBeTruthy();
     expect(screen.getByText('8')).toBeTruthy();
@@ -96,7 +144,7 @@ describe('LicensesPage', () => {
     });
     render(<LicensesPage loadLicenses={async () => ({ items: [{ skuId: 'sku-1', partNumber: 'E3', displayName: 'E3', purchased: 10, assigned: 2, available: 8 }], total: 1, page: 1, pageSize: 25, fetchedAt: '2026-09-21T10:00:00Z', freshness: 'live', partialData: false, access: { state: 'allowed' } })} loadAssignees={loadAssignees} />);
 
-    fireEvent.click(await screen.findByRole('button', { name: 'View assigned users' }));
+    fireEvent.click(await screen.findByRole('button', { name: /View assigned users for/ }));
     await screen.findByRole('link', { name: 'Ada' });
     fireEvent.click(screen.getByRole('button', { name: 'Next page' }));
     expect(screen.queryByRole('link', { name: 'Ada' })).toBeNull();
@@ -126,7 +174,7 @@ describe('LicensesPage', () => {
       .mockResolvedValueOnce({ items: [{ id: 'user-2', displayName: 'Grace', userPrincipalName: 'grace@example.com' }], continuationToken: null, fetchedAt: '2026-09-21T10:01:00Z', freshness: 'fresh', partialData: false });
     render(<LicensesPage loadLicenses={loadLicenses} loadAssignees={loadAssignees} />);
 
-    fireEvent.click(await screen.findByRole('button', { name: 'View assigned users' }));
+    fireEvent.click(await screen.findByRole('button', { name: /View assigned users for/ }));
     await screen.findByRole('link', { name: 'Ada' });
     fireEvent.click(screen.getByRole('button', { name: 'Next page' }));
     await screen.findByRole('alert');
@@ -149,7 +197,7 @@ describe('LicensesPage', () => {
     await waitFor(() => expect(exportCsv).toHaveBeenCalledWith('/api/licenses/export.csv?search=E3', 'licenses.csv'));
     expect(await screen.findByText(/10,000.*maximum.*truncated/i)).toBeTruthy();
 
-    fireEvent.click(screen.getByRole('button', { name: 'View assigned users' }));
+    fireEvent.click(screen.getByRole('button', { name: /View assigned users for/ }));
     fireEvent.click(screen.getByRole('button', { name: 'Export assignees CSV' }));
     await waitFor(() => expect(exportCsv).toHaveBeenCalledWith('/api/licenses/11111111-1111-1111-1111-111111111111/assignees/export.csv', 'license-assignees.csv'));
   });

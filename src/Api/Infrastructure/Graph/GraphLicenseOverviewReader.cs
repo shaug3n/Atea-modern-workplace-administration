@@ -60,7 +60,7 @@ public sealed class GraphLicenseOverviewReader(IDelegatedGraphClientFactory clie
         return new LicenseOverviewItem(
             skuId,
             partNumber,
-            partNumber,
+            LicenseDisplayNameResolver.Resolve(partNumber) ?? partNumber,
             assigned,
             Math.Max(enabled - assigned, 0),
             enabled);
