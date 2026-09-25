@@ -35,6 +35,14 @@ describe('PermissionState', () => {
     expect(screen.getByRole('status').textContent).toContain('read-only');
   });
 
+  it('prevents a read-only action link from navigating while leaving its context visible', () => {
+    const navigate = vi.fn();
+    render(<PermissionState decision={{ capability: 'users.create', state: 'read_only', reasonCode: 'role_read_only' }}><a href="/users/new" onClick={navigate}>Create user</a></PermissionState>);
+    fireEvent.click(screen.getByRole('link', { name: 'Create user' }));
+    expect(navigate).not.toHaveBeenCalled();
+    expect(screen.getByRole('link', { name: 'Create user' }).getAttribute('aria-disabled')).toBe('true');
+  });
+
   it('shows missing delegated scopes alongside the blocked action', () => {
     render(
       <PermissionState decision={{ capability: 'users.update', state: 'consent_required', reasonCode: 'delegated_scope_required', missingScopes: ['User.ReadWrite.All'] }}>

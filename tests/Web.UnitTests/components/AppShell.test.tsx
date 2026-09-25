@@ -1,10 +1,13 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import React from 'react';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { CapabilitySnapshot } from '../../../src/Web/src/capabilities/capabilityTypes';
 import { App } from '../../../src/Web/src/app/App';
 import { AppShell } from '../../../src/Web/src/components/AppShell';
 import { ThemeProvider } from '../../../src/Web/src/components/ThemeToggle';
+
+const apiMock = vi.hoisted(() => vi.fn());
+vi.mock('../../../src/Web/src/auth/useApi', () => ({ useApi: () => apiMock }));
 
 const allowedCapabilities: CapabilitySnapshot = {
   workspaceId: '55555555-5555-5555-5555-555555555555',
@@ -33,6 +36,7 @@ const session = {
 describe('AppShell', () => {
   afterEach(() => {
     cleanup();
+    apiMock.mockReset();
     window.history.pushState(null, '', '/');
     document.documentElement.removeAttribute('data-theme');
   });
@@ -103,6 +107,74 @@ describe('AppShell', () => {
     await waitFor(() => expect(screen.getByRole('heading', { name: 'Module disabled' })).toBeTruthy());
     expect(screen.queryByRole('heading', { name: 'Exchange' })).toBeNull();
     expect(screen.queryByRole('link', { name: 'Exchange' })).toBeNull();
+  });
+
+  it('renders a read-only Users view and requests its data', async () => {
+    window.history.pushState(null, '', '/users');
+    apiMock.mockResolvedValue(new Response(JSON.stringify({ items: [], continuationToken: null, fetchedAt: '2026-09-25T10:00:00Z', freshness: 'fresh', partialData: false }), { status: 200 }));
+    const snapshot: CapabilitySnapshot = { ...allowedCapabilities, capabilities: [{ capability: 'users.view', state: 'read_only', reasonCode: 'role_read_only' }] };
+    render(<App loadCapabilities={async () => snapshot} loadSession={async () => session} />);
+    expect(await screen.findByRole('heading', { name: 'Users' })).toBeTruthy();
+    await waitFor(() => expect(apiMock).toHaveBeenCalled());
+  });
+
+  it('keeps the Users page heading and an unavailable data region without requesting protected data when consent is required', async () => {
+    window.history.pushState(null, '', '/users');
+    const snapshot: CapabilitySnapshot = { ...allowedCapabilities, capabilities: [{ capability: 'users.view', state: 'consent_required', reasonCode: 'delegated_scope_required', missingScopes: ['User.Read.All'] }] };
+    render(<App loadCapabilities={async () => snapshot} loadSession={async () => session} />);
+    expect(await screen.findByRole('heading', { name: 'Users' })).toBeTruthy();
+    expect(screen.getByRole('alert').textContent).toContain('Data cannot be shown');
+    expect(screen.getByRole('navigation', { name: 'Primary navigation' })).toBeTruthy();
+    expect(apiMock).not.toHaveBeenCalled();
+  });
+
+  it('keeps workspace settings available when the Graph capability check fails', async () => {
+    window.history.pushState(null, '', '/settings');
+    render(<App loadCapabilities={async () => { throw new Error('Graph unavailable'); }} loadSession={async () => ({ ...session, workspaceAccess: { role: 'workspace_owner', canManageSettings: true } })} />);
+    expect(await screen.findByRole('heading', { name: 'Settings' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'General' })).toBeTruthy();
+    expect(screen.getByRole('navigation', { name: 'Primary navigation' })).toBeTruthy();
+  });
+
+  it('keeps the Users frame during unavailable authorization without requesting data', async () => {
+    window.history.pushState(null, '', '/users');
+    render(<App loadCapabilities={async () => { throw new Error('Graph unavailable'); }} loadSession={async () => session} />);
+    expect(await screen.findByRole('heading', { name: 'Users' })).toBeTruthy();
+    expect(screen.getByRole('alert').textContent).toContain('Data cannot be shown');
+    expect(apiMock).not.toHaveBeenCalled();
+  });
+
+  it('reports a missing view decision safely while keeping protected data unloaded', async () => {
+    window.history.pushState(null, '', '/users');
+    render(<App loadCapabilities={async () => ({ ...allowedCapabilities, capabilities: [] })} loadSession={async () => session} />);
+    expect(await screen.findByRole('heading', { name: 'Users' })).toBeTruthy();
+    expect(screen.getByRole('alert').textContent).toContain('Data cannot be shown');
+    await waitFor(() => expect(screen.getByRole('button', { name: /notifications, 1 warnings/i })).toBeTruthy());
+    expect(apiMock).not.toHaveBeenCalled();
+  });
+
+  it('does not use an allowed decision from a nonauthoritative snapshot to load Users', async () => {
+    window.history.pushState(null, '', '/users');
+    render(<App loadCapabilities={async () => ({ ...allowedCapabilities, sourceState: 'temporarily_unavailable' })} loadSession={async () => session} />);
+    expect(await screen.findByRole('heading', { name: 'Users' })).toBeTruthy();
+    expect(screen.getByRole('alert').textContent).toContain('Data cannot be shown');
+    expect(apiMock).not.toHaveBeenCalled();
+  });
+
+  it('holds protected reads while a capability refresh is unresolved', async () => {
+    window.history.pushState(null, '', '/users');
+    apiMock.mockResolvedValue(new Response(JSON.stringify({ items: [], continuationToken: null, fetchedAt: '2026-09-25T10:00:00Z', freshness: 'fresh', partialData: false }), { status: 200 }));
+    let resolveRefresh: ((snapshot: CapabilitySnapshot) => void) | undefined;
+    let calls = 0;
+    render(<App loadCapabilities={() => ++calls === 1 ? Promise.resolve(allowedCapabilities) : new Promise(resolve => { resolveRefresh = resolve; })} loadSession={async () => session} />);
+    expect(await screen.findByRole('heading', { name: 'Users' })).toBeTruthy();
+    await waitFor(() => expect(apiMock).toHaveBeenCalled());
+    apiMock.mockClear();
+    fireEvent.focus(window);
+    await waitFor(() => expect(calls).toBe(2));
+    expect(screen.getByText('Checking access…')).toBeTruthy();
+    expect(apiMock).not.toHaveBeenCalled();
+    resolveRefresh?.(allowedCapabilities);
   });
 
   it('refreshes injected capabilities from the notifications menu', async () => {

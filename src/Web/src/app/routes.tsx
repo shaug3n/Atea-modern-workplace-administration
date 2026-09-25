@@ -21,6 +21,7 @@ import type { AppSession } from '../components/TenantContextHeader';
 export type AppRoute = {
   path: string;
   label: string;
+  pageTitle?: string;
   capability?: Capability;
   module?: 'users' | 'devices' | 'licenses' | 'exchange';
   workspaceAccess?: 'members' | 'settings' | 'modules';
@@ -65,6 +66,7 @@ export const appRoutes: AppRoute[] = [
   {
     path: '/users/:userId',
     label: messages.navUsers,
+    pageTitle: messages.userDetailTitle,
     module: 'users',
     capability: 'users.view',
     render: (options) => <UserDetailPage capabilities={options?.capabilities} modules={effectiveAssignedModules(options?.session)} />,
@@ -91,6 +93,7 @@ export const appRoutes: AppRoute[] = [
   {
     path: '/devices/:id',
     label: messages.navDevices,
+    pageTitle: 'Device details',
     module: 'devices',
     render: (options) => <DeviceDetailPage capabilities={options?.capabilities} onNavigate={options?.navigate} />,
   },

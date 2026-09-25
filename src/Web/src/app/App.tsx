@@ -1,11 +1,13 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { useApi } from '../auth/useApi';
 import { useAuth } from '../auth/AuthProvider';
-import { capabilityDecisionFor, isInvitationPath, matchRoute } from './routes';
+import { capabilityDecisionFor, isInvitationPath, matchRoute, type AppRoute } from './routes';
 import { AppShell } from '../components/AppShell';
 import { AppThemeProvider, ThemeProvider, type ThemePreferenceStore } from '../components/ThemeToggle';
 import type { AppSession } from '../components/TenantContextHeader';
-import { PermissionState } from '../components/PermissionState';
+import { WorkspaceDataState } from '../components/WorkspaceDataState';
+import { WorkspacePageHeader } from '../components/WorkspacePageHeader';
+import { useWorkspaceIssueReporter } from '../notifications/WorkspaceNotifications';
 import type { CapabilitySnapshot } from '../capabilities/capabilityTypes';
 import { useCapabilities, type CapabilityLoader } from '../capabilities/useCapabilities';
 import { InvitationRedemptionPage } from '../features/invitations/InvitationRedemptionPage';
@@ -123,12 +125,14 @@ function LoadedWorkspaceExperience({ path, navigate, capabilities, capabilitiesL
     routeContent = <section className="permission-panel" role="status"><h1>{messages.workspaceAccessDeniedTitle}</h1><p>{messages.workspaceAccessDeniedBody}</p></section>;
   } else if (!hasModuleAccess) {
     routeContent = <section className="permission-panel" role="status"><h1>{messages.moduleDisabledTitle}</h1><p>{messages.moduleDisabledBody}</p></section>;
-  } else if (route.capability && capabilitiesError) {
-    routeContent = <section className="permission-panel" role="alert"><h1>{messages.permissionCheckUnavailableTitle}</h1><p>{messages.permissionCheckUnavailableBody}</p><button type="button" onClick={() => window.location.reload()}>{messages.retry}</button></section>;
+  } else if (route.capability && capabilitiesLoading) {
+    routeContent = <GraphRouteState route={route} state="loading" />;
+  } else if (route.capability && (capabilitiesError || !capabilities || (capabilities.sourceState && capabilities.sourceState !== 'graph_authoritative') || capabilities.workspaceId !== session.workspace.id)) {
+    routeContent = <GraphRouteState route={route} state="unavailable" onRetry={refreshCapabilities} reportCause={capabilitiesError ? undefined : 'service'} />;
   } else {
     const decision = capabilityDecisionFor(route, unavailableSnapshot.capabilities);
-    routeContent = decision && decision.state !== 'allowed'
-      ? <RoutePermissionState decision={decision} />
+    routeContent = decision && decision.state !== 'allowed' && decision.state !== 'read_only'
+      ? <GraphRouteState route={route} state="unavailable" onRetry={refreshCapabilities} reportCause={decision.state === 'hidden' || decision.state === 'disabled' ? 'access' : undefined} />
       : route.render({ loadConnectionHealth, capabilities: unavailableSnapshot.capabilities, navigate, session });
   }
 
@@ -145,9 +149,18 @@ function SessionFailure({ error, onRetry, onSignIn }: { error: Error; onRetry: (
   return <main className="permission-panel" role="alert"><h1>{title}</h1><p>{body}</p>{correlationId && <p>{messages.correlationIdLabel}: <code>{correlationId}</code></p>}{isSignIn ? <button type="button" onClick={() => onSignIn ? void onSignIn() : window.location.assign('/')}>{messages.sessionSignInAction}</button> : <button type="button" onClick={onRetry}>{messages.retry}</button>}</main>;
 }
 
-function RoutePermissionState({ decision }: { decision: NonNullable<ReturnType<typeof capabilityDecisionFor>> }) {
-  if (decision.state === 'hidden') return <section className="permission-panel" role="status" data-capability={decision.capability} data-capability-state={decision.state}><h1>{messages.permissionRequiredTitle}</h1><p>{messages.permissionRequiredBody}</p></section>;
-  return <section className="permission-panel" aria-labelledby="permission-title"><h1 id="permission-title">{messages.permissionRequiredTitle}</h1><PermissionState decision={decision}><span>{messages.permissionRequiredBody}</span></PermissionState></section>;
+function GraphRouteState({ route, state, onRetry, reportCause }: { route: AppRoute; state: 'loading' | 'unavailable'; onRetry?: () => Promise<void>; reportCause?: 'access' | 'service' }) {
+  const reporter = useWorkspaceIssueReporter();
+  useEffect(() => {
+    if (!reportCause) return;
+    const key = `route:${(route.capability ?? route.path).replace(/[^a-z0-9_-]/gi, ':')}`;
+    reporter.report({ key, area: route.module ?? 'activity', kind: reportCause, severity: 'warning', title: 'Data unavailable', detail: 'Review your access or try again.' });
+    return () => reporter.clear(key);
+  }, [reportCause, route, reporter]);
+  return <section className="content-panel workspace-graph-route">
+    <WorkspacePageHeader title={route.pageTitle ?? route.label} />
+    <WorkspaceDataState state={state} message={state === 'loading' ? 'Checking access…' : 'Data cannot be shown right now. Check Notifications for details.'} onRetry={onRetry ? () => void onRetry() : undefined} />
+  </section>;
 }
 
 function useSession(loadSession: SessionLoader) {

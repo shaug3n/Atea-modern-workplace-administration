@@ -73,11 +73,12 @@ function disableInteractiveChildren(children: ReactNode): ReactNode {
       return child;
     }
 
-    const element = child as ReactElement<{ disabled?: boolean; 'aria-disabled'?: boolean; children?: ReactNode }>;
+    const element = child as ReactElement<{ disabled?: boolean; 'aria-disabled'?: boolean; children?: ReactNode; onClickCapture?: React.MouseEventHandler }>;
     const type = typeof element.type === 'string' ? element.type : '';
     const disabledProps = type === 'button' || type === 'input' || type === 'select' || type === 'textarea'
       ? { disabled: true }
-      : { 'aria-disabled': true };
+      : type === 'a' ? { 'aria-disabled': true, onClickCapture: (event: React.MouseEvent) => { event.preventDefault(); event.stopPropagation(); } }
+      : {};
 
     return cloneElement(element, {
       ...disabledProps,
