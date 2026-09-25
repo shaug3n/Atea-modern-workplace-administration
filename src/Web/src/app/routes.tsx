@@ -11,6 +11,7 @@ import { WorkspaceAccessPage } from '../features/workspace-access/WorkspaceAcces
 import { UserDetailPage } from '../features/users/UserDetailPage';
 import { UsersPage } from '../features/users/UsersPage';
 import { DevicesPage } from '../features/devices/DevicesPage';
+import { DeviceDetailPage } from '../features/devices/DeviceDetailPage';
 import { ExchangeOverviewPage } from '../features/exchange/ExchangeOverviewPage';
 import { WorkspaceModulesPage } from '../features/workspace-settings/WorkspaceModulesPage';
 import { SettingsSummaryPage } from '../features/workspace-settings/SettingsSummaryPage';
@@ -88,10 +89,16 @@ export const appRoutes: AppRoute[] = [
     render: () => <AuditActivityPage />,
   },
   {
+    path: '/devices/:id',
+    label: messages.navDevices,
+    module: 'devices',
+    render: (options) => <DeviceDetailPage capabilities={options?.capabilities} onNavigate={options?.navigate} />,
+  },
+  {
     path: '/devices',
     label: messages.navDevices,
     module: 'devices',
-    render: (options) => <DevicesPage capabilities={options?.capabilities} moduleAssigned={options?.session?.workspace.moduleAccess?.includes('devices') ?? true} moduleEnabled={options?.session?.workspace.enabledModules?.includes('devices') ?? true} />,
+    render: (options) => <DevicesPage capabilities={options?.capabilities} moduleAssigned={options?.session?.workspace.moduleAccess?.includes('devices') ?? true} moduleEnabled={options?.session?.workspace.enabledModules?.includes('devices') ?? true} onNavigate={options?.navigate} />,
   },
   {
     path: '/services/exchange',

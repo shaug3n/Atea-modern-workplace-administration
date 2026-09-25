@@ -39,6 +39,10 @@ delegated permissions to the API registration and grant admin consent:
 - `DeviceManagementManagedDevices.Read.All`
 - `DeviceManagementManagedDevices.ReadWrite.All`
 - `DeviceManagementManagedDevices.PrivilegedOperations.All`
+- `BitlockerKey.ReadBasic.All` (BitLocker metadata)
+- `BitlockerKey.Read.All` (BitLocker key reveal)
+- `DeviceLocalCredential.ReadBasic.All` (Windows LAPS metadata)
+- `DeviceLocalCredential.Read.All` (Windows LAPS password reveal)
 - `UserAuthenticationMethod.Read.All`
 - `UserAuthenticationMethod.ReadWrite.All`
 
@@ -55,6 +59,14 @@ require `DeviceManagementManagedDevices.PrivilegedOperations.All`; existing
 `DeviceManagementManagedDevices.ReadWrite.All` consent does not cover commands.
 After adding these delegated permissions, a tenant administrator must grant
 admin consent again.
+
+Recovery metadata and secret permissions are separate. The Atea API app owner
+adds them under Microsoft Graph delegated API permissions on the app
+registration; a customer tenant administrator grants tenant consent afterward.
+Consent cannot add an unregistered permission. The signed-in user's device
+ownership, Entra role/PIM activation, and scope are still checked by Graph for
+the specific recovery record. A workspace Devices assignment is not a Microsoft
+recovery grant.
 
 After adding them under **API permissions → Microsoft Graph → Delegated permissions**, a tenant administrator must select **Grant admin consent** for the development tenant. This consent authorizes the API to perform delegated-on-behalf-of calls; it does not grant a user any Entra role. The platform still evaluates the signed-in user's active or PIM-activated Entra roles and keeps unsupported actions read-only or hidden.
 

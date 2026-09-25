@@ -2,11 +2,91 @@ using Atea.UnifiedWorkplace.Api.Features.Devices;
 using Atea.UnifiedWorkplace.Api.Features.Identity;
 using Atea.UnifiedWorkplace.Api.Infrastructure.Graph;
 using FluentAssertions;
+using Microsoft.Identity.Client;
 
 namespace Atea.UnifiedWorkplace.Api.UnitTests.Infrastructure.Graph;
 
 public sealed class GraphDeviceAndAuthenticationReaderTests
 {
+    [Fact]
+    public async Task Device_detail_uses_a_targeted_get_and_keeps_only_supported_fields()
+    {
+        var transport = new RecordingTransport("""{"id":"device-1","deviceName":"WIN-01","azureADDeviceId":"aad-1","serialNumber":"serial","unsupportedSecret":"must-not-leak"}""");
+        var result = await new GraphManagedDeviceReader(new RecordingFactory(transport)).GetAsync("device-1", CancellationToken.None);
+        result.Value!.AzureAdDeviceId.Should().Be("aad-1");
+        transport.Requests.Single().PathAndQuery.Should().StartWith("/v1.0/deviceManagement/managedDevices/device-1?$select=");
+        System.Text.Json.JsonSerializer.Serialize(result.Value).Should().NotContain("must-not-leak");
+    }
+
+    [Fact]
+    public async Task Device_detail_reports_missing_delegated_consent_when_token_acquisition_requires_it()
+    {
+        var result = await new GraphManagedDeviceReader(new ConsentRequiredFactory()).GetAsync("device-1", CancellationToken.None);
+        result.Error!.Category.Should().Be("consent_required");
+    }
+
+    [Fact]
+    public async Task Bitlocker_metadata_filter_never_selects_key_and_reveal_selects_only_key()
+    {
+        var metadataTransport = new RecordingTransport("""{"value":[{"id":"key-1","deviceId":"aad-1","createdDateTime":"2026-09-01T00:00:00Z","volumeType":"1","key":"must-not-leak"}]}""");
+        var metadata = await new GraphDeviceRecoveryReader(new RecordingFactory(metadataTransport)).ListBitlockerAsync("aad-1", false, CancellationToken.None);
+        metadata.Value.Should().ContainSingle().Which.Id.Should().Be("key-1");
+        System.Text.Json.JsonSerializer.Serialize(metadata.Value).Should().NotContain("must-not-leak");
+        metadataTransport.Requests.Single().PathAndQuery.Should().Contain("deviceId");
+        metadataTransport.Requests.Single().PathAndQuery.Should().NotContain("$select=key");
+
+        var secretTransport = new RecordingTransport("""{"id":"key-1","key":"recovery-secret"}""");
+        var secret = await new GraphDeviceRecoveryReader(new RecordingFactory(secretTransport)).GetBitlockerAsync("key-1", CancellationToken.None);
+        secret.Value.Key.Should().Be("recovery-secret");
+        secretTransport.Requests.Single().PathAndQuery.Should().EndWith("?$select=key");
+    }
+
+    [Fact]
+    public async Task Bitlocker_metadata_follows_Graph_pagination_for_the_target_device()
+    {
+        var transport = new PagedTransport([
+            """{"value":[{"id":"key-1","deviceId":"aad-1"}],"@odata.nextLink":"https://graph.microsoft.com/v1.0/informationProtection/bitlocker/recoveryKeys?$skiptoken=page-2"}""",
+            """{"value":[{"id":"key-2","deviceId":"aad-1"}]}"""
+        ]);
+        var result = await new GraphDeviceRecoveryReader(new RecordingFactory(transport)).ListBitlockerAsync("aad-1", false, CancellationToken.None);
+        result.Value.Select(key => key.Id).Should().Equal("key-1", "key-2");
+        transport.Requests.Should().HaveCount(2);
+        transport.Requests[1].PathAndQuery.Should().Be("/v1.0/informationProtection/bitlocker/recoveryKeys?$skiptoken=page-2");
+    }
+
+    [Fact]
+    public async Task Bitlocker_reveal_rejects_a_Graph_response_for_another_key_id()
+    {
+        var transport = new RecordingTransport("""{"id":"different-key","key":"must-not-return"}""");
+        var result = await new GraphDeviceRecoveryReader(new RecordingFactory(transport)).GetBitlockerAsync("key-1", CancellationToken.None);
+        result.Error!.Category.Should().Be("invalid_response");
+        result.Value.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task Laps_reveal_decodes_utf16_base64_and_rejects_malformed_secret()
+    {
+        var encoded = Convert.ToBase64String(System.Text.Encoding.Unicode.GetBytes("Pāssword!"));
+        var transport = new RecordingTransport($$"""{"id":"aad-1","credentials":[{"accountName":"LocalAdmin","passwordBase64":"{{encoded}}"}]}""");
+        var secret = await new GraphDeviceRecoveryReader(new RecordingFactory(transport)).GetLapsSecretAsync("aad-1", CancellationToken.None);
+        secret.Value.Password.Should().Be("Pāssword!");
+        transport.Requests.Single().PathAndQuery.Should().EndWith("?$select=credentials");
+
+        var malformed = new RecordingTransport("""{"id":"aad-1","credentials":[{"accountName":"LocalAdmin","passwordBase64":"?"}]}""");
+        var rejected = await new GraphDeviceRecoveryReader(new RecordingFactory(malformed)).GetLapsSecretAsync("aad-1", CancellationToken.None);
+        rejected.Error!.Category.Should().Be("invalid_response");
+    }
+
+    [Fact]
+    public async Task Laps_reveal_chooses_the_latest_backed_up_credential()
+    {
+        var oldPassword = Convert.ToBase64String(System.Text.Encoding.Unicode.GetBytes("old-password"));
+        var newPassword = Convert.ToBase64String(System.Text.Encoding.Unicode.GetBytes("new-password"));
+        var transport = new RecordingTransport($$"""{"id":"aad-1","credentials":[{"accountName":"Admin","backupDateTime":"2026-08-01T00:00:00Z","passwordBase64":"{{oldPassword}}"},{"accountName":"Admin","backupDateTime":"2026-09-01T00:00:00Z","passwordBase64":"{{newPassword}}"}]}""");
+        var result = await new GraphDeviceRecoveryReader(new RecordingFactory(transport)).GetLapsSecretAsync("aad-1", CancellationToken.None);
+        result.Value.Password.Should().Be("new-password");
+    }
+
     [Fact]
     public async Task Managed_device_reader_uses_intune_read_scope_and_maps_safe_inventory_fields()
     {
@@ -261,6 +341,12 @@ public sealed class GraphDeviceAndAuthenticationReaderTests
         }
     }
 
+    private sealed class ConsentRequiredFactory : IDelegatedGraphClientFactory
+    {
+        public Task<GraphClientLease> CreateForCurrentUserAsync(IReadOnlyCollection<string> scopes, CancellationToken cancellationToken) =>
+            throw new MsalUiRequiredException("consent_required", "Delegated consent is required.");
+    }
+
     private sealed class RecordingTransport(string content) : IGraphTransport
     {
         public IReadOnlyCollection<string> Scopes { get; } = [];
@@ -272,6 +358,18 @@ public sealed class GraphDeviceAndAuthenticationReaderTests
             Requests.Add(request);
             RequestBodies.Add(request.Content?.ReadAsStringAsync().GetAwaiter().GetResult() ?? string.Empty);
             return Task.FromResult(new GraphTransportResponse(GraphOperationResult.Success(), content, 1, new Dictionary<string, IReadOnlyCollection<string>>()));
+        }
+    }
+
+    private sealed class PagedTransport(IEnumerable<string> pages) : IGraphTransport
+    {
+        private readonly Queue<string> pages = new(pages);
+        public IReadOnlyCollection<string> Scopes { get; } = [];
+        public List<GraphRequest> Requests { get; } = [];
+        public Task<GraphTransportResponse> SendAsync(GraphRequest request, CancellationToken cancellationToken)
+        {
+            Requests.Add(request);
+            return Task.FromResult(new GraphTransportResponse(GraphOperationResult.Success(), pages.Dequeue(), 1, new Dictionary<string, IReadOnlyCollection<string>>()));
         }
     }
 

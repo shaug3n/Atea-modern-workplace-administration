@@ -85,7 +85,11 @@ builder.Services.AddScoped<IUserLicenseReader>(services => services.GetRequiredS
 builder.Services.AddScoped<ILicenseAssignmentCommands>(services => services.GetRequiredService<GraphLicenseService>());
 builder.Services.AddScoped<ILicenseOverviewReader, GraphLicenseOverviewReader>();
 builder.Services.AddScoped<ILicenseOverviewService, LicenseOverviewService>();
-builder.Services.AddScoped<IManagedDeviceReader, GraphManagedDeviceReader>();
+builder.Services.AddScoped<GraphManagedDeviceReader>();
+builder.Services.AddScoped<IManagedDeviceReader>(services => services.GetRequiredService<GraphManagedDeviceReader>());
+builder.Services.AddScoped<IManagedDeviceDetailReader>(services => services.GetRequiredService<GraphManagedDeviceReader>());
+builder.Services.AddScoped<IGraphDeviceRecoveryReader, GraphDeviceRecoveryReader>();
+builder.Services.AddScoped<IDeviceRecoveryService, DeviceRecoveryService>();
 builder.Services.AddScoped<IManagedDeviceCommands, GraphManagedDeviceCommands>();
 builder.Services.AddScoped<IDeviceService, DeviceService>();
 builder.Services.AddScoped<IDeviceCommandService, DeviceCommandService>();

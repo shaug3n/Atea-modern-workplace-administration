@@ -63,8 +63,11 @@ export function OnboardingPage({ onNavigate }: { onNavigate?: (path: string) => 
       <ul>
         <li><strong>Users, groups and licenses:</strong> <code>User.Read.All</code>, <code>Group.Read.All</code>, <code>Directory.Read.All</code>.</li>
         <li><strong>Devices:</strong> <code>DeviceManagementManagedDevices.Read.All</code>. Device actions require additional delegated write scopes and an active tenant role; an eligible but inactive PIM role must be activated first.</li>
+        <li><strong>BitLocker recovery:</strong> <code>BitlockerKey.ReadBasic.All</code> reads key metadata; <code>BitlockerKey.Read.All</code> permits a deliberate key reveal.</li>
+        <li><strong>Windows LAPS recovery:</strong> <code>DeviceLocalCredential.ReadBasic.All</code> reads backup metadata; <code>DeviceLocalCredential.Read.All</code> permits a deliberate password reveal.</li>
         <li><strong>Exchange verification:</strong> <code>MailboxSettings.Read</code>, in addition to the directory-read scopes above.</li>
       </ul>
+      <p>These four recovery scopes must first be added as Microsoft Graph delegated permissions to the API app registration by the Atea app owner. A customer tenant administrator must then grant tenant consent separately. Consent cannot add a scope missing from the registration. An eligible Entra PIM role may need activation; Graph makes the final access decision for the specific device and recovery record.</p>
       <p>If a scope is absent from the API registration, ask the Atea app owner to add it before retrying consent. If the scope is present but not granted in this tenant, use the consent action above with an appropriately authorized tenant administrator. If the permission check reports PIM activation required, activate the eligible role in Entra PIM and retry.</p>
     </section>
     {correlationId && !failed && <p>{messages.correlationIdLabel}: <code>{correlationId}</code></p>}

@@ -12,7 +12,7 @@ import { useFocusContainment } from '../../components/useFocusContainment';
 
 const emptyFilters: DeviceFilters = { search: '', complianceState: '', operatingSystem: '' };
 
-export function DevicesPage({ loadDevices, capabilities = [], moduleAssigned = true, moduleEnabled = true }: { loadDevices?: (filters: DeviceFilters, continuationToken?: string | null) => Promise<DevicesResponse>; capabilities?: CapabilityDecision[]; moduleAssigned?: boolean; moduleEnabled?: boolean }) {
+export function DevicesPage({ loadDevices, capabilities = [], moduleAssigned = true, moduleEnabled = true, onNavigate }: { loadDevices?: (filters: DeviceFilters, continuationToken?: string | null) => Promise<DevicesResponse>; capabilities?: CapabilityDecision[]; moduleAssigned?: boolean; moduleEnabled?: boolean; onNavigate?: (path: string) => void }) {
   const api = useApi();
   const [filters, setFilters] = useState(emptyFilters);
   const [continuationToken, setContinuationToken] = useState<string | null>(null);
@@ -156,7 +156,7 @@ export function DevicesPage({ loadDevices, capabilities = [], moduleAssigned = t
       {!failed && result?.error && <section className="permission-panel" role="alert"><h2>{deviceErrorTitle}</h2><p>{result.error.message}</p><button type="button" onClick={() => setRefreshVersion((version) => version + 1)}>{messages.retry}</button></section>}
       {!failed && loading && !result && <div className="async-state async-state--loading" role="status"><span className="async-state__bar" /><span className="async-state__bar" /><span className="async-state__bar" />{messages.devicesLoading}</div>}
       {!failed && !result?.error && !loading && result && result.items.length === 0 && <div className="async-state">{messages.devicesNoResults}</div>}
-      {!failed && !result?.error && result && result.items.length > 0 && <DevicesTable devices={result.items} canManage={privilegedDecision.state === 'allowed'} onOpenDetails={(device, trigger) => { detailsTriggerRef.current = trigger; setDetailsTarget(device); }} onAction={(device, action) => setActionTarget({ device, action })} />}
+      {!failed && !result?.error && result && result.items.length > 0 && <DevicesTable devices={result.items} canManage={privilegedDecision.state === 'allowed'} onOpenDetails={(device, trigger) => { if (onNavigate) { onNavigate(`/devices/${encodeURIComponent(device.id)}`); return; } detailsTriggerRef.current = trigger; setDetailsTarget(device); }} onAction={(device, action) => setActionTarget({ device, action })} />}
       {!failed && !result?.error && result && <div className="table-pagination" aria-label={messages.devicesPaginationLabel}><span>{messages.devicesPageLabel(previousTokens.length + 1)}</span><div><button type="button" onClick={goPrevious} disabled={previousTokens.length === 0 || loading}>{messages.devicesPreviousPage}</button><button type="button" onClick={goNext} disabled={!result.continuationToken || loading}>{messages.devicesNextPage}</button></div></div>}
 
       {privilegedDecision.state !== 'allowed' && privilegedDecision.state !== 'hidden' && <div className="device-permission-state"><PermissionState decision={privilegedDecision}><span>{messages.devicesPrivilegedUnavailable}</span></PermissionState></div>}

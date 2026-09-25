@@ -5,6 +5,38 @@ namespace Atea.UnifiedWorkplace.Api.UnitTests.Authorization;
 
 public sealed class CapabilityEvaluatorTests
 {
+    [Fact]
+    public void Recovery_capabilities_separate_basic_and_secret_scopes_without_requiring_a_known_role()
+    {
+        var snapshot = AvailableSnapshot(scopes: ["BitlockerKey.ReadBasic.All", "DeviceLocalCredential.Read.All"], roles: []);
+        var decisions = CapabilityEvaluator.Evaluate(snapshot, Member());
+        decisions[Capability.DevicesBitlockerMetadata].State.Should().Be(CapabilityState.Allowed);
+        decisions[Capability.DevicesBitlockerReveal].State.Should().Be(CapabilityState.ConsentRequired);
+        decisions[Capability.DevicesBitlockerReveal].MissingScopes.Should().ContainSingle("BitlockerKey.Read.All");
+        decisions[Capability.DevicesLapsMetadata].State.Should().Be(CapabilityState.Allowed);
+        decisions[Capability.DevicesLapsReveal].State.Should().Be(CapabilityState.Allowed);
+    }
+
+    [Fact]
+    public void Known_eligible_PIM_role_adds_guidance_without_hiding_reveal()
+    {
+        var snapshot = AvailableSnapshot(scopes: ["DeviceLocalCredential.Read.All"],
+            roles: [EligibleRole(EntraRoleCatalog.CloudDeviceAdministratorTemplateId, PimRequirement.ActivationRequired)]);
+        var decision = CapabilityEvaluator.Evaluate(snapshot, Member())[Capability.DevicesLapsReveal];
+        decision.State.Should().Be(CapabilityState.Allowed);
+        decision.NextStep!.Href.Should().Be("/identity");
+    }
+
+    [Fact]
+    public void Global_reader_eligibility_does_not_claim_to_unlock_LAPS_passwords()
+    {
+        var snapshot = AvailableSnapshot(scopes: ["DeviceLocalCredential.Read.All"],
+            roles: [EligibleRole(EntraRoleCatalog.GlobalReaderTemplateId, PimRequirement.ActivationRequired)]);
+        var decision = CapabilityEvaluator.Evaluate(snapshot, Member())[Capability.DevicesLapsReveal];
+        decision.State.Should().Be(CapabilityState.Allowed);
+        decision.NextStep.Should().BeNull();
+    }
+
     [Theory]
     [InlineData(Capability.WorkspaceMembersManage)]
     [InlineData(Capability.WorkspaceSettingsManage)]

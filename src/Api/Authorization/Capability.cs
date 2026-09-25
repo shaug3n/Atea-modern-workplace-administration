@@ -17,6 +17,10 @@ public static class Capability
     public const string DevicesView = "devices.view";
     public const string DevicesManage = "devices.manage";
     public const string DevicesPrivilegedManage = "devices.privileged.manage";
+    public const string DevicesBitlockerMetadata = "devices.bitlocker.metadata";
+    public const string DevicesBitlockerReveal = "devices.bitlocker.reveal";
+    public const string DevicesLapsMetadata = "devices.laps.metadata";
+    public const string DevicesLapsReveal = "devices.laps.reveal";
     public const string AuthenticationMethodsView = "authentication.methods.view";
     public const string AuthenticationMethodsManage = "authentication.methods.manage";
     public const string AuditView = "audit.view";
@@ -40,6 +44,10 @@ public static class Capability
         DevicesView,
         DevicesManage,
         DevicesPrivilegedManage,
+        DevicesBitlockerMetadata,
+        DevicesBitlockerReveal,
+        DevicesLapsMetadata,
+        DevicesLapsReveal,
         AuthenticationMethodsView,
         AuthenticationMethodsManage,
         AuditView,

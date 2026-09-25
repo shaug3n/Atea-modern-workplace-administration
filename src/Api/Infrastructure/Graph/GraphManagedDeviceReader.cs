@@ -1,5 +1,7 @@
 using System.Text.Json;
 using Atea.UnifiedWorkplace.Api.Features.Devices;
+using Microsoft.Identity.Client;
+using Microsoft.Identity.Web;
 
 namespace Atea.UnifiedWorkplace.Api.Infrastructure.Graph;
 
@@ -9,12 +11,51 @@ public interface IManagedDeviceReader
     Task<GraphReadResult<IReadOnlyList<ManagedDeviceSummary>>> ReadForUserAsync(string userObjectId, CancellationToken cancellationToken);
 }
 
-public sealed class GraphManagedDeviceReader(IDelegatedGraphClientFactory clientFactory) : IManagedDeviceReader
+public interface IManagedDeviceDetailReader
+{
+    Task<GraphReadResult<ManagedDeviceSummary?>> GetAsync(string deviceObjectId, CancellationToken cancellationToken);
+}
+
+public sealed class GraphManagedDeviceReader(IDelegatedGraphClientFactory clientFactory) : IManagedDeviceReader, IManagedDeviceDetailReader
 {
     private const string Select = "id,deviceName,operatingSystem,osVersion,complianceState,managementState,managedDeviceOwnerType,lastSyncDateTime,userId,azureADDeviceId,serialNumber,manufacturer,model";
 
     public async Task<GraphReadResult<PagedResult<ManagedDeviceSummary>>> ReadAsync(DeviceSearchQuery query, CancellationToken cancellationToken) =>
         (await ReadPageAsync(query, cancellationToken)).Result;
+
+    public async Task<GraphReadResult<ManagedDeviceSummary?>> GetAsync(string deviceObjectId, CancellationToken cancellationToken)
+    {
+        if (!DeviceTarget.IsSafe(deviceObjectId))
+            return GraphReadResult<ManagedDeviceSummary?>.Failed(new GraphOperationResult(false, "invalid_target"));
+        try
+        {
+            await using var lease = await clientFactory.CreateForCurrentUserAsync(GraphScopeCatalog.DeviceReadScopes, cancellationToken);
+            var response = await lease.Transport.SendAsync(new GraphRequest(HttpMethod.Get,
+                $"/v1.0/deviceManagement/managedDevices/{Uri.EscapeDataString(deviceObjectId)}?$select={Select}"), cancellationToken);
+            if (response.Result.Category == "not_found") return GraphReadResult<ManagedDeviceSummary?>.Succeeded(null);
+            if (!response.Result.IsSuccess) return GraphReadResult<ManagedDeviceSummary?>.Failed(response.Result);
+            try
+            {
+                using var document = JsonDocument.Parse(response.Content);
+                var device = Map(document.RootElement);
+                return string.Equals(device.Id, deviceObjectId, StringComparison.OrdinalIgnoreCase)
+                    ? GraphReadResult<ManagedDeviceSummary?>.Succeeded(device)
+                    : GraphReadResult<ManagedDeviceSummary?>.Failed(new GraphOperationResult(false, "invalid_response"));
+            }
+            catch (Exception exception) when (exception is JsonException or InvalidOperationException)
+            {
+                return GraphReadResult<ManagedDeviceSummary?>.Failed(new GraphOperationResult(false, "invalid_response"));
+            }
+        }
+        catch (MicrosoftIdentityWebChallengeUserException exception)
+        {
+            return GraphReadResult<ManagedDeviceSummary?>.Failed(GraphTokenAcquisitionErrorMapper.Map(exception));
+        }
+        catch (MsalUiRequiredException exception)
+        {
+            return GraphReadResult<ManagedDeviceSummary?>.Failed(GraphTokenAcquisitionErrorMapper.Map(exception));
+        }
+    }
 
     public async Task<GraphReadResult<IReadOnlyList<ManagedDeviceSummary>>> ReadForUserAsync(string userObjectId, CancellationToken cancellationToken)
     {

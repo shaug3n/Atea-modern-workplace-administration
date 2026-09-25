@@ -15,6 +15,10 @@ public static class GraphScopeCatalog
     public static readonly IReadOnlyList<string> DeviceReadScopes = ["DeviceManagementManagedDevices.Read.All"];
     public static readonly IReadOnlyList<string> DeviceWriteScopes = ["DeviceManagementManagedDevices.ReadWrite.All"];
     public static readonly IReadOnlyList<string> DevicePrivilegedOperationScopes = ["DeviceManagementManagedDevices.PrivilegedOperations.All"];
+    public static readonly IReadOnlyList<string> BitlockerMetadataScopes = ["BitlockerKey.ReadBasic.All"];
+    public static readonly IReadOnlyList<string> BitlockerSecretScopes = ["BitlockerKey.Read.All"];
+    public static readonly IReadOnlyList<string> LapsMetadataScopes = ["DeviceLocalCredential.ReadBasic.All"];
+    public static readonly IReadOnlyList<string> LapsSecretScopes = ["DeviceLocalCredential.Read.All"];
     public static readonly IReadOnlyList<string> AuthenticationMethodReadScopes = ["UserAuthenticationMethod.Read.All"];
     public static readonly IReadOnlyList<string> AuthenticationMethodWriteScopes = ["UserAuthenticationMethod.ReadWrite.All"];
     public static readonly IReadOnlyList<string> ExchangeMailboxSettingsReadScopes = ["MailboxSettings.Read"];
@@ -41,6 +45,10 @@ public static class GraphScopeCatalog
         "DeviceManagementManagedDevices.Read.All",
         "DeviceManagementManagedDevices.ReadWrite.All",
         "DeviceManagementManagedDevices.PrivilegedOperations.All",
+        "BitlockerKey.ReadBasic.All",
+        "BitlockerKey.Read.All",
+        "DeviceLocalCredential.ReadBasic.All",
+        "DeviceLocalCredential.Read.All",
         "UserAuthenticationMethod.Read.All",
         "UserAuthenticationMethod.ReadWrite.All",
         "MailboxSettings.Read"

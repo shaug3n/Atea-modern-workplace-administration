@@ -20,6 +20,28 @@ namespace Atea.UnifiedWorkplace.Api.IntegrationTests.Devices;
 public sealed class DeviceCommandEndpointTests
 {
     [Fact]
+    public async Task Laps_reveal_is_post_only_no_store_and_returns_no_secret_for_invalid_reason()
+    {
+        var recovery = new RecordingRecoveryService();
+        using var factory = CreateFactory(null, AllowedSnapshot, recoveryService: recovery);
+        using var client = AuthenticatedClient(factory);
+
+        var get = await client.GetAsync("/api/devices/device-1/recovery/laps/reveal");
+        get.StatusCode.Should().NotBe(HttpStatusCode.OK);
+        (await get.Content.ReadAsStringAsync()).Should().NotContain("fixture-password");
+
+        var bad = await client.PostAsJsonAsync("/api/devices/device-1/recovery/laps/reveal", new { reason = " " });
+        bad.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        bad.Headers.CacheControl!.NoStore.Should().BeTrue();
+        recovery.Calls.Should().Be(0);
+
+        var good = await client.PostAsJsonAsync("/api/devices/device-1/recovery/laps/reveal", new { reason = "Incident 123" });
+        good.StatusCode.Should().Be(HttpStatusCode.OK);
+        good.Headers.CacheControl!.NoStore.Should().BeTrue();
+        (await good.Content.ReadAsStringAsync()).Should().Contain("fixture-password");
+    }
+
+    [Fact]
     public async Task Read_write_only_access_is_denied_for_privileged_device_actions()
     {
         var commands = new RecordingCommands();
@@ -152,7 +174,7 @@ public sealed class DeviceCommandEndpointTests
         return client;
     }
 
-    private static WebApplicationFactory<Program> CreateFactory(RecordingCommands? commands, GraphAuthorizationSnapshot snapshot, bool hasMembership = true) =>
+    private static WebApplicationFactory<Program> CreateFactory(RecordingCommands? commands, GraphAuthorizationSnapshot snapshot, bool hasMembership = true, IDeviceRecoveryService? recoveryService = null) =>
         new WebApplicationFactory<Program>().WithWebHostBuilder(builder => builder
             .ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
             {
@@ -179,7 +201,25 @@ public sealed class DeviceCommandEndpointTests
                 services.AddSingleton<IIdempotencyService, MemoryIdempotencyService>();
                 services.RemoveAll<IAuditWriter>();
                 services.AddSingleton<IAuditWriter, NoOpAuditWriter>();
+                if (recoveryService is not null)
+                {
+                    services.RemoveAll<IDeviceRecoveryService>();
+                    services.AddSingleton(recoveryService);
+                }
             }));
+
+    private sealed class RecordingRecoveryService : IDeviceRecoveryService
+    {
+        public int Calls { get; private set; }
+        public Task<RecoveryResult<IReadOnlyList<BitlockerRecoveryMetadata>>> GetBitlockerMetadataAsync(WorkspaceContext context, string deviceId, CancellationToken cancellationToken) => throw new NotImplementedException();
+        public Task<RecoveryResult<LapsMetadata>> GetLapsMetadataAsync(WorkspaceContext context, string deviceId, CancellationToken cancellationToken) => throw new NotImplementedException();
+        public Task<RecoveryResult<BitlockerSecret>> RevealBitlockerAsync(WorkspaceContext context, string deviceId, string keyId, string reason, CancellationToken cancellationToken) => throw new NotImplementedException();
+        public Task<RecoveryResult<LapsSecret>> RevealLapsAsync(WorkspaceContext context, string deviceId, string reason, CancellationToken cancellationToken)
+        {
+            Calls++;
+            return Task.FromResult(new RecoveryResult<LapsSecret>("succeeded", new LapsSecret("Admin", "fixture-password", null)));
+        }
+    }
 
     private static readonly Guid TenantId = Guid.Parse("11111111-1111-1111-1111-111111111111");
     private static readonly Guid ObjectId = Guid.Parse("22222222-2222-2222-2222-222222222222");

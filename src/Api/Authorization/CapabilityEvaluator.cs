@@ -151,6 +151,11 @@ public static class CapabilityEvaluator
                 : new CapabilityDecision(capability, CapabilityState.TemporarilyUnavailable, snapshot.ProblemCategory ?? "graph_snapshot_unavailable");
         }
 
+        if (IsRecoveryCapability(capability))
+        {
+            return EvaluateRecoveryCapability(capability, snapshot);
+        }
+
         var requirement = Requirements[capability];
         if (capability == Capability.PimActivate)
         {
@@ -288,6 +293,40 @@ public static class CapabilityEvaluator
             role.RoleTemplateId,
             new CapabilityPimState(pimState, role.Pim?.ActivationUrl),
             new CapabilityNextStep(NextStepLabel(state), "/identity"));
+    }
+
+    private static bool IsRecoveryCapability(string capability) => capability is
+        Capability.DevicesBitlockerMetadata or Capability.DevicesBitlockerReveal or
+        Capability.DevicesLapsMetadata or Capability.DevicesLapsReveal;
+
+    private static CapabilityDecision EvaluateRecoveryCapability(string capability, GraphAuthorizationSnapshot snapshot)
+    {
+        var scopes = capability switch
+        {
+            Capability.DevicesBitlockerMetadata => new[] { "BitlockerKey.ReadBasic.All", "BitlockerKey.Read.All" },
+            Capability.DevicesBitlockerReveal => ["BitlockerKey.Read.All"],
+            Capability.DevicesLapsMetadata => ["DeviceLocalCredential.ReadBasic.All", "DeviceLocalCredential.Read.All"],
+            _ => ["DeviceLocalCredential.Read.All"]
+        };
+        if (!HasAnyScope(snapshot, scopes))
+        {
+            var missing = MissingScopes(snapshot, scopes);
+            return HasTransientScopeProblem(snapshot, missing)
+                ? new CapabilityDecision(capability, CapabilityState.TemporarilyUnavailable, "scope_probe_unavailable",
+                    NextStep: new CapabilityNextStep("Retry authorization checks"), MissingScopes: missing)
+                : new CapabilityDecision(capability, CapabilityState.ConsentRequired, "delegated_scope_required",
+                    NextStep: new CapabilityNextStep("Grant delegated consent", "/api/workspaces/current/consent/start"), MissingScopes: missing);
+        }
+
+        // Role snapshots cannot prove device ownership, custom roles, or administrative-unit scope.
+        // A granted delegated scope permits an attempt; Graph decides access to the target.
+        var lapsReveal = capability == Capability.DevicesLapsReveal;
+        var eligible = snapshot.DirectoryRoles.FirstOrDefault(role =>
+            string.Equals(role.AssignmentState, DirectoryRoleAssignmentState.Eligible, StringComparison.OrdinalIgnoreCase)
+            && (role.RoleTemplateId is EntraRoleCatalog.CloudDeviceAdministratorTemplateId or EntraRoleCatalog.IntuneAdministratorTemplateId
+                || (!lapsReveal && role.RoleTemplateId is EntraRoleCatalog.GlobalReaderTemplateId or EntraRoleCatalog.GlobalAdministratorTemplateId)));
+        return new CapabilityDecision(capability, CapabilityState.Allowed, "graph_authoritative",
+            NextStep: eligible is null ? null : new CapabilityNextStep("Activate eligible role if Graph denies access", "/identity"));
     }
 
     private static string NextStepLabel(string state) => state switch
