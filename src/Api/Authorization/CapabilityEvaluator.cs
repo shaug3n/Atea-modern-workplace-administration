@@ -60,7 +60,7 @@ public static class CapabilityEvaluator
             RoleTemplateIds: [EntraRoleCatalog.GlobalAdministratorTemplateId, EntraRoleCatalog.GroupsAdministratorTemplateId]),
         [Capability.LicensesView] = new(
             ReadScopes: ["Directory.Read.All"],
-            RoleTemplateIds: ReaderRoles,
+            RoleTemplateIds: [.. ReaderRoles, EntraRoleCatalog.LicenseAdministratorTemplateId],
             MissingReadState: CapabilityState.Hidden),
         [Capability.LicensesAssign] = new(
             ReadScopes: ["Directory.Read.All", "User.Read.All"],

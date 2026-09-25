@@ -62,6 +62,33 @@ public sealed class GraphDirectoryReaderTests
         transport.Requests[1].PathAndQuery.Should().Be("/v1.0/subscribedSkus?$skiptoken=next");
     }
 
+    [Theory]
+    [InlineData("{}")]
+    [InlineData("{\"value\":{}}")]
+    public async Task Malformed_first_user_collection_returns_invalid_response(string body)
+    {
+        var transport = new RecordingTransport(new GraphTransportResponse(GraphOperationResult.Success(), body, 1, new Dictionary<string, IReadOnlyCollection<string>>()));
+        var result = await new GraphDirectoryReader(new RecordingFactory(transport)).SearchAsync(Workspace, new UserSearchQuery(), CancellationToken.None);
+
+        result.Items.Should().BeEmpty();
+        result.Error!.Category.Should().Be("invalid_response");
+        result.ContinuationLink.Should().BeNull();
+    }
+
+    [Theory]
+    [InlineData("{}")]
+    [InlineData("{\"value\":\"not-an-array\"}")]
+    public async Task Malformed_continuation_user_collection_returns_invalid_response(string body)
+    {
+        var transport = new RecordingTransport(new GraphTransportResponse(GraphOperationResult.Success(), body, 1, new Dictionary<string, IReadOnlyCollection<string>>()));
+        var result = await new GraphDirectoryReader(new RecordingFactory(transport)).SearchAsync(
+            Workspace, new UserSearchQuery(ContinuationPath: "/v1.0/users?$skiptoken=next"), CancellationToken.None);
+
+        result.Items.Should().BeEmpty();
+        result.Error!.Category.Should().Be("invalid_response");
+        transport.Requests.Should().ContainSingle().Which.PathAndQuery.Should().Be("/v1.0/users?$skiptoken=next");
+    }
+
     private sealed class RecordingFactory(RecordingTransport transport) : IDelegatedGraphClientFactory
     {
         public IReadOnlyCollection<string> RequestedScopes { get; private set; } = [];

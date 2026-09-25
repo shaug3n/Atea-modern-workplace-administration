@@ -168,6 +168,19 @@ public sealed class CapabilityEvaluatorTests
     }
 
     [Fact]
+    public void License_administrator_can_view_inventory_with_read_scope_but_assignment_requires_write_scope()
+    {
+        var role = ActiveRole(EntraRoleCatalog.LicenseAdministratorTemplateId);
+        var readOnly = CapabilityEvaluator.Evaluate(AvailableSnapshot(["Directory.Read.All", "User.Read.All"], [role]), Member());
+        readOnly[Capability.LicensesView].State.Should().Be(CapabilityState.Allowed);
+        readOnly[Capability.LicensesAssign].State.Should().Be(CapabilityState.ConsentRequired);
+
+        var withWrite = CapabilityEvaluator.Evaluate(AvailableSnapshot(["Directory.Read.All", "User.Read.All", "LicenseAssignment.ReadWrite.All"], [role]), Member());
+        withWrite[Capability.LicensesView].State.Should().Be(CapabilityState.Allowed);
+        withWrite[Capability.LicensesAssign].State.Should().Be(CapabilityState.Allowed);
+    }
+
+    [Fact]
     public void User_administrator_does_not_receive_device_or_authentication_method_visibility()
     {
         var snapshot = AvailableSnapshot(

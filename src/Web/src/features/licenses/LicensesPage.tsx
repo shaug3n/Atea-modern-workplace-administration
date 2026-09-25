@@ -45,6 +45,8 @@ function LoadedLicensesPage({ loader, loadAssignees, exportCsv }: { loader: Lice
   const [tab, setTab] = useState<'inventory' | 'assignees'>('inventory');
   const [assignees, setAssignees] = useState<UsersDirectoryResponse | null>(null);
   const [assigneeError, setAssigneeError] = useState(false);
+  const [assigneeLoading, setAssigneeLoading] = useState(false);
+  const [assigneeRetry, setAssigneeRetry] = useState(0);
   const [token, setToken] = useState<string | null>(null);
   const [history, setHistory] = useState<string[]>([]);
   const [exportMessage, setExportMessage] = useState<string | null>(null);
@@ -62,14 +64,35 @@ function LoadedLicensesPage({ loader, loadAssignees, exportCsv }: { loader: Lice
     if (tab !== 'assignees' || !selected || !loadAssignees) return;
     let cancelled = false;
     setAssigneeError(false);
-    loadAssignees(selected.skuId, token).then(value => { if (!cancelled) setAssignees(value); }).catch(() => { if (!cancelled) setAssigneeError(true); });
+    setAssigneeLoading(true);
+    setAssignees(null);
+    loadAssignees(selected.skuId, token)
+      .then(value => { if (!cancelled) setAssignees(value); })
+      .catch(() => { if (!cancelled) setAssigneeError(true); })
+      .finally(() => { if (!cancelled) setAssigneeLoading(false); });
     return () => { cancelled = true; };
-  }, [tab, selected, token, loadAssignees, retry]);
+  }, [tab, selected, token, loadAssignees, assigneeRetry]);
 
   const choose = (item: LicenseItem) => {
-    setSelected(item); setToken(null); setHistory([]); setAssignees(null); setTab('assignees');
+    setSelected(item); setToken(null); setHistory([]); setAssignees(null); setAssigneeLoading(true); setTab('assignees');
   };
   const showAssignees = () => { if (!selected && result?.items[0]) setSelected(result.items[0]); setTab('assignees'); };
+  const previousAssignees = () => {
+    if (assigneeLoading || assigneeError || assignees?.error || history.length === 0) return;
+    const previous = [...history];
+    setAssigneeLoading(true); setAssignees(null);
+    setToken(previous.pop() || null); setHistory(previous);
+  };
+  const nextAssignees = () => {
+    if (assigneeLoading || assigneeError || !assignees?.continuationToken) return;
+    setAssigneeLoading(true); setAssignees(null);
+    setHistory(values => [...values, token ?? '']); setToken(assignees.continuationToken);
+  };
+  const retryAssignees = () => {
+    if (assigneeLoading) return;
+    setAssigneeLoading(true); setAssigneeError(false); setAssignees(null);
+    setAssigneeRetry(value => value + 1);
+  };
   const runExport = async (kind: 'inventory' | 'assignees') => {
     if (!exportCsv || exportPending || (kind === 'assignees' && !selected)) return;
     setExportPending(true); setExportMessage(null); setExportError(null);
@@ -102,7 +125,10 @@ function LoadedLicensesPage({ loader, loadAssignees, exportCsv }: { loader: Lice
     </section> : <section role="tabpanel" aria-label="Assigned users">
       {selected && <><h2>{selected.displayName}</h2><dl className="license-counts"><div><dt>Purchased</dt><dd>{selected.purchased}</dd></div><div><dt>Assigned</dt><dd>{selected.assigned}</dd></div><div><dt>Available</dt><dd>{selected.available}</dd></div></dl>
       {exportCsv && <button type="button" onClick={() => void runExport('assignees')} disabled={exportPending}>Export assignees CSV</button>}
-      {!loadAssignees ? <p>Assigned-user roster is unavailable.</p> : assigneeError || assignees?.error ? <p role="alert">Assigned-user roster is unavailable. Try again.</p> : !assignees ? <p role="status">Loading assigned users…</p> : <><p>Source: Microsoft Graph users assigned to this SKU. Retrieved {new Date(assignees.fetchedAt).toLocaleString()}.</p>{assignees.items.length === 0 ? <p>No assigned users were returned.</p> : <div className="users-table-wrap"><table className="users-table"><thead><tr><th>User</th><th>User principal name</th></tr></thead><tbody>{assignees.items.map(user => <tr key={user.id}><th scope="row"><a href={`/users/${encodeURIComponent(user.id)}`}>{user.displayName || user.userPrincipalName || user.id}</a></th><td>{user.userPrincipalName}</td></tr>)}</tbody></table></div>}<nav className="table-pagination" aria-label="Assignee pages"><span>Page {history.length + 1}</span><button type="button" onClick={() => { const next = [...history]; setToken(next.pop() || null); setHistory(next); }} disabled={history.length === 0}>Previous page</button><button type="button" onClick={() => { setHistory(values => [...values, token ?? '']); setToken(assignees.continuationToken); }} disabled={!assignees.continuationToken}>Next page</button></nav></>}
+      {!loadAssignees ? <p>Assigned-user roster is unavailable.</p> : <>
+        {assigneeLoading ? <p role="status">Loading assigned users…</p> : assigneeError || assignees?.error ? <><p role="alert">Assigned-user roster is unavailable.</p><button type="button" onClick={retryAssignees}>{messages.retry}</button></> : assignees ? <><p>Source: Microsoft Graph users assigned to this SKU. Retrieved {new Date(assignees.fetchedAt).toLocaleString()}.</p>{assignees.items.length === 0 ? <p>No assigned users were returned.</p> : <div className="users-table-wrap"><table className="users-table"><thead><tr><th>User</th><th>User principal name</th></tr></thead><tbody>{assignees.items.map(user => <tr key={user.id}><th scope="row"><a href={`/users/${encodeURIComponent(user.id)}`}>{user.displayName || user.userPrincipalName || user.id}</a></th><td>{user.userPrincipalName}</td></tr>)}</tbody></table></div>}</> : null}
+        <nav className="table-pagination" aria-label="Assignee pages"><span>Page {history.length + 1}</span><button type="button" onClick={previousAssignees} disabled={assigneeLoading || assigneeError || !!assignees?.error || history.length === 0}>Previous page</button><button type="button" onClick={nextAssignees} disabled={assigneeLoading || assigneeError || !assignees?.continuationToken}>Next page</button></nav>
+      </>}
       </>}
     </section>}
     {exportMessage && <p role="status">{exportMessage}</p>}{exportError && <p role="alert">{exportError}</p>}

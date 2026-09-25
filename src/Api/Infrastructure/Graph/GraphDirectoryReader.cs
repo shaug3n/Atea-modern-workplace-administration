@@ -51,10 +51,11 @@ public sealed class GraphDirectoryReader(IDelegatedGraphClientFactory clientFact
         }
 
         using var document = JsonDocument.Parse(response.Content);
-        if (document.RootElement.TryGetProperty("value", out var value) && value.ValueKind == JsonValueKind.Array)
-        {
-            users.AddRange(value.EnumerateArray().Select(MapUserSummary));
-        }
+        if (document.RootElement.ValueKind != JsonValueKind.Object
+            || !document.RootElement.TryGetProperty("value", out var value)
+            || value.ValueKind != JsonValueKind.Array)
+            return new PagedResult<UserSummary>(users, correlations, null, new GraphOperationResult(false, "invalid_response"));
+        users.AddRange(value.EnumerateArray().Select(MapUserSummary));
 
         var continuationLink = document.RootElement.TryGetProperty("@odata.nextLink", out var next)
             ? NormalizeGraphPath(next.GetString())

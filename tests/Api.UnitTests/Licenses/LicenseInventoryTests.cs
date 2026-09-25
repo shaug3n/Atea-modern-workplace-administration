@@ -26,6 +26,20 @@ public sealed class LicenseInventoryTests
     }
 
     [Fact]
+    public async Task License_administrator_read_eligibility_still_surfaces_Graph_denial()
+    {
+        var snapshot = GraphAuthorizationSnapshot.Available("license-admin", ["Directory.Read.All"],
+            [new DirectoryRoleSnapshot(EntraRoleCatalog.LicenseAdministratorTemplateId, "License Administrator", DirectoryRoleAssignmentState.Active, "/")]);
+        var response = await new LicenseOverviewService(new DeniedReader(), new SnapshotReader(snapshot))
+            .GetAsync(Context, new LicenseOverviewRequest(), CancellationToken.None);
+
+        response.Access.Authorization!.State.Should().Be(CapabilityState.Allowed);
+        response.Items.Should().BeEmpty();
+        response.Error!.Category.Should().Be("not_authorized");
+        response.Error.StatusCode.Should().Be(403);
+    }
+
+    [Fact]
     public void User_read_scope_alone_does_not_claim_subscribed_SKU_access()
     {
         var snapshot = GraphAuthorizationSnapshot.Available("reader", ["User.Read.All"],
@@ -78,6 +92,12 @@ public sealed class LicenseInventoryTests
             Calls++;
             return Task.FromResult(GraphReadResult<IReadOnlyList<LicenseOverviewItem>>.Succeeded([new("sku", "PART", "PART", 2, 3)]));
         }
+    }
+
+    private sealed class DeniedReader : ILicenseOverviewReader
+    {
+        public Task<GraphReadResult<IReadOnlyList<LicenseOverviewItem>>> ReadAsync(WorkspaceContext context, LicenseOverviewQuery query, CancellationToken cancellationToken) =>
+            Task.FromResult(GraphReadResult<IReadOnlyList<LicenseOverviewItem>>.Failed(new GraphOperationResult(false, "not_authorized", 403)));
     }
 
     private sealed class SnapshotReader(GraphAuthorizationSnapshot snapshot) : IGraphAuthorizationSnapshotReader
