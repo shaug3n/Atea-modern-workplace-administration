@@ -11,6 +11,7 @@ import { useWorkspaceIssueReporter } from '../notifications/WorkspaceNotificatio
 import type { CapabilitySnapshot } from '../capabilities/capabilityTypes';
 import { useCapabilities, type CapabilityLoader } from '../capabilities/useCapabilities';
 import { InvitationRedemptionPage } from '../features/invitations/InvitationRedemptionPage';
+import { DevicesPage } from '../features/devices/DevicesPage';
 import type { ConnectionHealthLoader } from '../features/overview/OverviewPage';
 import { messages } from './messages';
 import { WorkspaceNotificationsProvider } from '../notifications/WorkspaceNotifications';
@@ -118,16 +119,19 @@ function LoadedWorkspaceExperience({ path, navigate, capabilities, capabilitiesL
   const hasWorkspaceAccess = route.workspaceAccess === 'members' ? canManageMembers : route.workspaceAccess === 'modules' ? canManageModules : route.workspaceAccess === 'settings' ? canManageSettings : true;
   const availableModules = session.workspace.moduleAccess ?? session.workspace.enabledModules;
   const isDeviceSetupAdmin = route.module === 'devices' && canManageSettings;
-  const hasModuleAccess = !route.module || !availableModules || ((!session.workspace.enabledModules || session.workspace.enabledModules.includes(route.module)) && availableModules.includes(route.module)) || isDeviceSetupAdmin;
+  const hasAssignedModuleAccess = !route.module || !availableModules || ((!session.workspace.enabledModules || session.workspace.enabledModules.includes(route.module)) && availableModules.includes(route.module));
+  const hasModuleAccess = hasAssignedModuleAccess || isDeviceSetupAdmin;
   const unavailableSnapshot = capabilities ?? { workspaceId: session.workspace.id, evaluatedAt: new Date().toISOString(), sourceState: 'unavailable', capabilities: [] } satisfies CapabilitySnapshot;
   let routeContent: React.ReactNode;
   if (!hasWorkspaceAccess) {
     routeContent = <section className="permission-panel" role="status"><h1>{messages.workspaceAccessDeniedTitle}</h1><p>{messages.workspaceAccessDeniedBody}</p></section>;
   } else if (!hasModuleAccess) {
     routeContent = <section className="permission-panel" role="status"><h1>{messages.moduleDisabledTitle}</h1><p>{messages.moduleDisabledBody}</p></section>;
+  } else if (isDeviceSetupAdmin && !hasAssignedModuleAccess) {
+    routeContent = <DevicesPage moduleAssigned={false} moduleEnabled={session.workspace.enabledModules?.includes('devices') ?? true} />;
   } else if (route.capability && capabilitiesLoading) {
     routeContent = <GraphRouteState route={route} state="loading" />;
-  } else if (route.capability && (capabilitiesError || !capabilities || (capabilities.sourceState && capabilities.sourceState !== 'graph_authoritative') || capabilities.workspaceId !== session.workspace.id)) {
+  } else if (route.capability && (capabilitiesError || !capabilities || capabilities.sourceState !== 'graph_authoritative' || capabilities.workspaceId !== session.workspace.id)) {
     routeContent = <GraphRouteState route={route} state="unavailable" onRetry={refreshCapabilities} reportCause={capabilitiesError ? undefined : 'service'} />;
   } else {
     const decision = capabilityDecisionFor(route, unavailableSnapshot.capabilities);

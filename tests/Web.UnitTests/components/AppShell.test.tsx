@@ -161,6 +161,57 @@ describe('AppShell', () => {
     expect(apiMock).not.toHaveBeenCalled();
   });
 
+  it('does not load Users when an allowed decision lacks the authoritative source marker', async () => {
+    window.history.pushState(null, '', '/users');
+    render(<App loadCapabilities={async () => ({ ...allowedCapabilities, sourceState: undefined })} loadSession={async () => session} />);
+    expect(await screen.findByRole('heading', { name: 'Users' })).toBeTruthy();
+    expect(screen.getByRole('alert').textContent).toContain('Data cannot be shown');
+    expect(apiMock).not.toHaveBeenCalled();
+  });
+
+  it.each(['/devices', '/devices/device-1'])('holds %s while Graph authorization is loading', async (path) => {
+    window.history.pushState(null, '', path);
+    render(<App loadCapabilities={() => new Promise<CapabilitySnapshot>(() => {})} loadSession={async () => session} />);
+    expect(await screen.findByText('Checking access…')).toBeTruthy();
+    expect(apiMock).not.toHaveBeenCalled();
+  });
+
+  it.each(['/devices', '/devices/device-1'])('keeps %s unavailable without protected requests when the capability check fails', async (path) => {
+    window.history.pushState(null, '', path);
+    render(<App loadCapabilities={async () => { throw new Error('Graph unavailable'); }} loadSession={async () => session} />);
+    expect(await screen.findByRole('alert')).toHaveProperty('textContent', expect.stringContaining('Data cannot be shown'));
+    expect(apiMock).not.toHaveBeenCalled();
+  });
+
+  it.each(['/devices', '/devices/device-1'])('keeps %s unavailable without protected requests for an unknown view decision', async (path) => {
+    window.history.pushState(null, '', path);
+    render(<App loadCapabilities={async () => ({ ...allowedCapabilities, capabilities: [] })} loadSession={async () => session} />);
+    expect(await screen.findByRole('alert')).toHaveProperty('textContent', expect.stringContaining('Data cannot be shown'));
+    expect(apiMock).not.toHaveBeenCalled();
+  });
+
+  it.each(['allowed', 'read_only'] as const)('loads the Devices list with an authoritative %s view decision', async (state) => {
+    window.history.pushState(null, '', '/devices');
+    apiMock.mockResolvedValue(Response.json({ items: [], total: 0, fetchedAt: '2026-09-25T10:00:00Z', freshness: 'live', partialData: false, access: { state } }));
+    render(<App loadCapabilities={async () => ({ ...allowedCapabilities, capabilities: [{ capability: 'devices.view', state, reasonCode: 'active_role' }] })} loadSession={async () => session} />);
+    await waitFor(() => expect(apiMock).toHaveBeenCalledWith('/api/devices'));
+  });
+
+  it('loads direct device details with an authoritative view decision', async () => {
+    window.history.pushState(null, '', '/devices/device-1');
+    apiMock.mockResolvedValue(Response.json({ id: 'device-1', deviceName: 'Device One' }));
+    render(<App loadCapabilities={async () => ({ ...allowedCapabilities, capabilities: [{ capability: 'devices.view', state: 'read_only', reasonCode: 'role_read_only' }] })} loadSession={async () => session} />);
+    await waitFor(() => expect(apiMock).toHaveBeenCalledWith('/api/devices/device-1', expect.objectContaining({ cache: 'no-store' })));
+  });
+
+  it.each(['/devices', '/devices/device-1'])('shows setup guidance at %s for a settings admin without a Devices module grant', async (path) => {
+    window.history.pushState(null, '', path);
+    const setupSession = { ...session, workspace: { ...session.workspace, moduleAccess: ['users', 'licenses'] }, workspaceAccess: { role: 'workspace_admin', canManageSettings: true } };
+    render(<App loadCapabilities={async () => ({ ...allowedCapabilities, capabilities: [{ capability: 'devices.view', state: 'allowed', reasonCode: 'active_role' }] })} loadSession={async () => setupSession} />);
+    expect(await screen.findByText('Device module access needed')).toBeTruthy();
+    expect(apiMock).not.toHaveBeenCalled();
+  });
+
   it('holds protected reads while a capability refresh is unresolved', async () => {
     window.history.pushState(null, '', '/users');
     apiMock.mockResolvedValue(new Response(JSON.stringify({ items: [], continuationToken: null, fetchedAt: '2026-09-25T10:00:00Z', freshness: 'fresh', partialData: false }), { status: 200 }));

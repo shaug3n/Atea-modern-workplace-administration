@@ -95,12 +95,14 @@ export const appRoutes: AppRoute[] = [
     label: messages.navDevices,
     pageTitle: 'Device details',
     module: 'devices',
+    capability: 'devices.view',
     render: (options) => <DeviceDetailPage capabilities={options?.capabilities} onNavigate={options?.navigate} />,
   },
   {
     path: '/devices',
     label: messages.navDevices,
     module: 'devices',
+    capability: 'devices.view',
     render: (options) => <DevicesPage capabilities={options?.capabilities} moduleAssigned={options?.session?.workspace.moduleAccess?.includes('devices') ?? true} moduleEnabled={options?.session?.workspace.enabledModules?.includes('devices') ?? true} onNavigate={options?.navigate} />,
   },
   {
