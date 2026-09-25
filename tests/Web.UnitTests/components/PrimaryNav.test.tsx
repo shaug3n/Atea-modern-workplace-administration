@@ -1,10 +1,10 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import React from 'react';
 import { afterEach, describe, expect, it } from 'vitest';
-import type { CapabilitySnapshot } from '../../../src/Web/src/capabilities/capabilityTypes';
+import type { CapabilitySnapshot, CapabilityState } from '../../../src/Web/src/capabilities/capabilityTypes';
 import { PrimaryNav } from '../../../src/Web/src/components/PrimaryNav';
 
-function snapshot(states: { users?: 'allowed' | 'hidden'; licenses?: 'allowed' | 'hidden'; audit?: 'allowed' | 'hidden'; workspaceSettings?: 'allowed' | 'hidden' } = {}): CapabilitySnapshot {
+function snapshot(states: { users?: 'allowed' | 'hidden'; licenses?: 'allowed' | 'hidden'; audit?: CapabilityState; workspaceSettings?: 'allowed' | 'hidden' } = {}): CapabilitySnapshot {
   return {
     workspaceId: '55555555-5555-5555-5555-555555555555',
     evaluatedAt: '2026-09-20T10:00:00.000Z',
@@ -84,9 +84,17 @@ describe('PrimaryNav', () => {
     expect(screen.queryByRole('link', { name: 'Modules' })).toBeNull();
   });
 
-  it('hides Audit when audit.view is unavailable', () => {
+  it('hides the Activity link when audit.view is hidden', () => {
     render(<PrimaryNav capabilities={snapshot({ audit: 'hidden' })} currentPath="/overview" />);
 
-    expect(screen.queryByRole('link', { name: 'Audit activity' })).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Activity' })).toBeNull();
+  });
+
+  it.each(['consent_required', 'disabled'] as const)('keeps Activity visible when audit.view is %s', (audit) => {
+    render(<PrimaryNav capabilities={snapshot({ audit })} currentPath="/activity" />);
+
+    const activity = screen.getByRole('link', { name: 'Activity' });
+    expect(activity.getAttribute('href')).toBe('/activity');
+    expect(activity.getAttribute('aria-current')).toBe('page');
   });
 });
