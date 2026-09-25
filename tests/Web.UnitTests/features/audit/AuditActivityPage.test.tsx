@@ -1,6 +1,6 @@
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import React from 'react';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AuditActivityPage, type AuditEventsResponse } from '../../../../src/Web/src/features/audit/AuditActivityPage';
 
 const response: AuditEventsResponse = {
@@ -32,7 +32,7 @@ const response: AuditEventsResponse = {
 };
 
 describe('AuditActivityPage', () => {
-  afterEach(cleanup);
+  afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
   it('renders workspace audit events with safe correlation references', async () => {
     render(<AuditActivityPage loadAuditEvents={async () => response} />);
@@ -91,5 +91,16 @@ describe('AuditActivityPage', () => {
     expect(screen.queryByText(/Fetched:/)).toBeNull();
     finishPage?.({ ...response, items: [], fetchedAt: '2026-09-22T10:00:00Z', nextContinuationToken: null });
     await waitFor(() => expect(screen.getByText('No audit activity is available for this workspace yet.')).toBeTruthy());
+  });
+
+  it('places filters before partial results and wraps long references in compact summaries', async () => {
+    const longReference = 'reference-' + 'x'.repeat(100);
+    vi.stubGlobal('matchMedia', () => ({ matches: true, addEventListener: () => {}, removeEventListener: () => {} }));
+    render(<AuditActivityPage loadAuditEvents={async () => ({ ...response, partialData: true, items: [{ ...response.items[0], graphRequestId: longReference }] })} />);
+    const list = await screen.findByRole('list', { name: 'Audit activity' });
+    expect(list.textContent).toContain(longReference);
+    expect(list.querySelector('code')?.className).toContain('audit-reference');
+    expect(screen.getByText(/partial results/i)).toBeTruthy();
+    expect(document.querySelector('.audit-filters')?.compareDocumentPosition(list) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 });

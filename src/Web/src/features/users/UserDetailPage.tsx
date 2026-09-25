@@ -2,7 +2,6 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { isPimCapabilityState, type CapabilityDecision } from '../../capabilities/capabilityTypes';
 import { messages } from '../../app/messages';
 import { useApi } from '../../auth/useApi';
-import { AsyncState } from '../../components/AsyncState';
 import { GroupsSection } from './GroupsSection';
 import { IdentitySection } from './IdentitySection';
 import { JobInformationSection } from './JobInformationSection';
@@ -20,8 +19,12 @@ import { PermissionState } from '../../components/PermissionState';
 import { ActionMenu } from '../../components/ActionMenu';
 import { AssociatedDevicesSection } from './AssociatedDevicesSection';
 import { RevokeSessionsDialog } from './RevokeSessionsDialog';
+import { WorkspacePageHeader } from '../../components/WorkspacePageHeader';
+import { WorkspaceDataState } from '../../components/WorkspaceDataState';
+import { useWorkspaceIssueReporter } from '../../notifications/WorkspaceNotifications';
 
 export function UserDetailPage({ userId, loadUserDetail, capabilities = [], modules }: { userId?: string; loadUserDetail?: (userId: string) => Promise<UserDetailResponse>; capabilities?: CapabilityDecision[]; modules?: string[] }) {
+  const issueReporter = useWorkspaceIssueReporter();
   const api = useApi();
   const resolvedUserId = userId ?? userIdFromPath(window.location.pathname);
   const loader = useMemo(() => loadUserDetail ?? ((id: string) => fetchUserDetail(api as ApiFetch, id)), [api, loadUserDetail]);
@@ -51,26 +54,26 @@ export function UserDetailPage({ userId, loadUserDetail, capabilities = [], modu
     setError(null);
     loader(resolvedUserId)
       .then((response) => {
-        if (!cancelled) setDetail(response);
+        if (!cancelled) { setDetail(sanitizeDetailErrors(response)); if ([response.access, response.licenses.access, response.groups.access, response.roles.access, response.pim.access].some(access => access.partialData || access.freshness === 'unavailable' || access.error)) issueReporter.report({ key: 'users:detail', area: 'users', kind: 'service', severity: 'warning', title: 'User detail unavailable', detail: 'Try loading user details again.' }); else issueReporter.clear('users:detail'); }
       })
       .catch((loadError: unknown) => {
-        if (!cancelled) setError(loadError instanceof Error ? loadError : new Error('user_detail_unavailable'));
+        if (!cancelled) { setError(loadError instanceof Error ? loadError : new Error('user_detail_unavailable')); issueReporter.report({ key: 'users:detail', area: 'users', kind: 'service', severity: 'warning', title: 'User detail unavailable', detail: 'Try loading user details again.' }); }
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
       });
     return () => { cancelled = true; };
-  }, [loader, resolvedUserId, refreshVersion]);
+  }, [loader, resolvedUserId, refreshVersion, issueReporter]);
 
   if (loading) {
-    return <AsyncState state="loading"><span>{messages.userDetailLoading}</span></AsyncState>;
+    return <section className="user-detail-page"><WorkspacePageHeader eyebrow="Users" title={messages.userDetailTitle} /><WorkspaceDataState state="loading" message={messages.userDetailLoading} /></section>;
   }
 
   if (error) {
     return (
-      <section className="permission-panel" role="alert">
-        <h1>{messages.userDetailTitle}</h1>
-        <p>{error.message === 'user_not_found' ? messages.userDetailNotFound : messages.userDetailUnavailable}</p>
+      <section className="user-detail-page">
+        <WorkspacePageHeader eyebrow="Users" title={messages.userDetailTitle} />
+        <WorkspaceDataState state="unavailable" message={error.message === 'user_not_found' ? messages.userDetailNotFound : messages.userDetailUnavailable} onRetry={() => setRefreshVersion(version => version + 1)} />
       </section>
     );
   }
@@ -87,7 +90,7 @@ export function UserDetailPage({ userId, loadUserDetail, capabilities = [], modu
       ? messages.permissionConsentBody
       : isPimGated
         ? messages.usersPimRequiredBody
-        : detail?.access.error?.message ?? messages.userDetailUnavailable;
+        : messages.userDetailUnavailable;
     return (
       <section className="permission-panel" role="status">
         <h1>{title}</h1>
@@ -124,15 +127,13 @@ export function UserDetailPage({ userId, loadUserDetail, capabilities = [], modu
   };
 
   return (
-    <section className="user-detail-page" aria-labelledby="user-detail-title">
+    <section className="user-detail-page" aria-label="User details">
       <div className="user-detail-hero">
         <a className="back-link" href="/users">← {messages.navUsers}</a>
         <div className="user-detail-hero__main">
           <div className="user-avatar" aria-hidden="true">{initials(user.displayName || user.userPrincipalName || '')}</div>
           <div>
-            <p className="eyebrow">{messages.userDetailTitle}</p>
-            <h1 id="user-detail-title">{detail.user.displayName || detail.user.userPrincipalName || messages.usersUnnamedUser}</h1>
-            <p className="user-detail-hero__upn">{user.userPrincipalName || messages.usersUnavailableValue}</p>
+            <WorkspacePageHeader eyebrow={messages.userDetailTitle} title={detail.user.displayName || detail.user.userPrincipalName || messages.usersUnnamedUser} description={user.userPrincipalName || messages.usersUnavailableValue} />
             <div className="user-detail-hero__status" aria-label="User status">
               <span className="status-badge" data-tone={user.accountEnabled === false ? 'danger' : user.accountEnabled === true ? 'success' : 'warning'}>{user.accountEnabled === false ? messages.userAccountDisabled : user.accountEnabled === true ? messages.userAccountEnabled : 'Account status unavailable'}</span>
               {user.userType && <span className="status-badge" data-tone="info">{user.userType}</span>}
@@ -153,6 +154,7 @@ export function UserDetailPage({ userId, loadUserDetail, capabilities = [], modu
             </div>
         </div>
       </div>
+      {[detail.access, detail.licenses.access, detail.groups.access, detail.roles.access, detail.pim.access].some(access => access.partialData || access.error) && <p className="workspace-partial-notice" role="status">Partial user details. Check Notifications for details.</p>}
       <div className="user-status-strip" role="region" aria-label="User status summary">
         <div><span>Account</span><strong>{user.accountEnabled === true ? 'Enabled' : user.accountEnabled === false ? 'Disabled' : 'Unavailable'}</strong></div>
         <div><span>MFA</span><strong>{authenticationMethodsDecision.state === 'allowed' || authenticationMethodsDecision.state === 'read_only' ? <a href="#authentication-methods-section-title">Review methods</a> : 'Unavailable in summary'}</strong></div>
@@ -193,6 +195,18 @@ function ActionGuidance({ label, decision, readOnlySource }: { label: string; de
       temporarily_unavailable: 'Microsoft Graph authorization could not be verified. Try again later.',
     } as Partial<Record<CapabilityDecision['state'], string>>)[decision.state] ?? 'This action is unavailable with your current permissions.';
   return <p role="status">{label}: {explanation}</p>;
+}
+
+function sanitizeDetailErrors(response: UserDetailResponse): UserDetailResponse {
+  const safeAccess = (access: UserDetailResponse['access']) => access.error ? { ...access, error: { ...access.error, message: 'Section data is unavailable. Check Notifications for details.' } } : access;
+  return {
+    ...response,
+    access: safeAccess(response.access),
+    licenses: { ...response.licenses, access: safeAccess(response.licenses.access) },
+    groups: { ...response.groups, access: safeAccess(response.groups.access) },
+    roles: { ...response.roles, access: safeAccess(response.roles.access) },
+    pim: { ...response.pim, access: safeAccess(response.pim.access) },
+  };
 }
 
 function initials(value: string) {

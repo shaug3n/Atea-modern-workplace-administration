@@ -10,7 +10,7 @@ const firstPage = { items: [{ userId: 'ada', displayName: 'Ada', address: 'ada@e
 const secondPage = { items: [{ userId: 'lin', displayName: 'Lin', address: 'lin@example.com' }], continuationToken: null };
 
 describe('ExchangeOverviewPage', () => {
-  afterEach(cleanup);
+  afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
   beforeEach(() => api.mockReset());
 
   it('submits a search deliberately and pages back without changing the applied query', async () => {
@@ -39,14 +39,40 @@ describe('ExchangeOverviewPage', () => {
       return { ok: true, json: async () => firstPage };
     });
     render(<ExchangeOverviewPage />);
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Retry mailboxes' })).toBeTruthy());
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy());
     expect(document.body.textContent).not.toContain('private upstream detail');
-    fireEvent.click(screen.getByRole('button', { name: 'Retry mailboxes' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
     await waitFor(() => expect(screen.getByText('Ada')).toBeTruthy());
     expect(screen.getByText(/Source: Microsoft Graph.*directory.*Retrieved:/)).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Verify Exchange details for Ada' }));
     await waitFor(() => expect(screen.getByText('Mailbox details are temporarily unavailable.')).toBeTruthy());
     expect(screen.getByText(/Source: Microsoft Graph.*mailbox.*Not retrieved/i)).toBeTruthy();
     expect(screen.getByText('Ada')).toBeTruthy();
+  });
+
+  it('keeps 403 and missing-mailbox verification failures local to their rows', async () => {
+    api.mockImplementation(async (path: string) => {
+      if (String(path).includes('/ada/overview')) return { ok: false, json: async () => ({ error: { category: 'not_authorized', message: 'private Graph body' } }) };
+      if (String(path).includes('/lin/overview')) return { ok: false, json: async () => ({ error: { category: 'not_found', message: 'private missing mailbox' } }) };
+      return { ok: true, json: async () => ({ items: [...firstPage.items, ...secondPage.items], limitation: firstPage.limitation }) };
+    });
+    render(<ExchangeOverviewPage />);
+    await screen.findByText('Ada');
+    fireEvent.click(screen.getByRole('button', { name: 'Verify Exchange details for Ada' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Verify Exchange details for Lin' }));
+    await screen.findByText('No Exchange mailbox was found for this directory entry.');
+    expect(screen.getByText('Ada')).toBeTruthy();
+    expect(screen.getByText('Lin')).toBeTruthy();
+    expect(document.body.textContent).not.toContain('private Graph body');
+    expect(document.body.textContent).not.toContain('private missing mailbox');
+  });
+
+  it('offers compact mailbox summaries while preserving on-demand verification', async () => {
+    vi.stubGlobal('matchMedia', () => ({ matches: true, addEventListener: () => {}, removeEventListener: () => {} }));
+    api.mockResolvedValue({ ok: true, json: async () => firstPage });
+    render(<ExchangeOverviewPage />);
+    const list = await screen.findByRole('list', { name: 'Exchange mailboxes' });
+    expect(list.textContent).toContain('Unverified');
+    expect(screen.getByRole('button', { name: 'Verify Exchange details for Ada' })).toBeTruthy();
   });
 });

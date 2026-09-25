@@ -81,4 +81,13 @@ describe('OverviewPage', () => {
     expect(screen.getAllByText('Summary data temporarily unavailable.').length).toBeGreaterThan(0);
     expect(screen.queryByText('Entra permission needed')).toBeNull();
   });
+
+  it('keeps every metric unavailable when the summary is unavailable despite zero payload values', async () => {
+    render(<OverviewPage loadOverview={async () => ({ ...overview, freshness: 'unavailable', partialData: true, totalUsers: 0, licenseCoverage: { assigned: 0, available: 0, percentage: 0 }, permissionHealth: { state: 'healthy', allowedCount: 0, totalCount: 0 } })} />);
+    await screen.findByRole('heading', { name: 'Overview' });
+    expect(screen.getByText('Users').closest('article')?.textContent).toContain('Unavailable');
+    expect(screen.getByText('License coverage').closest('article')?.textContent).toContain('Unavailable');
+    expect(screen.getByText('Permission health').closest('article')?.textContent).toContain('Unavailable');
+    expect(document.body.textContent).not.toContain('0/0');
+  });
 });

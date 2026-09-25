@@ -1,6 +1,10 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { useApi } from '../../auth/useApi';
 import { messages } from '../../app/messages';
+import { WorkspacePageHeader } from '../../components/WorkspacePageHeader';
+import { WorkspaceDataState } from '../../components/WorkspaceDataState';
+import { ResponsiveDataView } from '../../components/ResponsiveDataView';
+import { useWorkspaceIssueReporter } from '../../notifications/WorkspaceNotifications';
 
 export type AuditFreshness = 'fresh' | 'stale' | 'unavailable';
 
@@ -55,6 +59,7 @@ function AuthenticatedAuditActivityPage() {
 }
 
 function LoadedAuditActivityPage({ loadAuditEvents }: { loadAuditEvents: AuditEventsLoader }) {
+  const issueReporter = useWorkspaceIssueReporter();
   const [result, setResult] = useState<AuditEventsResponse | null>(null);
   const [filters, setFilters] = useState<AuditFilters>({ actorObjectId: '', action: '', outcome: '' });
   const [continuationToken, setContinuationToken] = useState<string | null>(null);
@@ -70,37 +75,24 @@ function LoadedAuditActivityPage({ loadAuditEvents }: { loadAuditEvents: AuditEv
       .then((response) => {
         if (!cancelled) {
           setResult(response);
+          if (response.partialData || response.freshness === 'unavailable') issueReporter.report({ key: 'activity:read', area: 'activity', kind: 'service', severity: 'warning', title: 'Activity data unavailable', detail: 'Try loading activity again.' });
+          else issueReporter.clear('activity:read');
         }
       })
       .catch(() => {
-        if (!cancelled) setFailed(true);
+        if (!cancelled) { setFailed(true); issueReporter.report({ key: 'activity:read', area: 'activity', kind: 'service', severity: 'warning', title: 'Activity data unavailable', detail: 'Try loading activity again.' }); }
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
     });
     return () => { cancelled = true; };
-  }, [loadAuditEvents, filters, continuationToken, retry]);
+  }, [loadAuditEvents, filters, continuationToken, retry, issueReporter]);
 
   const state = loading ? 'loading' : failed ? 'error' : result && result.items.length === 0 ? 'empty' : 'ready';
 
   return (
-    <section className="audit-page" aria-labelledby="audit-page-title">
-      <header className="page-header">
-        <div>
-          <p className="eyebrow">{messages.auditEyebrow}</p>
-          <h1 id="audit-page-title">{messages.auditTitle}</h1>
-          <p>{messages.auditIntro}</p>
-        </div>
-      </header>
-
-      {!loading && !failed && result && (
-        <AuditFreshnessBanner
-          fetchedAt={result.fetchedAt}
-          freshness={result.freshness}
-          partialData={result.partialData}
-          notice={result.authoritativeSourceNotice}
-        />
-      )}
+    <section className="audit-page" aria-label="Audit activity page">
+      <WorkspacePageHeader eyebrow={messages.auditEyebrow} title={messages.auditTitle} description={messages.auditIntro} />
 
       <AuditFiltersBar
         filters={filters}
@@ -110,6 +102,16 @@ function LoadedAuditActivityPage({ loadAuditEvents }: { loadAuditEvents: AuditEv
         }}
       />
 
+      {!loading && !failed && result && (
+        <AuditFreshnessBanner
+          fetchedAt={result.fetchedAt}
+          freshness={result.freshness}
+          partialData={result.partialData}
+          notice={result.authoritativeSourceNotice}
+        />
+      )}
+      {!loading && !failed && result?.partialData && <p className="workspace-partial-notice" role="status">Partial results. Check Notifications for details.</p>}
+
       {state === 'loading' && (
         <div className="async-state async-state--loading" role="status" aria-live="polite">
           <span className="async-state__bar" />
@@ -118,8 +120,8 @@ function LoadedAuditActivityPage({ loadAuditEvents }: { loadAuditEvents: AuditEv
           <span>{messages.auditLoading}</span>
         </div>
       )}
-      {state === 'error' && <div className="async-state" role="alert">{messages.auditUnavailable} <button type="button" onClick={() => setRetry(value => value + 1)}>{messages.retry}</button></div>}
-      {state === 'empty' && <div className="async-state">{messages.auditNoResults}</div>}
+      {state === 'error' && <WorkspaceDataState state="unavailable" message={messages.auditUnavailable} onRetry={() => setRetry(value => value + 1)} />}
+      {state === 'empty' && <WorkspaceDataState state="empty" message={messages.auditNoResults} />}
       {state === 'ready' && result && (
         <>
           <AuditEventsTable events={result.items} />
@@ -201,7 +203,10 @@ function AuditFreshnessBanner({ fetchedAt, freshness, partialData, notice }: { f
 
 function AuditEventsTable({ events }: { events: AuditEvent[] }) {
   return (
-    <div className="audit-table-wrap" role="region" aria-label="Audit activity results" tabIndex={0}>
+    <ResponsiveDataView items={events} keyOf={event => event.id} label="Audit activity" renderCompact={event => <>
+      <strong>{event.action}</strong><span>{formatDate(event.timestamp)} · {event.outcome}</span>
+      <span>{event.targetId || event.targetType}</span><code className="audit-reference">{correlationText(event)}</code>
+    </>} renderTable={() => <div className="audit-table-wrap">
       <table className="audit-table" aria-label={messages.auditTableLabel}>
         <thead>
           <tr>
@@ -226,7 +231,7 @@ function AuditEventsTable({ events }: { events: AuditEvent[] }) {
           ))}
         </tbody>
       </table>
-    </div>
+    </div>} />
   );
 }
 

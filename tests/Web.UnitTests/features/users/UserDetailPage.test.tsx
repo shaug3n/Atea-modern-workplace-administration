@@ -6,6 +6,8 @@ import type { UserDetailResponse } from '../../../../src/Web/src/features/users/
 import { appRoutes } from '../../../../src/Web/src/app/routes';
 
 const apiMock = vi.hoisted(() => vi.fn());
+const issueReporter = vi.hoisted(() => ({ report: vi.fn(), clear: vi.fn() }));
+vi.mock('../../../../src/Web/src/notifications/WorkspaceNotifications', () => ({ useWorkspaceIssueReporter: () => issueReporter }));
 
 vi.mock('../../../../src/Web/src/auth/useApi', () => ({
   useApi: () => apiMock,
@@ -62,7 +64,7 @@ const detail: UserDetailResponse = {
 };
 
 describe('UserDetailPage', () => {
-  afterEach(() => { cleanup(); apiMock.mockReset(); });
+  afterEach(() => { cleanup(); apiMock.mockReset(); issueReporter.report.mockClear(); issueReporter.clear.mockClear(); });
 
   it('omits license and device sections when their modules are unassigned, including nested fetches', async () => {
     render(<UserDetailPage userId="user-1" modules={['users']} loadUserDetail={async () => detail} capabilities={[{ capability: 'devices.view', state: 'allowed', reasonCode: 'active_role' }]} />);
@@ -141,7 +143,21 @@ describe('UserDetailPage', () => {
 
     expect(await screen.findByRole('heading', { name: 'Ada Lovelace' })).toBeTruthy();
     expect(screen.getByText('Directory data may be stale')).toBeTruthy();
-    expect(screen.getAllByText('Microsoft Graph throttled this section request.')).toHaveLength(2);
+    expect(screen.getAllByText('Section data is unavailable. Check Notifications for details.')).toHaveLength(2);
+    expect(document.body.textContent).not.toContain('Microsoft Graph throttled this section request.');
+  });
+
+  it('reports a failed detail read and clears it after a successful retry', async () => {
+    let attempts = 0;
+    render(<UserDetailPage userId="user-1" loadUserDetail={async () => { if (++attempts === 1) throw new Error('private Graph diagnostic'); return detail; }} />);
+    expect(await screen.findByRole('button', { name: 'Retry' })).toBeTruthy();
+    expect(issueReporter.report).toHaveBeenCalledWith(expect.objectContaining({ key: 'users:detail', kind: 'service' }));
+    expect(JSON.stringify(issueReporter.report.mock.calls)).not.toContain('private Graph diagnostic');
+    expect(document.body.textContent).not.toContain('private Graph diagnostic');
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    await screen.findByRole('heading', { name: 'Ada Lovelace' });
+    expect(issueReporter.clear).toHaveBeenCalledWith('users:detail');
+    expect(attempts).toBe(2);
   });
 
   it('opens edit for an allowed capability and refreshes the detail after saving', async () => {
