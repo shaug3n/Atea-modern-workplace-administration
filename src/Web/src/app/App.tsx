@@ -137,11 +137,11 @@ function LoadedWorkspaceExperience({ path, navigate, capabilities, capabilitiesL
   } else if (route.capability && capabilitiesLoading) {
     routeContent = <GraphRouteState route={route} state="loading" />;
   } else if (route.capability && (capabilitiesError || !capabilities || capabilities.sourceState !== 'graph_authoritative' || capabilities.workspaceId !== session.workspace.id)) {
-    routeContent = <GraphRouteState route={route} state="unavailable" onRetry={refreshCapabilities} reportCause={capabilitiesError ? undefined : 'service'} />;
+    routeContent = <GraphRouteState route={route} state="unavailable" onRetry={refreshCapabilities} reportCause={capabilitiesError ? undefined : 'service'} session={session} navigate={navigate} loadConnectionHealth={loadConnectionHealth} />;
   } else {
     const decision = capabilityDecisionFor(route, unavailableSnapshot.capabilities);
     routeContent = decision && decision.state !== 'allowed' && decision.state !== 'read_only'
-      ? <GraphRouteState route={route} state="unavailable" onRetry={refreshCapabilities} reportCause={decision.state === 'hidden' || decision.state === 'disabled' ? 'access' : undefined} />
+      ? <GraphRouteState route={route} state="unavailable" onRetry={refreshCapabilities} reportCause={decision.state === 'hidden' || decision.state === 'disabled' ? 'access' : undefined} session={session} navigate={navigate} loadConnectionHealth={loadConnectionHealth} />
       : route.render({ loadConnectionHealth, capabilities: unavailableSnapshot.capabilities, navigate, session });
   }
 
@@ -158,14 +158,16 @@ function SessionFailure({ error, onRetry, onSignIn }: { error: Error; onRetry: (
   return <main className="permission-panel" role="alert"><h1>{title}</h1><p>{body}</p>{correlationId && <p>{messages.correlationIdLabel}: <code>{correlationId}</code></p>}{isSignIn ? <button type="button" onClick={() => onSignIn ? void onSignIn() : window.location.assign('/')}>{messages.sessionSignInAction}</button> : <button type="button" onClick={onRetry}>{messages.retry}</button>}</main>;
 }
 
-function GraphRouteState({ route, state, onRetry, reportCause }: { route: AppRoute; state: 'loading' | 'unavailable'; onRetry?: () => Promise<void>; reportCause?: 'access' | 'service' }) {
+function GraphRouteState({ route, state, onRetry, reportCause, session, navigate, loadConnectionHealth }: { route: AppRoute; state: 'loading' | 'unavailable'; onRetry?: () => Promise<void>; reportCause?: 'access' | 'service'; session?: AppSession; navigate?: (path: string) => void; loadConnectionHealth?: ConnectionHealthLoader }) {
   const reporter = useWorkspaceIssueReporter();
   useEffect(() => {
     if (!reportCause) return;
     const key = `route:${(route.capability ?? route.path).replace(/[^a-z0-9_-]/gi, ':')}`;
     reporter.report({ key, area: route.module ?? 'activity', kind: reportCause, severity: 'warning', title: 'Data unavailable', detail: 'Review your access or try again.' });
-    return () => reporter.clear(key);
   }, [reportCause, route, reporter]);
+  if (state === 'unavailable' && session && ['/users', '/devices', '/audit', '/activity'].includes(route.path)) {
+    return <>{route.render({ capabilities: [], session, navigate, loadConnectionHealth, authorizationUnavailable: true, onAuthorizationRetry: onRetry })}</>;
+  }
   return <section className="content-panel workspace-graph-route">
     <WorkspacePageHeader title={route.pageTitle ?? route.label} />
     <WorkspaceDataState state={state} message={state === 'loading' ? 'Checking access…' : 'Data cannot be shown right now. Check Notifications for details.'} onRetry={onRetry ? () => void onRetry() : undefined} />

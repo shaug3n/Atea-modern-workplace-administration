@@ -25,7 +25,7 @@ export type AppRoute = {
   capability?: Capability;
   module?: 'users' | 'devices' | 'licenses' | 'exchange';
   workspaceAccess?: 'members' | 'settings' | 'modules' | 'any';
-  render: (options?: { loadConnectionHealth?: ConnectionHealthLoader; loadOverview?: OverviewLoader; capabilities?: CapabilityDecision[]; navigate?: (path: string) => void; session?: AppSession }) => ReactNode;
+  render: (options?: { loadConnectionHealth?: ConnectionHealthLoader; loadOverview?: OverviewLoader; capabilities?: CapabilityDecision[]; navigate?: (path: string) => void; session?: AppSession; authorizationUnavailable?: boolean; onAuthorizationRetry?: () => Promise<void> }) => ReactNode;
 };
 
 export function isInvitationPath(pathname: string) {
@@ -46,6 +46,7 @@ export const appRoutes: AppRoute[] = [
   { path: '/consent-callback', label: messages.connectionTitle, render: () => <ConsentCallbackPage /> },
   { path: '/onboarding/consent/callback', label: messages.connectionTitle, render: () => <ConsentCallbackPage /> },
   { path: '/onboarding', label: messages.navOnboarding, render: (options) => <OnboardingPage onNavigate={options?.navigate} /> },
+  { path: '/identity', label: 'PIM guidance', render: () => <section className="content-panel"><h1>PIM guidance</h1><p>Check your eligible Entra roles and activate the required role in Microsoft Entra. An activation may require approval or MFA. Return here and refresh access after Microsoft confirms it.</p><a href="https://entra.microsoft.com/#view/Microsoft_Azure_PIMCommon/ActivationMenuBlade" target="_blank" rel="noreferrer">Open Microsoft Entra PIM</a></section> },
   { path: '/settings', label: 'Workspace Settings', workspaceAccess: 'any', render: (options) => options?.session ? <WorkspaceSettingsHub session={options.session} /> : null },
   { path: '/settings/setup', label: 'Setup', workspaceAccess: 'settings', render: (options) => <OnboardingPage onNavigate={options?.navigate} /> },
   { path: '/settings/general', label: 'General', workspaceAccess: 'settings', render: () => <WorkspaceSettingsPage /> },
@@ -61,7 +62,7 @@ export const appRoutes: AppRoute[] = [
     label: messages.navUsers,
     module: 'users',
     capability: 'users.view',
-    render: (options) => <UsersPage capabilities={options?.capabilities ?? []} onNavigate={options?.navigate} />,
+    render: (options) => <UsersPage capabilities={options?.capabilities ?? []} onNavigate={options?.navigate} authorizationUnavailable={options?.authorizationUnavailable} onAuthorizationRetry={options?.onAuthorizationRetry} />,
   },
   {
     path: '/users/:userId',
@@ -82,13 +83,13 @@ export const appRoutes: AppRoute[] = [
     path: '/audit',
     label: 'Activity',
     capability: 'audit.view',
-    render: () => <AuditActivityPage />,
+    render: (options) => <AuditActivityPage authorizationUnavailable={options?.authorizationUnavailable} onAuthorizationRetry={options?.onAuthorizationRetry} />,
   },
   {
     path: '/activity',
     label: 'Activity',
     capability: 'audit.view',
-    render: () => <AuditActivityPage />,
+    render: (options) => <AuditActivityPage authorizationUnavailable={options?.authorizationUnavailable} onAuthorizationRetry={options?.onAuthorizationRetry} />,
   },
   {
     path: '/devices/:id',
@@ -103,7 +104,7 @@ export const appRoutes: AppRoute[] = [
     label: messages.navDevices,
     module: 'devices',
     capability: 'devices.view',
-    render: (options) => <DevicesPage capabilities={options?.capabilities} moduleAssigned={options?.session?.workspace.moduleAccess?.includes('devices') ?? true} moduleEnabled={options?.session?.workspace.enabledModules?.includes('devices') ?? true} onNavigate={options?.navigate} />,
+    render: (options) => <DevicesPage capabilities={options?.capabilities} moduleAssigned={options?.session?.workspace.moduleAccess?.includes('devices') ?? true} moduleEnabled={options?.session?.workspace.enabledModules?.includes('devices') ?? true} onNavigate={options?.navigate} authorizationUnavailable={options?.authorizationUnavailable} onAuthorizationRetry={options?.onAuthorizationRetry} />,
   },
   {
     path: '/services/exchange',

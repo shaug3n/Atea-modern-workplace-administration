@@ -44,21 +44,21 @@ export type AuditFilters = {
 
 export type AuditEventsLoader = (filters?: AuditFilters & { continuationToken?: string | null }) => Promise<AuditEventsResponse>;
 
-export function AuditActivityPage({ loadAuditEvents }: { loadAuditEvents?: AuditEventsLoader }) {
+export function AuditActivityPage({ loadAuditEvents, authorizationUnavailable = false, onAuthorizationRetry }: { loadAuditEvents?: AuditEventsLoader; authorizationUnavailable?: boolean; onAuthorizationRetry?: () => Promise<void> }) {
   if (loadAuditEvents) {
-    return <LoadedAuditActivityPage loadAuditEvents={loadAuditEvents} />;
+    return <LoadedAuditActivityPage loadAuditEvents={loadAuditEvents} authorizationUnavailable={authorizationUnavailable} onAuthorizationRetry={onAuthorizationRetry} />;
   }
 
-  return <AuthenticatedAuditActivityPage />;
+  return <AuthenticatedAuditActivityPage authorizationUnavailable={authorizationUnavailable} onAuthorizationRetry={onAuthorizationRetry} />;
 }
 
-function AuthenticatedAuditActivityPage() {
+function AuthenticatedAuditActivityPage({ authorizationUnavailable, onAuthorizationRetry }: { authorizationUnavailable: boolean; onAuthorizationRetry?: () => Promise<void> }) {
   const api = useApi();
   const loadAuditEvents = useCallback((filters?: AuditFilters & { continuationToken?: string | null }) => fetchAuditEvents(api, filters), [api]);
-  return <LoadedAuditActivityPage loadAuditEvents={loadAuditEvents} />;
+  return <LoadedAuditActivityPage loadAuditEvents={loadAuditEvents} authorizationUnavailable={authorizationUnavailable} onAuthorizationRetry={onAuthorizationRetry} />;
 }
 
-function LoadedAuditActivityPage({ loadAuditEvents }: { loadAuditEvents: AuditEventsLoader }) {
+function LoadedAuditActivityPage({ loadAuditEvents, authorizationUnavailable, onAuthorizationRetry }: { loadAuditEvents: AuditEventsLoader; authorizationUnavailable: boolean; onAuthorizationRetry?: () => Promise<void> }) {
   const issueReporter = useWorkspaceIssueReporter();
   const [result, setResult] = useState<AuditEventsResponse | null>(null);
   const [filters, setFilters] = useState<AuditFilters>({ actorObjectId: '', action: '', outcome: '' });
@@ -68,6 +68,7 @@ function LoadedAuditActivityPage({ loadAuditEvents }: { loadAuditEvents: AuditEv
   const [retry, setRetry] = useState(0);
 
   useEffect(() => {
+    if (authorizationUnavailable) return;
     let cancelled = false;
     setLoading(true);
     setFailed(false);
@@ -86,7 +87,7 @@ function LoadedAuditActivityPage({ loadAuditEvents }: { loadAuditEvents: AuditEv
         if (!cancelled) setLoading(false);
     });
     return () => { cancelled = true; };
-  }, [loadAuditEvents, filters, continuationToken, retry, issueReporter]);
+  }, [loadAuditEvents, filters, continuationToken, retry, issueReporter, authorizationUnavailable]);
 
   const state = loading ? 'loading' : failed ? 'error' : result && result.items.length === 0 ? 'empty' : 'ready';
 
@@ -102,7 +103,7 @@ function LoadedAuditActivityPage({ loadAuditEvents }: { loadAuditEvents: AuditEv
         }}
       />
 
-      {!loading && !failed && result && (
+      {!authorizationUnavailable && !loading && !failed && result && (
         <AuditFreshnessBanner
           fetchedAt={result.fetchedAt}
           freshness={result.freshness}
@@ -110,9 +111,10 @@ function LoadedAuditActivityPage({ loadAuditEvents }: { loadAuditEvents: AuditEv
           notice={result.authoritativeSourceNotice}
         />
       )}
-      {!loading && !failed && result?.partialData && <p className="workspace-partial-notice" role="status">Partial results. Check Notifications for details.</p>}
+      {!authorizationUnavailable && !loading && !failed && result?.partialData && <p className="workspace-partial-notice" role="status">Partial results. Check Notifications for details.</p>}
 
-      {state === 'loading' && (
+      {authorizationUnavailable && <WorkspaceDataState state="unavailable" message="Data cannot be shown right now. Check Notifications for details." onRetry={onAuthorizationRetry ? () => void onAuthorizationRetry() : undefined} />}
+      {!authorizationUnavailable && state === 'loading' && (
         <div className="async-state async-state--loading" role="status" aria-live="polite">
           <span className="async-state__bar" />
           <span className="async-state__bar" />
@@ -120,9 +122,9 @@ function LoadedAuditActivityPage({ loadAuditEvents }: { loadAuditEvents: AuditEv
           <span>{messages.auditLoading}</span>
         </div>
       )}
-      {state === 'error' && <WorkspaceDataState state="unavailable" message={messages.auditUnavailable} onRetry={() => setRetry(value => value + 1)} />}
-      {state === 'empty' && <WorkspaceDataState state="empty" message={messages.auditNoResults} />}
-      {state === 'ready' && result && (
+      {!authorizationUnavailable && state === 'error' && <WorkspaceDataState state="unavailable" message={messages.auditUnavailable} onRetry={() => setRetry(value => value + 1)} />}
+      {!authorizationUnavailable && state === 'empty' && <WorkspaceDataState state="empty" message={messages.auditNoResults} />}
+      {!authorizationUnavailable && state === 'ready' && result && (
         <>
           <AuditEventsTable events={result.items} />
           {result.nextContinuationToken && (
@@ -206,6 +208,7 @@ function AuditEventsTable({ events }: { events: AuditEvent[] }) {
     <ResponsiveDataView items={events} keyOf={event => event.id} label="Audit activity" renderCompact={event => <>
       <strong>{event.action}</strong><span>{formatDate(event.timestamp)} · {event.outcome}</span>
       <span>{event.targetId || event.targetType}</span><code className="audit-reference">{correlationText(event)}</code>
+      <details><summary>Details for {event.action}</summary><dl><div><dt>Failure category</dt><dd>{event.failureCategory || 'None'}</dd></div><div><dt>{messages.auditMetadataColumn}</dt><dd><code>{event.safeMetadataJson || '{}'}</code></dd></div></dl></details>
     </>} renderTable={() => <div className="audit-table-wrap">
       <table className="audit-table" aria-label={messages.auditTableLabel}>
         <thead>

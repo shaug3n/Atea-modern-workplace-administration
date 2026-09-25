@@ -43,6 +43,28 @@ describe('DevicesPage', () => {
 
   const loadDevices = async () => devices;
 
+  it('hides prior rows and dialogs as soon as a new device query starts', async () => {
+    let resolveNext: ((value: typeof devices) => void) | undefined;
+    const loader = vi.fn().mockResolvedValueOnce(devices).mockImplementation(() => new Promise(resolve => { resolveNext = resolve; }));
+    render(<DevicesPage capabilities={[{ capability: 'devices.view', state: 'allowed', reasonCode: 'active_role' }, { capability: 'devices.privileged.manage', state: 'allowed', reasonCode: 'active_role' }]} loadDevices={loader} />);
+    await screen.findByRole('button', { name: 'Open details for WIN-TEST-01' });
+    fireEvent.click(screen.getByRole('button', { name: 'Open details for WIN-TEST-01' }));
+    fireEvent.change(screen.getByLabelText('Search devices'), { target: { value: 'new' } });
+    expect(screen.queryByRole('button', { name: 'Open details for WIN-TEST-01' })).toBeNull();
+    expect(screen.queryByRole('dialog', { name: 'WIN-TEST-01' })).toBeNull();
+    resolveNext?.({ ...devices, items: [] });
+  });
+
+  it('does not revive a prior result when filters return to the same values before a fresh response', async () => {
+    const loader = vi.fn().mockResolvedValueOnce(devices).mockImplementation(() => new Promise(() => {}));
+    render(<DevicesPage capabilities={[{ capability: 'devices.view', state: 'allowed', reasonCode: 'active_role' }]} loadDevices={loader} />);
+    await screen.findByRole('button', { name: 'Open details for WIN-TEST-01' });
+    const search = screen.getByLabelText('Search devices');
+    fireEvent.change(search, { target: { value: 'other' } });
+    fireEvent.change(search, { target: { value: '' } });
+    expect(screen.queryByRole('button', { name: 'Open details for WIN-TEST-01' })).toBeNull();
+  });
+
   it('shows labelled compact device details and no mutation menu for a reader', async () => {
     vi.stubGlobal('matchMedia', () => ({ matches: true, addEventListener: () => {}, removeEventListener: () => {} }));
     const longId = 'device-' + 'x'.repeat(90);

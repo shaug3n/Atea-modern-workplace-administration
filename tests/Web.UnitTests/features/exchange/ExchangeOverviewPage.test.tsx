@@ -2,6 +2,7 @@ import React from 'react';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ExchangeOverviewPage } from '../../../../src/Web/src/features/exchange/ExchangeOverviewPage';
+import { WorkspaceNotificationsProvider, useWorkspaceNotifications } from '../../../../src/Web/src/notifications/WorkspaceNotifications';
 
 const { api } = vi.hoisted(() => ({ api: vi.fn() }));
 vi.mock('../../../../src/Web/src/auth/useApi', () => ({ useApi: () => api }));
@@ -12,6 +13,19 @@ const secondPage = { items: [{ userId: 'lin', displayName: 'Lin', address: 'lin@
 describe('ExchangeOverviewPage', () => {
   afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
   beforeEach(() => api.mockReset());
+
+  it('groups matching mailbox verification failures into one module warning', async () => {
+    api.mockImplementation(async (path: string) => String(path).includes('/overview')
+      ? { ok: false, json: async () => ({ error: { category: 'not_authorized' } }) }
+      : { ok: true, json: async () => ({ items: [...firstPage.items, ...secondPage.items] }) });
+    function IssueCount() { return <output data-testid="issue-count">{useWorkspaceNotifications().issues.filter(issue => issue.area === 'services').length}</output>; }
+    render(<WorkspaceNotificationsProvider session={{ user: { displayName: 'Alex' }, workspace: { id: 'one', name: 'One', enabledModules: ['exchange'] } }} capabilities={null} capabilitiesError={null} onRefresh={async () => {}}><IssueCount /><ExchangeOverviewPage /></WorkspaceNotificationsProvider>);
+    await screen.findByText('Ada');
+    fireEvent.click(screen.getByRole('button', { name: 'Verify Exchange details for Ada' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Verify Exchange details for Lin' }));
+    await waitFor(() => expect(screen.getByTestId('issue-count').textContent).toBe('1'));
+    expect(screen.getAllByText('Mailbox verification is unavailable for this entry.')).toHaveLength(2);
+  });
 
   it('submits a search deliberately and pages back without changing the applied query', async () => {
     api.mockImplementation(async (path: string) => ({ ok: true, json: async () => path.includes('continuationToken=next-token') ? secondPage : firstPage }));

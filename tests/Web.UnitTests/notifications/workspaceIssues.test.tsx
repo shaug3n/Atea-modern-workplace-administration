@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import type { CapabilitySnapshot } from '../../../src/Web/src/capabilities/capabilityTypes';
 import type { AppSession } from '../../../src/Web/src/components/TenantContextHeader';
 import { deriveCapabilityIssues } from '../../../src/Web/src/notifications/workspaceIssues';
+import { matchRoute } from '../../../src/Web/src/app/routes';
 import { WorkspaceNotificationsProvider, useWorkspaceIssueReporter, useWorkspaceNotifications } from '../../../src/Web/src/notifications/WorkspaceNotifications';
 
 const session: AppSession = { user: { displayName: 'Alex' }, workspace: { id: 'one', name: 'One', enabledModules: ['users', 'devices'] }, workspaceAccess: { role: 'member', canManageMembers: false, canManageSettings: false } };
@@ -30,7 +31,8 @@ describe('workspace issues', () => {
 
   it('retains a safe PIM activation action', () => {
     const issues = deriveCapabilityIssues(snapshot([{ capability: 'users.reset_password', state: 'pim_activation_required', reasonCode: 'pim_activation_required', nextStep: { label: 'Open PIM guidance', href: '/identity' } }]), session);
-    expect(issues[0].action).toEqual({ label: 'Open PIM guidance', href: '/identity' });
+    expect(issues[0].action?.href).toBe('/identity');
+    expect(matchRoute(issues[0].action!.href!).path).toBe('/identity');
   });
 
   it('describes unknown scope evidence as unavailable verification', () => {

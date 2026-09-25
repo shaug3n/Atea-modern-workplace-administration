@@ -11,7 +11,11 @@ export type WorkspaceIssue = {
   detail: string;
   action?: { label: string; href?: string };
   correlationId?: string;
+  audience: 'workspace_admin' | 'affected_user';
+  lastCheckedAt: string;
 };
+
+export type WorkspaceIssueReport = Omit<WorkspaceIssue, 'audience' | 'lastCheckedAt'>;
 
 export function reportedIssueKey(key: string): string {
   let hash = 2166136261;
@@ -49,7 +53,7 @@ export function deriveCapabilityIssues(snapshot: CapabilitySnapshot | null, sess
     const key = `${area}:${cause}`;
     if (grouped.has(key)) continue;
     const issue: WorkspaceIssue = {
-      key, area,
+      key, area, audience: isConsent && session.workspaceAccess?.canManageSettings === true ? 'workspace_admin' : 'affected_user', lastCheckedAt: snapshot.evaluatedAt,
       kind: isConsent ? 'setup' : unknown ? 'service' : 'access',
       severity: isReadOnly ? 'info' : 'warning',
       title: isReadOnly ? 'Read-only access' : isConsent ? 'Microsoft Graph consent required' : isPim ? 'Entra role activation needed' : 'Permission verification unavailable',
@@ -69,14 +73,14 @@ export function deriveConnectionIssue(health: ConnectionHealth | null, session: 
   if (!health || health.status === 'connected' || health.status === 'awaiting_invitation') return [];
   const unavailable = health.status === 'temporarily_unavailable' || health.status === 'connection_failed';
   return [{
-    key: 'connection:' + health.status, area: 'Connection', kind: unavailable ? 'service' : 'setup', severity: 'warning',
+    key: 'connection:' + health.status, area: 'Connection', kind: unavailable ? 'service' : 'setup', severity: 'warning', audience: session.workspaceAccess?.canManageSettings === true ? 'workspace_admin' : 'affected_user', lastCheckedAt: health.lastVerifiedAt ?? new Date().toISOString(),
     title: unavailable ? 'Connection check unavailable' : health.status === 'permission_incomplete' ? 'Connection permissions incomplete' : 'Workspace consent required',
     detail: unavailable ? 'The workspace connection could not be verified. Try again.' : session.workspaceAccess?.canManageSettings === true ? 'Review the workspace connection.' : 'Contact a workspace administrator to review the connection.',
     ...(session.workspaceAccess?.canManageSettings === true ? { action: { label: 'Open Setup', href: '/settings/setup' } } : {}),
   }];
 }
 
-export function sanitizeReportedIssue(issue: WorkspaceIssue, session: AppSession): WorkspaceIssue | null {
+export function sanitizeReportedIssue(issue: WorkspaceIssueReport, session: AppSession): WorkspaceIssue | null {
   if (!/^[a-z0-9:_-]{1,100}$/i.test(issue.key)) return null;
   const area = ['users', 'devices', 'licenses', 'activity', 'services', 'Connection', 'Your access'].includes(issue.area) ? issue.area : 'Workspace';
   const kind = ['setup', 'access', 'service'].includes(issue.kind) ? issue.kind : 'service';
@@ -88,5 +92,5 @@ export function sanitizeReportedIssue(issue: WorkspaceIssue, session: AppSession
     : kind === 'setup' ? session.workspaceAccess?.canManageSettings === true ? 'Review workspace setup and try again.' : 'Contact a workspace administrator to review setup.'
     : kind === 'access' ? 'Review your access and try again.' : 'Try loading this area again.';
   const action = permitted && href ? { label: 'View guidance', href } : undefined;
-  return { key: reportedIssueKey(issue.key), area, kind, severity: issue.severity === 'info' ? 'info' : 'warning', title, detail, ...(action ? { action } : {}), ...(correlationId ? { correlationId } : {}) };
+  return { key: reportedIssueKey(issue.key), area, kind, severity: issue.severity === 'info' ? 'info' : 'warning', title, detail, audience: kind === 'setup' && session.workspaceAccess?.canManageSettings === true ? 'workspace_admin' : 'affected_user', lastCheckedAt: new Date().toISOString(), ...(action ? { action } : {}), ...(correlationId ? { correlationId } : {}) };
 }

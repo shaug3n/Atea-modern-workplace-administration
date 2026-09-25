@@ -126,6 +126,43 @@ describe('AppShell', () => {
     expect(screen.getByRole('alert').textContent).toContain('Data cannot be shown');
     expect(screen.getByRole('navigation', { name: 'Primary navigation' })).toBeTruthy();
     expect(apiMock).not.toHaveBeenCalled();
+    expect(screen.getByLabelText('Search users')).toBeTruthy();
+  });
+
+  it('retains a Graph warning after navigating away from a denied Devices page', async () => {
+    window.history.pushState(null, '', '/devices');
+    const snapshot: CapabilitySnapshot = { ...allowedCapabilities, capabilities: [{ capability: 'devices.view', state: 'hidden', reasonCode: 'role_required' }] };
+    render(<App loadCapabilities={async () => snapshot} loadSession={async () => session} />);
+    await screen.findByRole('heading', { name: 'Devices' });
+    expect(screen.getByLabelText('Device filters')).toBeTruthy();
+    const warning = await screen.findByRole('button', { name: 'Notifications, 1 warnings' });
+    fireEvent.click(screen.getByRole('link', { name: 'Overview' }));
+    await screen.findByRole('heading', { name: 'Overview' });
+    fireEvent.click(screen.getByRole('button', { name: /Notifications, \d+ warnings/i }));
+    expect(screen.getByText('Access needs attention')).toBeTruthy();
+    expect(apiMock).not.toHaveBeenCalledWith('/api/devices');
+  });
+
+  it('keeps Activity filters and the unavailable region without requesting audit records when access is unknown', async () => {
+    window.history.pushState(null, '', '/activity');
+    render(<App loadCapabilities={async () => { throw new Error('Graph unavailable'); }} loadSession={async () => session} />);
+    expect(await screen.findByRole('heading', { name: 'Audit activity' })).toBeTruthy();
+    expect(screen.getByRole('textbox', { name: 'Actor object ID' })).toBeTruthy();
+    expect(screen.getByText(/Data cannot be shown right now/)).toBeTruthy();
+    expect(apiMock).not.toHaveBeenCalledWith(expect.stringContaining('/api/audit/events'));
+  });
+
+  it('clears a reported Graph route warning only after authoritative recovery', async () => {
+    window.history.pushState(null, '', '/devices');
+    const denied: CapabilitySnapshot = { ...allowedCapabilities, capabilities: [{ capability: 'devices.view', state: 'hidden', reasonCode: 'role_required' }] };
+    const recovered: CapabilitySnapshot = { ...allowedCapabilities, capabilities: [{ capability: 'devices.view', state: 'allowed', reasonCode: 'active_role' }] };
+    let checks = 0;
+    apiMock.mockResolvedValue(Response.json({ items: [], total: 0, fetchedAt: '2026-09-25T10:00:00Z', freshness: 'live', partialData: false }));
+    render(<App loadCapabilities={async () => ++checks === 1 ? denied : recovered} loadSession={async () => session} />);
+    await screen.findByRole('button', { name: 'Notifications, 1 warnings' });
+    fireEvent.focus(window);
+    await waitFor(() => expect(checks).toBe(2));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Notifications, 0 warnings' })).toBeTruthy());
   });
 
   it('keeps workspace settings available when the Graph capability check fails', async () => {

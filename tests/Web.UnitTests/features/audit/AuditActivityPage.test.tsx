@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import React from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AuditActivityPage, type AuditEventsResponse } from '../../../../src/Web/src/features/audit/AuditActivityPage';
@@ -102,5 +102,14 @@ describe('AuditActivityPage', () => {
     expect(list.querySelector('code')?.className).toContain('audit-reference');
     expect(screen.getByText(/partial results/i)).toBeTruthy();
     expect(document.querySelector('.audit-filters')?.compareDocumentPosition(list) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('reveals failure category and safe metadata from a compact audit record', async () => {
+    vi.stubGlobal('matchMedia', () => ({ matches: true, addEventListener: () => {}, removeEventListener: () => {} }));
+    render(<AuditActivityPage loadAuditEvents={async () => ({ ...response, items: [{ ...response.items[0], failureCategory: 'role_required' }] })} />);
+    const record = (await screen.findByRole('list', { name: 'Audit activity' })).querySelector('li')!;
+    fireEvent.click(screen.getByText('Details for users.disable'));
+    expect(record.textContent).toContain('role_required');
+    expect(record.textContent).toContain('{"reason":"reviewed"}');
   });
 });

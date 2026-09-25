@@ -29,6 +29,14 @@ export function ExchangeOverviewPage() {
   const [retry, setRetry] = useState(0);
   const [details, setDetails] = useState<Record<string, VerificationState>>({});
   const detailsGeneration = useRef(0);
+  const verificationFailures = useRef(new Map<string, string>());
+  const updateVerificationIssue = (userId: string, cause: string | null) => {
+    const previous = verificationFailures.current.get(userId);
+    if (cause) verificationFailures.current.set(userId, cause);
+    else verificationFailures.current.delete(userId);
+    if (previous && ![...verificationFailures.current.values()].includes(previous)) issueReporter.clear(`exchange:verification:${previous}`);
+    if (cause) issueReporter.report({ key: `exchange:verification:${cause}`, area: 'services', kind: cause === 'not_authorized' ? 'access' : 'service', severity: 'warning', title: 'Mailbox verification unavailable', detail: 'Try verifying this mailbox again.' });
+  };
   useEffect(() => {
     let cancelled = false;
     detailsGeneration.current += 1;
@@ -58,12 +66,12 @@ export function ExchangeOverviewPage() {
       const response = await api(`/api/exchange/mailboxes/${encodeURIComponent(mailbox.userId)}/overview`);
       if (!response.ok) {
         const value = await response.json().catch(() => null) as MailboxVerification | null;
-        if (generation === detailsGeneration.current) { setDetails(current => ({ ...current, [mailbox.userId]: { status: 'error', message: value?.error?.category === 'not_found' ? 'No Exchange mailbox was found for this directory entry.' : value?.error?.category === 'not_authorized' ? 'Mailbox verification is unavailable for this entry.' : 'Mailbox details are unavailable for this entry.' } })); issueReporter.report({ key: `exchange:mailbox:${mailbox.userId}`, area: 'services', kind: 'service', severity: 'warning', title: 'Mailbox verification unavailable', detail: 'Try verifying this mailbox again.' }); }
+        if (generation === detailsGeneration.current) { setDetails(current => ({ ...current, [mailbox.userId]: { status: 'error', message: value?.error?.category === 'not_found' ? 'No Exchange mailbox was found for this directory entry.' : value?.error?.category === 'not_authorized' ? 'Mailbox verification is unavailable for this entry.' : 'Mailbox details are unavailable for this entry.' } })); updateVerificationIssue(mailbox.userId, value?.error?.category === 'not_found' ? 'not_found' : value?.error?.category === 'not_authorized' ? 'not_authorized' : 'service'); }
         return;
       }
       const value = await response.json() as MailboxVerification;
-      if (generation === detailsGeneration.current) { setDetails(current => ({ ...current, [mailbox.userId]: { status: 'loaded', value, retrievedAt: new Date().toISOString() } })); if (value.verificationStatus === 'verified') issueReporter.clear(`exchange:mailbox:${mailbox.userId}`); else issueReporter.report({ key: `exchange:mailbox:${mailbox.userId}`, area: 'services', kind: 'service', severity: 'warning', title: 'Mailbox verification unavailable', detail: 'Try verifying this mailbox again.' }); }
-    } catch { if (generation === detailsGeneration.current) { setDetails(current => ({ ...current, [mailbox.userId]: { status: 'error', message: 'Mailbox details are temporarily unavailable.' } })); issueReporter.report({ key: `exchange:mailbox:${mailbox.userId}`, area: 'services', kind: 'service', severity: 'warning', title: 'Mailbox verification unavailable', detail: 'Try verifying this mailbox again.' }); } }
+      if (generation === detailsGeneration.current) { setDetails(current => ({ ...current, [mailbox.userId]: { status: 'loaded', value, retrievedAt: new Date().toISOString() } })); updateVerificationIssue(mailbox.userId, value.verificationStatus === 'verified' ? null : 'service'); }
+    } catch { if (generation === detailsGeneration.current) { setDetails(current => ({ ...current, [mailbox.userId]: { status: 'error', message: 'Mailbox details are temporarily unavailable.' } })); updateVerificationIssue(mailbox.userId, 'service'); } }
   };
   const verificationView = (mailbox: Mailbox) => {
     const verification = details[mailbox.userId];

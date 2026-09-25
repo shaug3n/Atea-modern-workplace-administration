@@ -8,8 +8,8 @@ import type { AppSession } from '../../../src/Web/src/components/TenantContextHe
 
 afterEach(cleanup);
 const issues: WorkspaceIssue[] = [
-  { key: 'setup', area: 'Connection', kind: 'setup', severity: 'warning', title: 'Consent required', detail: 'Contact your workspace administrator.' },
-  { key: 'access', area: 'Your access', kind: 'access', severity: 'info', title: 'Read-only access', detail: 'Some actions require another role.' },
+  { key: 'setup', area: 'Connection', kind: 'setup', severity: 'warning', title: 'Consent required', detail: 'Contact your workspace administrator.', audience: 'affected_user', lastCheckedAt: '2026-09-25T10:00:00Z' },
+  { key: 'access', area: 'Your access', kind: 'access', severity: 'info', title: 'Read-only access', detail: 'Some actions require another role.', audience: 'affected_user', lastCheckedAt: '2026-09-25T10:00:00Z' },
 ];
 
 describe('NotificationsMenu', () => {

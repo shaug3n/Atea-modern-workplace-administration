@@ -23,7 +23,7 @@ const emptyFilters: UserFiltersState = {
   userType: '',
 };
 
-export function UsersPage({ capabilities, onNavigate, loadUsers }: { capabilities: CapabilityDecision[]; onNavigate?: (path: string) => void; loadUsers?: (filters: UserFiltersState, continuationToken: string | null) => Promise<UsersDirectoryResponse> }) {
+export function UsersPage({ capabilities, onNavigate, loadUsers, authorizationUnavailable = false, onAuthorizationRetry }: { capabilities: CapabilityDecision[]; onNavigate?: (path: string) => void; loadUsers?: (filters: UserFiltersState, continuationToken: string | null) => Promise<UsersDirectoryResponse>; authorizationUnavailable?: boolean; onAuthorizationRetry?: () => Promise<void> }) {
   const api = useApi();
   const issueReporter = useWorkspaceIssueReporter();
   const [filters, setFilters] = useState(() => filtersFromUrl());
@@ -220,8 +220,8 @@ export function UsersPage({ capabilities, onNavigate, loadUsers }: { capabilitie
 
       {!readable ? (
         <section className="permission-panel" role="status">
-          <h2>{usersView.state.startsWith('pim_') ? messages.usersPimRequiredTitle : messages.usersNoPermissionTitle}</h2>
-          {usersView.state === 'hidden' ? <p>{messages.usersNoPermissionBody}</p> : <PermissionState decision={usersView}><span>{usersView.state.startsWith('pim_') ? messages.usersPimRequiredBody : messages.usersNoPermissionBody}</span></PermissionState>}
+          {authorizationUnavailable ? <WorkspaceDataState state="unavailable" message="Data cannot be shown right now. Check Notifications for details." onRetry={onAuthorizationRetry ? () => void onAuthorizationRetry() : undefined} /> : <><h2>{usersView.state.startsWith('pim_') ? messages.usersPimRequiredTitle : messages.usersNoPermissionTitle}</h2>
+          {usersView.state === 'hidden' ? <p>{messages.usersNoPermissionBody}</p> : <PermissionState decision={usersView}><span>{usersView.state.startsWith('pim_') ? messages.usersPimRequiredBody : messages.usersNoPermissionBody}</span></PermissionState>}</>}
         </section>
       ) : currentResult?.error && currentResult.items.length === 0 ? (
         <section className="permission-panel"><h2>{messages.usersUnavailable}</h2><WorkspaceDataState state="unavailable" message="User data is unavailable. Check Notifications for details." onRetry={() => setRefreshVersion((version) => version + 1)} /></section>
