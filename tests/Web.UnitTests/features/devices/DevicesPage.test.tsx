@@ -6,6 +6,8 @@ import { executeDeviceAction, type DeviceAction } from '../../../../src/Web/src/
 import type { ApiFetch } from '../../../../src/Web/src/features/users/userDetailApi';
 
 const apiMock = vi.hoisted(() => vi.fn());
+const issueReporter = vi.hoisted(() => ({ report: vi.fn(), clear: vi.fn() }));
+vi.mock('../../../../src/Web/src/notifications/WorkspaceNotifications', () => ({ useWorkspaceIssueReporter: () => issueReporter }));
 
 vi.mock('../../../../src/Web/src/auth/useApi', () => ({
   useApi: () => apiMock,
@@ -13,6 +15,20 @@ vi.mock('../../../../src/Web/src/auth/useApi', () => ({
 
 describe('DevicesPage', () => {
   afterEach(() => { cleanup(); vi.clearAllMocks(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
+
+  it('keeps filters after a failed read and clears the service issue on retry', async () => {
+    const loader = vi.fn().mockRejectedValueOnce(new Error('raw graph failure')).mockResolvedValue(devices);
+    render(<DevicesPage capabilities={[{ capability: 'devices.view', state: 'allowed', reasonCode: 'active_role' }]} loadDevices={loader} />);
+    fireEvent.change(screen.getByLabelText('Search devices'), { target: { value: 'WIN' } });
+    await screen.findByRole('alert');
+    expect((screen.getByLabelText('Search devices') as HTMLInputElement).value).toBe('WIN');
+    expect(issueReporter.report).toHaveBeenCalledWith(expect.objectContaining({ key: 'devices:read', kind: 'service' }));
+    expect(JSON.stringify(issueReporter.report.mock.calls)).not.toContain('raw graph failure');
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    await screen.findByText('WIN-TEST-01');
+    expect(issueReporter.clear).toHaveBeenCalledWith('devices:read');
+    expect(screen.getByRole('table', { name: 'Managed device results' }).textContent).toContain('WIN-TEST-01');
+  });
 
   const devices = {
     items: [
@@ -26,6 +42,17 @@ describe('DevicesPage', () => {
   } as const;
 
   const loadDevices = async () => devices;
+
+  it('shows labelled compact device details and no mutation menu for a reader', async () => {
+    vi.stubGlobal('matchMedia', () => ({ matches: true, addEventListener: () => {}, removeEventListener: () => {} }));
+    const longId = 'device-' + 'x'.repeat(90);
+    render(<DevicesPage capabilities={[{ capability: 'devices.view', state: 'read_only', reasonCode: 'role_read_only' }]} loadDevices={async () => ({ ...devices, items: [{ ...devices.items[0], id: longId }] })} />);
+    const compact = await screen.findByRole('list', { name: 'Devices' });
+    expect(compact.textContent).toContain(longId);
+    expect(compact.textContent).toContain('Compliance');
+    expect(compact.querySelector('button[aria-label="Open details for WIN-TEST-01"]')).toBeTruthy();
+    expect(compact.querySelector('[role="menu"]')).toBeNull();
+  });
 
   it('exports active device filters and shows completion metadata', async () => {
     apiMock.mockResolvedValue(new Response('"Id"\n"device-1"\n', { status: 200, headers: { 'X-Export-Row-Count': '1', 'X-Export-Max-Rows': '10000', 'X-Export-Truncated': 'false', 'Content-Type': 'text/csv' } }));
@@ -83,7 +110,8 @@ describe('DevicesPage', () => {
     />);
 
     expect(await screen.findByText('Managed devices are unavailable. Check delegated permissions and try again.')).toBeTruthy();
-    expect(screen.getAllByText('Managed devices are not available for the current role or delegated permissions.').length).toBeGreaterThan(0);
+    expect(screen.getByText('Device data is unavailable. Check Notifications for details.')).toBeTruthy();
+    expect(screen.queryByText('Managed devices are not available for the current role or delegated permissions.')).toBeNull();
     expect(screen.queryByText('No managed devices match the current filters.')).toBeNull();
   });
 

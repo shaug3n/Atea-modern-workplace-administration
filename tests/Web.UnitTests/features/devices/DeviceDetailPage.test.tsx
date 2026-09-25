@@ -5,6 +5,8 @@ import { DeviceDetailPage } from '../../../../src/Web/src/features/devices/Devic
 import { matchRoute } from '../../../../src/Web/src/app/routes';
 
 const apiMock = vi.hoisted(() => vi.fn());
+const issueReporter = vi.hoisted(() => ({ report: vi.fn(), clear: vi.fn() }));
+vi.mock('../../../../src/Web/src/notifications/WorkspaceNotifications', () => ({ useWorkspaceIssueReporter: () => issueReporter }));
 vi.mock('../../../../src/Web/src/auth/useApi', () => ({ useApi: () => apiMock }));
 
 const response = (body: unknown, status = 200) => ({ ok: status < 400, status, json: async () => body });
@@ -16,6 +18,18 @@ function deferred<T>() {
 
 describe('DeviceDetailPage', () => {
   afterEach(() => { cleanup(); vi.useRealTimers(); vi.clearAllMocks(); window.history.replaceState({}, '', '/devices'); });
+
+  it('retries an unavailable device read without exposing raw errors and clears its issue', async () => {
+    apiMock.mockRejectedValueOnce(new Error('raw graph failure')).mockResolvedValue(response({ id: 'device-1', deviceName: 'WIN-01' }));
+    render(<DeviceDetailPage deviceId="device-1" />);
+    await screen.findByRole('alert');
+    expect(screen.getByRole('heading', { name: 'Device details' })).toBeTruthy();
+    expect(issueReporter.report).toHaveBeenCalledWith(expect.objectContaining({ key: 'devices:detail:read', kind: 'service' }));
+    expect(JSON.stringify(issueReporter.report.mock.calls)).not.toContain('raw graph failure');
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    await screen.findByRole('heading', { name: 'WIN-01' });
+    expect(issueReporter.clear).toHaveBeenCalledWith('devices:detail:read');
+  });
 
   it('resolves an addressable route and loads the device directly without a preceding search', async () => {
     window.history.replaceState({}, '', '/devices/device-1');

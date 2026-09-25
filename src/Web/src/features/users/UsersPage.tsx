@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import type { CapabilityDecision } from '../../capabilities/capabilityTypes';
-import { AsyncState } from '../../components/AsyncState';
+import { WorkspaceDataState } from '../../components/WorkspaceDataState';
+import { WorkspacePageHeader } from '../../components/WorkspacePageHeader';
+import { useWorkspaceIssueReporter } from '../../notifications/WorkspaceNotifications';
 import { ConfirmationDialog } from '../../components/ConfirmationDialog';
 import { DataFreshness } from '../../components/DataFreshness';
 import { PermissionState } from '../../components/PermissionState';
@@ -23,6 +25,7 @@ const emptyFilters: UserFiltersState = {
 
 export function UsersPage({ capabilities, onNavigate, loadUsers }: { capabilities: CapabilityDecision[]; onNavigate?: (path: string) => void; loadUsers?: (filters: UserFiltersState, continuationToken: string | null) => Promise<UsersDirectoryResponse> }) {
   const api = useApi();
+  const issueReporter = useWorkspaceIssueReporter();
   const [filters, setFilters] = useState(() => filtersFromUrl());
   const [debouncedFilters, setDebouncedFilters] = useState(() => filtersFromUrl());
   const [continuationToken, setContinuationToken] = useState<string | null>(null);
@@ -82,16 +85,20 @@ export function UsersPage({ capabilities, onNavigate, loadUsers }: { capabilitie
     setLoadFailed(false);
     loader(debouncedFilters, continuationToken)
       .then((response) => {
-        if (!cancelled) setResult(response);
+        if (!cancelled) {
+          setResult(response);
+          if (response.error) issueReporter.report({ key: 'users:read', area: 'users', kind: 'service', severity: 'warning', title: 'User data unavailable', detail: 'Try loading users again.' });
+          else issueReporter.clear('users:read');
+        }
       })
       .catch(() => {
-        if (!cancelled) setLoadFailed(true);
+        if (!cancelled) { setLoadFailed(true); issueReporter.report({ key: 'users:read', area: 'users', kind: 'service', severity: 'warning', title: 'User data unavailable', detail: 'Try loading users again.' }); }
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
       });
     return () => { cancelled = true; };
-  }, [continuationToken, debouncedFilters, loader, refreshVersion, usersView.state]);
+  }, [continuationToken, debouncedFilters, loader, refreshVersion, usersView.state, issueReporter]);
 
   const goNext = () => {
     if (!result?.continuationToken) return;
@@ -176,21 +183,15 @@ export function UsersPage({ capabilities, onNavigate, loadUsers }: { capabilitie
   };
 
   return (
-    <section className="users-page" aria-labelledby="users-page-title">
-      <div className="users-page__header">
-        <div>
-          <p className="eyebrow">{messages.usersEyebrow}</p>
-          <h1 id="users-page-title">{messages.usersTitle}</h1>
-          <p>{messages.usersDirectoryIntro}</p>
-        </div>
+    <section className="users-page" aria-label={messages.usersTitle}>
+      <WorkspacePageHeader eyebrow={messages.usersEyebrow} title={messages.usersTitle} description={messages.usersDirectoryIntro} actions={
         <div className="users-page__actions">
           <PermissionState decision={usersCreate}>
             <button type="button" onClick={() => setCreateOpen(true)}>{messages.usersCreateAction}</button>
           </PermissionState>
           <button type="button" onClick={() => setRefreshVersion((version) => version + 1)}>{messages.usersRefreshAction}</button>
           <button type="button" onClick={() => void exportUsers()} disabled={!readable || exportPending}>Export filtered CSV</button>
-        </div>
-      </div>
+        </div>} />
 
       {exportMessage && <p role="status">{exportMessage}</p>}
       {exportError && <p role="alert">{exportError}</p>}
@@ -202,7 +203,7 @@ export function UsersPage({ capabilities, onNavigate, loadUsers }: { capabilitie
           fetchedAt={result.fetchedAt}
           freshness={result.freshness}
           partialData={result.partialData}
-          message={result.items.length ? result.error?.message : undefined}
+          message={result.error ? 'Some user data could not be loaded.' : undefined}
         />
       )}
 
@@ -212,18 +213,16 @@ export function UsersPage({ capabilities, onNavigate, loadUsers }: { capabilitie
           {usersView.state === 'hidden' ? <p>{messages.usersNoPermissionBody}</p> : <PermissionState decision={usersView}><span>{usersView.state.startsWith('pim_') ? messages.usersPimRequiredBody : messages.usersNoPermissionBody}</span></PermissionState>}
         </section>
       ) : result?.error && result.items.length === 0 ? (
-        <section className="permission-panel" role="alert"><h2>{messages.usersUnavailable}</h2><p>{result.error.message}</p><button type="button" onClick={() => setRefreshVersion((version) => version + 1)}>Retry</button></section>
+        <section className="permission-panel"><h2>{messages.usersUnavailable}</h2><WorkspaceDataState state="unavailable" message="User data is unavailable. Check Notifications for details." onRetry={() => setRefreshVersion((version) => version + 1)} /></section>
       ) : (
-        <AsyncState state={state} empty={<span>{messages.usersNoResults}</span>}>
-          {result && (
+        state === 'loading' && !result ? <WorkspaceDataState state="loading" message="Loading users…" /> : state === 'error' ? <WorkspaceDataState state="unavailable" message="User data is unavailable. Check Notifications for details." onRetry={() => setRefreshVersion((version) => version + 1)} /> : state === 'empty' ? <WorkspaceDataState state="empty" message={messages.usersNoResults} /> : result && (
             <UsersTable
               users={result.items}
               capabilities={capabilities}
               onNavigate={onNavigate}
               onDisable={usersDisable.state === 'allowed' ? startDisable : undefined}
             />
-          )}
-        </AsyncState>
+          )
       )}
 
       {disableStatus && <p role="status">{disableStatus}</p>}

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import type { CapabilityDecision } from '../../capabilities/capabilityTypes';
 import { PermissionState } from '../../components/PermissionState';
 import { messages } from '../../app/messages';
+import { ResponsiveDataView } from '../../components/ResponsiveDataView';
 import type { UserSummary as ApiUserSummary } from './usersApi';
 
 export type UserSummary = ApiUserSummary;
@@ -24,8 +25,12 @@ export function UsersTable({
   const showActions = disableDecision.state !== 'hidden';
 
   return (
-    <div className="users-table-wrap" role="region" aria-label={messages.usersTableLabel} tabIndex={0}>
-      <table className="users-table">
+    <ResponsiveDataView items={users} keyOf={user => user.id} label="Users"
+      renderCompact={user => {
+        const name = user.displayName || user.userPrincipalName || user.mail || messages.usersUnnamedUser;
+        return <><strong>{name}</strong><dl className="responsive-data-view__details"><div><dt>{messages.usersUpnColumn}</dt><dd>{user.userPrincipalName || messages.usersUnavailableValue}</dd></div>{showAccountStatus && <div><dt>{messages.usersAccountStatusColumn}</dt><dd>{labelStatus(user.accountEnabled)}</dd></div>}<div><dt>{messages.usersMailColumn}</dt><dd>{user.mail || messages.usersUnavailableValue}</dd></div><div><dt>{messages.usersTypeColumn}</dt><dd>{user.userType || messages.usersUnavailableValue}</dd></div></dl><div className="responsive-data-view__actions"><button type="button" className="table-action" aria-label={`${messages.usersOpenAction} ${name}`} onClick={() => navigateToUser(user.id, onNavigate)}>{messages.usersOpenAction}</button>{showActions && <PermissionState decision={disableDecision}><button type="button" className="table-action" aria-label={`${messages.usersDisableAction} ${name}`} disabled={!onDisable} onClick={() => onDisable?.(user)}>{messages.usersDisableAction}</button></PermissionState>}</div></>;
+      }}
+      renderTable={rows => <div className="users-table-wrap"><table className="users-table">
         <thead>
           <tr>
             <th scope="col">{messages.usersNameColumn}</th>
@@ -36,7 +41,7 @@ export function UsersTable({
           </tr>
         </thead>
         <tbody>
-          {users.map((user) => {
+          {rows.map((user) => {
             const displayName = user.displayName || user.userPrincipalName || user.mail || messages.usersUnnamedUser;
             return (
               <React.Fragment key={user.id}>
@@ -71,8 +76,8 @@ export function UsersTable({
             );
           })}
         </tbody>
-      </table>
-    </div>
+      </table></div>}
+    />
   );
 }
 

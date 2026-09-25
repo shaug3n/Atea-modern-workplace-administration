@@ -6,6 +6,8 @@ import { UsersPage } from '../../../../src/Web/src/features/users/UsersPage';
 import type { UserFiltersState, UsersDirectoryResponse } from '../../../../src/Web/src/features/users/usersApi';
 
 const apiMock = vi.hoisted(() => vi.fn());
+const issueReporter = vi.hoisted(() => ({ report: vi.fn(), clear: vi.fn() }));
+vi.mock('../../../../src/Web/src/notifications/WorkspaceNotifications', () => ({ useWorkspaceIssueReporter: () => issueReporter }));
 
 vi.mock('../../../../src/Web/src/auth/useApi', () => ({
   useApi: () => apiMock,
@@ -37,9 +39,23 @@ describe('UsersPage', () => {
   afterEach(() => {
     cleanup();
     apiMock.mockReset();
+    issueReporter.report.mockClear(); issueReporter.clear.mockClear();
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
     window.history.replaceState(null, '', '/users');
+  });
+
+  it('keeps title and filters on a failed read, then clears its service issue on retry', async () => {
+    const loader = vi.fn().mockRejectedValueOnce(new Error('secret graph details')).mockResolvedValue(usersResponse);
+    render(<UsersPage capabilities={allowedCapabilities} loadUsers={loader} />);
+    await screen.findByRole('alert');
+    expect(screen.getByRole('heading', { name: 'Users' })).toBeTruthy();
+    expect(screen.getByRole('searchbox', { name: 'Search users' })).toBeTruthy();
+    expect(issueReporter.report).toHaveBeenCalledWith(expect.objectContaining({ key: 'users:read', kind: 'service' }));
+    expect(JSON.stringify(issueReporter.report.mock.calls)).not.toContain('secret graph details');
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    await screen.findByText('Ada Lovelace');
+    expect(issueReporter.clear).toHaveBeenCalledWith('users:read');
   });
 
   it('loads supported filters from the URL and writes edits back without unsupported role filters', async () => {
@@ -90,7 +106,8 @@ describe('UsersPage', () => {
   it('shows a response error as an access failure instead of an empty result', async () => {
     render(<UsersPage capabilities={allowedCapabilities} loadUsers={async () => ({ ...usersResponse, items: [], error: { category: 'not_authorized', message: 'Directory access was denied.' } })} />);
     expect(await screen.findByRole('alert')).toBeTruthy();
-    expect(screen.getByText('Directory access was denied.')).toBeTruthy();
+    expect(screen.getByText('User data is unavailable. Check Notifications for details.')).toBeTruthy();
+    expect(screen.queryByText('Directory access was denied.')).toBeNull();
     expect(screen.queryByText('No users match the current filters.')).toBeNull();
   });
 

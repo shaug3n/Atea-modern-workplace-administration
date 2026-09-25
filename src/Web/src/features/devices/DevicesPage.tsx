@@ -10,11 +10,16 @@ import { PermissionState } from '../../components/PermissionState';
 import { ActionMenu } from '../../components/ActionMenu';
 import { useFocusContainment } from '../../components/useFocusContainment';
 import { downloadCsv, exportStatus } from '../exports/csvExport';
+import { ResponsiveDataView } from '../../components/ResponsiveDataView';
+import { WorkspacePageHeader } from '../../components/WorkspacePageHeader';
+import { WorkspaceDataState } from '../../components/WorkspaceDataState';
+import { useWorkspaceIssueReporter } from '../../notifications/WorkspaceNotifications';
 
 const emptyFilters: DeviceFilters = { search: '', complianceState: '', operatingSystem: '' };
 
 export function DevicesPage({ loadDevices, capabilities = [], moduleAssigned = true, moduleEnabled = true, onNavigate }: { loadDevices?: (filters: DeviceFilters, continuationToken?: string | null) => Promise<DevicesResponse>; capabilities?: CapabilityDecision[]; moduleAssigned?: boolean; moduleEnabled?: boolean; onNavigate?: (path: string) => void }) {
   const api = useApi();
+  const issueReporter = useWorkspaceIssueReporter();
   const [filters, setFilters] = useState(emptyFilters);
   const [continuationToken, setContinuationToken] = useState<string | null>(null);
   const [previousTokens, setPreviousTokens] = useState<string[]>([]);
@@ -38,7 +43,7 @@ export function DevicesPage({ loadDevices, capabilities = [], moduleAssigned = t
   const viewReadable = viewDecision.state === 'allowed' || viewDecision.state === 'read_only';
 
   if (!moduleEnabled || !moduleAssigned) {
-    return <section className="devices-page" aria-labelledby="devices-page-title"><header className="page-header"><div><p className="eyebrow">Devices and endpoints</p><h1 id="devices-page-title">Devices</h1><p>Device management is available to workspace administrators for setup guidance and to members who have been assigned this module.</p></div></header><section className="permission-panel" role="status"><h2>{moduleEnabled ? 'Device module access needed' : 'Device module is disabled'}</h2><p>{moduleEnabled ? 'Ask a workspace owner to assign you the Devices module. Your Entra role and PIM state will still determine whether device data is readable and which actions you can take.' : 'A workspace owner can enable Devices in Workspace settings. Enabling it does not grant Microsoft Graph scopes or Entra roles.'}</p>{!moduleEnabled && <a href="/settings/modules">Open workspace modules</a>}</section></section>;
+    return <section className="devices-page" aria-label="Devices"><WorkspacePageHeader eyebrow="Devices and endpoints" title="Devices" description="Device management is available to workspace administrators for setup guidance and to members who have been assigned this module." /><section className="permission-panel" role="status"><h2>{moduleEnabled ? 'Device module access needed' : 'Device module is disabled'}</h2><p>{moduleEnabled ? 'Ask a workspace owner to assign you the Devices module. Your Entra role and PIM state will still determine whether device data is readable and which actions you can take.' : 'A workspace owner can enable Devices in Workspace settings. Enabling it does not grant Microsoft Graph scopes or Entra roles.'}</p>{!moduleEnabled && <a href="/settings/modules">Open workspace modules</a>}</section></section>;
   }
 
   useEffect(() => {
@@ -53,12 +58,12 @@ export function DevicesPage({ loadDevices, capabilities = [], moduleAssigned = t
     setFailed(false);
     const timeout = window.setTimeout(() => {
       loader(filters, continuationToken)
-        .then((response) => { if (!cancelled) setResult(response); })
-        .catch(() => { if (!cancelled) setFailed(true); })
+        .then((response) => { if (!cancelled) { setResult(response); if (response.error) issueReporter.report({ key: 'devices:read', area: 'devices', kind: 'service', severity: 'warning', title: 'Device data unavailable', detail: 'Try loading devices again.' }); else issueReporter.clear('devices:read'); } })
+        .catch(() => { if (!cancelled) { setFailed(true); issueReporter.report({ key: 'devices:read', area: 'devices', kind: 'service', severity: 'warning', title: 'Device data unavailable', detail: 'Try loading devices again.' }); } })
         .finally(() => { if (!cancelled) setLoading(false); });
     }, 180);
     return () => { cancelled = true; window.clearTimeout(timeout); };
-  }, [continuationToken, filters, loader, refreshVersion, viewReadable]);
+  }, [continuationToken, filters, loader, refreshVersion, viewReadable, issueReporter]);
 
   useEffect(() => {
     setPreviousTokens([]);
@@ -125,14 +130,8 @@ export function DevicesPage({ loadDevices, capabilities = [], moduleAssigned = t
 
   if (!viewReadable) {
     return (
-      <section className="devices-page" aria-labelledby="devices-page-title">
-        <header className="page-header">
-          <div>
-            <p className="eyebrow">{messages.devicesEyebrow}</p>
-            <h1 id="devices-page-title">{messages.devicesTitle}</h1>
-            <p>{messages.devicesIntro}</p>
-          </div>
-        </header>
+      <section className="devices-page" aria-label="Devices">
+        <WorkspacePageHeader eyebrow={messages.devicesEyebrow} title={messages.devicesTitle} description={messages.devicesIntro} />
         <section className="permission-panel" role="status" aria-labelledby="devices-permission-title">
           <h2 id="devices-permission-title">{isPimCapabilityState(viewDecision.state) ? messages.devicesPimRequiredTitle : messages.devicesUnavailable}</h2>
           <PermissionState decision={viewDecision}>
@@ -145,24 +144,17 @@ export function DevicesPage({ loadDevices, capabilities = [], moduleAssigned = t
   }
 
   return (
-    <section className="devices-page" aria-labelledby="devices-page-title">
-      <header className="page-header">
-        <div>
-          <p className="eyebrow">{messages.devicesEyebrow}</p>
-          <h1 id="devices-page-title">{messages.devicesTitle}</h1>
-          <p>{messages.devicesIntro}</p>
-        </div>
-        <div className="page-header__actions">
+    <section className="devices-page" aria-label="Devices">
+      <WorkspacePageHeader eyebrow={messages.devicesEyebrow} title={messages.devicesTitle} description={messages.devicesIntro} actions={<div className="page-header__actions">
           <button type="button" onClick={() => setRefreshVersion((version) => version + 1)} disabled={loading}>{messages.usersRefreshAction}</button>
           <button type="button" onClick={() => void exportDevices()} disabled={exportPending}>Export filtered CSV</button>
-        </div>
-      </header>
+        </div>} />
 
       {exportMessage && <p role="status">{exportMessage}</p>}
       {exportError && <p role="alert">{exportError}</p>}
 
-      {result && <DataFreshness fetchedAt={result.fetchedAt} freshness={result.freshness === 'live' ? 'fresh' : result.freshness === 'stale' ? 'stale' : 'unavailable'} partialData={result.partialData} message={result.error?.message} labels={{ fresh: 'Device data is fresh', stale: 'Device data may be stale', unavailable: 'Device data is unavailable' }} />}
-      {result && <div className="device-summary-grid" aria-label="Device summary">
+      {!failed && result && <DataFreshness fetchedAt={result.fetchedAt} freshness={result.freshness === 'live' ? 'fresh' : result.freshness === 'stale' ? 'stale' : 'unavailable'} partialData={result.partialData} message={result.error ? 'Some device data could not be loaded.' : undefined} labels={{ fresh: 'Device data is fresh', stale: 'Device data may be stale', unavailable: 'Device data is unavailable' }} />}
+      {!failed && result && !result.error && <div className="device-summary-grid" aria-label="Device summary">
         <SummaryCard label="Managed devices" value={String(result.total)} detail="In the current result" />
         <SummaryCard label="Compliant" value={String(summary?.compliant ?? 0)} detail="Ready for work" />
         <SummaryCard label="Noncompliant" value={String(summary?.noncompliant ?? 0)} detail="Needs attention" />
@@ -176,10 +168,10 @@ export function DevicesPage({ loadDevices, capabilities = [], moduleAssigned = t
         {(filters.search || filters.complianceState || filters.operatingSystem) && <button type="button" onClick={() => setFilters(emptyFilters)}>Clear filters</button>}
       </div>
 
-      {failed && <section className="permission-panel" role="alert"><h2>{messages.devicesUnavailable}</h2><p>{messages.permissionRequiredBody}</p><button type="button" onClick={() => setRefreshVersion((version) => version + 1)}>{messages.retry}</button></section>}
-      {!failed && result?.error && <section className="permission-panel" role="alert"><h2>{deviceErrorTitle}</h2><p>{result.error.message}</p><button type="button" onClick={() => setRefreshVersion((version) => version + 1)}>{messages.retry}</button></section>}
-      {!failed && loading && !result && <div className="async-state async-state--loading" role="status"><span className="async-state__bar" /><span className="async-state__bar" /><span className="async-state__bar" />{messages.devicesLoading}</div>}
-      {!failed && !result?.error && !loading && result && result.items.length === 0 && <div className="async-state">{messages.devicesNoResults}</div>}
+      {failed && <section className="permission-panel"><h2>{messages.devicesUnavailable}</h2><WorkspaceDataState state="unavailable" message={messages.permissionRequiredBody} onRetry={() => setRefreshVersion((version) => version + 1)} /></section>}
+      {!failed && result?.error && <section className="permission-panel"><h2>{deviceErrorTitle}</h2><WorkspaceDataState state="unavailable" message="Device data is unavailable. Check Notifications for details." onRetry={() => setRefreshVersion((version) => version + 1)} /></section>}
+      {!failed && loading && !result && <WorkspaceDataState state="loading" message={messages.devicesLoading} />}
+      {!failed && !result?.error && !loading && result && result.items.length === 0 && <WorkspaceDataState state="empty" message={messages.devicesNoResults} />}
       {!failed && !result?.error && result && result.items.length > 0 && <DevicesTable devices={result.items} canManage={privilegedDecision.state === 'allowed'} onOpenDetails={(device, trigger) => { if (onNavigate) { onNavigate(`/devices/${encodeURIComponent(device.id)}`); return; } detailsTriggerRef.current = trigger; setDetailsTarget(device); }} onAction={(device, action) => setActionTarget({ device, action })} />}
       {!failed && !result?.error && result && <div className="table-pagination" aria-label={messages.devicesPaginationLabel}><span>{messages.devicesPageLabel(previousTokens.length + 1)}</span><div><button type="button" onClick={goPrevious} disabled={previousTokens.length === 0 || loading}>{messages.devicesPreviousPage}</button><button type="button" onClick={goNext} disabled={!result.continuationToken || loading}>{messages.devicesNextPage}</button></div></div>}
 
@@ -199,20 +191,21 @@ function SummaryCard({ label, value, detail }: { label: string; value: string; d
 
 function DevicesTable({ devices, canManage, onOpenDetails, onAction }: { devices: ManagedDevice[]; canManage: boolean; onOpenDetails: (device: ManagedDevice, trigger: HTMLElement) => void; onAction: (device: ManagedDevice, action: DeviceAction) => void }) {
   return (
-    <div className="users-table-wrap">
+    <ResponsiveDataView items={devices} keyOf={device => device.id} label="Devices" renderCompact={device => <>
+      <strong>{device.deviceName || messages.devicesUnknown}</strong>
+      <dl className="responsive-data-view__details"><div><dt>{messages.devicesDeviceIdLabel}</dt><dd>{device.id}</dd></div><div><dt>{messages.devicesPlatformColumn}</dt><dd>{[device.operatingSystem, device.osVersion].filter(Boolean).join(' ') || messages.devicesUnknown}</dd></div><div><dt>{messages.devicesComplianceColumn}</dt><dd>{device.complianceState || messages.devicesUnknown}</dd></div><div><dt>{messages.devicesOwnerColumn}</dt><dd>{device.managedDeviceOwnerType || messages.devicesUnknown}</dd></div><div><dt>{messages.devicesLastSyncColumn}</dt><dd>{device.lastSyncDateTime ? new Date(device.lastSyncDateTime).toLocaleString() : messages.devicesNotSynced}</dd></div><div><dt>{messages.devicesHardwareColumn}</dt><dd>{[device.manufacturer, device.model, device.serialNumber].filter(Boolean).join(' ') || messages.devicesUnknown}</dd></div></dl>
+      <div className="responsive-data-view__actions"><button type="button" className="table-action" aria-label={`${messages.devicesOpenDetails} for ${device.deviceName || device.id}`} onClick={event => onOpenDetails(device, event.currentTarget)}>{messages.devicesOpenDetails}</button>{canManage && <ActionMenu label={`${messages.devicesActionsFor} ${device.deviceName || device.id}`} items={actionItems(device, onAction)} />}</div>
+    </>} renderTable={rows => <div className="users-table-wrap">
       <table className="users-table" aria-label={messages.devicesTableLabel}>
-        <thead><tr><th>{messages.devicesNameColumn}</th><th>{messages.devicesPlatformColumn}</th><th>{messages.devicesComplianceColumn}</th><th>{messages.devicesOwnerColumn}</th><th>{messages.devicesLastSyncColumn}</th><th>{messages.devicesHardwareColumn}</th><th>{messages.devicesActionsColumn}</th></tr></thead>
-        <tbody>{devices.map((device) => <tr key={device.id}>
+        <thead><tr><th scope="col">{messages.devicesNameColumn}</th><th scope="col">{messages.devicesPlatformColumn}</th><th scope="col">{messages.devicesComplianceColumn}</th><th scope="col">{messages.devicesActionsColumn}</th></tr></thead>
+        <tbody>{rows.map((device) => <tr key={device.id}>
           <td data-label={messages.devicesNameColumn}><strong>{device.deviceName || messages.devicesUnknown}</strong><small>{device.id}</small></td>
           <td data-label={messages.devicesPlatformColumn}>{device.operatingSystem || messages.devicesUnknown}<small>{device.osVersion || ''}</small></td>
           <td data-label={messages.devicesComplianceColumn}><span className="status-badge" data-tone={tone(device.complianceState)}>{device.complianceState || messages.devicesUnknown}</span></td>
-          <td data-label={messages.devicesOwnerColumn}>{device.managedDeviceOwnerType || messages.devicesUnknown}<small>{device.userId || ''}</small></td>
-          <td data-label={messages.devicesLastSyncColumn}>{device.lastSyncDateTime ? new Date(device.lastSyncDateTime).toLocaleString() : messages.devicesNotSynced}</td>
-          <td data-label={messages.devicesHardwareColumn}>{[device.manufacturer, device.model].filter(Boolean).join(' ') || messages.devicesUnknown}<small>{device.serialNumber || ''}</small></td>
           <td data-label={messages.devicesActionsColumn} className="detail-table__actions"><button type="button" className="table-action" aria-label={`${messages.devicesOpenDetails} for ${device.deviceName || device.id}`} onClick={(event) => onOpenDetails(device, event.currentTarget)}>{messages.devicesOpenDetails}</button>{canManage && <ActionMenu label={`${messages.devicesActionsFor} ${device.deviceName || device.id}`} items={actionItems(device, onAction)} />}</td>
         </tr>)}</tbody>
       </table>
-    </div>
+    </div>} />
   );
 }
 

@@ -4,6 +4,9 @@ import { ConfirmationDialog } from '../../components/ConfirmationDialog';
 import type { CapabilityDecision } from '../../capabilities/capabilityTypes';
 import type { ApiFetch } from '../users/userDetailApi';
 import { executeDeviceAction, fetchBitlockerMetadata, fetchDeviceDetail, fetchLapsMetadata, revealBitlocker, revealLaps, RecoveryFailure, type BitlockerMetadata, type DeviceAction, type LapsMetadata, type ManagedDevice, type RecoveryResponse } from './devicesApi';
+import { WorkspacePageHeader } from '../../components/WorkspacePageHeader';
+import { WorkspaceDataState } from '../../components/WorkspaceDataState';
+import { useWorkspaceIssueReporter } from '../../notifications/WorkspaceNotifications';
 
 type VisibleSecret = { type: 'bitlocker'; value: string } | { type: 'laps'; value: string; accountName?: string | null };
 
@@ -14,6 +17,8 @@ export function DeviceDetailPage({ deviceId, capabilities = [], onNavigate }: { 
 
 function DeviceDetailContent({ id, capabilities, onNavigate }: { id: string; capabilities: CapabilityDecision[]; onNavigate?: (path: string) => void }) {
   const api = useApi() as ApiFetch;
+  const issueReporter = useWorkspaceIssueReporter();
+  const [refreshVersion, setRefreshVersion] = useState(0);
   const [device, setDevice] = useState<ManagedDevice | null>(null);
   const [deviceFetchedAt, setDeviceFetchedAt] = useState<string | null>(null);
   const [detailError, setDetailError] = useState<RecoveryResponse<never> | null>(null);
@@ -59,13 +64,13 @@ function DeviceDetailContent({ id, capabilities, onNavigate }: { id: string; cap
     setBitlocker(null); setLaps(null); setBitlockerFetchedAt(null); setLapsFetchedAt(null);
     setBitlockerError(null); setLapsError(null); setBitlockerBusy(false); setLapsBusy(false); setReason(''); clearSecret();
     if (!id) { setDetailError({ status: 'invalid_target' }); setBusy(false); return () => { activeRef.current = false; }; }
-    fetchDeviceDetail(api, id).then(value => { if (!cancelled) { setDevice(value); setDeviceFetchedAt(new Date().toISOString()); } })
-      .catch(error => { if (!cancelled) setDetailError(failure(error)); })
+    fetchDeviceDetail(api, id).then(value => { if (!cancelled) { setDevice(value); setDeviceFetchedAt(new Date().toISOString()); issueReporter.clear('devices:detail:read'); } })
+      .catch(error => { if (!cancelled) { setDetailError(failure(error)); issueReporter.report({ key: 'devices:detail:read', area: 'devices', kind: 'service', severity: 'warning', title: 'Device details unavailable', detail: 'Try loading device details again.' }); } })
       .finally(() => { if (!cancelled) setBusy(false); });
     return () => { cancelled = true; activeRef.current = false; generationRef.current += 1;
       metadataGenerationRef.current.bitlocker += 1; metadataGenerationRef.current.laps += 1;
       if (clearTimerRef.current) clearTimeout(clearTimerRef.current); clearTimerRef.current = null; setSecret(null); };
-  }, [api, id, clearSecret]);
+  }, [api, id, clearSecret, refreshVersion, issueReporter]);
 
   const loadMetadata = async (type: 'bitlocker' | 'laps') => {
     const requestDeviceId = id;
@@ -129,10 +134,10 @@ function DeviceDetailContent({ id, capabilities, onNavigate }: { id: string; cap
 
   const back = () => { clearSecret(); if (onNavigate) onNavigate('/devices'); else window.location.assign('/devices'); };
 
-  return <section className="device-full-page" aria-labelledby="device-detail-title">
-    <header className="page-header"><div><button type="button" className="table-action" onClick={back}>← Back to devices</button><p className="eyebrow">Device details</p><h1 id="device-detail-title">{device?.deviceName || 'Device details'}</h1></div></header>
-    {busy && <p role="status">Loading device details…</p>}
-    {detailError && <div className="permission-panel" role="alert"><p>{recoveryMessage(detailError)}{correlationDetails(detailError)}</p><button type="button" onClick={() => window.location.reload()}>Retry</button></div>}
+  return <section className="device-full-page" aria-label="Device details">
+    <WorkspacePageHeader eyebrow="Device details" title={device?.deviceName || 'Device details'} actions={<button type="button" className="table-action" onClick={back}>← Back to devices</button>} />
+    {busy && <WorkspaceDataState state="loading" message="Loading device details…" />}
+    {detailError && <div className="permission-panel"><WorkspaceDataState state="unavailable" message="Device details are unavailable. Check Notifications for details." onRetry={() => setRefreshVersion(version => version + 1)} /></div>}
     {device && <>
       <SourceStamp source="Microsoft Graph · Intune managedDevices" label="Device details" fetchedAt={deviceFetchedAt} />
       <div className="device-detail-layout">

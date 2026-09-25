@@ -15,6 +15,16 @@ function decision(capability: CapabilityDecision['capability'], state: Capabilit
 describe('UsersTable', () => {
   afterEach(() => cleanup());
 
+  it('gives compact readers the user identifier and open action without a mutation control', () => {
+    vi.stubGlobal('matchMedia', () => ({ matches: true, addEventListener: () => {}, removeEventListener: () => {} }));
+    render(<UsersTable users={[{ ...users[0], userPrincipalName: 'a'.repeat(90) + '@example.com' }]} capabilities={[decision('users.update', 'hidden'), decision('users.disable', 'hidden')]} />);
+    const compact = screen.getByRole('list', { name: 'Users' });
+    expect(compact.textContent).toContain('a'.repeat(90) + '@example.com');
+    expect(compact.querySelector('button[aria-label="Open Ada Lovelace"]')).toBeTruthy();
+    expect(compact.querySelector('button[aria-label="Disable Ada Lovelace"]')).toBeNull();
+    vi.unstubAllGlobals();
+  });
+
   it('keeps primary columns compact and reveals mail and type on demand', () => {
     render(<UsersTable users={users} capabilities={[decision('users.update', 'allowed')]} />);
     expect(screen.queryByRole('columnheader', { name: 'Mail' })).toBeNull();
