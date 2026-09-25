@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import type { CapabilityDecision } from '../../capabilities/capabilityTypes';
 import { PermissionState } from '../../components/PermissionState';
 import { messages } from '../../app/messages';
@@ -17,6 +17,7 @@ export function UsersTable({
   onNavigate?: (path: string) => void;
   onDisable?: (user: UserSummary) => void;
 }) {
+  const [expanded, setExpanded] = useState<string[]>([]);
   const updateDecision = findDecision(capabilities, 'users.update');
   const disableDecision = findDecision(capabilities, 'users.disable');
   const showAccountStatus = updateDecision.state !== 'hidden' || disableDecision.state !== 'hidden';
@@ -29,8 +30,6 @@ export function UsersTable({
           <tr>
             <th scope="col">{messages.usersNameColumn}</th>
             <th scope="col">{messages.usersUpnColumn}</th>
-            <th scope="col">{messages.usersMailColumn}</th>
-            <th scope="col">{messages.usersTypeColumn}</th>
             {showAccountStatus && <th scope="col">{messages.usersAccountStatusColumn}</th>}
             <th scope="col">{messages.usersOpenColumn}</th>
             {showActions && <th scope="col">{messages.usersActionsColumn}</th>}
@@ -40,11 +39,10 @@ export function UsersTable({
           {users.map((user) => {
             const displayName = user.displayName || user.userPrincipalName || user.mail || messages.usersUnnamedUser;
             return (
-              <tr key={user.id}>
-                <th scope="row" data-label={messages.usersNameColumn}>{displayName}</th>
+              <React.Fragment key={user.id}>
+              <tr>
+                <th scope="row" data-label={messages.usersNameColumn}><span className="users-name-cell"><strong>{displayName}</strong><button type="button" className="table-action" aria-label={`${expanded.includes(user.id) ? 'Less' : 'More'} details for ${displayName}`} aria-expanded={expanded.includes(user.id)} aria-controls={expanded.includes(user.id) ? `user-more-${user.id}` : undefined} onClick={() => setExpanded((current) => current.includes(user.id) ? current.filter((id) => id !== user.id) : [...current, user.id])}>{expanded.includes(user.id) ? 'Less' : 'More'}</button></span></th>
                 <td data-label={messages.usersUpnColumn}>{user.userPrincipalName || messages.usersUnavailableValue}</td>
-                <td data-label={messages.usersMailColumn}>{user.mail || messages.usersUnavailableValue}</td>
-                <td data-label={messages.usersTypeColumn}>{user.userType || messages.usersUnavailableValue}</td>
                 {showAccountStatus && <td data-label={messages.usersAccountStatusColumn}>{labelStatus(user.accountEnabled)}</td>}
                 <td data-label={messages.usersOpenColumn}>
                   <button type="button" className="table-action" onClick={() => navigateToUser(user.id, onNavigate)} aria-label={`${messages.usersOpenAction} ${displayName}`}>
@@ -68,6 +66,8 @@ export function UsersTable({
                   </td>
                 )}
               </tr>
+              {expanded.includes(user.id) && <tr id={`user-more-${user.id}`} className="users-table__detail"><td colSpan={3 + Number(showAccountStatus) + Number(showActions)}><dl><div><dt>{messages.usersMailColumn}</dt><dd>{user.mail || messages.usersUnavailableValue}</dd></div><div><dt>{messages.usersTypeColumn}</dt><dd>{user.userType || messages.usersUnavailableValue}</dd></div></dl></td></tr>}
+              </React.Fragment>
             );
           })}
         </tbody>

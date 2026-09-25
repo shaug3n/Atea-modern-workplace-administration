@@ -134,7 +134,7 @@ export function UserDetailPage({ userId, loadUserDetail, capabilities = [], modu
             <h1 id="user-detail-title">{detail.user.displayName || detail.user.userPrincipalName || messages.usersUnnamedUser}</h1>
             <p className="user-detail-hero__upn">{user.userPrincipalName || messages.usersUnavailableValue}</p>
             <div className="user-detail-hero__status" aria-label="User status">
-              <span className="status-badge" data-tone={user.accountEnabled === false ? 'danger' : 'success'}>{user.accountEnabled === false ? messages.userAccountDisabled : messages.userAccountEnabled}</span>
+              <span className="status-badge" data-tone={user.accountEnabled === false ? 'danger' : user.accountEnabled === true ? 'success' : 'warning'}>{user.accountEnabled === false ? messages.userAccountDisabled : user.accountEnabled === true ? messages.userAccountEnabled : 'Account status unavailable'}</span>
               {user.userType && <span className="status-badge" data-tone="info">{user.userType}</span>}
               {user.isReadOnly && <span className="status-badge" data-tone="warning">Read-only source</span>}
             </div>
@@ -145,7 +145,18 @@ export function UserDetailPage({ userId, loadUserDetail, capabilities = [], modu
             {disableDecision.state === 'allowed' && user.accountEnabled === false && <button className="button button--secondary" type="button" onClick={() => { setMutationError(null); setReactivateOpen(true); }}>Reactivate user</button>}
             {resetPasswordDecision.state === 'allowed' && !user.isReadOnly && <button className="button button--primary" type="button" onClick={() => { setMutationError(null); setResetPasswordOpen(true); }}>Reset password</button>}
             {revokeSessionsDecision.state === 'allowed' && !user.isReadOnly && <ActionMenu label="Actions" items={[{ label: 'Revoke sessions', danger: true, onSelect: () => setRevokeSessionsOpen(true) }]} />}
+            <div className="user-action-guidance" aria-label="Action availability">
+              <ActionGuidance label="Edit user" decision={updateDecision} readOnlySource={user.isReadOnly} />
+              {user.accountEnabled === false && <ActionGuidance label="Reactivate user" decision={disableDecision} readOnlySource={user.isReadOnly} />}
+              <ActionGuidance label="Reset password" decision={resetPasswordDecision} readOnlySource={user.isReadOnly} />
+              <ActionGuidance label="Revoke sessions" decision={revokeSessionsDecision} readOnlySource={user.isReadOnly} />
+            </div>
         </div>
+      </div>
+      <div className="user-status-strip" role="region" aria-label="User status summary">
+        <div><span>Account</span><strong>{user.accountEnabled === true ? 'Enabled' : user.accountEnabled === false ? 'Disabled' : 'Unavailable'}</strong></div>
+        <div><span>MFA</span><strong>{authenticationMethodsDecision.state === 'allowed' || authenticationMethodsDecision.state === 'read_only' ? <a href="#authentication-methods-section-title">Review methods</a> : 'Unavailable in summary'}</strong></div>
+        {(modules === undefined || modules.includes('licenses')) && <div><span>Licenses</span><strong>{!detail.licenses.access.partialData && ['allowed', 'read_only'].includes(detail.licenses.access.authorization.state) ? `${detail.licenses.items.length} assigned` : 'Unavailable'}</strong></div>}
       </div>
       {mutationError && <p role="alert">{mutationError}</p>}
       {editOpen && <UserEditDialog user={user} onCancel={() => { if (!mutationPending) setEditOpen(false); }} onCompleted={(response) => response.status === 'succeeded' ? refreshAfterSuccess() : setMutationError(formatMutationError(response))} />}
@@ -159,12 +170,29 @@ export function UserDetailPage({ userId, loadUserDetail, capabilities = [], modu
         <GroupsSection section={detail.groups} canManage={findDecision(capabilities, 'groups.manage_members').state === 'allowed'} onAdd={() => setGroupAction({ id: null, mode: 'add' })} onRemove={(item) => setGroupAction({ id: item.id, target: item.displayName || item.id, mode: 'remove' })} />
         <RolesAndPimSection roles={detail.roles} pim={detail.pim} />
         {authenticationMethodsDecision.state !== 'hidden' && <AuthenticationMethodsSection userId={user.id} userLabel={user.displayName || user.userPrincipalName || user.id} decision={authenticationMethodsDecision} manageDecision={authenticationMethodsManageDecision} />}
-        <AssociatedDevicesSection userId={user.id} decision={devicesViewDecision} />
+        {(modules === undefined || modules.includes('devices')) && <AssociatedDevicesSection userId={user.id} decision={devicesViewDecision} />}
       </div>
       {groupAction && <GroupMembershipDialog userId={user.id} groupId={groupAction.id} target={groupAction.target} assignedGroupIds={detail.groups.items.map((item) => item.id)} mode={groupAction.mode} onCancel={() => setGroupAction(null)} onCompleted={(response) => response.status === 'succeeded' ? (setGroupAction(null), refreshAfterSuccess()) : setMutationError(formatMutationError(response))} />}
       {licenseAction && (modules === undefined || modules.includes('licenses')) && <LicenseAssignmentDialog userId={user.id} skuId={licenseAction.id} target={licenseAction.target} assignedSkuIds={detail.licenses.items.map((item) => item.skuId)} mode={licenseAction.mode} onCancel={() => setLicenseAction(null)} onCompleted={(response) => response.status === 'succeeded' ? (setLicenseAction(null), refreshAfterSuccess()) : setMutationError(formatMutationError(response))} />}
     </section>
   );
+}
+
+function ActionGuidance({ label, decision, readOnlySource }: { label: string; decision: CapabilityDecision; readOnlySource: boolean }) {
+  if (decision.state === 'hidden' || (!readOnlySource && decision.state === 'allowed')) return null;
+  const explanation = readOnlySource
+    ? 'This account is read-only at its source of authority.'
+    : ({
+      read_only: 'This action is read-only for your current Entra role.',
+      pim_activation_required: 'Activate the required Entra role in PIM before continuing.',
+      pim_approval_required: 'This action is waiting for PIM approval.',
+      pim_mfa_required: 'Complete MFA for PIM activation before continuing.',
+      pim_eligibility_expired: 'Your PIM eligibility has expired. Request renewed access.',
+      consent_required: 'Delegated Microsoft Graph consent is required before this action can run.',
+      disabled: 'This action is disabled for the current workspace.',
+      temporarily_unavailable: 'Microsoft Graph authorization could not be verified. Try again later.',
+    } as Partial<Record<CapabilityDecision['state'], string>>)[decision.state] ?? 'This action is unavailable with your current permissions.';
+  return <p role="status">{label}: {explanation}</p>;
 }
 
 function initials(value: string) {

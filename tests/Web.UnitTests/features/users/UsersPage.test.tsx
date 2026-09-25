@@ -37,6 +37,50 @@ describe('UsersPage', () => {
   afterEach(() => {
     cleanup();
     apiMock.mockReset();
+    window.history.replaceState(null, '', '/users');
+  });
+
+  it('loads supported filters from the URL and writes edits back without unsupported role filters', async () => {
+    window.history.replaceState(null, '', '/users?search=Ada&accountStatus=enabled&userType=Member&license=E3&tenantRole=Global');
+    const loadUsers = vi.fn(async () => usersResponse);
+    render(<UsersPage capabilities={allowedCapabilities} loadUsers={loadUsers} />);
+
+    await waitFor(() => expect(loadUsers).toHaveBeenCalledWith(expect.objectContaining({ search: 'Ada', accountStatus: 'enabled', userType: 'Member', license: 'E3', tenantRole: '' }), null));
+    expect(window.location.search).not.toContain('tenantRole');
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search users' }), { target: { value: 'Grace' } });
+    await waitFor(() => expect(new URLSearchParams(window.location.search).get('search')).toBe('Grace'));
+  });
+
+  it('offers a disabled filtered CSV export with the Task 4 endpoint explanation', async () => {
+    render(<UsersPage capabilities={allowedCapabilities} loadUsers={async () => usersResponse} />);
+    const button = screen.getByRole('button', { name: /export filtered csv/i }) as HTMLButtonElement;
+    expect(button.disabled).toBe(true);
+    expect(screen.getByText(/export endpoint.*Task 4/i)).toBeTruthy();
+  });
+
+  it('announces the page number and disables paging while loading', async () => {
+    const first = { ...usersResponse, continuationToken: 'next' };
+    let resolveSecond!: (value: UsersDirectoryResponse) => void;
+    const loadUsers = vi.fn().mockResolvedValueOnce(first).mockImplementationOnce(() => new Promise<UsersDirectoryResponse>((resolve) => { resolveSecond = resolve; }));
+    render(<UsersPage capabilities={allowedCapabilities} loadUsers={loadUsers} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Next page' }));
+    expect(screen.getByText('Page 2')).toBeTruthy();
+    expect((screen.getByRole('button', { name: 'Next page' }) as HTMLButtonElement).disabled).toBe(true);
+    resolveSecond(usersResponse);
+  });
+
+  it('shows a response error as an access failure instead of an empty result', async () => {
+    render(<UsersPage capabilities={allowedCapabilities} loadUsers={async () => ({ ...usersResponse, items: [], error: { category: 'not_authorized', message: 'Directory access was denied.' } })} />);
+    expect(await screen.findByRole('alert')).toBeTruthy();
+    expect(screen.getByText('Directory access was denied.')).toBeTruthy();
+    expect(screen.queryByText('No users match the current filters.')).toBeNull();
+  });
+
+  it('guides PIM-gated directory access without fetching users', async () => {
+    const loadUsers = vi.fn(async () => usersResponse);
+    render(<UsersPage capabilities={[{ capability: 'users.view', state: 'pim_activation_required', reasonCode: 'pim_activation_required', nextStep: { label: 'Activate the required Entra role', href: '/identity' } }]} loadUsers={loadUsers} />);
+    expect(await screen.findByText(/Activate the required Entra role in PIM/)).toBeTruthy();
+    expect(loadUsers).not.toHaveBeenCalled();
   });
 
   it('opens the create form when the create capability is allowed', async () => {

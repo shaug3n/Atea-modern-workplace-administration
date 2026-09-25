@@ -22,8 +22,8 @@ const emptyFilters: UserFiltersState = {
 
 export function UsersPage({ capabilities, onNavigate, loadUsers }: { capabilities: CapabilityDecision[]; onNavigate?: (path: string) => void; loadUsers?: (filters: UserFiltersState, continuationToken: string | null) => Promise<UsersDirectoryResponse> }) {
   const api = useApi();
-  const [filters, setFilters] = useState(emptyFilters);
-  const [debouncedFilters, setDebouncedFilters] = useState(emptyFilters);
+  const [filters, setFilters] = useState(() => filtersFromUrl());
+  const [debouncedFilters, setDebouncedFilters] = useState(() => filtersFromUrl());
   const [continuationToken, setContinuationToken] = useState<string | null>(null);
   const [previousTokens, setPreviousTokens] = useState<string[]>([]);
   const [result, setResult] = useState<UsersDirectoryResponse | null>(null);
@@ -43,6 +43,21 @@ export function UsersPage({ capabilities, onNavigate, loadUsers }: { capabilitie
   const disableTargetName = disableTarget ? displayName(disableTarget) : '';
 
   useEffect(() => {
+    const restore = () => setFilters(filtersFromUrl());
+    window.addEventListener('popstate', restore);
+    return () => window.removeEventListener('popstate', restore);
+  }, []);
+
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    for (const key of ['search', 'accountStatus', 'license', 'userType', 'tenantRole']) url.searchParams.delete(key);
+    for (const key of ['search', 'accountStatus', 'license', 'userType'] as const) {
+      if (filters[key].trim()) url.searchParams.set(key, filters[key].trim());
+    }
+    window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`);
+  }, [filters]);
+
+  useEffect(() => {
     const timeout = window.setTimeout(() => {
       setPreviousTokens([]);
       setContinuationToken(null);
@@ -52,16 +67,9 @@ export function UsersPage({ capabilities, onNavigate, loadUsers }: { capabilitie
   }, [filters]);
 
   useEffect(() => {
-    if (usersView.state === 'hidden') {
+    if (usersView.state !== 'allowed' && usersView.state !== 'read_only') {
       setLoading(false);
-      setResult({
-        items: [],
-        continuationToken: null,
-        fetchedAt: new Date().toISOString(),
-        freshness: 'unavailable',
-        partialData: true,
-        error: { category: 'capability_required', message: messages.usersNoPermissionBody, state: usersView.state },
-      });
+      setResult(null);
       return;
     }
 
@@ -142,6 +150,7 @@ export function UsersPage({ capabilities, onNavigate, loadUsers }: { capabilitie
   }, [api, disableTarget, usersDisable.state]);
 
   const state = loading ? 'loading' : loadFailed ? 'error' : result && result.items.length === 0 ? 'empty' : 'ready';
+  const readable = usersView.state === 'allowed' || usersView.state === 'read_only';
 
   return (
     <section className="users-page" aria-labelledby="users-page-title">
@@ -156,25 +165,28 @@ export function UsersPage({ capabilities, onNavigate, loadUsers }: { capabilitie
             <button type="button" onClick={() => setCreateOpen(true)}>{messages.usersCreateAction}</button>
           </PermissionState>
           <button type="button" onClick={() => setRefreshVersion((version) => version + 1)}>{messages.usersRefreshAction}</button>
+          <span className="users-export"><button type="button" disabled aria-describedby="users-export-note">Export filtered CSV</button><small id="users-export-note">Filtered CSV export will be available when the export endpoint lands in Task 4.</small></span>
         </div>
       </div>
 
       <UserFilters filters={filters} onChange={setFilters} />
 
-      {result && (
+      {readable && result && (
         <DataFreshness
           fetchedAt={result.fetchedAt}
           freshness={result.freshness}
           partialData={result.partialData}
-          message={result.error?.message}
+          message={result.items.length ? result.error?.message : undefined}
         />
       )}
 
-      {result?.error?.category === 'capability_required' && usersView.state === 'hidden' ? (
+      {!readable ? (
         <section className="permission-panel" role="status">
-          <h2>{messages.usersNoPermissionTitle}</h2>
-          <p>{messages.usersNoPermissionBody}</p>
+          <h2>{usersView.state.startsWith('pim_') ? messages.usersPimRequiredTitle : messages.usersNoPermissionTitle}</h2>
+          {usersView.state === 'hidden' ? <p>{messages.usersNoPermissionBody}</p> : <PermissionState decision={usersView}><span>{usersView.state.startsWith('pim_') ? messages.usersPimRequiredBody : messages.usersNoPermissionBody}</span></PermissionState>}
         </section>
+      ) : result?.error && result.items.length === 0 ? (
+        <section className="permission-panel" role="alert"><h2>{messages.usersUnavailable}</h2><p>{result.error.message}</p><button type="button" onClick={() => setRefreshVersion((version) => version + 1)}>Retry</button></section>
       ) : (
         <AsyncState state={state} empty={<span>{messages.usersNoResults}</span>}>
           {result && (
@@ -209,12 +221,26 @@ export function UsersPage({ capabilities, onNavigate, loadUsers }: { capabilitie
         }
       }} />}
 
-      <div className="pagination-controls" aria-label={messages.usersPaginationLabel}>
-        <button type="button" onClick={goPrevious} disabled={previousTokens.length === 0}>{messages.usersPreviousPage}</button>
-        <button type="button" onClick={goNext} disabled={!result?.continuationToken}>{messages.usersNextPage}</button>
-      </div>
+      {readable && !loadFailed && result && !result.error && <nav className="pagination-controls" aria-label={messages.usersPaginationLabel}>
+        <span role="status" aria-live="polite">Page {previousTokens.length + 1}</span>
+        <button type="button" onClick={goPrevious} disabled={loading || previousTokens.length === 0}>{messages.usersPreviousPage}</button>
+        <button type="button" onClick={goNext} disabled={loading || !result.continuationToken}>{messages.usersNextPage}</button>
+      </nav>}
     </section>
   );
+}
+
+function filtersFromUrl(): UserFiltersState {
+  const parameters = new URLSearchParams(window.location.search);
+  const accountStatus = parameters.get('accountStatus') ?? '';
+  const userType = parameters.get('userType') ?? '';
+  return {
+    ...emptyFilters,
+    search: parameters.get('search') ?? '',
+    accountStatus: accountStatus === 'enabled' || accountStatus === 'disabled' ? accountStatus : '',
+    userType: userType === 'Member' || userType === 'Guest' ? userType : '',
+    license: parameters.get('license') ?? '',
+  };
 }
 
 function findDecision(capabilities: CapabilityDecision[], capability: CapabilityDecision['capability']): CapabilityDecision {

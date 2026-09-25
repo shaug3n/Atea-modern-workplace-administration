@@ -15,6 +15,18 @@ function decision(capability: CapabilityDecision['capability'], state: Capabilit
 describe('UsersTable', () => {
   afterEach(() => cleanup());
 
+  it('keeps primary columns compact and reveals mail and type on demand', () => {
+    render(<UsersTable users={users} capabilities={[decision('users.update', 'allowed')]} />);
+    expect(screen.queryByRole('columnheader', { name: 'Mail' })).toBeNull();
+    expect(screen.queryByRole('columnheader', { name: 'User type' })).toBeNull();
+    const expand = screen.getByRole('button', { name: 'More details for Ada Lovelace' });
+    expect(expand.getAttribute('aria-expanded')).toBe('false');
+    fireEvent.click(expand);
+    expect(expand.getAttribute('aria-expanded')).toBe('true');
+    expect(screen.getByText('Mail')).toBeTruthy();
+    expect(screen.getByText('Member')).toBeTruthy();
+  });
+
   it('hides the account status column when the related capability is hidden', () => {
     render(
       <UsersTable

@@ -63,6 +63,37 @@ const detail: UserDetailResponse = {
 describe('UserDetailPage', () => {
   afterEach(() => { cleanup(); apiMock.mockReset(); });
 
+  it('omits license and device sections when their modules are unassigned, including nested fetches', async () => {
+    render(<UserDetailPage userId="user-1" modules={['users']} loadUserDetail={async () => detail} capabilities={[{ capability: 'devices.view', state: 'allowed', reasonCode: 'active_role' }]} />);
+    expect(await screen.findByRole('heading', { name: 'Ada Lovelace' })).toBeTruthy();
+    expect(screen.queryByRole('heading', { name: 'Licenses' })).toBeNull();
+    expect(screen.queryByRole('heading', { name: 'Associated devices' })).toBeNull();
+    expect(apiMock).not.toHaveBeenCalled();
+  });
+
+  it('summarizes only verified account and license data and guides MFA review', async () => {
+    render(<UserDetailPage userId="user-1" modules={['users', 'licenses']} loadUserDetail={async () => detail} />);
+    await screen.findByRole('heading', { name: 'Ada Lovelace' });
+    const strip = screen.getByRole('region', { name: 'User status summary' });
+    expect(strip.textContent).toContain('Account');
+    expect(strip.textContent).toContain('Enabled');
+    expect(strip.textContent).toContain('1 assigned');
+    expect(strip.textContent).toContain('MFA');
+    expect(strip.textContent).not.toMatch(/last sign.in/i);
+  });
+
+  it('explains each unavailable quick action using its own capability decision', async () => {
+    render(<UserDetailPage userId="user-1" loadUserDetail={async () => ({ ...detail, user: { ...detail.user!, isReadOnly: false } })} capabilities={[
+      { capability: 'users.update', state: 'read_only', reasonCode: 'role_read_only' },
+      { capability: 'users.reset_password', state: 'pim_activation_required', reasonCode: 'pim_activation_required' },
+      { capability: 'users.sessions.revoke', state: 'consent_required', reasonCode: 'consent_required' },
+    ]} />);
+    await screen.findByRole('heading', { name: 'Ada Lovelace' });
+    expect(screen.getByText(/Edit user:.*read-only/i)).toBeTruthy();
+    expect(screen.getByText(/Reset password:.*PIM/i)).toBeTruthy();
+    expect(screen.getByText(/Revoke sessions:.*consent/i)).toBeTruthy();
+  });
+
   it('renders independent sections, PIM activation contract, and source-of-authority read-only explanation', async () => {
     render(<UserDetailPage userId="user-1" loadUserDetail={async () => detail} />);
 

@@ -45,15 +45,6 @@ export function UserFilters({ filters, onChange }: { filters: UserFiltersState; 
         </select>
       </label>
       <label>
-        <span>{messages.usersTenantRoleLabel}</span>
-        <input aria-label={messages.usersTenantRoleLabel} value="" disabled placeholder={messages.usersTenantRolePlaceholder} aria-describedby="users-tenant-role-unavailable" />
-        <small id="users-tenant-role-unavailable">Tenant-role filtering is unavailable until the directory has a safe role-assignment index.</small>
-      </label>
-      <label>
-        <span>{messages.usersLicenseLabel}</span>
-        <input aria-label={messages.usersLicenseLabel} value={draft.license} onChange={(event) => update({ license: event.currentTarget.value })} placeholder={messages.usersLicensePlaceholder} />
-      </label>
-      <label>
         <span>{messages.usersUserTypeLabel}</span>
         <select value={draft.userType} onChange={(event) => update({ userType: event.currentTarget.value })}>
           <option value="">{messages.usersFilterAny}</option>
@@ -61,6 +52,20 @@ export function UserFilters({ filters, onChange }: { filters: UserFiltersState; 
           <option value="Guest">Guest</option>
         </select>
       </label>
+      <details className="users-filters__more" open={Boolean(draft.license)}>
+        <summary>More filters</summary>
+        <div className="users-filters__more-fields">
+          <label>
+            <span>{messages.usersLicenseLabel}</span>
+            <input aria-label={messages.usersLicenseLabel} value={draft.license} onChange={(event) => update({ license: event.currentTarget.value })} placeholder={messages.usersLicensePlaceholder} />
+          </label>
+          <label>
+            <span>{messages.usersTenantRoleLabel}</span>
+            <input aria-label={messages.usersTenantRoleLabel} value="" disabled placeholder={messages.usersTenantRolePlaceholder} aria-describedby="users-tenant-role-unavailable" />
+            <small id="users-tenant-role-unavailable">Tenant-role filtering is unavailable until the directory has a safe role-assignment index.</small>
+          </label>
+        </div>
+      </details>
       {chips.length > 0 && (
         <div className="filter-chips" aria-label={messages.usersActiveFiltersLabel}>
           {chips.map((chip) => (

@@ -6,6 +6,14 @@ import { UserFilters } from '../../../../src/Web/src/features/users/UserFilters'
 describe('UserFilters', () => {
   afterEach(() => cleanup());
 
+  it('keeps the first row to search, status and type with optional filters in a disclosure', () => {
+    render(<UserFilters filters={{ search: '', accountStatus: '', tenantRole: '', license: '', userType: '' }} onChange={vi.fn()} />);
+    const more = screen.getByText('More filters');
+    expect(more.closest('details')).toBeTruthy();
+    expect(screen.getByLabelText('License').closest('details')).toBe(more.closest('details'));
+    expect(screen.getByLabelText('Tenant role').closest('details')).toBe(more.closest('details'));
+  });
+
   it('marks tenant-role filtering unavailable until a safe role index exists', () => {
     const onChange = vi.fn();
     render(<UserFilters filters={{ search: '', accountStatus: '', tenantRole: '', license: '', userType: '' }} onChange={onChange} />);
