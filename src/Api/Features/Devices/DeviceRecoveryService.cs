@@ -31,7 +31,7 @@ public sealed class DeviceRecoveryService(
             var useSecretScope = HasScope(snapshot, "BitlockerKey.Read.All");
             if (ScopeProblem<IReadOnlyList<BitlockerRecoveryMetadata>>(snapshot, "BitlockerKey.ReadBasic.All", "BitlockerKey.Read.All") is { } scopeProblem) return scopeProblem;
             var result = await recoveryReader.ListBitlockerAsync(target.Value!.AzureAdDeviceId!, useSecretScope, cancellationToken);
-            if (result.Error is not null) return GraphProblem<IReadOnlyList<BitlockerRecoveryMetadata>>(result.Error, snapshot, false);
+            if (result.Error is not null) return GraphProblem<IReadOnlyList<BitlockerRecoveryMetadata>>(result.Error, snapshot, Capability.DevicesBitlockerMetadata);
             return result.Value.Count == 0 ? new("recovery_not_found") : new("succeeded", result.Value);
         }
         catch (OperationCanceledException) { throw; }
@@ -49,7 +49,7 @@ public sealed class DeviceRecoveryService(
             var useSecretScope = HasScope(snapshot, "DeviceLocalCredential.Read.All");
             if (ScopeProblem<LapsMetadata>(snapshot, "DeviceLocalCredential.ReadBasic.All", "DeviceLocalCredential.Read.All") is { } scopeProblem) return scopeProblem;
             var result = await recoveryReader.GetLapsMetadataAsync(target.Value!.AzureAdDeviceId!, useSecretScope, cancellationToken);
-            return result.Error is not null ? GraphProblem<LapsMetadata>(result.Error, snapshot, false) : new("succeeded", result.Value);
+            return result.Error is not null ? GraphProblem<LapsMetadata>(result.Error, snapshot, Capability.DevicesLapsMetadata) : new("succeeded", result.Value);
         }
         catch (OperationCanceledException) { throw; }
         catch { return new("temporarily_unavailable"); }
@@ -74,13 +74,14 @@ public sealed class DeviceRecoveryService(
                 {
                     // A caller-supplied key ID never authorizes a cross-device read.
                     var keys = await recoveryReader.ListBitlockerAsync(entraId!, true, cancellationToken);
-                    if (keys.Error is not null) outcome = GraphProblem<BitlockerSecret>(keys.Error, snapshot, true);
-                    else if (!keys.Value.Any(key => string.Equals(key.Id, keyId, StringComparison.OrdinalIgnoreCase))) outcome = new("recovery_not_found");
+                    if (keys.Error is not null) outcome = GraphProblem<BitlockerSecret>(keys.Error, snapshot, Capability.DevicesBitlockerReveal);
+                    else if (!keys.Value.Any(key => string.Equals(key.Id, keyId, StringComparison.OrdinalIgnoreCase)))
+                        outcome = new("recovery_not_found", GraphCorrelationId: keys.CorrelationId, GraphRequestId: keys.RequestId);
                     else
                     {
                         var secret = await recoveryReader.GetBitlockerAsync(keyId, cancellationToken);
                         outcome = secret.Error is not null
-                            ? GraphProblem<BitlockerSecret>(secret.Error, snapshot, true)
+                            ? GraphProblem<BitlockerSecret>(secret.Error, snapshot, Capability.DevicesBitlockerReveal)
                             : new("succeeded", secret.Value, GraphCorrelationId: secret.CorrelationId, GraphRequestId: secret.RequestId);
                     }
                 }
@@ -110,7 +111,7 @@ public sealed class DeviceRecoveryService(
                 {
                     var secret = await recoveryReader.GetLapsSecretAsync(entraId!, cancellationToken);
                     outcome = secret.Error is not null
-                        ? GraphProblem<LapsSecret>(secret.Error, snapshot, true, lapsSecret: true)
+                        ? GraphProblem<LapsSecret>(secret.Error, snapshot, Capability.DevicesLapsReveal)
                         : new("succeeded", secret.Value, GraphCorrelationId: secret.CorrelationId, GraphRequestId: secret.RequestId);
                 }
             }
@@ -149,7 +150,7 @@ public sealed class DeviceRecoveryService(
     private static bool ValidReason(string? reason) => !string.IsNullOrWhiteSpace(reason) && reason.Trim().Length <= 500 && !reason.Any(char.IsControl);
 
     private static RecoveryResult<T>? TargetProblem<T>(GraphReadResult<ManagedDeviceSummary?> result) =>
-        result.Error is not null ? GraphProblem<T>(result.Error, null, false)
+        result.Error is not null ? GraphProblem<T>(result.Error, null, null)
         : result.Value is null ? new("device_not_found")
         : string.IsNullOrWhiteSpace(result.Value.AzureAdDeviceId) ? new("entra_device_missing")
         : null;
@@ -164,7 +165,7 @@ public sealed class DeviceRecoveryService(
         return new(hasConsentProblem ? "consent_required" : hasTransientProblem ? "temporarily_unavailable" : "missing_scope", Error: string.Join(", ", alternatives));
     }
 
-    private static RecoveryResult<T> GraphProblem<T>(GraphOperationResult error, GraphAuthorizationSnapshot? snapshot, bool reveal, bool lapsSecret = false)
+    private static RecoveryResult<T> GraphProblem<T>(GraphOperationResult error, GraphAuthorizationSnapshot? snapshot, string? recoveryCapability)
     {
         var status = error.Category switch
         {
@@ -175,11 +176,13 @@ public sealed class DeviceRecoveryService(
             "invalid_target" => "invalid_target",
             _ => "temporarily_unavailable"
         };
-        var eligible = reveal && status == "graph_forbidden" && snapshot?.DirectoryRoles.Any(role =>
-            role.AssignmentState == DirectoryRoleAssignmentState.Eligible &&
-            (role.RoleTemplateId == EntraRoleCatalog.CloudDeviceAdministratorTemplateId || role.RoleTemplateId == EntraRoleCatalog.IntuneAdministratorTemplateId ||
-             (!lapsSecret && role.RoleTemplateId == EntraRoleCatalog.GlobalReaderTemplateId))) == true;
-        return new(status, Guidance: eligible ? "pim_activation_required" : null,
+        var eligible = recoveryCapability is not null && status == "graph_forbidden" && snapshot?.DirectoryRoles.Any(role =>
+            string.Equals(role.AssignmentState, DirectoryRoleAssignmentState.Eligible, StringComparison.OrdinalIgnoreCase)
+            && EntraRoleCatalog.SupportsRecoveryOperation(recoveryCapability, role.RoleTemplateId)) == true;
+        var guidance = eligible ? "pim_activation_required"
+            : status == "graph_forbidden" && recoveryCapability == Capability.DevicesLapsReveal ? "laps_password_role_required"
+            : null;
+        return new(status, Guidance: guidance,
             RetryAfterSeconds: error.RetryAfter is null ? null : (int)Math.Ceiling(error.RetryAfter.Value.TotalSeconds),
             GraphCorrelationId: error.CorrelationId, GraphRequestId: error.RequestId);
     }

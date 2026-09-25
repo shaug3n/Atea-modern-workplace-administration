@@ -320,13 +320,14 @@ public static class CapabilityEvaluator
 
         // Role snapshots cannot prove device ownership, custom roles, or administrative-unit scope.
         // A granted delegated scope permits an attempt; Graph decides access to the target.
-        var lapsReveal = capability == Capability.DevicesLapsReveal;
         var eligible = snapshot.DirectoryRoles.FirstOrDefault(role =>
             string.Equals(role.AssignmentState, DirectoryRoleAssignmentState.Eligible, StringComparison.OrdinalIgnoreCase)
-            && (role.RoleTemplateId is EntraRoleCatalog.CloudDeviceAdministratorTemplateId or EntraRoleCatalog.IntuneAdministratorTemplateId
-                || (!lapsReveal && role.RoleTemplateId is EntraRoleCatalog.GlobalReaderTemplateId or EntraRoleCatalog.GlobalAdministratorTemplateId)));
+            && EntraRoleCatalog.SupportsRecoveryOperation(capability, role.RoleTemplateId));
         return new CapabilityDecision(capability, CapabilityState.Allowed, "graph_authoritative",
-            NextStep: eligible is null ? null : new CapabilityNextStep("Activate eligible role if Graph denies access", "/identity"));
+            RequiredRoleTemplateId: eligible?.RoleTemplateId,
+            Pim: eligible?.Pim is { } pim ? new CapabilityPimState(pim.State, pim.ActivationUrl) : null,
+            NextStep: eligible is null ? null : new CapabilityNextStep(
+                $"Activate eligible {EntraRoleCatalog.DisplayNames[eligible.RoleTemplateId]} role in PIM if Graph denies access", "/identity"));
     }
 
     private static string NextStepLabel(string state) => state switch

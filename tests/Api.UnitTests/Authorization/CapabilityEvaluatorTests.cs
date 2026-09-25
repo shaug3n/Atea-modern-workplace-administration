@@ -24,6 +24,9 @@ public sealed class CapabilityEvaluatorTests
             roles: [EligibleRole(EntraRoleCatalog.CloudDeviceAdministratorTemplateId, PimRequirement.ActivationRequired)]);
         var decision = CapabilityEvaluator.Evaluate(snapshot, Member())[Capability.DevicesLapsReveal];
         decision.State.Should().Be(CapabilityState.Allowed);
+        decision.RequiredRoleTemplateId.Should().Be(EntraRoleCatalog.CloudDeviceAdministratorTemplateId);
+        decision.Pim!.State.Should().Be(PimRequirement.ActivationRequired);
+        decision.NextStep!.Label.Should().Contain("Cloud Device Administrator");
         decision.NextStep!.Href.Should().Be("/identity");
     }
 
@@ -32,6 +35,40 @@ public sealed class CapabilityEvaluatorTests
     {
         var snapshot = AvailableSnapshot(scopes: ["DeviceLocalCredential.Read.All"],
             roles: [EligibleRole(EntraRoleCatalog.GlobalReaderTemplateId, PimRequirement.ActivationRequired)]);
+        var decision = CapabilityEvaluator.Evaluate(snapshot, Member())[Capability.DevicesLapsReveal];
+        decision.State.Should().Be(CapabilityState.Allowed);
+        decision.NextStep.Should().BeNull();
+    }
+
+    [Theory]
+    [InlineData(Capability.DevicesBitlockerMetadata, "729827e3-9c14-49f7-bb1b-9608f156bbb8")]
+    [InlineData(Capability.DevicesBitlockerReveal, "729827e3-9c14-49f7-bb1b-9608f156bbb8")]
+    [InlineData(Capability.DevicesBitlockerMetadata, "194ae4cb-b126-40b2-bd5b-6091b380977d")]
+    [InlineData(Capability.DevicesBitlockerReveal, "5d6b6bb7-de71-4623-b4af-96380a352509")]
+    [InlineData(Capability.DevicesLapsMetadata, "729827e3-9c14-49f7-bb1b-9608f156bbb8")]
+    [InlineData(Capability.DevicesLapsMetadata, "194ae4cb-b126-40b2-bd5b-6091b380977d")]
+    [InlineData(Capability.DevicesLapsMetadata, "5d6b6bb7-de71-4623-b4af-96380a352509")]
+    [InlineData(Capability.DevicesLapsMetadata, EntraRoleCatalog.GlobalReaderTemplateId)]
+    public void Recovery_capability_guides_eligible_supported_role_without_preempting_Graph(string capability, string roleTemplateId)
+    {
+        var scopes = capability.Contains("laps", StringComparison.OrdinalIgnoreCase)
+            ? new[] { "DeviceLocalCredential.Read.All" } : new[] { "BitlockerKey.Read.All" };
+        var snapshot = AvailableSnapshot(scopes, [EligibleRole(roleTemplateId, PimRequirement.ActivationRequired)]);
+
+        var decision = CapabilityEvaluator.Evaluate(snapshot, Member())[capability];
+
+        decision.State.Should().Be(CapabilityState.Allowed);
+        decision.NextStep!.Href.Should().Be("/identity");
+    }
+
+    [Theory]
+    [InlineData("729827e3-9c14-49f7-bb1b-9608f156bbb8")]
+    [InlineData("194ae4cb-b126-40b2-bd5b-6091b380977d")]
+    [InlineData("5d6b6bb7-de71-4623-b4af-96380a352509")]
+    [InlineData(EntraRoleCatalog.GlobalReaderTemplateId)]
+    public void LAPS_password_capability_does_not_suggest_activating_a_metadata_only_role(string roleTemplateId)
+    {
+        var snapshot = AvailableSnapshot(["DeviceLocalCredential.Read.All"], [EligibleRole(roleTemplateId, PimRequirement.ActivationRequired)]);
         var decision = CapabilityEvaluator.Evaluate(snapshot, Member())[Capability.DevicesLapsReveal];
         decision.State.Should().Be(CapabilityState.Allowed);
         decision.NextStep.Should().BeNull();

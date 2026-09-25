@@ -101,6 +101,51 @@ public sealed class DeviceRecoveryServiceTests
     }
 
     [Fact]
+    public async Task Bitlocker_missing_key_preserves_list_request_ids_in_response_and_audit()
+    {
+        var fixture = new Fixture();
+        fixture.Recovery.BitlockerKeys = GraphReadResult<IReadOnlyList<BitlockerRecoveryMetadata>>.Succeeded(
+            [], "list-correlation", "list-request");
+
+        var result = await fixture.Service.RevealBitlockerAsync(fixture.Context, "device-1", "absent-key", "Incident 123", CancellationToken.None);
+
+        result.Status.Should().Be("recovery_not_found");
+        result.GraphCorrelationId.Should().Be("list-correlation");
+        result.GraphRequestId.Should().Be("list-request");
+        fixture.Audit.Events.Single().GraphCorrelationId.Should().Be("list-correlation");
+        fixture.Audit.Events.Single().GraphRequestId.Should().Be("list-request");
+    }
+
+    [Theory]
+    [InlineData("bitlocker_metadata", "729827e3-9c14-49f7-bb1b-9608f156bbb8", "pim_activation_required")]
+    [InlineData("bitlocker_reveal", "5d6b6bb7-de71-4623-b4af-96380a352509", "pim_activation_required")]
+    [InlineData("laps_metadata", "f2ef992c-3afb-46b9-b7cf-a126ee74c451", "pim_activation_required")]
+    [InlineData("laps_reveal", "f2ef992c-3afb-46b9-b7cf-a126ee74c451", "laps_password_role_required")]
+    [InlineData("laps_reveal", "7698a772-787b-4ac8-901f-60d6b08affd2", "pim_activation_required")]
+    public async Task Graph_forbidden_explains_relevant_PIM_or_LAPS_password_role(string operation, string roleTemplateId, string expectedGuidance)
+    {
+        var fixture = new Fixture();
+        fixture.Authorization.Snapshot = GraphAuthorizationSnapshot.Available("actor",
+            ["BitlockerKey.Read.All", "DeviceLocalCredential.Read.All"],
+            [new DirectoryRoleSnapshot(roleTemplateId, "eligible", DirectoryRoleAssignmentState.Eligible, "/",
+                new PimStateSnapshot(PimRequirement.ActivationRequired, "https://entra.example/activate"))]);
+        var denied = new GraphOperationResult(false, "not_authorized", 403, CorrelationId: "denial-correlation", RequestId: "denial-request");
+        fixture.Recovery.BitlockerKeys = GraphReadResult<IReadOnlyList<BitlockerRecoveryMetadata>>.Failed(denied);
+        fixture.Recovery.LapsMetadata = GraphReadResult<LapsMetadata>.Failed(denied);
+        fixture.Recovery.LapsSecret = GraphReadResult<LapsSecret>.Failed(denied);
+
+        var result = operation switch
+        {
+            "bitlocker_metadata" => (await fixture.Service.GetBitlockerMetadataAsync(fixture.Context, "device-1", CancellationToken.None)).Guidance,
+            "bitlocker_reveal" => (await fixture.Service.RevealBitlockerAsync(fixture.Context, "device-1", "key", "Incident 123", CancellationToken.None)).Guidance,
+            "laps_metadata" => (await fixture.Service.GetLapsMetadataAsync(fixture.Context, "device-1", CancellationToken.None)).Guidance,
+            _ => (await fixture.Service.RevealLapsAsync(fixture.Context, "device-1", "Incident 123", CancellationToken.None)).Guidance
+        };
+
+        result.Should().Be(expectedGuidance);
+    }
+
+    [Fact]
     public async Task Scope_probe_consent_and_transient_failures_are_distinct()
     {
         var fixture = new Fixture();
@@ -155,11 +200,12 @@ public sealed class DeviceRecoveryServiceTests
         public int Calls { get; private set; }
         public List<string> EntraIds { get; } = [];
         public GraphReadResult<LapsSecret> LapsSecret { get; set; } = GraphReadResult<LapsSecret>.Succeeded(new LapsSecret("Admin", "password", null));
+        public GraphReadResult<LapsMetadata> LapsMetadata { get; set; } = GraphReadResult<LapsMetadata>.Succeeded(new LapsMetadata("aad-1", "WIN-01", null, null));
         public GraphReadResult<IReadOnlyList<BitlockerRecoveryMetadata>> BitlockerKeys { get; set; } = GraphReadResult<IReadOnlyList<BitlockerRecoveryMetadata>>.Succeeded([]);
         public int BitlockerSecretCalls { get; private set; }
         public Task<GraphReadResult<IReadOnlyList<BitlockerRecoveryMetadata>>> ListBitlockerAsync(string entraId, bool secretScope, CancellationToken cancellationToken) => Task.FromResult(BitlockerKeys);
         public Task<GraphReadResult<BitlockerSecret>> GetBitlockerAsync(string keyId, CancellationToken cancellationToken) { BitlockerSecretCalls++; return Task.FromResult(GraphReadResult<BitlockerSecret>.Succeeded(new BitlockerSecret("key"))); }
-        public Task<GraphReadResult<LapsMetadata>> GetLapsMetadataAsync(string entraId, bool secretScope, CancellationToken cancellationToken) => Task.FromResult(GraphReadResult<LapsMetadata>.Succeeded(new LapsMetadata(entraId, "WIN-01", null, null)));
+        public Task<GraphReadResult<LapsMetadata>> GetLapsMetadataAsync(string entraId, bool secretScope, CancellationToken cancellationToken) => Task.FromResult(LapsMetadata);
         public Task<GraphReadResult<LapsSecret>> GetLapsSecretAsync(string entraId, CancellationToken cancellationToken)
         {
             Calls++;

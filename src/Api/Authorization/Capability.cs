@@ -97,6 +97,27 @@ public static class EntraRoleCatalog
     public const string PrivilegedAuthenticationAdministratorTemplateId = "7be44c8a-adaf-4e2a-84d6-ab2649e08a13";
     public const string CloudDeviceAdministratorTemplateId = "7698a772-787b-4ac8-901f-60d6b08affd2";
     public const string IntuneAdministratorTemplateId = "3a2c62db-5318-420d-8d74-23affee5d9d5";
+    public const string HelpdeskAdministratorTemplateId = "729827e3-9c14-49f7-bb1b-9608f156bbb8";
+    public const string SecurityAdministratorTemplateId = "194ae4cb-b126-40b2-bd5b-6091b380977d";
+    public const string SecurityReaderTemplateId = "5d6b6bb7-de71-4623-b4af-96380a352509";
+
+    // These are guidance lists for eligible PIM roles; Graph remains the final authority
+    // for device ownership, custom roles, scope, and the requested recovery record.
+    private static readonly IReadOnlySet<string> RecoveryMetadataRoles = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+    {
+        CloudDeviceAdministratorTemplateId, HelpdeskAdministratorTemplateId, IntuneAdministratorTemplateId,
+        SecurityAdministratorTemplateId, SecurityReaderTemplateId, GlobalReaderTemplateId
+    };
+    private static readonly IReadOnlySet<string> LapsPasswordRoles = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+    {
+        CloudDeviceAdministratorTemplateId, IntuneAdministratorTemplateId
+    };
+
+    public static bool SupportsRecoveryOperation(string capability, string roleTemplateId) =>
+        capability == Capability.DevicesLapsReveal
+            ? LapsPasswordRoles.Contains(roleTemplateId)
+            : (capability is Capability.DevicesBitlockerMetadata or Capability.DevicesBitlockerReveal or Capability.DevicesLapsMetadata)
+                && RecoveryMetadataRoles.Contains(roleTemplateId);
 
     public static readonly IReadOnlyDictionary<string, string> DisplayNames = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
     {
@@ -109,6 +130,9 @@ public static class EntraRoleCatalog
         [AuthenticationAdministratorTemplateId] = "Authentication Administrator",
         [PrivilegedAuthenticationAdministratorTemplateId] = "Privileged Authentication Administrator",
         [CloudDeviceAdministratorTemplateId] = "Cloud Device Administrator",
-        [IntuneAdministratorTemplateId] = "Intune Administrator"
+        [IntuneAdministratorTemplateId] = "Intune Administrator",
+        [HelpdeskAdministratorTemplateId] = "Helpdesk Administrator",
+        [SecurityAdministratorTemplateId] = "Security Administrator",
+        [SecurityReaderTemplateId] = "Security Reader"
     };
 }

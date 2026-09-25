@@ -8,6 +8,11 @@ const apiMock = vi.hoisted(() => vi.fn());
 vi.mock('../../../../src/Web/src/auth/useApi', () => ({ useApi: () => apiMock }));
 
 const response = (body: unknown, status = 200) => ({ ok: status < 400, status, json: async () => body });
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>(done => { resolve = done; });
+  return { promise, resolve };
+}
 
 describe('DeviceDetailPage', () => {
   afterEach(() => { cleanup(); vi.useRealTimers(); vi.clearAllMocks(); window.history.replaceState({}, '', '/devices'); });
@@ -100,6 +105,7 @@ describe('DeviceDetailPage', () => {
     fireEvent.change(screen.getByLabelText('Reason for recovery access'), { target: { value: 'Incident 123' } });
     expect((screen.getByRole('button', { name: 'Reveal Windows LAPS password' }) as HTMLButtonElement).disabled).toBe(false);
     expect(screen.getByText(/Activate eligible role if Graph denies access/)).toBeTruthy();
+    expect(screen.getByRole('link', { name: /Activate eligible role if Graph denies access/ }).getAttribute('href')).toBe('/identity');
   });
 
   it('handles a malformed URL device id as a safe unavailable state', async () => {
@@ -107,5 +113,83 @@ describe('DeviceDetailPage', () => {
     render(<DeviceDetailPage />);
     expect(await screen.findByRole('alert')).toBeTruthy();
     expect(apiMock).not.toHaveBeenCalled();
+  });
+
+  it('discards late metadata from the previous device and clears its recovery reason', async () => {
+    const pending = deferred<ReturnType<typeof response>>();
+    apiMock.mockImplementation((path: string) => {
+      if (path === '/api/devices/device-a/recovery/bitlocker') return pending.promise;
+      if (path === '/api/devices/device-a') return Promise.resolve(response({ id: 'device-a', deviceName: 'Device A' }));
+      if (path === '/api/devices/device-b') return Promise.resolve(response({ id: 'device-b', deviceName: 'Device B' }));
+      return Promise.resolve(response({ status: 'succeeded', data: [] }));
+    });
+    const view = render(<DeviceDetailPage deviceId="device-a" />);
+    await screen.findByRole('heading', { name: 'Device A' });
+    fireEvent.change(screen.getByLabelText('Reason for recovery access'), { target: { value: 'Incident for A' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Load BitLocker metadata' }));
+    view.rerender(<DeviceDetailPage deviceId="device-b" />);
+    await screen.findByRole('heading', { name: 'Device B' });
+    expect((screen.getByLabelText('Reason for recovery access') as HTMLInputElement).value).toBe('');
+    await act(async () => pending.resolve(response({ status: 'succeeded', data: [{ id: 'key-for-A' }] })));
+    expect(screen.queryByText('Key ID: key-for-A')).toBeNull();
+  });
+
+  it('shows an independent Graph source, retrieval time, and loading state for each section', async () => {
+    const bitlocker = deferred<ReturnType<typeof response>>();
+    const laps = deferred<ReturnType<typeof response>>();
+    apiMock.mockImplementation((path: string) => {
+      if (path.endsWith('/recovery/bitlocker')) return bitlocker.promise;
+      if (path.endsWith('/recovery/laps')) return laps.promise;
+      return Promise.resolve(response({ id: 'device-1', deviceName: 'WIN-01', lastSyncDateTime: '2020-01-01T00:00:00Z' }));
+    });
+    render(<DeviceDetailPage deviceId="device-1" />);
+    await screen.findByRole('heading', { name: 'WIN-01' });
+    expect(screen.getByText(/Source: Microsoft Graph.*Intune managedDevices/)).toBeTruthy();
+    expect(screen.getByText(/Device details retrieved:/).textContent).not.toContain('2020');
+    expect(screen.getByText(/Source: Microsoft Graph.*BitLocker recovery keys/)).toBeTruthy();
+    expect(screen.getByText(/Source: Microsoft Graph.*Windows LAPS/)).toBeTruthy();
+    expect(screen.getAllByText(/Not loaded yet/)).toHaveLength(2);
+    fireEvent.click(screen.getByRole('button', { name: 'Load BitLocker metadata' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Load Windows LAPS metadata' }));
+    expect(screen.getByText('Loading BitLocker metadata…')).toBeTruthy();
+    expect(screen.getByText('Loading Windows LAPS metadata…')).toBeTruthy();
+    await act(async () => bitlocker.resolve(response({ status: 'succeeded', data: [{ id: 'key-1' }] })));
+    expect(screen.getByText(/BitLocker metadata retrieved:/)).toBeTruthy();
+    expect(screen.getByText('Loading Windows LAPS metadata…')).toBeTruthy();
+    await act(async () => laps.resolve(response({ status: 'succeeded', data: { id: 'aad-1' } })));
+    expect(screen.getByText(/Windows LAPS metadata retrieved:/)).toBeTruthy();
+  });
+
+  it('keeps BitLocker and LAPS metadata failures independent', async () => {
+    apiMock.mockImplementation(async (path: string) => path.endsWith('/recovery/bitlocker')
+      ? response({ status: 'graph_forbidden', graphCorrelationId: 'bitlocker-denial' }, 403)
+      : path.endsWith('/recovery/laps')
+        ? response({ status: 'throttled', graphCorrelationId: 'laps-throttle' }, 429)
+        : response({ id: 'device-1', deviceName: 'WIN-01' }));
+    render(<DeviceDetailPage deviceId="device-1" />);
+    await screen.findByRole('heading', { name: 'WIN-01' });
+    fireEvent.click(screen.getByRole('button', { name: 'Load BitLocker metadata' }));
+    expect((await screen.findByText(/bitlocker-denial/)).textContent).toContain('lacks access');
+    fireEvent.click(screen.getByRole('button', { name: 'Load Windows LAPS metadata' }));
+    expect(await screen.findByText(/laps-throttle/)).toBeTruthy();
+    expect(screen.getByText(/bitlocker-denial/)).toBeTruthy();
+  });
+
+  it('explains why Global Reader access to LAPS metadata does not reveal passwords', async () => {
+    apiMock.mockImplementation(async (path: string) => path === '/api/devices/device-1'
+      ? response({ id: 'device-1', deviceName: 'WIN-01' })
+      : path.endsWith('/recovery/laps/reveal')
+        ? response({ status: 'graph_forbidden', guidance: 'laps_password_role_required' }, 403)
+        : response({ status: 'succeeded', data: { id: 'aad-1' } }));
+    render(<DeviceDetailPage deviceId="device-1" />);
+    await screen.findByRole('heading', { name: 'WIN-01' });
+    fireEvent.click(screen.getByRole('button', { name: 'Load Windows LAPS metadata' }));
+    await screen.findByText('Windows LAPS metadata loaded');
+    fireEvent.change(screen.getByLabelText('Reason for recovery access'), { target: { value: 'Incident 123' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Reveal Windows LAPS password' }));
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toContain('Global Reader');
+    expect(alert.textContent).toContain('metadata');
+    expect(alert.textContent).toContain('Cloud Device Administrator');
   });
 });
