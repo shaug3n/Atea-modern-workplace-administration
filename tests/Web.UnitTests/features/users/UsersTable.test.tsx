@@ -13,7 +13,7 @@ function decision(capability: CapabilityDecision['capability'], state: Capabilit
 }
 
 describe('UsersTable', () => {
-  afterEach(() => cleanup());
+  afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
   it('gives compact readers the user identifier and open action without a mutation control', () => {
     vi.stubGlobal('matchMedia', () => ({ matches: true, addEventListener: () => {}, removeEventListener: () => {} }));
@@ -22,6 +22,17 @@ describe('UsersTable', () => {
     expect(compact.textContent).toContain('a'.repeat(90) + '@example.com');
     expect(compact.querySelector('button[aria-label="Open Ada Lovelace"]')).toBeTruthy();
     expect(compact.querySelector('button[aria-label="Disable Ada Lovelace"]')).toBeNull();
+    vi.unstubAllGlobals();
+  });
+
+  it('omits compact mutation controls for a read-only disable capability', () => {
+    vi.stubGlobal('matchMedia', () => ({ matches: true, addEventListener: () => {}, removeEventListener: () => {} }));
+    render(<UsersTable users={users} capabilities={[decision('users.update', 'read_only'), decision('users.disable', 'read_only')]} />);
+    const compact = screen.getByRole('list', { name: 'Users' });
+    expect(compact.textContent).toContain('Ada Lovelace');
+    expect(compact.textContent).toContain('Enabled');
+    expect(screen.getByRole('button', { name: 'Open Ada Lovelace' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Disable Ada Lovelace' })).toBeNull();
     vi.unstubAllGlobals();
   });
 

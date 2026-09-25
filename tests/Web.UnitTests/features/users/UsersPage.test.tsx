@@ -58,6 +58,58 @@ describe('UsersPage', () => {
     expect(issueReporter.clear).toHaveBeenCalledWith('users:read');
   });
 
+  it('labels verified partial user results while keeping records visible', async () => {
+    render(<UsersPage capabilities={allowedCapabilities} loadUsers={async () => ({
+      ...usersResponse,
+      partialData: false,
+      error: { category: 'temporarily_unavailable', message: 'raw Graph diagnostic' },
+    })} />);
+    expect(await screen.findByRole('table')).toBeTruthy();
+    expect(screen.getByRole('alert').textContent).toContain('Partial results');
+    expect(screen.getByRole('alert').textContent).toContain('verified');
+    expect(screen.getByRole('table').textContent).toContain('Ada Lovelace');
+    expect(screen.queryByText('raw Graph diagnostic')).toBeNull();
+    expect(issueReporter.report).toHaveBeenCalledWith(expect.objectContaining({ key: 'users:read', kind: 'service' }));
+  });
+
+  it('removes old row actions as soon as filters change and shows only the new response', async () => {
+    let resolveNext!: (value: UsersDirectoryResponse) => void;
+    const next = new Promise<UsersDirectoryResponse>(resolve => { resolveNext = resolve; });
+    const loader = vi.fn().mockResolvedValueOnce(usersResponse).mockImplementationOnce(() => next);
+    render(<UsersPage capabilities={allowedCapabilities} loadUsers={loader} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'More details for Ada Lovelace' }));
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search users' }), { target: { value: 'Grace' } });
+    expect(screen.queryByRole('button', { name: 'Disable Ada Lovelace' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Open Ada Lovelace' })).toBeNull();
+    expect(screen.getByText('Loading users…')).toBeTruthy();
+    await waitFor(() => expect(loader).toHaveBeenCalledTimes(2));
+    resolveNext({ ...usersResponse, items: [usersResponse.items[1]] });
+    expect(await screen.findByRole('button', { name: 'Open Grace Hopper' })).toBeTruthy();
+    expect(screen.queryByText('Ada Lovelace')).toBeNull();
+  });
+
+  it('removes old row actions while refresh is in flight', async () => {
+    let resolveNext!: (value: UsersDirectoryResponse) => void;
+    const next = new Promise<UsersDirectoryResponse>(resolve => { resolveNext = resolve; });
+    const loader = vi.fn().mockResolvedValueOnce(usersResponse).mockImplementationOnce(() => next);
+    render(<UsersPage capabilities={allowedCapabilities} loadUsers={loader} />);
+    await screen.findByRole('button', { name: 'Disable Ada Lovelace' });
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh' }));
+    expect(screen.queryByRole('button', { name: 'Disable Ada Lovelace' })).toBeNull();
+    expect(screen.getByText('Loading users…')).toBeTruthy();
+    resolveNext(usersResponse);
+    expect(await screen.findByRole('button', { name: 'Disable Ada Lovelace' })).toBeTruthy();
+  });
+
+  it('closes a pending disable review when filters change', async () => {
+    render(<UsersPage capabilities={allowedCapabilities} loadUsers={async () => usersResponse} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Disable Ada Lovelace' }));
+    expect(screen.getByRole('dialog', { name: 'Disable user' })).toBeTruthy();
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search users' }), { target: { value: 'Grace' } });
+    expect(screen.queryByRole('dialog', { name: 'Disable user' })).toBeNull();
+    expect(apiMock).not.toHaveBeenCalled();
+  });
+
   it('loads supported filters from the URL and writes edits back without unsupported role filters', async () => {
     window.history.replaceState(null, '', '/users?search=Ada&accountStatus=enabled&userType=Member&license=E3&tenantRole=Global');
     const loadUsers = vi.fn(async () => usersResponse);

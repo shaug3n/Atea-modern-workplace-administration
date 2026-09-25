@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { CapabilityDecision } from '../../capabilities/capabilityTypes';
 import { WorkspaceDataState } from '../../components/WorkspaceDataState';
 import { WorkspacePageHeader } from '../../components/WorkspacePageHeader';
@@ -31,6 +31,7 @@ export function UsersPage({ capabilities, onNavigate, loadUsers }: { capabilitie
   const [continuationToken, setContinuationToken] = useState<string | null>(null);
   const [previousTokens, setPreviousTokens] = useState<string[]>([]);
   const [result, setResult] = useState<UsersDirectoryResponse | null>(null);
+  const [resultKey, setResultKey] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadFailed, setLoadFailed] = useState(false);
   const [refreshVersion, setRefreshVersion] = useState(0);
@@ -42,6 +43,11 @@ export function UsersPage({ capabilities, onNavigate, loadUsers }: { capabilitie
   const [exportPending, setExportPending] = useState(false);
   const [exportMessage, setExportMessage] = useState<string | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
+  const activeQueryKey = JSON.stringify([filters, continuationToken, refreshVersion]);
+  const activeQueryKeyRef = useRef(activeQueryKey);
+  activeQueryKeyRef.current = activeQueryKey;
+
+  useEffect(() => { setDisableTarget(null); }, [activeQueryKey]);
 
   const usersView = findDecision(capabilities, 'users.view');
   const usersCreate = findDecision(capabilities, 'users.create');
@@ -81,21 +87,23 @@ export function UsersPage({ capabilities, onNavigate, loadUsers }: { capabilitie
     }
 
     let cancelled = false;
+    const requestKey = JSON.stringify([debouncedFilters, continuationToken, refreshVersion]);
     setLoading(true);
     setLoadFailed(false);
     loader(debouncedFilters, continuationToken)
       .then((response) => {
-        if (!cancelled) {
+        if (!cancelled && activeQueryKeyRef.current === requestKey) {
           setResult(response);
+          setResultKey(requestKey);
           if (response.error) issueReporter.report({ key: 'users:read', area: 'users', kind: 'service', severity: 'warning', title: 'User data unavailable', detail: 'Try loading users again.' });
           else issueReporter.clear('users:read');
         }
       })
       .catch(() => {
-        if (!cancelled) { setLoadFailed(true); issueReporter.report({ key: 'users:read', area: 'users', kind: 'service', severity: 'warning', title: 'User data unavailable', detail: 'Try loading users again.' }); }
+        if (!cancelled && activeQueryKeyRef.current === requestKey) { setLoadFailed(true); issueReporter.report({ key: 'users:read', area: 'users', kind: 'service', severity: 'warning', title: 'User data unavailable', detail: 'Try loading users again.' }); }
       })
       .finally(() => {
-        if (!cancelled) setLoading(false);
+        if (!cancelled && activeQueryKeyRef.current === requestKey) setLoading(false);
       });
     return () => { cancelled = true; };
   }, [continuationToken, debouncedFilters, loader, refreshVersion, usersView.state, issueReporter]);
@@ -130,6 +138,7 @@ export function UsersPage({ capabilities, onNavigate, loadUsers }: { capabilitie
 
   const submitDisable = useCallback(async () => {
     if (!disableTarget) return;
+    if (resultKey !== activeQueryKey || loading || loadFailed) { setDisableTarget(null); return; }
     if (usersDisable.state !== 'allowed') {
       setDisableTarget(null);
       setDisableError(messages.userDisablePermissionDenied);
@@ -158,9 +167,10 @@ export function UsersPage({ capabilities, onNavigate, loadUsers }: { capabilitie
     } finally {
       setDisablePending(false);
     }
-  }, [api, disableTarget, usersDisable.state]);
+  }, [api, disableTarget, usersDisable.state, resultKey, activeQueryKey, loading, loadFailed]);
 
-  const state = loading ? 'loading' : loadFailed ? 'error' : result && result.items.length === 0 ? 'empty' : 'ready';
+  const currentResult = resultKey === activeQueryKey && !loading && !loadFailed ? result : null;
+  const state = loadFailed ? 'error' : !currentResult ? 'loading' : currentResult.items.length === 0 ? 'empty' : 'ready';
   const readable = usersView.state === 'allowed' || usersView.state === 'read_only';
 
   const exportUsers = async () => {
@@ -198,12 +208,13 @@ export function UsersPage({ capabilities, onNavigate, loadUsers }: { capabilitie
 
       <UserFilters filters={filters} onChange={setFilters} />
 
-      {readable && result && (
+      {readable && currentResult && !(currentResult.error && currentResult.items.length === 0) && (
         <DataFreshness
-          fetchedAt={result.fetchedAt}
-          freshness={result.freshness}
-          partialData={result.partialData}
-          message={result.error ? 'Some user data could not be loaded.' : undefined}
+          fetchedAt={currentResult.fetchedAt}
+          freshness={currentResult.freshness}
+          partialData={currentResult.partialData || Boolean(currentResult.error)}
+          message={currentResult.items.length && (currentResult.partialData || currentResult.error) ? 'Partial results: showing verified records; some users could not be loaded.' : undefined}
+          labels={currentResult.items.length && (currentResult.partialData || currentResult.error) ? { unavailable: 'Partial results' } : undefined}
         />
       )}
 
@@ -212,12 +223,12 @@ export function UsersPage({ capabilities, onNavigate, loadUsers }: { capabilitie
           <h2>{usersView.state.startsWith('pim_') ? messages.usersPimRequiredTitle : messages.usersNoPermissionTitle}</h2>
           {usersView.state === 'hidden' ? <p>{messages.usersNoPermissionBody}</p> : <PermissionState decision={usersView}><span>{usersView.state.startsWith('pim_') ? messages.usersPimRequiredBody : messages.usersNoPermissionBody}</span></PermissionState>}
         </section>
-      ) : result?.error && result.items.length === 0 ? (
+      ) : currentResult?.error && currentResult.items.length === 0 ? (
         <section className="permission-panel"><h2>{messages.usersUnavailable}</h2><WorkspaceDataState state="unavailable" message="User data is unavailable. Check Notifications for details." onRetry={() => setRefreshVersion((version) => version + 1)} /></section>
       ) : (
-        state === 'loading' && !result ? <WorkspaceDataState state="loading" message="Loading users…" /> : state === 'error' ? <WorkspaceDataState state="unavailable" message="User data is unavailable. Check Notifications for details." onRetry={() => setRefreshVersion((version) => version + 1)} /> : state === 'empty' ? <WorkspaceDataState state="empty" message={messages.usersNoResults} /> : result && (
+        state === 'loading' ? <WorkspaceDataState state="loading" message="Loading users…" /> : state === 'error' ? <WorkspaceDataState state="unavailable" message="User data is unavailable. Check Notifications for details." onRetry={() => setRefreshVersion((version) => version + 1)} /> : state === 'empty' ? <WorkspaceDataState state="empty" message={messages.usersNoResults} /> : currentResult && (
             <UsersTable
-              users={result.items}
+              users={currentResult.items}
               capabilities={capabilities}
               onNavigate={onNavigate}
               onDisable={usersDisable.state === 'allowed' ? startDisable : undefined}
@@ -246,10 +257,10 @@ export function UsersPage({ capabilities, onNavigate, loadUsers }: { capabilitie
         }
       }} />}
 
-      {readable && !loadFailed && result && !result.error && <nav className="pagination-controls" aria-label={messages.usersPaginationLabel}>
+      {readable && result && !loadFailed && !result.error && <nav className="pagination-controls" aria-label={messages.usersPaginationLabel}>
         <span role="status" aria-live="polite">Page {previousTokens.length + 1}</span>
-        <button type="button" onClick={goPrevious} disabled={loading || previousTokens.length === 0}>{messages.usersPreviousPage}</button>
-        <button type="button" onClick={goNext} disabled={loading || !result.continuationToken}>{messages.usersNextPage}</button>
+        <button type="button" onClick={goPrevious} disabled={!currentResult || loading || previousTokens.length === 0}>{messages.usersPreviousPage}</button>
+        <button type="button" onClick={goNext} disabled={!currentResult || loading || !currentResult.continuationToken}>{messages.usersNextPage}</button>
       </nav>}
     </section>
   );
