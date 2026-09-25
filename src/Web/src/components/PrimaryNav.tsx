@@ -38,7 +38,7 @@ export function PrimaryNav({ capabilities, session = { user: {}, workspace: { id
       {groups.map((group) => <div className="primary-nav__group" key={group.label ?? group.items[0].href}>
         {group.label && <h2 className="primary-nav__group-label">{group.label}</h2>}
         <ul>{group.items.map((item) => {
-          const active = currentPath === item.href || currentPath.startsWith(`${item.href}/`);
+          const active = currentPath === item.href || (!group.items.some(other => other.href !== item.href && currentPath.startsWith(`${other.href}/`) && other.href.startsWith(`${item.href}/`)) && currentPath.startsWith(`${item.href}/`));
           return (
             <li key={item.href}>
               <a href={item.href} aria-current={active ? 'page' : undefined} onClick={(event) => {

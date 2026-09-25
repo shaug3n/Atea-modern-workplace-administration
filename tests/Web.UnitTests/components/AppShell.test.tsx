@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import React from 'react';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { CapabilitySnapshot } from '../../../src/Web/src/capabilities/capabilityTypes';
@@ -59,5 +59,23 @@ describe('AppShell', () => {
 
     await waitFor(() => expect(window.location.pathname).toBe('/settings'));
     expect(screen.getByRole('heading', { name: 'Workspace access is managed by an administrator' })).toBeTruthy();
+  });
+
+  it('closes mobile navigation on Escape and shows the current settings breadcrumb', () => {
+    render(<ThemeProvider systemTheme={() => 'light'}><AppShell capabilities={allowedCapabilities} currentPath="/settings/general" session={{ ...session, workspaceAccess: { role: 'workspace_owner', canManageMembers: true, canManageSettings: true } }}><h1>General settings</h1></AppShell></ThemeProvider>);
+    fireEvent.click(screen.getByRole('button', { name: 'Menu' }));
+    expect(screen.getByRole('button', { name: 'Close menu' }).getAttribute('aria-expanded')).toBe('true');
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.getByRole('button', { name: 'Menu' }).getAttribute('aria-expanded')).toBe('false');
+    const breadcrumbs = screen.getByRole('navigation', { name: 'Breadcrumbs' });
+    expect(breadcrumbs.textContent).toContain('Settings');
+    expect(breadcrumbs.textContent).toContain('General');
+  });
+
+  it('does not link the Services breadcrumb to an unregistered route', () => {
+    render(<ThemeProvider systemTheme={() => 'light'}><AppShell capabilities={allowedCapabilities} currentPath="/services/exchange" session={session}><h1>Exchange</h1></AppShell></ThemeProvider>);
+    const breadcrumbs = screen.getByRole('navigation', { name: 'Breadcrumbs' });
+    expect(breadcrumbs.textContent).toContain('Services');
+    expect(breadcrumbs.querySelector('a[href="/services"]')).toBeNull();
   });
 });
