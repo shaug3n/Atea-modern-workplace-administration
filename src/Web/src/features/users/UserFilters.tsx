@@ -12,6 +12,7 @@ const emptyFilters: UserFiltersState = {
 
 export function UserFilters({ filters, onChange }: { filters: UserFiltersState; onChange: (filters: UserFiltersState) => void }) {
   const [draft, setDraft] = useState(filters);
+  const [moreOpen, setMoreOpen] = useState(Boolean(filters.license));
 
   useEffect(() => setDraft(filters), [filters]);
 
@@ -52,7 +53,7 @@ export function UserFilters({ filters, onChange }: { filters: UserFiltersState; 
           <option value="Guest">Guest</option>
         </select>
       </label>
-      <details className="users-filters__more" open={Boolean(draft.license)}>
+      <details className="users-filters__more" open={Boolean(draft.license) || moreOpen} onToggle={event => setMoreOpen(event.currentTarget.open)} onFocusCapture={() => setMoreOpen(true)}>
         <summary>More filters</summary>
         <div className="users-filters__more-fields">
           <label>

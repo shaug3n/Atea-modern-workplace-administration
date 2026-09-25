@@ -160,6 +160,17 @@ describe('DeviceDetailPage', () => {
     expect(screen.getByText(/Windows LAPS metadata retrieved:/)).toBeTruthy();
   });
 
+  it('shows BitLocker retrieval time even when Graph returns no recovery records', async () => {
+    apiMock.mockImplementation(async (path: string) => path.endsWith('/recovery/bitlocker')
+      ? response({ status: 'succeeded', data: [] })
+      : response({ id: 'device-1', deviceName: 'WIN-01' }));
+    render(<DeviceDetailPage deviceId="device-1" />);
+    await screen.findByRole('heading', { name: 'WIN-01' });
+    fireEvent.click(screen.getByRole('button', { name: 'Load BitLocker metadata' }));
+    expect(await screen.findByText('No BitLocker recovery record found.')).toBeTruthy();
+    expect(screen.getByText(/BitLocker metadata retrieved:/)).toBeTruthy();
+  });
+
   it('keeps BitLocker and LAPS metadata failures independent', async () => {
     apiMock.mockImplementation(async (path: string) => path.endsWith('/recovery/bitlocker')
       ? response({ status: 'graph_forbidden', graphCorrelationId: 'bitlocker-denial' }, 403)

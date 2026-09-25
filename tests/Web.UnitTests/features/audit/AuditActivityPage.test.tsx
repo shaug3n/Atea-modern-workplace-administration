@@ -78,4 +78,18 @@ describe('AuditActivityPage', () => {
     await waitFor(() => expect(screen.getByText('users.disable')).toBeTruthy());
     expect(attempts).toBe(2);
   });
+
+  it('does not show an old freshness banner while the next audit page is loading', async () => {
+    let finishPage: ((value: AuditEventsResponse) => void) | undefined;
+    const loadAuditEvents = async (filters?: { continuationToken?: string | null }) => filters?.continuationToken
+      ? new Promise<AuditEventsResponse>(resolve => { finishPage = resolve; })
+      : { ...response, nextContinuationToken: 'page-2' };
+    render(<AuditActivityPage loadAuditEvents={loadAuditEvents} />);
+    await waitFor(() => expect(screen.getByText('users.disable')).toBeTruthy());
+    screen.getByRole('button', { name: 'Load next page' }).click();
+    await waitFor(() => expect(screen.getByText('Loading audit activity…')).toBeTruthy());
+    expect(screen.queryByText(/Fetched:/)).toBeNull();
+    finishPage?.({ ...response, items: [], fetchedAt: '2026-09-22T10:00:00Z', nextContinuationToken: null });
+    await waitFor(() => expect(screen.getByText('No audit activity is available for this workspace yet.')).toBeTruthy());
+  });
 });

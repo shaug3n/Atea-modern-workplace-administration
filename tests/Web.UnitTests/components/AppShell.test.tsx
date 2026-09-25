@@ -78,4 +78,21 @@ describe('AppShell', () => {
     expect(breadcrumbs.textContent).toContain('Services');
     expect(breadcrumbs.querySelector('a[href="/services"]')).toBeNull();
   });
+
+  it('keeps unsupported Prism URLs out of routes and navigation', async () => {
+    window.history.pushState(null, '', '/services/meeting-rooms');
+    render(<App loadCapabilities={async () => allowedCapabilities} loadSession={async () => session} />);
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Page not found' })).toBeTruthy());
+    const nav = screen.getByRole('navigation', { name: 'Primary navigation' });
+    expect(nav.textContent).not.toContain('Meeting Rooms');
+    expect(nav.textContent).not.toContain('Copilot');
+  });
+
+  it('blocks a direct Exchange URL when the workspace module is not assigned', async () => {
+    window.history.pushState(null, '', '/services/exchange');
+    render(<App loadCapabilities={async () => allowedCapabilities} loadSession={async () => session} />);
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Module disabled' })).toBeTruthy());
+    expect(screen.queryByRole('heading', { name: 'Exchange' })).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Exchange' })).toBeNull();
+  });
 });

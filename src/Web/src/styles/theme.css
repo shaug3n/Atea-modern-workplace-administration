@@ -161,6 +161,7 @@ body {
 .exchange-toolbar label {
   display: grid;
   flex: 1;
+  min-width: 0;
   gap: var(--atea-space-2);
   color: var(--uw-muted);
   font-size: var(--atea-text-s);
@@ -168,6 +169,8 @@ body {
 }
 
 .exchange-toolbar input {
+  width: 100%;
+  min-width: 0;
   min-height: 2.75rem;
   padding: 0 var(--atea-space-3);
   border: 1px solid var(--uw-border-strong);
@@ -991,6 +994,7 @@ p {
 
 .audit-filters label {
   display: grid;
+  min-width: 0;
   gap: var(--atea-space-2);
   color: var(--uw-muted);
   font-size: var(--atea-text-s);
@@ -999,6 +1003,8 @@ p {
 
 .audit-filters input,
 .audit-filters select {
+  width: 100%;
+  min-width: 0;
   min-height: 2.5rem;
   padding: 0 var(--atea-space-3);
   border: 1px solid var(--uw-border);
@@ -1075,6 +1081,7 @@ p {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: var(--atea-text-s);
   white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .users-table thead th {
@@ -2499,6 +2506,9 @@ p {
 .exchange-mailbox-details dl > div { min-width: 0; }
 .exchange-mailbox-details dt { color: var(--uw-muted); font-size: var(--atea-text-s); }
 .exchange-mailbox-details dd { margin: 0; overflow-wrap: anywhere; }
+.exchange-mailbox-details .data-freshness { padding: 0; border: 0; background: transparent; }
+.workspace-access-section, .workspace-access-form label, .module-setting, .settings-summary-card { min-width: 0; }
+.workspace-access-actions button, .module-inline-checkboxes, .module-inline-checkboxes label { min-width: 0; overflow-wrap: anywhere; }
 
 @media (max-width: 64rem) {
   .users-table-wrap,
@@ -2788,6 +2798,14 @@ p {
   }
 
 .exchange-mailbox-details dl { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 34rem) {
+  .module-inline-checkboxes { grid-template-columns: minmax(0, 1fr); }
+  .audit-table tbody tr > th, .audit-table tbody tr > td,
+  .users-table tbody tr > th, .users-table tbody tr > td {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 .licenses-page { max-width: 90rem; }

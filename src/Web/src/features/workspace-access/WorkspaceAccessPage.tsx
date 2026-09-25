@@ -11,6 +11,8 @@ export function WorkspaceAccessPage({ isOwner = false, canManageModules = false,
   const api = useApi();
   const [data, setData] = useState<AccessResponse | null>(null);
   const [loadError, setLoadError] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [retrievedAt, setRetrievedAt] = useState<string | null>(null);
   const [retry, setRetry] = useState(0);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -29,12 +31,13 @@ export function WorkspaceAccessPage({ isOwner = false, canManageModules = false,
   const removeDialogRef = useFocusContainment<HTMLElement>(Boolean(removeTarget), () => { if (!busy) setRemoveTarget(null); }, removeTriggerRef);
 
   const load = useCallback(async () => {
-    setLoadError(false);
+    setLoading(true); setLoadError(false); setRetrievedAt(null);
     try {
       const response = await api('/api/workspaces/current/access');
       if (!response.ok) throw new Error('access unavailable');
       setData(await response.json() as AccessResponse);
-    } catch { setLoadError(true); }
+      setRetrievedAt(new Date().toISOString());
+    } catch { setLoadError(true); } finally { setLoading(false); }
   }, [api]);
 
   useEffect(() => { void load(); }, [load, retry]);
@@ -130,14 +133,13 @@ export function WorkspaceAccessPage({ isOwner = false, canManageModules = false,
     finally { setBusy(false); }
   };
 
-  if (loadError) return <section className="content-panel"><h1>Workspace access</h1><p role="alert">Workspace members and invitations are unavailable right now.</p><button type="button" onClick={() => setRetry(value => value + 1)}>Retry</button></section>;
-  if (!data) return <section className="content-panel"><p role="status">Loading workspace access…</p></section>;
+  const header = <header className="page-header"><div><p className="eyebrow">Settings</p><h1 id="workspace-access-title">Workspace access</h1><p>Grant application access to people who already exist in your Microsoft Entra tenant. Microsoft 365 actions still follow each person’s Entra roles and PIM activation.</p></div></header>;
+  if (loading || loadError || !data) return <section className="content-panel workspace-access-page" aria-labelledby="workspace-access-title">{header}{loading ? <p role="status">Loading workspace access…</p> : <div className="async-state" role="alert">Workspace members and invitations are unavailable right now. <button type="button" onClick={() => setRetry(value => value + 1)}>Retry</button></div>}</section>;
 
   const pendingInvitations = data.invitations.filter(invitation => !invitation.redeemedAt && !invitation.revokedAt);
   return <section className="content-panel workspace-access-page" aria-labelledby="workspace-access-title">
-    <p className="eyebrow">Workspace administration</p>
-    <h1 id="workspace-access-title">Workspace access</h1>
-    <p>Grant application access to people who already exist in your Microsoft Entra tenant. These workspace roles only control this tool; Microsoft 365 actions still follow each person’s Entra roles and PIM activation.</p>
+    {header}
+    <p className="data-freshness">Source: Workspace membership and invitations. Retrieved: {retrievedAt ? new Date(retrievedAt).toLocaleString() : 'Not retrieved'}</p>
     <p>Invitation links are shown once. Share them through an approved channel; this application does not send email.</p>
     {!isOwner && <p className="integration-note"><strong>Owner transfer:</strong> only the current workspace owner can transfer ownership.</p>}
     {error && <p role="alert">{error}</p>}{notice && <p role="status">{notice}</p>}

@@ -85,15 +85,15 @@ function LoadedAuditActivityPage({ loadAuditEvents }: { loadAuditEvents: AuditEv
 
   return (
     <section className="audit-page" aria-labelledby="audit-page-title">
-      <div className="audit-page__header">
+      <header className="page-header">
         <div>
           <p className="eyebrow">{messages.auditEyebrow}</p>
           <h1 id="audit-page-title">{messages.auditTitle}</h1>
           <p>{messages.auditIntro}</p>
         </div>
-      </div>
+      </header>
 
-      {result && (
+      {!loading && !failed && result && (
         <AuditFreshnessBanner
           fetchedAt={result.fetchedAt}
           freshness={result.freshness}
@@ -201,7 +201,7 @@ function AuditFreshnessBanner({ fetchedAt, freshness, partialData, notice }: { f
 
 function AuditEventsTable({ events }: { events: AuditEvent[] }) {
   return (
-    <div className="audit-table-wrap">
+    <div className="audit-table-wrap" role="region" aria-label="Audit activity results" tabIndex={0}>
       <table className="audit-table" aria-label={messages.auditTableLabel}>
         <thead>
           <tr>

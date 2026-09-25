@@ -53,6 +53,16 @@ describe('UsersPage', () => {
     await waitFor(() => expect(new URLSearchParams(window.location.search).get('search')).toBe('Grace'));
   });
 
+  it('keeps optional filters open and focused when the last license character is cleared', async () => {
+    window.history.replaceState(null, '', '/users?license=E');
+    render(<UsersPage capabilities={allowedCapabilities} loadUsers={async () => usersResponse} />);
+    const license = screen.getByRole('textbox', { name: 'License' }) as HTMLInputElement;
+    license.focus();
+    fireEvent.change(license, { target: { value: '' } });
+    expect((screen.getByText('More filters').closest('details') as HTMLDetailsElement).open).toBe(true);
+    expect(document.activeElement).toBe(license);
+  });
+
   it('exports active user filters and makes truncation visible', async () => {
     apiMock.mockResolvedValue(new Response('"Id"\n"user-1"\n', { status: 200, headers: { 'X-Export-Row-Count': '10000', 'X-Export-Max-Rows': '10000', 'X-Export-Truncated': 'true', 'Content-Type': 'text/csv' } }));
     vi.stubGlobal('URL', Object.assign(URL, { createObjectURL: vi.fn(() => 'blob:test'), revokeObjectURL: vi.fn() }));
