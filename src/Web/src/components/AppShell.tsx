@@ -21,7 +21,7 @@ export function AppShell({ children, capabilities, currentPath, session, onNavig
   }, [mobileNavOpen]);
   const { theme } = useTheme();
   const logo = theme === 'dark' ? whiteLogo : greyLogo;
-  const labels: Record<string, string> = { overview: 'Overview', users: 'Users', licenses: 'Licenses', devices: 'Devices', services: 'Services', exchange: 'Exchange', activity: 'Activity', settings: 'Settings', setup: 'Setup', general: 'General', modules: 'Modules', access: 'Access' };
+  const labels: Record<string, string> = { overview: 'Overview', users: 'Users', licenses: 'Licenses', devices: 'Devices', services: 'Services', exchange: 'Exchange', activity: 'Activity', settings: 'Workspace Settings', setup: 'Setup', general: 'General', modules: 'Modules', access: 'Access' };
   const segments = currentPath.split('/').filter(Boolean);
   const breadcrumbs = segments.map((segment, index) => ({ label: labels[segment] ?? (index > 0 && segments[0] === 'users' ? 'Details' : segment), href: `/${segments.slice(0, index + 1).join('/')}` }));
   return (
@@ -47,7 +47,7 @@ export function AppShell({ children, capabilities, currentPath, session, onNavig
           <PrimaryNav capabilities={capabilities} session={session} currentPath={currentPath} onNavigate={path => { setMobileNavOpen(false); onNavigate?.(path); }} />
         </div>
         <main id="main-content" className="app-main" tabIndex={-1}>
-          {breadcrumbs.length > 1 && <nav className="breadcrumbs" aria-label="Breadcrumbs"><ol>{breadcrumbs.map((item, index) => <li key={item.href}>{index === breadcrumbs.length - 1 ? <span aria-current="page">{item.label}</span> : ['/settings', '/users'].includes(item.href) ? <a href={item.href} onClick={event => { if (onNavigate) { event.preventDefault(); onNavigate(item.href); } }}>{item.label}</a> : <span>{item.label}</span>}</li>)}</ol></nav>}
+          {breadcrumbs.length > 1 && <nav className="breadcrumbs" aria-label="Breadcrumbs"><ol>{breadcrumbs.map((item, index) => <li key={item.href}>{index === breadcrumbs.length - 1 ? <span aria-current="page">{item.label}</span> : item.href === '/users' ? <a href={item.href} onClick={event => { if (onNavigate) { event.preventDefault(); onNavigate(item.href); } }}>{item.label}</a> : <span>{item.label}</span>}</li>)}</ol></nav>}
           {children}
         </main>
       </div>

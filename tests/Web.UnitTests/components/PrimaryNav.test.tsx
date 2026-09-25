@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import React from 'react';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { CapabilitySnapshot } from '../../../src/Web/src/capabilities/capabilityTypes';
@@ -24,28 +24,64 @@ describe('PrimaryNav', () => {
     render(<PrimaryNav capabilities={snapshot()} currentPath="/overview" session={{ user: {}, workspace: { id: 'w', name: 'Customer' }, workspaceAccess: { role: 'member', canManageMembers: false, canManageSettings: false } }} />);
 
     expect(screen.getByRole('navigation', { name: 'Primary navigation' })).toBeTruthy();
-    expect(screen.queryByRole('link', { name: 'Settings' })).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Workspace Settings' })).toBeNull();
   });
 
-  it('hides Users when users.view is unavailable', () => {
+  it('retains an assigned Users module when Graph denies its view capability', () => {
     render(<PrimaryNav capabilities={snapshot({ users: 'hidden' })} currentPath="/overview" />);
 
-    expect(screen.queryByRole('link', { name: 'Users' })).toBeNull();
+    expect(screen.getByRole('link', { name: 'Users' })).toBeTruthy();
     expect(screen.getByRole('link', { name: 'Licenses' })).toBeTruthy();
   });
 
-  it('hides Licenses when licenses.assign is unavailable', () => {
-    render(<PrimaryNav capabilities={snapshot({ licenses: 'hidden' })} currentPath="/overview" />);
+  it('omits modules the person is not assigned', () => {
+    render(<PrimaryNav capabilities={snapshot()} currentPath="/overview" session={{ user: {}, workspace: { id: 'w', name: 'Customer', enabledModules: ['users', 'licenses', 'exchange'], moduleAccess: ['users'] } }} />);
 
     expect(screen.queryByRole('link', { name: 'Licenses' })).toBeNull();
     expect(screen.getByRole('link', { name: 'Users' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Services' })).toBeNull();
   });
 
   it('marks the active route for assistive technology', () => {
     render(<PrimaryNav capabilities={snapshot()} currentPath="/licenses" session={{ user: {}, workspace: { id: 'w', name: 'Customer' }, workspaceAccess: { role: 'workspace_owner', canManageMembers: true, canManageSettings: true, canManageModules: true } }} />);
 
     expect(screen.getByRole('link', { name: 'Licenses' }).getAttribute('aria-current')).toBe('page');
-    expect(screen.getByRole('link', { name: 'Settings' })).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Workspace Settings' })).toBeTruthy();
+  });
+
+  it('exposes People and Services as keyboard-operable disclosures with reachable sublinks', () => {
+    render(<PrimaryNav capabilities={snapshot()} currentPath="/overview" session={{ user: {}, workspace: { id: 'w', name: 'Customer', enabledModules: ['users', 'exchange'], moduleAccess: ['users', 'exchange'] } }} />);
+
+    const people = screen.getByRole('button', { name: 'People' });
+    const services = screen.getByRole('button', { name: 'Services' });
+    expect(people.getAttribute('aria-expanded')).toBe('true');
+    expect(services.getAttribute('aria-expanded')).toBe('true');
+    fireEvent.click(people);
+    expect(people.getAttribute('aria-expanded')).toBe('false');
+    expect(screen.queryByRole('link', { name: 'Users' })).toBeNull();
+    expect(people.tabIndex).toBe(0);
+    fireEvent.click(people);
+    expect(people.getAttribute('aria-expanded')).toBe('true');
+    expect(screen.getByRole('link', { name: 'Users' }).tabIndex).toBe(0);
+  });
+
+  it('keeps the active group open and marks only the most specific route active', () => {
+    render(<PrimaryNav capabilities={snapshot()} currentPath="/services/exchange/details" session={{ user: {}, workspace: { id: 'w', name: 'Customer', enabledModules: ['exchange'], moduleAccess: ['exchange'] } }} />);
+
+    const services = screen.getByRole('button', { name: 'Services' });
+    expect(services.getAttribute('aria-expanded')).toBe('true');
+    fireEvent.click(services);
+    expect(services.getAttribute('aria-expanded')).toBe('true');
+    expect(screen.getByRole('link', { name: 'Exchange' }).getAttribute('aria-current')).toBe('page');
+    expect(screen.queryAllByRole('link', { current: 'page' })).toHaveLength(1);
+  });
+
+  it('offers one Workspace Settings destination for authorized members', () => {
+    render(<PrimaryNav capabilities={snapshot()} currentPath="/settings/modules" session={{ user: {}, workspace: { id: 'w', name: 'Customer' }, workspaceAccess: { role: 'workspace_owner', canManageMembers: true, canManageSettings: true, canManageModules: true } }} />);
+
+    expect(screen.getAllByRole('link', { name: 'Workspace Settings' })).toHaveLength(1);
+    expect(screen.getByRole('link', { name: 'Workspace Settings' }).getAttribute('aria-current')).toBe('page');
+    expect(screen.queryByRole('link', { name: 'Modules' })).toBeNull();
   });
 
   it('hides Audit when audit.view is unavailable', () => {

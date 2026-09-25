@@ -79,6 +79,15 @@ describe('AppShell', () => {
     expect(breadcrumbs.querySelector('a[href="/services"]')).toBeNull();
   });
 
+  it('shows one Workspace Settings navigation link while retaining the current section breadcrumb', () => {
+    render(<ThemeProvider systemTheme={() => 'light'}><AppShell capabilities={allowedCapabilities} currentPath="/settings/general" session={{ ...session, workspaceAccess: { role: 'workspace_owner', canManageMembers: true, canManageSettings: true } }}><h1>General settings</h1></AppShell></ThemeProvider>);
+
+    const nav = screen.getByRole('navigation', { name: 'Primary navigation' });
+    expect(nav.querySelectorAll('a[href="/settings"]')).toHaveLength(1);
+    expect(screen.getByRole('link', { name: 'Workspace Settings' }).getAttribute('aria-current')).toBe('page');
+    expect(screen.getByRole('navigation', { name: 'Breadcrumbs' }).textContent).toContain('General');
+  });
+
   it('keeps unsupported Prism URLs out of routes and navigation', async () => {
     window.history.pushState(null, '', '/services/meeting-rooms');
     render(<App loadCapabilities={async () => allowedCapabilities} loadSession={async () => session} />);
