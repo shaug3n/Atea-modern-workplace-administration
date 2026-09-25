@@ -3,6 +3,8 @@ import React from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { NotificationsMenu } from '../../../src/Web/src/components/NotificationsMenu';
 import type { WorkspaceIssue } from '../../../src/Web/src/notifications/workspaceIssues';
+import { WorkspaceNotificationsProvider, useWorkspaceIssueReporter, useWorkspaceNotifications } from '../../../src/Web/src/notifications/WorkspaceNotifications';
+import type { AppSession } from '../../../src/Web/src/components/TenantContextHeader';
 
 afterEach(cleanup);
 const issues: WorkspaceIssue[] = [
@@ -36,12 +38,26 @@ describe('NotificationsMenu', () => {
     expect(document.activeElement).toBe(button);
   });
 
-  it('refreshes manually without rendering raw API errors', () => {
+  it('refreshes manually', () => {
     const refresh = vi.fn();
     render(<NotificationsMenu issues={issues} onRefresh={refresh} />);
     fireEvent.click(screen.getByRole('button', { name: /notifications/i }));
     fireEvent.click(screen.getByRole('button', { name: /refresh/i }));
     expect(refresh).toHaveBeenCalledOnce();
-    expect(screen.queryByText(/secret-token|Graph error/i)).toBeNull();
+  });
+
+  it('shows only the sanitized category when a page reports a raw Graph error', async () => {
+    const session: AppSession = { user: { displayName: 'Alex' }, workspace: { id: 'workspace-one', name: 'Workspace One' }, workspaceAccess: { role: 'member', canManageMembers: false, canManageSettings: false } };
+    function ReportedMenu() {
+      const reporter = useWorkspaceIssueReporter();
+      const { issues, refresh } = useWorkspaceNotifications();
+      React.useEffect(() => { reporter.report({ key: 'devices:graph-failure', area: 'devices', kind: 'service', severity: 'warning', title: 'Graph error: secret-token', detail: 'Bearer secret-token exposed', action: { label: 'Open secret-token', href: 'https://example.invalid/secret-token' } }); }, [reporter]);
+      return <NotificationsMenu issues={issues} onRefresh={refresh} />;
+    }
+    render(<WorkspaceNotificationsProvider session={session} capabilities={null} capabilitiesError={null} onRefresh={async () => {}}><ReportedMenu /></WorkspaceNotificationsProvider>);
+    fireEvent.click(await screen.findByRole('button', { name: /notifications, 1 warnings/i }));
+    expect(screen.getByText('Data temporarily unavailable')).toBeTruthy();
+    expect(document.body.textContent).not.toContain('secret-token');
+    expect(screen.queryByRole('link', { name: /secret-token/i })).toBeNull();
   });
 });

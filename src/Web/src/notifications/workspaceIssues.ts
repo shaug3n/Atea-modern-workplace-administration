@@ -76,14 +76,17 @@ export function deriveConnectionIssue(health: ConnectionHealth | null, session: 
   }];
 }
 
-export function sanitizeReportedIssue(issue: WorkspaceIssue): WorkspaceIssue | null {
+export function sanitizeReportedIssue(issue: WorkspaceIssue, session: AppSession): WorkspaceIssue | null {
   if (!/^[a-z0-9:_-]{1,100}$/i.test(issue.key)) return null;
   const area = ['users', 'devices', 'licenses', 'activity', 'services', 'Connection', 'Your access'].includes(issue.area) ? issue.area : 'Workspace';
   const kind = ['setup', 'access', 'service'].includes(issue.kind) ? issue.kind : 'service';
   const title = kind === 'setup' ? 'Setup needs attention' : kind === 'access' ? 'Access needs attention' : 'Data temporarily unavailable';
-  const detail = kind === 'setup' ? 'Review workspace setup and try again.' : kind === 'access' ? 'Review your access and try again.' : 'Try loading this area again.';
   const correlationId = typeof issue.correlationId === 'string' && /^[a-zA-Z0-9-]{1,64}$/.test(issue.correlationId) ? issue.correlationId : undefined;
   const href = issue.action?.href;
-  const action = href && ['/settings/setup', '/settings/access', '/identity'].includes(href) ? { label: 'View guidance', href } : undefined;
+  const permitted = href === '/settings/setup' ? session.workspaceAccess?.canManageSettings === true : href === '/settings/access' ? session.workspaceAccess?.canManageMembers === true : href === '/identity';
+  const detail = (href === '/settings' || href?.startsWith('/settings/')) && !permitted ? 'Contact a workspace administrator to review access.'
+    : kind === 'setup' ? session.workspaceAccess?.canManageSettings === true ? 'Review workspace setup and try again.' : 'Contact a workspace administrator to review setup.'
+    : kind === 'access' ? 'Review your access and try again.' : 'Try loading this area again.';
+  const action = permitted && href ? { label: 'View guidance', href } : undefined;
   return { key: reportedIssueKey(issue.key), area, kind, severity: issue.severity === 'info' ? 'info' : 'warning', title, detail, ...(action ? { action } : {}), ...(correlationId ? { correlationId } : {}) };
 }

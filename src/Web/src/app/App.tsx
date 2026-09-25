@@ -98,7 +98,7 @@ function useInjectedCapabilities(loadCapabilities: CapabilityLoader) {
 }
 
 function LoadedWorkspaceExperience({ path, navigate, capabilities, capabilitiesLoading, capabilitiesError, refreshCapabilities, loadSession, loadConnectionHealth, signInAction }: { path: string; navigate: (path: string) => void; capabilities: CapabilitySnapshot | null; capabilitiesLoading: boolean; capabilitiesError: Error | null; refreshCapabilities: () => Promise<void>; loadSession: SessionLoader; loadConnectionHealth?: ConnectionHealthLoader; signInAction?: () => Promise<void> }) {
-  const { session, loading: sessionLoading, error: sessionError, retry } = useSession(loadSession);
+  const { session, sessionRevision, loading: sessionLoading, error: sessionError, retry } = useSession(loadSession);
   const hasModuleContract = Array.isArray(session?.workspace.enabledModules) || Array.isArray(session?.workspace.moduleAccess);
   const legacyRedirect = hasModuleContract && (path === '/onboarding' ? '/settings/setup' : path === '/workspace-settings' ? '/settings' : path === '/workspace-access' ? '/settings/access' : null);
   useEffect(() => {
@@ -132,7 +132,7 @@ function LoadedWorkspaceExperience({ path, navigate, capabilities, capabilitiesL
       : route.render({ loadConnectionHealth, capabilities: unavailableSnapshot.capabilities, navigate, session });
   }
 
-  return <WorkspaceNotificationsProvider key={`${session.workspace.id}:${session.user.userPrincipalName ?? session.user.displayName ?? ''}`} session={session} capabilities={capabilities} capabilitiesError={capabilitiesError} onRefresh={refreshCapabilities} loadConnectionHealth={loadConnectionHealth}><AppShell capabilities={capabilities} currentPath={path} session={session} onNavigate={navigate}>{routeContent}</AppShell></WorkspaceNotificationsProvider>;
+  return <WorkspaceNotificationsProvider key={`${session.workspace.id}:${sessionRevision}`} session={session} sessionScope={sessionRevision} capabilities={capabilities} capabilitiesError={capabilitiesError} onRefresh={refreshCapabilities} loadConnectionHealth={loadConnectionHealth}><AppShell capabilities={capabilities} currentPath={path} session={session} onNavigate={navigate}>{routeContent}</AppShell></WorkspaceNotificationsProvider>;
 }
 
 function SessionFailure({ error, onRetry, onSignIn }: { error: Error; onRetry: () => void; onSignIn?: () => Promise<void> }) {
@@ -152,6 +152,7 @@ function RoutePermissionState({ decision }: { decision: NonNullable<ReturnType<t
 
 function useSession(loadSession: SessionLoader) {
   const [session, setSession] = useState<AppSession | null>(null);
+  const [sessionRevision, setSessionRevision] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
   const [attempt, setAttempt] = useState(0);
@@ -159,10 +160,10 @@ function useSession(loadSession: SessionLoader) {
   useEffect(() => {
     let cancelled = false;
     setLoading(true); setError(null);
-    loadSession().then(value => { if (!cancelled) setSession(value); }).catch((reason: unknown) => {
+    loadSession().then(value => { if (!cancelled) { setSession(value); setSessionRevision(revision => revision + 1); } }).catch((reason: unknown) => {
       if (!cancelled) setError(reason instanceof Error ? reason : new Error('session_unavailable'));
     }).finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, [loadSession, attempt]);
-  return { session, loading, error, retry };
+  return { session, sessionRevision, loading, error, retry };
 }
