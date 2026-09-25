@@ -15,7 +15,7 @@ export function WorkspaceSettingsPage({ loadSettings, saveSettings, embedded = f
 function AuthenticatedWorkspaceSettingsPage({ embedded }: { embedded: boolean }) {
   const api = useApi();
   const defaultLoader = useCallback(async () => { const response = await api('/api/workspaces/current/settings'); if (!response.ok) throw new Error('settings load failed'); return await response.json() as WorkspaceSettings; }, [api]);
-  const defaultSaver = useCallback(async (settings: WorkspaceSettings) => { const response = await api('/api/workspaces/current/settings', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(settings) }); if (!response.ok) throw new Error('settings save failed'); return await response.json() as WorkspaceSettings; }, [api]);
+  const defaultSaver = useCallback(async (settings: WorkspaceSettings) => { const { displayName, defaultColumns, defaultFilters, supportInstructions, defaultTheme } = settings; const response = await api('/api/workspaces/current/settings', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ displayName, defaultColumns, defaultFilters, supportInstructions, defaultTheme }) }); if (!response.ok) throw new Error('settings save failed'); return await response.json() as WorkspaceSettings; }, [api]);
   return <LoadedWorkspaceSettingsPage loader={defaultLoader} saver={defaultSaver} embedded={embedded} />;
 }
 

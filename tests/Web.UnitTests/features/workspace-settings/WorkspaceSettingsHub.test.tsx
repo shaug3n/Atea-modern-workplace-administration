@@ -74,6 +74,7 @@ describe('Workspace Settings hub', () => {
     ['/onboarding', 'connection'], ['/settings/setup', 'connection'],
     ['/workspace-settings', 'general'], ['/settings/general', 'general'],
     ['/settings/modules', 'modules'], ['/workspace-access', 'access'], ['/settings/access', 'access'],
+    ['/settings/general/', 'general'], ['/settings/general/#old', 'general'], ['/workspace-access#old', 'access'], ['/onboarding/#old', 'connection'],
     ['/settings#access', 'access'],
   ])('focuses %s on the %s section after direct load', async (path, section) => {
     api.mockImplementation(async (url: string) => {
@@ -86,5 +87,17 @@ describe('Workspace Settings hub', () => {
     await waitFor(() => expect(window.location.pathname + window.location.hash).toBe(`/settings#${section}`));
     const heading = await screen.findByRole('heading', { level: 2, name: section[0].toUpperCase() + section.slice(1) });
     await waitFor(() => expect(document.activeElement).toBe(heading));
+  });
+
+  it('keeps the consent callback route and its query available with a trailing slash', async () => {
+    api.mockImplementation(async (path: string) => {
+      if (path.endsWith('/consent/complete')) return Response.json({ valid: true, status: 'consent_received' });
+      if (path.endsWith('/connection-health/check')) return Response.json({ status: 'connected' });
+      return new Response(null, { status: 404 });
+    });
+    renderAt('/onboarding/consent/callback/?state=signed&tenant=tenant-1#old');
+    await waitFor(() => expect(api.mock.calls.some(([path]) => path === '/api/workspaces/current/consent/complete')).toBe(true));
+    expect(window.location.pathname).toBe('/onboarding/consent/callback/');
+    expect(window.location.search).toBe('?state=signed&tenant=tenant-1');
   });
 });

@@ -107,7 +107,8 @@ function LoadedWorkspaceExperience({ path, navigate, capabilities, capabilitiesL
     '/workspace-settings': '/settings#general', '/settings/general': '/settings#general',
     '/settings/modules': '/settings#modules', '/workspace-access': '/settings#access', '/settings/access': '/settings#access',
   };
-  const legacyRedirect = legacyDestinations[path] ?? null;
+  const legacyPath = path.split('#')[0].replace(/\/+$/, '') || '/';
+  const legacyRedirect = legacyDestinations[legacyPath] ?? null;
   useEffect(() => {
     if (legacyRedirect) navigate(legacyRedirect);
   }, [legacyRedirect, navigate]);
