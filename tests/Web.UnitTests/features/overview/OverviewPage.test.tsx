@@ -45,4 +45,15 @@ describe('OverviewPage', () => {
     render(<OverviewPage loadOverview={async () => ({ ...overview, permissionHealth: { state: 'healthy', allowedCount: 3, totalCount: 4 } })} />);
     await waitFor(() => expect(screen.getByText('3/4')).toBeTruthy());
   });
+
+  it('calls out incomplete permission health in the attention list', async () => {
+    render(<OverviewPage loadOverview={async () => ({
+      ...overview,
+      pimAttention: { requiresAttention: false, count: 0 },
+      permissionHealth: { state: 'incomplete', allowedCount: 3, totalCount: 4 },
+    })} />);
+    await waitFor(() => expect(screen.getByText('3/4')).toBeTruthy());
+    expect(screen.getByText('Workspace permissions need attention (3 of 4 available).')).toBeTruthy();
+    expect(screen.queryByText('No issues need attention right now.')).toBeNull();
+  });
 });

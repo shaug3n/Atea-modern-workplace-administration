@@ -49,6 +49,7 @@ function LoadedOverviewMetrics({ loadOverview, loadConnectionHealth, actions, se
   const validCount = (value: number) => Number.isSafeInteger(value) && value >= 0;
   const attention = [
     ...(usersVisible && overview.pimAttention.requiresAttention ? [messages.overviewPimAttention] : []),
+    ...(usersVisible && overview.permissionHealth.state === 'incomplete' && validCount(overview.permissionHealth.allowedCount) && validCount(overview.permissionHealth.totalCount) && overview.permissionHealth.allowedCount <= overview.permissionHealth.totalCount ? [`Workspace permissions need attention (${overview.permissionHealth.allowedCount} of ${overview.permissionHealth.totalCount} available).`] : []),
     ...(overview.partialData ? ['Some summary data is unavailable.'] : []),
   ];
   return <div className="overview-page"><section className="content-panel" aria-labelledby="overview-title"><p className="eyebrow">{messages.overviewEyebrow}</p><h1 id="overview-title">{messages.overviewTitle}</h1><p>{messages.overviewFreshness}: {overview.freshness}</p><div className="overview-metrics">
