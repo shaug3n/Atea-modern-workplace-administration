@@ -16,6 +16,9 @@ public interface IWorkspaceAccessRepository
 {
     Task<(IReadOnlyList<WorkspaceMembership> Memberships, IReadOnlyList<PlatformInvitation> Invitations)> ListAsync(Guid workspaceId, CancellationToken cancellationToken = default);
     Task<PlatformInvitation?> GetInvitationAsync(Guid workspaceId, Guid invitationId, CancellationToken cancellationToken = default);
+    Task<WorkspaceMembership?> GetMembershipAsync(Guid workspaceId, Guid membershipId, CancellationToken cancellationToken = default);
+    Task<WorkspaceAccessMutationResult> SetModuleGrantsAsync(Guid workspaceId, Guid membershipId, IReadOnlyCollection<string> moduleKeys, AuditEvent auditEvent, CancellationToken cancellationToken = default);
+    Task<WorkspaceAccessMutationResult> TransferOwnershipAsync(Guid workspaceId, Guid currentOwnerObjectId, Guid newOwnerId, IReadOnlyCollection<string> currentEnabledModules, AuditEvent auditEvent, CancellationToken cancellationToken = default);
     Task<bool> RevokeInvitationAsync(Guid workspaceId, Guid invitationId, CancellationToken cancellationToken = default);
     Task<bool> RevokeInvitationAsync(Guid workspaceId, Guid invitationId, AuditEvent auditEvent, CancellationToken cancellationToken = default) => RevokeInvitationAsync(workspaceId, invitationId, cancellationToken);
     Task<WorkspaceAccessMutationResult> ChangeRoleAsync(Guid workspaceId, Guid membershipId, string role, CancellationToken cancellationToken = default);
@@ -62,6 +65,42 @@ public sealed class WorkspaceAccessRepository(WorkplaceDbContext db, IAuditWrite
             x => x.WorkspaceId == workspaceId && x.Id == invitationId,
             cancellationToken);
 
+    public Task<WorkspaceMembership?> GetMembershipAsync(Guid workspaceId, Guid membershipId, CancellationToken cancellationToken = default) =>
+        db.WorkspaceMemberships.AsNoTracking().SingleOrDefaultAsync(x => x.WorkspaceId == workspaceId && x.Id == membershipId, cancellationToken);
+
+    public async Task<WorkspaceAccessMutationResult> SetModuleGrantsAsync(Guid workspaceId, Guid membershipId, IReadOnlyCollection<string> moduleKeys, AuditEvent auditEvent, CancellationToken cancellationToken = default)
+    {
+        await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
+        var membership = await db.WorkspaceMemberships.SingleOrDefaultAsync(x => x.WorkspaceId == workspaceId && x.Id == membershipId && !x.IsAteaOperator, cancellationToken);
+        if (membership is null) return WorkspaceAccessMutationResult.NotFound;
+        membership.ModuleGrantsJson = System.Text.Json.JsonSerializer.Serialize(Atea.UnifiedWorkplace.Api.Authorization.WorkspaceModuleCatalog.Normalize(moduleKeys));
+        await db.SaveChangesAsync(cancellationToken);
+        await auditWriter.WriteAsync(auditEvent, cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return WorkspaceAccessMutationResult.Updated;
+    }
+
+    public async Task<WorkspaceAccessMutationResult> TransferOwnershipAsync(Guid workspaceId, Guid currentOwnerObjectId, Guid newOwnerId, IReadOnlyCollection<string> currentEnabledModules, AuditEvent auditEvent, CancellationToken cancellationToken = default)
+    {
+        await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
+        var oldOwner = await db.WorkspaceMemberships.SingleOrDefaultAsync(x => x.WorkspaceId == workspaceId && x.TenantObjectId == currentOwnerObjectId && !x.IsAteaOperator, cancellationToken);
+        var newOwner = await db.WorkspaceMemberships.SingleOrDefaultAsync(x => x.WorkspaceId == workspaceId && x.Id == newOwnerId && !x.IsAteaOperator, cancellationToken);
+        if (oldOwner is null || newOwner is null || oldOwner.Id == newOwner.Id || !Atea.UnifiedWorkplace.Api.Authorization.WorkspaceModuleCatalog.IsOwner(oldOwner.PlatformRole) || !Atea.UnifiedWorkplace.Api.Authorization.WorkspaceModuleCatalog.IsCustomerAdministrator(newOwner.PlatformRole))
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            return WorkspaceAccessMutationResult.NotFound;
+        }
+        oldOwner.PlatformRole = "customer_admin";
+        oldOwner.ModuleGrantsJson = System.Text.Json.JsonSerializer.Serialize(Atea.UnifiedWorkplace.Api.Authorization.WorkspaceModuleCatalog.Normalize(currentEnabledModules));
+        newOwner.PlatformRole = "workspace_owner";
+        auditEvent.TargetId = newOwner.Id.ToString("D");
+        auditEvent.SafeMetadataJson = System.Text.Json.JsonSerializer.Serialize(new { previousOwnerMembershipId = oldOwner.Id, newOwnerMembershipId = newOwner.Id });
+        await db.SaveChangesAsync(cancellationToken);
+        await auditWriter.WriteAsync(auditEvent, cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return WorkspaceAccessMutationResult.Updated;
+    }
+
     public Task<WorkspaceAccessMutationResult> ChangeRoleAsync(Guid workspaceId, Guid membershipId, string role, CancellationToken cancellationToken = default) =>
         MutateMembershipAsync(workspaceId, membershipId, role, remove: false, auditEvent: null, cancellationToken);
 
@@ -92,6 +131,12 @@ public sealed class WorkspaceAccessRepository(WorkplaceDbContext db, IAuditWrite
             return WorkspaceAccessMutationResult.NotFound;
         }
 
+        if (Atea.UnifiedWorkplace.Api.Authorization.WorkspaceModuleCatalog.IsOwner(membership.PlatformRole))
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            return WorkspaceAccessMutationResult.FinalAdministrator;
+        }
+
         if (IsCustomerAdministrator(membership.PlatformRole)
             && (remove || !string.Equals(role, "customer_admin", StringComparison.OrdinalIgnoreCase)))
         {
@@ -99,7 +144,7 @@ public sealed class WorkspaceAccessRepository(WorkplaceDbContext db, IAuditWrite
                 .CountAsync(x => x.WorkspaceId == workspaceId
                     && x.Id != membershipId
                     && !x.IsAteaOperator
-                    && new[] { "customer_admin", "customeradmin", "admin", "workspace-manager", "owner" }.Contains(x.PlatformRole.ToLower()), cancellationToken);
+                    && new[] { "customer_admin", "customeradmin", "admin", "workspace-manager", "owner", "workspace_owner" }.Contains(x.PlatformRole.ToLower()), cancellationToken);
             if (otherAdministrators == 0)
             {
                 await transaction.RollbackAsync(cancellationToken);
@@ -127,5 +172,6 @@ public sealed class WorkspaceAccessRepository(WorkplaceDbContext db, IAuditWrite
         || role.Equals("customeradmin", StringComparison.OrdinalIgnoreCase)
         || role.Equals("admin", StringComparison.OrdinalIgnoreCase)
         || role.Equals("workspace-manager", StringComparison.OrdinalIgnoreCase)
-        || role.Equals("owner", StringComparison.OrdinalIgnoreCase);
+        || role.Equals("owner", StringComparison.OrdinalIgnoreCase)
+        || role.Equals("workspace_owner", StringComparison.OrdinalIgnoreCase);
 }

@@ -151,9 +151,9 @@ public sealed class MutationReplayTests : IAsyncLifetime
         public Task<WorkspaceMembership?> FindMembershipAsync(Guid tenantId, Guid objectId, CancellationToken cancellationToken = default)
         {
             var membership = tenantId == TenantA && objectId == UserA
-                ? new WorkspaceMembership(WorkspaceA, "Tenant A Workplace", "workspace-manager")
+                ? new WorkspaceMembership(WorkspaceA, "Tenant A Workplace", "workspace-manager", ModuleKeys: ["users", "devices", "licenses"])
                 : tenantId == TenantB && objectId == UserB
-                    ? new WorkspaceMembership(WorkspaceB, "Tenant B Workplace", "workspace-manager")
+                    ? new WorkspaceMembership(WorkspaceB, "Tenant B Workplace", "workspace-manager", ModuleKeys: ["users", "devices", "licenses"])
                     : null;
             return Task.FromResult(membership);
         }

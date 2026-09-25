@@ -10,11 +10,16 @@ export type AppSession = {
   workspace: {
     id: string;
     name: string;
+    enabledModules?: string[];
+    moduleAccess?: string[];
   };
   workspaceAccess?: {
     role: string;
+    isOwner?: boolean;
     canManageMembers: boolean;
     canManageSettings: boolean;
+    canManageModules?: boolean;
+    canManageMemberModules?: boolean;
   };
 };
 

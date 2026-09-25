@@ -8,6 +8,7 @@ public sealed class PlatformInvitation
     public string DisplayName { get; set; } = string.Empty;
     public Guid? ApprovedTenantObjectId { get; set; }
     public string Role { get; set; } = "customer_admin";
+    public string ModuleKeysJson { get; set; } = "[]";
     public string NonceHash { get; set; } = string.Empty;
     public DateTimeOffset ExpiresAt { get; set; }
     public DateTimeOffset? RedeemedAt { get; set; }

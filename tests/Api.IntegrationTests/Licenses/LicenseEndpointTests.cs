@@ -95,7 +95,7 @@ public sealed class LicenseEndpointTests
 
     private static GraphAuthorizationSnapshot AllowedSnapshot() => GraphAuthorizationSnapshot.Available("user-1", ["Directory.Read.All", "User.Read.All"], [new DirectoryRoleSnapshot(EntraRoleCatalog.GlobalReaderTemplateId, "Global Reader", DirectoryRoleAssignmentState.Active, "/")]);
     private sealed class StaticAuthorizationReader(GraphAuthorizationSnapshot snapshot) : IGraphAuthorizationSnapshotReader { public Task<GraphAuthorizationSnapshot> ReadAsync(WorkspaceContext context, CancellationToken cancellationToken = default) => Task.FromResult(snapshot); }
-    private sealed class FixtureMembershipReader : IWorkspaceMembershipReader { public Task<WorkspaceMembership?> FindMembershipAsync(Guid tenantId, Guid objectId, CancellationToken cancellationToken = default) => Task.FromResult<WorkspaceMembership?>(new WorkspaceMembership(WorkspaceId, "Example", "member")); }
+    private sealed class FixtureMembershipReader : IWorkspaceMembershipReader { public Task<WorkspaceMembership?> FindMembershipAsync(Guid tenantId, Guid objectId, CancellationToken cancellationToken = default) => Task.FromResult<WorkspaceMembership?>(new WorkspaceMembership(WorkspaceId, "Example", "member", ModuleKeys: ["users", "devices", "licenses"])); }
     private sealed class RecordingLicenseOverviewReader : ILicenseOverviewReader
     {
         public int Calls { get; private set; }

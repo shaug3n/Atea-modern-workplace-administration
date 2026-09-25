@@ -304,7 +304,8 @@ public static class CapabilityEvaluator
         || string.Equals(membership.PlatformRole, "customeradmin", StringComparison.OrdinalIgnoreCase)
         || string.Equals(membership.PlatformRole, "admin", StringComparison.OrdinalIgnoreCase)
         || string.Equals(membership.PlatformRole, "workspace-manager", StringComparison.OrdinalIgnoreCase)
-        || string.Equals(membership.PlatformRole, "owner", StringComparison.OrdinalIgnoreCase);
+        || string.Equals(membership.PlatformRole, "owner", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(membership.PlatformRole, "workspace_owner", StringComparison.OrdinalIgnoreCase);
 
     private static bool HasAnyScope(GraphAuthorizationSnapshot snapshot, IReadOnlyCollection<string> requiredScopes) =>
         requiredScopes.Count == 0 || requiredScopes.Any(scope => IsScopeAvailable(snapshot, scope));

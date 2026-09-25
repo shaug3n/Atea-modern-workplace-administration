@@ -21,6 +21,8 @@ public static class WorkspaceAccessEndpoints
         access.MapPost("/invitations/{invitationId:guid}/reissue", ReissueInvitationAsync).RequireCapability(Capability.WorkspaceMembersManage);
         access.MapDelete("/invitations/{invitationId:guid}", RevokeInvitationAsync).RequireCapability(Capability.WorkspaceMembersManage);
         access.MapPatch("/memberships/{membershipId:guid}", ChangeRoleAsync).RequireCapability(Capability.WorkspaceMembersManage);
+        access.MapPatch("/memberships/{membershipId:guid}/modules", ChangeModulesAsync).RequireCapability(Capability.WorkspaceMembersManage);
+        access.MapPost("/ownership/transfer", TransferOwnershipAsync).RequireCapability(Capability.WorkspaceMembersManage);
         access.MapDelete("/memberships/{membershipId:guid}", RemoveMembershipAsync).RequireCapability(Capability.WorkspaceMembersManage);
         return endpoints;
     }
@@ -33,14 +35,15 @@ public static class WorkspaceAccessEndpoints
         if (accessor.Current is not { } context) return Results.StatusCode(StatusCodes.Status403Forbidden);
         var (memberships, invitations) = await repository.ListAsync(context.Membership.WorkspaceId, cancellationToken);
         return Results.Ok(new WorkspaceAccessResponse(
-            memberships.Where(x => !x.IsAteaOperator).Select(x => new WorkspaceAccessMembershipDto(x.Id, x.TenantObjectId, x.Email, NormalizeLegacyRole(x.PlatformRole), x.CreatedAt)).ToArray(),
-            invitations.Select(x => new WorkspaceAccessInvitationDto(x.Id, x.Email, x.DisplayName, x.Role, x.ExpiresAt, x.RedeemedAt, x.RevokedAt)).ToArray()));
+            memberships.Where(x => !x.IsAteaOperator).Select(x => new WorkspaceAccessMembershipDto(x.Id, x.TenantObjectId, x.Email, NormalizeLegacyRole(x.PlatformRole), x.CreatedAt, ParseModuleKeys(x.ModuleGrantsJson))).ToArray(),
+            invitations.Select(x => new WorkspaceAccessInvitationDto(x.Id, x.Email, x.DisplayName, x.Role, x.ExpiresAt, x.RedeemedAt, x.RevokedAt, ParseModuleKeys(x.ModuleKeysJson))).ToArray()));
     }
 
     private static async Task<IResult> CreateInvitationAsync(
         WorkspaceAccessInvitationRequest request,
         IWorkspaceContextAccessor accessor,
         IWorkspaceAccessRepository accessRepository,
+        IWorkspaceSettingsService settings,
         InvitationService invitations,
         CancellationToken cancellationToken)
     {
@@ -52,8 +55,17 @@ public static class WorkspaceAccessEndpoints
         if (memberships.Any(x => string.Equals(x.Email, email, StringComparison.OrdinalIgnoreCase)))
             return Results.Conflict(new { error = "user_already_has_workspace_access" });
 
+        var owner = WorkspaceModuleCatalog.IsOwner(context.Membership.PlatformRole);
+        if (!owner && role != "member") return Results.StatusCode(StatusCodes.Status403Forbidden);
+        if (request.ModuleKeys is null) return Results.BadRequest(new { error = "module_selection_required" });
+        var enabled = (await settings.GetConfigurationAsync(context, cancellationToken)).EnabledModules;
+        var actorModules = WorkspaceModuleCatalog.EffectiveModules(context.Membership.PlatformRole, enabled, context.Membership.ModuleKeys);
+        if (!TryNormalizeGrants(request.ModuleKeys, enabled, out var moduleKeys)
+            || (!owner && moduleKeys.Except(actorModules, StringComparer.OrdinalIgnoreCase).Any()))
+            return Results.BadRequest(new { error = "invalid_module_selection" });
+
         var result = await invitations.CreateForRoleAsync(context.Membership.WorkspaceId, email, displayName, DateTimeOffset.UtcNow.Add(InvitationLifetime), role, cancellationToken: cancellationToken,
-            auditEvent: CreateAuditEvent(context, "workspace.invitation.created", "invitation", Guid.Empty, role));
+            auditEvent: CreateAuditEvent(context, "workspace.invitation.created", "invitation", Guid.Empty, role), moduleKeys: moduleKeys);
         return Results.Created($"/api/workspaces/current/access/invitations/{result.InvitationId}", new WorkspaceInvitationLink(result.InvitationId, result.InvitationUrl, result.ExpiresAt));
     }
 
@@ -61,6 +73,7 @@ public static class WorkspaceAccessEndpoints
         Guid invitationId,
         IWorkspaceContextAccessor accessor,
         IWorkspaceAccessRepository accessRepository,
+        IWorkspaceSettingsService settings,
         InvitationService invitations,
         CancellationToken cancellationToken)
     {
@@ -69,8 +82,14 @@ public static class WorkspaceAccessEndpoints
         if (current is null || current.RedeemedAt is not null || current.RevokedAt is not null)
             return Results.NotFound();
 
+        var owner = WorkspaceModuleCatalog.IsOwner(context.Membership.PlatformRole);
+        if (!owner && !current.Role.Equals("member", StringComparison.OrdinalIgnoreCase)) return Results.StatusCode(StatusCodes.Status403Forbidden);
+        var grants = ParseModuleKeys(current.ModuleKeysJson);
+        var enabled = (await settings.GetConfigurationAsync(context, cancellationToken)).EnabledModules;
+        var actorModules = WorkspaceModuleCatalog.EffectiveModules(context.Membership.PlatformRole, enabled, context.Membership.ModuleKeys);
+        if (!owner && grants.Except(actorModules, StringComparer.OrdinalIgnoreCase).Any()) return Results.StatusCode(StatusCodes.Status403Forbidden);
         var result = await invitations.CreateForRoleAsync(context.Membership.WorkspaceId, current.Email, current.DisplayName, DateTimeOffset.UtcNow.Add(InvitationLifetime), NormalizeLegacyRole(current.Role), cancellationToken: cancellationToken,
-            auditEvent: CreateAuditEvent(context, "workspace.invitation.reissued", "invitation", Guid.Empty, NormalizeLegacyRole(current.Role)));
+            auditEvent: CreateAuditEvent(context, "workspace.invitation.reissued", "invitation", Guid.Empty, NormalizeLegacyRole(current.Role)), moduleKeys: grants);
         return Results.Ok(new WorkspaceInvitationLink(result.InvitationId, result.InvitationUrl, result.ExpiresAt));
     }
 
@@ -81,6 +100,11 @@ public static class WorkspaceAccessEndpoints
         CancellationToken cancellationToken)
     {
         if (accessor.Current is not { } context) return Results.StatusCode(StatusCodes.Status403Forbidden);
+        var invitation = await repository.GetInvitationAsync(context.Membership.WorkspaceId, invitationId, cancellationToken);
+        if (invitation is null) return Results.NotFound();
+        if (!WorkspaceModuleCatalog.IsOwner(context.Membership.PlatformRole)
+            && !invitation.Role.Equals("member", StringComparison.OrdinalIgnoreCase))
+            return Results.StatusCode(StatusCodes.Status403Forbidden);
         if (!await repository.RevokeInvitationAsync(context.Membership.WorkspaceId, invitationId, CreateAuditEvent(context, "workspace.invitation.revoked", "invitation", invitationId, null), cancellationToken)) return Results.NotFound();
         return Results.NoContent();
     }
@@ -96,10 +120,66 @@ public static class WorkspaceAccessEndpoints
         if (string.IsNullOrWhiteSpace(request.Role)) return Results.BadRequest(new { error = "invalid_workspace_role" });
         var role = request.Role.Trim().ToLowerInvariant();
         if (!AllowedRoles.Contains(role)) return Results.BadRequest(new { error = "invalid_workspace_role" });
+        if (!WorkspaceModuleCatalog.IsOwner(context.Membership.PlatformRole)) return Results.StatusCode(StatusCodes.Status403Forbidden);
         var result = await repository.ChangeRoleAsync(context.Membership.WorkspaceId, membershipId, role, CreateAuditEvent(context, "workspace.membership.role_changed", "membership", membershipId, role), cancellationToken);
         if (result == WorkspaceAccessMutationResult.NotFound) return Results.NotFound();
         if (result == WorkspaceAccessMutationResult.FinalAdministrator) return Results.Conflict(new { error = "last_customer_admin_required" });
         return Results.NoContent();
+    }
+
+    private static async Task<IResult> ChangeModulesAsync(
+        Guid membershipId,
+        WorkspaceMembershipModulesRequest request,
+        IWorkspaceContextAccessor accessor,
+        IWorkspaceAccessRepository repository,
+        IWorkspaceSettingsService settings,
+        CancellationToken cancellationToken)
+    {
+        if (accessor.Current is not { } context) return Results.StatusCode(StatusCodes.Status403Forbidden);
+        if (request.ModuleKeys is null) return Results.BadRequest(new { error = "module_selection_required" });
+        var enabled = (await settings.GetConfigurationAsync(context, cancellationToken)).EnabledModules;
+        if (!TryNormalizeGrants(request.ModuleKeys, enabled, out var moduleKeys)) return Results.BadRequest(new { error = "invalid_module_selection" });
+        var owner = WorkspaceModuleCatalog.IsOwner(context.Membership.PlatformRole);
+        if (!owner)
+        {
+            var actorModules = WorkspaceModuleCatalog.EffectiveModules(context.Membership.PlatformRole, enabled, context.Membership.ModuleKeys);
+            var target = await repository.GetMembershipAsync(context.Membership.WorkspaceId, membershipId, cancellationToken);
+            if (target is null || WorkspaceModuleCatalog.IsCustomerAdministrator(target.PlatformRole)) return Results.StatusCode(StatusCodes.Status403Forbidden);
+            if (moduleKeys.Except(actorModules, StringComparer.OrdinalIgnoreCase).Any()) return Results.StatusCode(StatusCodes.Status403Forbidden);
+        }
+        var result = await repository.SetModuleGrantsAsync(context.Membership.WorkspaceId, membershipId, moduleKeys,
+            CreateAuditEvent(context, "workspace.membership.modules_changed", "membership", membershipId, null), cancellationToken);
+        return result == WorkspaceAccessMutationResult.NotFound ? Results.NotFound() : Results.NoContent();
+    }
+
+    private static async Task<IResult> TransferOwnershipAsync(
+        WorkspaceOwnershipTransferRequest request,
+        IWorkspaceContextAccessor accessor,
+        IWorkspaceAccessRepository repository,
+        IWorkspaceSettingsService settings,
+        CancellationToken cancellationToken)
+    {
+        if (accessor.Current is not { } context || !WorkspaceModuleCatalog.IsOwner(accessor.Current.Membership.PlatformRole))
+            return Results.StatusCode(StatusCodes.Status403Forbidden);
+        if (request.NewOwnerMembershipId == Guid.Empty) return Results.BadRequest(new { error = "invalid_owner" });
+        var enabled = (await settings.GetConfigurationAsync(context, cancellationToken)).EnabledModules;
+        var audit = CreateAuditEvent(context, "workspace.ownership.transferred", "membership", request.NewOwnerMembershipId, "workspace_owner");
+        var result = await repository.TransferOwnershipAsync(context.Membership.WorkspaceId, context.User.ObjectId, request.NewOwnerMembershipId, enabled, audit, cancellationToken);
+        return result == WorkspaceAccessMutationResult.NotFound ? Results.NotFound() : Results.NoContent();
+    }
+
+    private static bool TryNormalizeGrants(IReadOnlyCollection<string> requested, IReadOnlyCollection<string> enabled, out IReadOnlyCollection<string> normalized)
+    {
+        normalized = WorkspaceModuleCatalog.Normalize(requested);
+        return requested.All(WorkspaceModuleCatalog.IsKnown)
+            && normalized.Count == requested.Distinct(StringComparer.OrdinalIgnoreCase).Count()
+            && normalized.Except(enabled, StringComparer.OrdinalIgnoreCase).Any() == false;
+    }
+
+    private static IReadOnlyCollection<string> ParseModuleKeys(string json)
+    {
+        try { return WorkspaceModuleCatalog.Normalize(JsonSerializer.Deserialize<string[]>(json)); }
+        catch (JsonException) { return []; }
     }
 
     private static async Task<IResult> RemoveMembershipAsync(
@@ -109,6 +189,12 @@ public static class WorkspaceAccessEndpoints
         CancellationToken cancellationToken)
     {
         if (accessor.Current is not { } context) return Results.StatusCode(StatusCodes.Status403Forbidden);
+        if (!WorkspaceModuleCatalog.IsOwner(context.Membership.PlatformRole))
+        {
+            var target = await repository.GetMembershipAsync(context.Membership.WorkspaceId, membershipId, cancellationToken);
+            if (target is null) return Results.NotFound();
+            if (WorkspaceModuleCatalog.IsCustomerAdministrator(target.PlatformRole)) return Results.StatusCode(StatusCodes.Status403Forbidden);
+        }
         var result = await repository.RemoveMembershipAsync(context.Membership.WorkspaceId, membershipId, CreateAuditEvent(context, "workspace.membership.removed", "membership", membershipId, null), cancellationToken);
         if (result == WorkspaceAccessMutationResult.NotFound) return Results.NotFound();
         if (result == WorkspaceAccessMutationResult.FinalAdministrator) return Results.Conflict(new { error = "last_customer_admin_required" });

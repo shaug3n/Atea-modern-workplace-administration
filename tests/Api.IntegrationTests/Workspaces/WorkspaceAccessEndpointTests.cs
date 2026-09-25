@@ -89,7 +89,7 @@ public sealed class WorkspaceAccessEndpointTests : IAsyncLifetime
     {
         await SeedWorkspaceAsync();
         using var admin = AuthenticatedClient(TenantId, AdminObjectId);
-        var invite = await admin.PostAsJsonAsync("/api/workspaces/current/access/invitations", new { email = "new.user@example.com", displayName = "New User", role });
+        var invite = await admin.PostAsJsonAsync("/api/workspaces/current/access/invitations", new { email = "new.user@example.com", displayName = "New User", role, moduleKeys = new[] { "users", "devices", "licenses" } });
         invite.StatusCode.Should().Be(HttpStatusCode.Created);
         using var inviteJson = JsonDocument.Parse(await invite.Content.ReadAsStringAsync());
         var nonce = inviteJson.RootElement.GetProperty("invitationUrl").GetString()!.TrimEnd('/').Split('/').Last();
@@ -181,7 +181,7 @@ public sealed class WorkspaceAccessEndpointTests : IAsyncLifetime
         var invitation = await db.PlatformInvitations.SingleAsync(x => x.WorkspaceId == workspace.Id);
         invitation.Email.Should().Be("owner@customer.example");
         invitation.DisplayName.Should().Be("Workspace Owner");
-        invitation.Role.Should().Be("customer_admin");
+        invitation.Role.Should().Be("workspace_owner");
         invitation.ExpiresAt.Should().Be(expiresAt);
         invitation.NonceHash.Should().NotContain(invitationUrl.Split('/').Last());
     }
@@ -380,7 +380,7 @@ public sealed class WorkspaceAccessEndpointTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Last_customer_admin_cannot_be_downgraded_or_removed()
+    public async Task Last_workspace_owner_cannot_be_downgraded_or_removed()
     {
         await SeedWorkspaceAsync();
         using var admin = AuthenticatedClient(TenantId, AdminObjectId);
@@ -413,6 +413,100 @@ public sealed class WorkspaceAccessEndpointTests : IAsyncLifetime
         using var member = AuthenticatedClient(TenantId, MemberObjectId, "member@example.com", "Member");
         (await admin.PatchAsJsonAsync("/api/workspaces/current/settings", new { displayName = "Managed by customer" })).StatusCode.Should().Be(HttpStatusCode.OK);
         (await member.PatchAsJsonAsync("/api/workspaces/current/settings", new { displayName = "Unauthorized" })).StatusCode.Should().Be(HttpStatusCode.Forbidden);
+    }
+
+    [Fact]
+    public async Task Customer_admin_cannot_remove_or_revoke_another_customer_admin()
+    {
+        await SeedWorkspaceAsync("customer_admin");
+        var targetMembershipId = Guid.NewGuid();
+        var pendingAdminInvitationId = Guid.NewGuid();
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<WorkplaceDbContext>();
+            db.WorkspaceMemberships.Add(new WorkspaceMembership
+            {
+                Id = targetMembershipId, WorkspaceId = WorkspaceId, TenantObjectId = InviteeObjectId,
+                Email = "other-admin@example.com", PlatformRole = "customer_admin", ModuleGrantsJson = "[\"users\"]",
+                CreatedAt = DateTimeOffset.UtcNow
+            });
+            db.PlatformInvitations.Add(new PlatformInvitation
+            {
+                Id = pendingAdminInvitationId, WorkspaceId = WorkspaceId,
+                Email = "pending-admin@example.com", DisplayName = "Pending Admin", Role = "customer_admin",
+                ModuleKeysJson = "[\"users\"]", NonceHash = new string('a', 64),
+                ExpiresAt = DateTimeOffset.UtcNow.AddDays(7), CreatedAt = DateTimeOffset.UtcNow
+            });
+            await db.SaveChangesAsync();
+        }
+
+        using var customerAdmin = AuthenticatedClient(TenantId, AdminObjectId);
+        (await customerAdmin.DeleteAsync($"/api/workspaces/current/access/memberships/{targetMembershipId}")).StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        (await customerAdmin.DeleteAsync($"/api/workspaces/current/access/invitations/{pendingAdminInvitationId}")).StatusCode.Should().Be(HttpStatusCode.Forbidden);
+    }
+
+    [Fact]
+    public async Task Session_exposes_enabled_modules_and_effective_personal_module_access()
+    {
+        await SeedWorkspaceAsync("workspace_owner");
+        using var admin = AuthenticatedClient(TenantId, AdminObjectId);
+
+        var response = await admin.GetAsync("/api/session");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        body.RootElement.GetProperty("workspace").GetProperty("moduleAccess").EnumerateArray()
+            .Select(x => x.GetString()).Should().Contain(["users", "devices", "licenses"]);
+        body.RootElement.GetProperty("workspaceAccess").GetProperty("isOwner").GetBoolean().Should().BeTrue();
+        body.RootElement.GetProperty("workspaceAccess").GetProperty("canManageModules").GetBoolean().Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Only_workspace_owner_can_enable_modules_and_module_access_is_personal()
+    {
+        await SeedWorkspaceAsync("workspace_owner");
+        using var owner = AuthenticatedClient(TenantId, AdminObjectId);
+        using var member = AuthenticatedClient(TenantId, MemberObjectId, "member@example.com", "Member");
+
+        var initialSession = JsonDocument.Parse(await (await member.GetAsync("/api/session")).Content.ReadAsStringAsync());
+        initialSession.RootElement.GetProperty("workspace").GetProperty("moduleAccess").GetArrayLength().Should().Be(0);
+        var enable = await owner.PatchAsJsonAsync("/api/workspaces/current/modules", new { enabledModules = new[] { "users", "devices", "licenses", "exchange" } });
+        enable.StatusCode.Should().Be(HttpStatusCode.OK);
+        (await member.PatchAsJsonAsync("/api/workspaces/current/modules", new { enabledModules = new[] { "users" } })).StatusCode.Should().Be(HttpStatusCode.Forbidden);
+
+        using var enabledSession = JsonDocument.Parse(await (await member.GetAsync("/api/session")).Content.ReadAsStringAsync());
+        enabledSession.RootElement.GetProperty("workspace").GetProperty("enabledModules").EnumerateArray()
+            .Select(x => x.GetString()).Should().Contain("exchange");
+        enabledSession.RootElement.GetProperty("workspace").GetProperty("moduleAccess").GetArrayLength().Should().Be(0);
+    }
+
+    [Fact]
+    public async Task Invitation_grants_are_explicit_and_copied_to_redeemed_membership()
+    {
+        await SeedWorkspaceAsync("customer_admin");
+        using var admin = AuthenticatedClient(TenantId, AdminObjectId);
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<WorkplaceDbContext>();
+            var membership = await db.WorkspaceMemberships.SingleAsync(x => x.WorkspaceId == WorkspaceId && x.TenantObjectId == AdminObjectId);
+            membership.ModuleGrantsJson = "[\"users\"]";
+            await db.SaveChangesAsync();
+        }
+
+        var missing = await admin.PostAsJsonAsync("/api/workspaces/current/access/invitations", new { email = "granted@example.com", displayName = "Granted", role = "member" });
+        missing.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        var overgrant = await admin.PostAsJsonAsync("/api/workspaces/current/access/invitations", new { email = "granted@example.com", displayName = "Granted", role = "member", moduleKeys = new[] { "devices" } });
+        overgrant.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+
+        var invite = await admin.PostAsJsonAsync("/api/workspaces/current/access/invitations", new { email = "granted@example.com", displayName = "Granted", role = "member", moduleKeys = new[] { "users" } });
+        invite.StatusCode.Should().Be(HttpStatusCode.Created);
+        using var body = JsonDocument.Parse(await invite.Content.ReadAsStringAsync());
+        var nonce = body.RootElement.GetProperty("invitationUrl").GetString()!.TrimEnd('/').Split('/').Last();
+        using var invited = AuthenticatedClient(TenantId, InviteeObjectId, "granted@example.com", "Granted");
+        (await invited.PostAsync($"/api/invitations/{nonce}/redeem", null)).StatusCode.Should().Be(HttpStatusCode.OK);
+        using var session = JsonDocument.Parse(await (await invited.GetAsync("/api/session")).Content.ReadAsStringAsync());
+        session.RootElement.GetProperty("workspace").GetProperty("moduleAccess").EnumerateArray().Select(x => x.GetString()).Should().ContainSingle().Which.Should().Be("users");
+        (await invited.GetAsync("/api/devices")).StatusCode.Should().Be(HttpStatusCode.Forbidden);
     }
 
     [Fact]
@@ -452,7 +546,7 @@ public sealed class WorkspaceAccessEndpointTests : IAsyncLifetime
         (await verifyDb.WorkspaceMemberships.SingleAsync(x => x.Id == memberMembershipId)).PlatformRole.Should().Be("member");
     }
 
-    private async Task SeedWorkspaceAsync()
+    private async Task SeedWorkspaceAsync(string adminRole = "workspace_owner")
     {
         await ResetDatabaseAsync();
         await using var scope = factory.Services.CreateAsyncScope();
@@ -460,7 +554,7 @@ public sealed class WorkspaceAccessEndpointTests : IAsyncLifetime
         var now = DateTimeOffset.UtcNow;
         db.Workspaces.Add(new Workspace { Id = WorkspaceId, TenantId = TenantId, DisplayName = "Customer", ConnectionStatus = "connected", CreatedAt = now, UpdatedAt = now });
         db.WorkspaceMemberships.AddRange(
-            new WorkspaceMembership { Id = Guid.NewGuid(), WorkspaceId = WorkspaceId, TenantObjectId = AdminObjectId, Email = "admin@example.com", PlatformRole = "CustomerAdmin", CreatedAt = now },
+            new WorkspaceMembership { Id = Guid.NewGuid(), WorkspaceId = WorkspaceId, TenantObjectId = AdminObjectId, Email = "admin@example.com", PlatformRole = adminRole, ModuleGrantsJson = "[\"users\",\"devices\",\"licenses\"]", CreatedAt = now },
             new WorkspaceMembership { Id = Guid.NewGuid(), WorkspaceId = WorkspaceId, TenantObjectId = MemberObjectId, Email = "member@example.com", PlatformRole = "member", CreatedAt = now });
         await db.SaveChangesAsync();
     }
@@ -486,7 +580,7 @@ public sealed class WorkspaceAccessEndpointTests : IAsyncLifetime
 
     private static async Task<(Guid Id, string Url, string Nonce)> CreateInvitationAsync(HttpClient client, string email, string displayName, string role)
     {
-        var response = await client.PostAsJsonAsync("/api/workspaces/current/access/invitations", new { email, displayName, role });
+        var response = await client.PostAsJsonAsync("/api/workspaces/current/access/invitations", new { email, displayName, role, moduleKeys = new[] { "users", "devices", "licenses" } });
         response.StatusCode.Should().Be(HttpStatusCode.Created);
         using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
         var url = json.RootElement.GetProperty("invitationUrl").GetString()!;

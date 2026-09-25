@@ -91,25 +91,37 @@ function useInjectedCapabilities(loadCapabilities: CapabilityLoader) {
 
 function LoadedWorkspaceExperience({ path, navigate, capabilities, capabilitiesLoading, capabilitiesError, loadSession, loadConnectionHealth, signInAction }: { path: string; navigate: (path: string) => void; capabilities: CapabilitySnapshot | null; capabilitiesLoading: boolean; capabilitiesError: Error | null; loadSession: SessionLoader; loadConnectionHealth?: ConnectionHealthLoader; signInAction?: () => Promise<void> }) {
   const { session, loading: sessionLoading, error: sessionError, retry } = useSession(loadSession);
+  const hasModuleContract = Array.isArray(session?.workspace.enabledModules) || Array.isArray(session?.workspace.moduleAccess);
+  const legacyRedirect = hasModuleContract && (path === '/onboarding' ? '/settings/setup' : path === '/workspace-settings' ? '/settings' : path === '/workspace-access' ? '/settings/access' : null);
+  useEffect(() => {
+    if (legacyRedirect) navigate(legacyRedirect);
+  }, [legacyRedirect, navigate]);
 
   if (sessionLoading) return <main className="loading-state" role="status">{messages.shellLoading}</main>;
   if (sessionError || !session) return <SessionFailure error={sessionError ?? new Error('session_unavailable')} onRetry={retry} onSignIn={signInAction} />;
 
   const route = matchRoute(path);
+  if (legacyRedirect) return <main className="loading-state" role="status">Redirecting…</main>;
   const canManageMembers = session.workspaceAccess?.canManageMembers === true;
   const canManageSettings = session.workspaceAccess?.canManageSettings === true;
-  const hasWorkspaceAccess = route.workspaceAccess === 'members' ? canManageMembers : route.workspaceAccess === 'settings' ? canManageSettings : true;
+  const canManageModules = session.workspaceAccess?.canManageModules === true;
+  const hasWorkspaceAccess = route.workspaceAccess === 'members' ? canManageMembers : route.workspaceAccess === 'modules' ? canManageModules : route.workspaceAccess === 'settings' ? canManageSettings : true;
+  const availableModules = session.workspace.moduleAccess ?? session.workspace.enabledModules;
+  const isDeviceSetupAdmin = route.module === 'devices' && canManageSettings;
+  const hasModuleAccess = !route.module || !availableModules || ((!session.workspace.enabledModules || session.workspace.enabledModules.includes(route.module)) && availableModules.includes(route.module)) || isDeviceSetupAdmin;
   const unavailableSnapshot = capabilities ?? { workspaceId: session.workspace.id, evaluatedAt: new Date().toISOString(), sourceState: 'unavailable', capabilities: [] } satisfies CapabilitySnapshot;
   let routeContent: React.ReactNode;
   if (!hasWorkspaceAccess) {
     routeContent = <section className="permission-panel" role="status"><h1>{messages.workspaceAccessDeniedTitle}</h1><p>{messages.workspaceAccessDeniedBody}</p></section>;
+  } else if (!hasModuleAccess) {
+    routeContent = <section className="permission-panel" role="status"><h1>{messages.moduleDisabledTitle}</h1><p>{messages.moduleDisabledBody}</p></section>;
   } else if (route.capability && capabilitiesError) {
     routeContent = <section className="permission-panel" role="alert"><h1>{messages.permissionCheckUnavailableTitle}</h1><p>{messages.permissionCheckUnavailableBody}</p><button type="button" onClick={() => window.location.reload()}>{messages.retry}</button></section>;
   } else {
     const decision = capabilityDecisionFor(route, unavailableSnapshot.capabilities);
     routeContent = decision && decision.state !== 'allowed'
       ? <RoutePermissionState decision={decision} />
-      : route.render({ loadConnectionHealth, capabilities: unavailableSnapshot.capabilities, navigate });
+      : route.render({ loadConnectionHealth, capabilities: unavailableSnapshot.capabilities, navigate, session });
   }
 
   return <AppShell capabilities={capabilities} currentPath={path} session={session} onNavigate={navigate}>{routeContent}</AppShell>;

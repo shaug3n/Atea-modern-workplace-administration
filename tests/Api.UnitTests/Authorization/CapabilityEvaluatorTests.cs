@@ -5,6 +5,18 @@ namespace Atea.UnifiedWorkplace.Api.UnitTests.Authorization;
 
 public sealed class CapabilityEvaluatorTests
 {
+    [Theory]
+    [InlineData(Capability.WorkspaceMembersManage)]
+    [InlineData(Capability.WorkspaceSettingsManage)]
+    public void Workspace_owner_can_manage_workspace_platform_settings_and_members(string capability)
+    {
+        var membership = new WorkspaceMembership(Guid.NewGuid(), "Customer workspace", "workspace_owner");
+
+        var decision = CapabilityEvaluator.EvaluatePlatformCapability(capability, membership);
+
+        decision.State.Should().Be(CapabilityState.Allowed);
+    }
+
     [Fact]
     public void Privileged_device_commands_require_privileged_operations_consent()
     {

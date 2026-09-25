@@ -6,7 +6,7 @@ public static class UserAssociatedDeviceEndpoints
 {
     public static IEndpointRouteBuilder MapUserAssociatedDeviceEndpoints(this IEndpointRouteBuilder endpoints)
     {
-        endpoints.MapGet("/api/users/{userObjectId}/devices", GetAsync).RequireAuthorization();
+        endpoints.MapGet("/api/users/{userObjectId}/devices", GetAsync).RequireAuthorization().RequireWorkspaceModule("devices");
         return endpoints;
     }
 

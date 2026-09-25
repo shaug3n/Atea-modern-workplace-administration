@@ -27,7 +27,7 @@ const hiddenWorkspaceSettings: CapabilitySnapshot = {
 
 const session = {
   user: { displayName: 'Alex Morgan', userPrincipalName: 'alex@example.com' },
-  workspace: { id: '55555555-5555-5555-5555-555555555555', name: 'Contoso Workplace' },
+  workspace: { id: '55555555-5555-5555-5555-555555555555', name: 'Contoso Workplace', enabledModules: ['users', 'devices', 'licenses'], moduleAccess: ['users', 'devices', 'licenses'] },
 };
 
 describe('AppShell', () => {
@@ -57,7 +57,7 @@ describe('AppShell', () => {
     window.history.pushState(null, '', '/workspace-settings');
     render(<App loadCapabilities={async () => hiddenWorkspaceSettings} loadSession={async () => session} />);
 
-    await waitFor(() => expect(screen.queryByRole('link', { name: 'Workspace settings' })).toBeNull());
-    expect(screen.getByRole('status').textContent).toContain('not available');
+    await waitFor(() => expect(window.location.pathname).toBe('/settings'));
+    expect(screen.getByRole('heading', { name: 'Workspace access is managed by an administrator' })).toBeTruthy();
   });
 });

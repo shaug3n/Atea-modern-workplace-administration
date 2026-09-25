@@ -10,14 +10,20 @@ import { OnboardingPage } from '../features/workspace-settings/OnboardingPage';
 import { WorkspaceAccessPage } from '../features/workspace-access/WorkspaceAccessPage';
 import { UserDetailPage } from '../features/users/UserDetailPage';
 import { UsersPage } from '../features/users/UsersPage';
+import { DevicesPage } from '../features/devices/DevicesPage';
+import { ExchangeOverviewPage } from '../features/exchange/ExchangeOverviewPage';
+import { WorkspaceModulesPage } from '../features/workspace-settings/WorkspaceModulesPage';
+import { SettingsSummaryPage } from '../features/workspace-settings/SettingsSummaryPage';
 import { messages } from './messages';
+import type { AppSession } from '../components/TenantContextHeader';
 
 export type AppRoute = {
   path: string;
   label: string;
   capability?: Capability;
-  workspaceAccess?: 'members' | 'settings';
-  render: (options?: { loadConnectionHealth?: ConnectionHealthLoader; loadOverview?: OverviewLoader; capabilities?: CapabilityDecision[]; navigate?: (path: string) => void }) => ReactNode;
+  module?: 'users' | 'devices' | 'licenses' | 'exchange';
+  workspaceAccess?: 'members' | 'settings' | 'modules';
+  render: (options?: { loadConnectionHealth?: ConnectionHealthLoader; loadOverview?: OverviewLoader; capabilities?: CapabilityDecision[]; navigate?: (path: string) => void; session?: AppSession }) => ReactNode;
 };
 
 export function isInvitationPath(pathname: string) {
@@ -38,40 +44,66 @@ export const appRoutes: AppRoute[] = [
   { path: '/consent-callback', label: messages.connectionTitle, render: () => <ConsentCallbackPage /> },
   { path: '/onboarding/consent/callback', label: messages.connectionTitle, render: () => <ConsentCallbackPage /> },
   { path: '/onboarding', label: messages.navOnboarding, render: (options) => <OnboardingPage onNavigate={options?.navigate} /> },
+  { path: '/settings', label: 'Settings', workspaceAccess: 'settings', render: () => <SettingsSummaryPage /> },
+  { path: '/settings/setup', label: 'Setup', workspaceAccess: 'settings', render: (options) => <OnboardingPage onNavigate={options?.navigate} /> },
+  { path: '/settings/general', label: 'General', workspaceAccess: 'settings', render: () => <WorkspaceSettingsPage /> },
+  { path: '/settings/modules', label: 'Modules', workspaceAccess: 'modules', render: () => <WorkspaceModulesPage /> },
+  { path: '/settings/access', label: 'Access', workspaceAccess: 'members', render: (options) => <WorkspaceAccessPage isOwner={options?.session?.workspaceAccess?.isOwner === true} canManageModules={options?.session?.workspaceAccess?.canManageMemberModules === true} availableModules={options?.session?.workspace.moduleAccess ?? []} /> },
   {
     path: '/overview',
     label: messages.navOverview,
-    render: (options) => <OverviewPage loadConnectionHealth={options?.loadConnectionHealth} loadOverview={options?.loadOverview} />,
+    render: (options) => <OverviewPage loadConnectionHealth={options?.loadConnectionHealth} loadOverview={options?.loadOverview} session={options?.session} />,
   },
   {
     path: '/users',
     label: messages.navUsers,
+    module: 'users',
     capability: 'users.view',
     render: (options) => <UsersPage capabilities={options?.capabilities ?? []} onNavigate={options?.navigate} />,
   },
   {
     path: '/users/:userId',
     label: messages.navUsers,
+    module: 'users',
     capability: 'users.view',
-    render: (options) => <UserDetailPage capabilities={options?.capabilities} />,
+    render: (options) => <UserDetailPage capabilities={options?.capabilities} modules={options?.session?.workspace.moduleAccess} />,
   },
   {
     path: '/licenses',
     label: messages.navLicenses,
-    capability: 'licenses.assign',
+    module: 'licenses',
+    capability: 'licenses.view',
     render: () => <LicensesPage />,
   },
   {
     path: '/audit',
-    label: messages.navAudit,
+    label: 'Activity',
     capability: 'audit.view',
     render: () => <AuditActivityPage />,
+  },
+  {
+    path: '/activity',
+    label: 'Activity',
+    capability: 'audit.view',
+    render: () => <AuditActivityPage />,
+  },
+  {
+    path: '/devices',
+    label: messages.navDevices,
+    module: 'devices',
+    render: (options) => <DevicesPage capabilities={options?.capabilities} moduleAssigned={options?.session?.workspace.moduleAccess?.includes('devices') ?? true} moduleEnabled={options?.session?.workspace.enabledModules?.includes('devices') ?? true} />,
+  },
+  {
+    path: '/services/exchange',
+    label: 'Exchange',
+    module: 'exchange',
+    render: () => <ExchangeOverviewPage />,
   },
   {
     path: '/workspace-access',
     label: messages.navWorkspaceAccess,
     workspaceAccess: 'members',
-    render: () => <WorkspaceAccessPage />,
+    render: (options) => <WorkspaceAccessPage isOwner={options?.session?.workspaceAccess?.isOwner === true} canManageModules={options?.session?.workspaceAccess?.canManageMemberModules === true} availableModules={options?.session?.workspace.moduleAccess ?? []} />,
   },
   {
     path: '/workspace-settings',

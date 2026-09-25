@@ -258,9 +258,9 @@ public sealed class CrossTenantAccessTests : IAsyncLifetime
         public Task<Atea.UnifiedWorkplace.Api.Authorization.WorkspaceMembership?> FindMembershipAsync(Guid tenantId, Guid objectId, CancellationToken cancellationToken = default)
         {
             var membership = tenantId == TenantA && objectId == UserA
-                ? new Atea.UnifiedWorkplace.Api.Authorization.WorkspaceMembership(WorkspaceA, "Tenant A Workplace", "workspace-manager")
+                ? new Atea.UnifiedWorkplace.Api.Authorization.WorkspaceMembership(WorkspaceA, "Tenant A Workplace", "workspace-manager", ModuleKeys: ["users", "devices", "licenses"])
                 : tenantId == TenantB && objectId == UserB
-                    ? new Atea.UnifiedWorkplace.Api.Authorization.WorkspaceMembership(WorkspaceB, "Tenant B Workplace", "workspace-manager")
+                    ? new Atea.UnifiedWorkplace.Api.Authorization.WorkspaceMembership(WorkspaceB, "Tenant B Workplace", "workspace-manager", ModuleKeys: ["users", "devices", "licenses"])
                     : null;
             return Task.FromResult(membership);
         }

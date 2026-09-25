@@ -7,7 +7,7 @@ public static class RoleEndpoints
 {
     public static IEndpointRouteBuilder MapRoleEndpoints(this IEndpointRouteBuilder endpoints)
     {
-        endpoints.MapGet("/api/users/{userObjectId}/roles", GetUserRolesAsync).RequireAuthorization();
+        endpoints.MapGet("/api/users/{userObjectId}/roles", GetUserRolesAsync).RequireAuthorization().RequireWorkspaceModule("users");
         return endpoints;
     }
 

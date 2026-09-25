@@ -7,14 +7,14 @@ public static class UserCommandEndpoints
 {
     public static IEndpointRouteBuilder MapUserCommandEndpoints(this IEndpointRouteBuilder endpoints)
     {
-        endpoints.MapPost("/api/users", CreateUserAsync).RequireAuthorization().RequireCapability(Capability.UsersCreate);
-        endpoints.MapPatch("/api/users/{userObjectId}", UpdateUserAsync).RequireAuthorization().RequireCapability(Capability.UsersUpdate);
-        endpoints.MapPost("/api/users/{userObjectId}/disable", DisableUserAsync).RequireAuthorization().RequireCapability(Capability.UsersDisable);
-        endpoints.MapPost("/api/users/{userObjectId}/reactivate", ReactivateUserAsync).RequireAuthorization().RequireCapability(Capability.UsersDisable);
-        endpoints.MapPost("/api/users/{userObjectId}/groups/{groupObjectId}", AddGroupAsync).RequireAuthorization().RequireCapability(Capability.GroupsManageMembers);
-        endpoints.MapDelete("/api/users/{userObjectId}/groups/{groupObjectId}", RemoveGroupAsync).RequireAuthorization().RequireCapability(Capability.GroupsManageMembers);
-        endpoints.MapPost("/api/users/{userObjectId}/licenses/{skuId}", AssignLicenseAsync).RequireAuthorization().RequireCapability(Capability.LicensesAssign);
-        endpoints.MapDelete("/api/users/{userObjectId}/licenses/{skuId}", RemoveLicenseAsync).RequireAuthorization().RequireCapability(Capability.LicensesAssign);
+        endpoints.MapPost("/api/users", CreateUserAsync).RequireAuthorization().RequireWorkspaceModule("users").RequireCapability(Capability.UsersCreate);
+        endpoints.MapPatch("/api/users/{userObjectId}", UpdateUserAsync).RequireAuthorization().RequireWorkspaceModule("users").RequireCapability(Capability.UsersUpdate);
+        endpoints.MapPost("/api/users/{userObjectId}/disable", DisableUserAsync).RequireAuthorization().RequireWorkspaceModule("users").RequireCapability(Capability.UsersDisable);
+        endpoints.MapPost("/api/users/{userObjectId}/reactivate", ReactivateUserAsync).RequireAuthorization().RequireWorkspaceModule("users").RequireCapability(Capability.UsersDisable);
+        endpoints.MapPost("/api/users/{userObjectId}/groups/{groupObjectId}", AddGroupAsync).RequireAuthorization().RequireWorkspaceModule("users").RequireCapability(Capability.GroupsManageMembers);
+        endpoints.MapDelete("/api/users/{userObjectId}/groups/{groupObjectId}", RemoveGroupAsync).RequireAuthorization().RequireWorkspaceModule("users").RequireCapability(Capability.GroupsManageMembers);
+        endpoints.MapPost("/api/users/{userObjectId}/licenses/{skuId}", AssignLicenseAsync).RequireAuthorization().RequireWorkspaceModule("licenses").RequireCapability(Capability.LicensesAssign);
+        endpoints.MapDelete("/api/users/{userObjectId}/licenses/{skuId}", RemoveLicenseAsync).RequireAuthorization().RequireWorkspaceModule("licenses").RequireCapability(Capability.LicensesAssign);
         return endpoints;
     }
 

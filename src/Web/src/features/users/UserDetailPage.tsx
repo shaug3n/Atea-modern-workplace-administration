@@ -21,7 +21,7 @@ import { ActionMenu } from '../../components/ActionMenu';
 import { AssociatedDevicesSection } from './AssociatedDevicesSection';
 import { RevokeSessionsDialog } from './RevokeSessionsDialog';
 
-export function UserDetailPage({ userId, loadUserDetail, capabilities = [] }: { userId?: string; loadUserDetail?: (userId: string) => Promise<UserDetailResponse>; capabilities?: CapabilityDecision[] }) {
+export function UserDetailPage({ userId, loadUserDetail, capabilities = [], modules }: { userId?: string; loadUserDetail?: (userId: string) => Promise<UserDetailResponse>; capabilities?: CapabilityDecision[]; modules?: string[] }) {
   const api = useApi();
   const resolvedUserId = userId ?? userIdFromPath(window.location.pathname);
   const loader = useMemo(() => loadUserDetail ?? ((id: string) => fetchUserDetail(api as ApiFetch, id)), [api, loadUserDetail]);
@@ -155,14 +155,14 @@ export function UserDetailPage({ userId, loadUserDetail, capabilities = [] }: { 
       <div className="user-detail-grid">
         <IdentitySection user={user} access={detail.access} />
         <JobInformationSection user={user} access={detail.access} />
-        <LicensesSection section={detail.licenses} canManage={findDecision(capabilities, 'licenses.assign').state === 'allowed'} onAdd={() => setLicenseAction({ id: null, mode: 'assign' })} onRemove={(item) => setLicenseAction({ id: item.skuId, target: item.displayName || item.skuId, mode: 'remove' })} />
+        {(modules === undefined || modules.includes('licenses')) && <LicensesSection section={detail.licenses} canManage={findDecision(capabilities, 'licenses.assign').state === 'allowed'} onAdd={() => setLicenseAction({ id: null, mode: 'assign' })} onRemove={(item) => setLicenseAction({ id: item.skuId, target: item.displayName || item.skuId, mode: 'remove' })} />}
         <GroupsSection section={detail.groups} canManage={findDecision(capabilities, 'groups.manage_members').state === 'allowed'} onAdd={() => setGroupAction({ id: null, mode: 'add' })} onRemove={(item) => setGroupAction({ id: item.id, target: item.displayName || item.id, mode: 'remove' })} />
         <RolesAndPimSection roles={detail.roles} pim={detail.pim} />
         {authenticationMethodsDecision.state !== 'hidden' && <AuthenticationMethodsSection userId={user.id} userLabel={user.displayName || user.userPrincipalName || user.id} decision={authenticationMethodsDecision} manageDecision={authenticationMethodsManageDecision} />}
         <AssociatedDevicesSection userId={user.id} decision={devicesViewDecision} />
       </div>
       {groupAction && <GroupMembershipDialog userId={user.id} groupId={groupAction.id} target={groupAction.target} assignedGroupIds={detail.groups.items.map((item) => item.id)} mode={groupAction.mode} onCancel={() => setGroupAction(null)} onCompleted={(response) => response.status === 'succeeded' ? (setGroupAction(null), refreshAfterSuccess()) : setMutationError(formatMutationError(response))} />}
-      {licenseAction && <LicenseAssignmentDialog userId={user.id} skuId={licenseAction.id} target={licenseAction.target} assignedSkuIds={detail.licenses.items.map((item) => item.skuId)} mode={licenseAction.mode} onCancel={() => setLicenseAction(null)} onCompleted={(response) => response.status === 'succeeded' ? (setLicenseAction(null), refreshAfterSuccess()) : setMutationError(formatMutationError(response))} />}
+      {licenseAction && (modules === undefined || modules.includes('licenses')) && <LicenseAssignmentDialog userId={user.id} skuId={licenseAction.id} target={licenseAction.target} assignedSkuIds={detail.licenses.items.map((item) => item.skuId)} mode={licenseAction.mode} onCancel={() => setLicenseAction(null)} onCompleted={(response) => response.status === 'succeeded' ? (setLicenseAction(null), refreshAfterSuccess()) : setMutationError(formatMutationError(response))} />}
     </section>
   );
 }

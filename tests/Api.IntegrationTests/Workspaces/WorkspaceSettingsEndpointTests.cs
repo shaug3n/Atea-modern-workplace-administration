@@ -26,7 +26,6 @@ public sealed class WorkspaceSettingsEndpointTests
         var response = await client.PatchAsJsonAsync("/api/workspaces/current/settings", new
         {
             displayName = "Operations workspace",
-            enabledModules = new[] { "overview", "users", "licenses" },
             defaultColumns = new[] { "displayName", "userPrincipalName" },
             defaultFilters = new Dictionary<string, string> { ["accountStatus"] = "enabled" },
             supportInstructions = "Contact the service desk.",

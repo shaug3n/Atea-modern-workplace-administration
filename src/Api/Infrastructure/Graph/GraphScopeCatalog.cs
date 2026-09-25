@@ -17,6 +17,7 @@ public static class GraphScopeCatalog
     public static readonly IReadOnlyList<string> DevicePrivilegedOperationScopes = ["DeviceManagementManagedDevices.PrivilegedOperations.All"];
     public static readonly IReadOnlyList<string> AuthenticationMethodReadScopes = ["UserAuthenticationMethod.Read.All"];
     public static readonly IReadOnlyList<string> AuthenticationMethodWriteScopes = ["UserAuthenticationMethod.ReadWrite.All"];
+    public static readonly IReadOnlyList<string> ExchangeMailboxSettingsReadScopes = ["MailboxSettings.Read"];
     public static readonly IReadOnlyList<string> AuthorizationReadScopes = ["Directory.Read.All", "RoleManagement.Read.Directory"];
 
     // These are the known Graph scopes used by capability evaluation. The
@@ -41,6 +42,7 @@ public static class GraphScopeCatalog
         "DeviceManagementManagedDevices.ReadWrite.All",
         "DeviceManagementManagedDevices.PrivilegedOperations.All",
         "UserAuthenticationMethod.Read.All",
-        "UserAuthenticationMethod.ReadWrite.All"
+        "UserAuthenticationMethod.ReadWrite.All",
+        "MailboxSettings.Read"
     ];
 }

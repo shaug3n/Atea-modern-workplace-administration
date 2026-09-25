@@ -7,7 +7,7 @@ public static class UserEndpoints
 {
     public static IEndpointRouteBuilder MapUserEndpoints(this IEndpointRouteBuilder endpoints)
     {
-        endpoints.MapGet("/api/users", SearchUsersAsync).RequireAuthorization();
+        endpoints.MapGet("/api/users", SearchUsersAsync).RequireAuthorization().RequireWorkspaceModule("users");
         return endpoints;
     }
 

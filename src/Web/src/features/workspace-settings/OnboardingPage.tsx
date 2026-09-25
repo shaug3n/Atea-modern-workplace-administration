@@ -57,6 +57,16 @@ export function OnboardingPage({ onNavigate }: { onNavigate?: (path: string) => 
       : !health ? <p role="status">{messages.connectionLoading}</p>
         : <ConnectionStatusCard state={health.status} lastVerifiedAt={health.lastVerifiedAt} onCheck={() => void check()} onConsent={() => void consent()} consentUrl={consentUrl} actionPending={busy} actionError={error} />}
     {health?.status === 'connected' && <a href="/overview" onClick={event => { if (onNavigate) { event.preventDefault(); onNavigate('/overview'); } }}>{messages.onboardingContinue}</a>}
+    <section className="setup-permissions" aria-labelledby="setup-permissions-title">
+      <h2 id="setup-permissions-title">Delegated permissions and tenant consent</h2>
+      <p>These are separate steps: Atea configures delegated scopes on the API app registration first; a customer Entra administrator then grants tenant consent. Tenant consent cannot add scopes that are missing from the app registration.</p>
+      <ul>
+        <li><strong>Users, groups and licenses:</strong> <code>User.Read.All</code>, <code>Group.Read.All</code>, <code>Directory.Read.All</code>.</li>
+        <li><strong>Devices:</strong> <code>DeviceManagementManagedDevices.Read.All</code>. Device actions require additional delegated write scopes and an active tenant role; an eligible but inactive PIM role must be activated first.</li>
+        <li><strong>Exchange verification:</strong> <code>MailboxSettings.Read</code>, in addition to the directory-read scopes above.</li>
+      </ul>
+      <p>If a scope is absent from the API registration, ask the Atea app owner to add it before retrying consent. If the scope is present but not granted in this tenant, use the consent action above with an appropriately authorized tenant administrator. If the permission check reports PIM activation required, activate the eligible role in Entra PIM and retry.</p>
+    </section>
     {correlationId && !failed && <p>{messages.correlationIdLabel}: <code>{correlationId}</code></p>}
     <p>{messages.onboardingHelp}</p>
   </section>;

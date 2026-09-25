@@ -201,7 +201,7 @@ public sealed class DeviceCommandEndpointTests
     private sealed class FixtureMembershipReader(bool hasMembership) : IWorkspaceMembershipReader
     {
         public Task<WorkspaceMembership?> FindMembershipAsync(Guid tenantId, Guid objectId, CancellationToken cancellationToken = default) =>
-            Task.FromResult<WorkspaceMembership?>(hasMembership ? new WorkspaceMembership(WorkspaceId, "Example", "member") : null);
+            Task.FromResult<WorkspaceMembership?>(hasMembership ? new WorkspaceMembership(WorkspaceId, "Example", "member", ModuleKeys: ["users", "devices", "licenses"]) : null);
     }
 
     private sealed class RecordingCommands : IManagedDeviceCommands

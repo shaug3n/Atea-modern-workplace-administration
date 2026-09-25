@@ -19,6 +19,7 @@ using Atea.UnifiedWorkplace.Api.Features.Overview;
 using Atea.UnifiedWorkplace.Api.Features.AdminAuth;
 using Atea.UnifiedWorkplace.Api.Features.Devices;
 using Atea.UnifiedWorkplace.Api.Features.Identity;
+using Atea.UnifiedWorkplace.Api.Features.Exchange;
 using Atea.UnifiedWorkplace.Api.Infrastructure.Http;
 using Microsoft.Extensions.Options;
 
@@ -93,6 +94,7 @@ builder.Services.AddScoped<IAuthenticationMethodReader, GraphAuthenticationMetho
 builder.Services.AddScoped<IAuthenticationMethodCommands, GraphAuthenticationMethodCommands>();
 builder.Services.AddScoped<IAuthenticationMethodService, AuthenticationMethodService>();
 builder.Services.AddScoped<IUserSessionCommands, GraphUserSessionCommands>();
+builder.Services.AddScoped<IExchangeService, ExchangeService>();
 builder.Services.AddScoped<IUserSessionCommandService, UserSessionCommandService>();
 builder.Services.AddScoped<GraphRoleAndPimService>();
 builder.Services.AddScoped<IRoleAndPimReader>(services => services.GetRequiredService<GraphRoleAndPimService>());
@@ -149,13 +151,17 @@ app.MapGet("/api/session", async (IWorkspaceContextAccessor accessor, IWorkspace
             defaultColumns = configuration.DefaultColumns,
             defaultFilters = configuration.DefaultFilters,
             supportInstructions = configuration.SupportInstructions,
-            defaultTheme = configuration.DefaultTheme
+            defaultTheme = configuration.DefaultTheme,
+            moduleAccess = WorkspaceModuleCatalog.EffectiveModules(context.Membership.PlatformRole, configuration.EnabledModules, context.Membership.ModuleKeys)
         },
         workspaceAccess = new
         {
             role = context.Membership.PlatformRole,
+            isOwner = WorkspaceModuleCatalog.IsOwner(context.Membership.PlatformRole),
             canManageMembers = CapabilityEvaluator.EvaluatePlatformCapability(Capability.WorkspaceMembersManage, context.Membership).State == CapabilityState.Allowed,
-            canManageSettings = CapabilityEvaluator.EvaluatePlatformCapability(Capability.WorkspaceSettingsManage, context.Membership).State == CapabilityState.Allowed
+            canManageSettings = CapabilityEvaluator.EvaluatePlatformCapability(Capability.WorkspaceSettingsManage, context.Membership).State == CapabilityState.Allowed,
+            canManageModules = WorkspaceModuleCatalog.IsOwner(context.Membership.PlatformRole),
+            canManageMemberModules = WorkspaceModuleCatalog.IsCustomerAdministrator(context.Membership.PlatformRole)
         }
     });
 }).RequireAuthorization();
@@ -177,6 +183,7 @@ app.MapDeviceEndpoints();
 app.MapUserAssociatedDeviceEndpoints();
 app.MapAuthenticationMethodEndpoints();
 app.MapUserSessionCommandEndpoints();
+app.MapExchangeEndpoints();
 app.MapFallbackToFile("index.html");
 
 app.Run();

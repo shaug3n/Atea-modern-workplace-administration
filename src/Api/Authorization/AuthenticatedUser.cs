@@ -17,4 +17,5 @@ public sealed record WorkspaceMembership(
     Guid WorkspaceId,
     string WorkspaceName,
     string PlatformRole = "member",
-    bool IsAteaOperator = false);
+    bool IsAteaOperator = false,
+    IReadOnlyCollection<string>? ModuleKeys = null);

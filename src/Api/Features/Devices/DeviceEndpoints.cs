@@ -6,9 +6,10 @@ public static class DeviceEndpoints
 {
     public static IEndpointRouteBuilder MapDeviceEndpoints(this IEndpointRouteBuilder endpoints)
     {
-        endpoints.MapGet("/api/devices", SearchAsync).RequireAuthorization();
+        endpoints.MapGet("/api/devices", SearchAsync).RequireAuthorization().RequireWorkspaceModule("devices");
         endpoints.MapPost("/api/devices/{deviceObjectId}/actions/{action}", ExecuteActionAsync)
             .RequireAuthorization()
+            .RequireWorkspaceModule("devices")
             .RequireCapability(Capability.DevicesPrivilegedManage);
         return endpoints;
     }

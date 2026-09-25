@@ -8,8 +8,8 @@ describe('WorkspaceCreateForm', () => {
   it('rejects blank display names and malformed tenant GUIDs', () => {
     const onSubmit = vi.fn();
     render(<WorkspaceCreateForm onSubmit={onSubmit} onCancel={vi.fn()} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Create workspace' }));
-    expect(screen.getByRole('alert').textContent).toContain('Enter a valid tenant ID.');
+    fireEvent.click(screen.getByRole('button', { name: 'Create workspace and invite admin' }));
+    expect(screen.getByRole('alert').textContent).toContain('Enter a valid Microsoft Entra tenant ID.');
     expect(onSubmit).not.toHaveBeenCalled();
   });
 });

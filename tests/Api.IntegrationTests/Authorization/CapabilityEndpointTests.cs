@@ -158,7 +158,8 @@ public sealed class CapabilityEndpointTests
             Task.FromResult<WorkspaceMembership?>(new WorkspaceMembership(
                 Guid.Parse("55555555-5555-5555-5555-555555555555"),
                 "customer-workspace",
-                platformRole));
+                platformRole,
+                ModuleKeys: ["users", "devices", "licenses"]));
     }
 
     private sealed class TestAuthenticationHandler(IOptionsMonitor<AuthenticationSchemeOptions> options, ILoggerFactory logger, UrlEncoder encoder)

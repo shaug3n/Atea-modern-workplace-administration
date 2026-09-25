@@ -64,7 +64,7 @@ public sealed class WorkspaceProvisioningService(IWorkspaceProvisioningRepositor
             Id = Guid.NewGuid(), TenantId = tenantId, DisplayName = displayName,
             ConnectionStatus = "awaiting_invitation", CreatedAt = now, UpdatedAt = now
         };
-        var prepared = invitations.PrepareForRole(workspace.Id, adminUpn, adminDisplayName, expiresAt, "customer_admin");
+        var prepared = invitations.PrepareForRole(workspace.Id, adminUpn, adminDisplayName, expiresAt, "workspace_owner");
         try
         {
             await repository.CreateWithInvitationAsync(workspace, prepared.Invitation, auditEvent, cancellationToken);

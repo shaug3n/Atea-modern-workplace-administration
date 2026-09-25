@@ -15,7 +15,7 @@ export function WorkspaceCreateForm({ onSubmit, onCancel }: { onSubmit: (input: 
     catch (e) { setError(e instanceof Error ? e.message : 'Workspace onboarding failed.'); }
     finally { setSaving(false); }
   }
-  return <form className="admin-card workspace-onboarding-form" onSubmit={submit} aria-label="Onboard customer workspace">
+  return <form className="admin-card workspace-onboarding-form" onSubmit={submit} aria-label="Onboard customer workspace" noValidate>
     <p className="eyebrow">Customer onboarding</p><h2>Create workspace and invite its first administrator</h2>
     <p>The nominated administrator receives an invitation to sign in with their existing Entra account. Their workspace role does not grant Microsoft 365 privileges.</p>
     {error && <p role="alert">{error}</p>}

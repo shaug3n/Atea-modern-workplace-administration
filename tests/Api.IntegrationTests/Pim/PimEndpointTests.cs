@@ -288,7 +288,7 @@ public sealed class PimEndpointTests
     private sealed class FixtureMembershipReader : IWorkspaceMembershipReader
     {
         public Task<WorkspaceMembership?> FindMembershipAsync(Guid tenantId, Guid objectId, CancellationToken cancellationToken = default) =>
-            Task.FromResult<WorkspaceMembership?>(new WorkspaceMembership(Guid.Parse("55555555-5555-5555-5555-555555555555"), "Contoso Workplace", "member"));
+            Task.FromResult<WorkspaceMembership?>(new WorkspaceMembership(Guid.Parse("55555555-5555-5555-5555-555555555555"), "Contoso Workplace", "member", ModuleKeys: ["users", "devices", "licenses"]));
     }
 
     private sealed class RecordingRoleAndPimReader : IRoleAndPimReader

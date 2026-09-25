@@ -101,12 +101,13 @@ public sealed class WorkspaceOnboardingRepository(WorkplaceDbContext db) : IOnbo
         var membership = await db.WorkspaceMemberships.SingleOrDefaultAsync(x => x.WorkspaceId == invitation.WorkspaceId && x.TenantObjectId == tenantObjectId, cancellationToken);
         if (membership is null)
         {
-            membership = new WorkspaceMembership { Id = Guid.NewGuid(), WorkspaceId = invitation.WorkspaceId, TenantObjectId = tenantObjectId, Email = email ?? $"object:{tenantObjectId}", PlatformRole = invitation.Role, CreatedAt = DateTimeOffset.UtcNow };
+            membership = new WorkspaceMembership { Id = Guid.NewGuid(), WorkspaceId = invitation.WorkspaceId, TenantObjectId = tenantObjectId, Email = email ?? $"object:{tenantObjectId}", PlatformRole = invitation.Role, ModuleGrantsJson = invitation.ModuleKeysJson, CreatedAt = DateTimeOffset.UtcNow };
             db.WorkspaceMemberships.Add(membership);
         }
         else if (!membership.IsAteaOperator)
         {
             membership.PlatformRole = invitation.Role;
+            membership.ModuleGrantsJson = invitation.ModuleKeysJson;
         }
 
         db.AuditEvents.Add(new AuditEvent

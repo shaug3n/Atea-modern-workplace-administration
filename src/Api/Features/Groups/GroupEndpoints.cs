@@ -8,8 +8,8 @@ public static class GroupEndpoints
 {
     public static IEndpointRouteBuilder MapGroupEndpoints(this IEndpointRouteBuilder endpoints)
     {
-        endpoints.MapGet("/api/users/{userObjectId}/groups", GetUserGroupsAsync).RequireAuthorization();
-        endpoints.MapGet("/api/groups", GetGroupsAsync).RequireAuthorization();
+        endpoints.MapGet("/api/users/{userObjectId}/groups", GetUserGroupsAsync).RequireAuthorization().RequireWorkspaceModule("users");
+        endpoints.MapGet("/api/groups", GetGroupsAsync).RequireAuthorization().RequireWorkspaceModule("users");
         return endpoints;
     }
 

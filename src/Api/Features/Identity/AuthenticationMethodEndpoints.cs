@@ -6,15 +6,15 @@ public static class AuthenticationMethodEndpoints
 {
     public static IEndpointRouteBuilder MapAuthenticationMethodEndpoints(this IEndpointRouteBuilder endpoints)
     {
-        endpoints.MapGet("/api/users/{userObjectId}/authentication-methods", GetAsync).RequireAuthorization();
+        endpoints.MapGet("/api/users/{userObjectId}/authentication-methods", GetAsync).RequireAuthorization().RequireWorkspaceModule("users");
         endpoints.MapDelete("/api/users/{userObjectId}/authentication-methods/{methodObjectId}", RemoveAsync)
-            .RequireAuthorization()
+            .RequireAuthorization().RequireWorkspaceModule("users")
             .RequireCapability(Capability.AuthenticationMethodsManage);
         endpoints.MapPost("/api/users/{userObjectId}/authentication-methods/reset-mfa", ResetMfaAsync)
-            .RequireAuthorization()
+            .RequireAuthorization().RequireWorkspaceModule("users")
             .RequireCapability(Capability.AuthenticationMethodsManage);
         endpoints.MapPost("/api/users/{userObjectId}/authentication-methods/temporary-access-pass", CreateTemporaryAccessPassAsync)
-            .RequireAuthorization()
+            .RequireAuthorization().RequireWorkspaceModule("users")
             .RequireCapability(Capability.AuthenticationMethodsManage);
         return endpoints;
     }

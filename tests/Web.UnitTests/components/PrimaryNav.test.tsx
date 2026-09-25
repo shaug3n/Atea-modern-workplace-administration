@@ -10,7 +10,7 @@ function snapshot(states: { users?: 'allowed' | 'hidden'; licenses?: 'allowed' |
     evaluatedAt: '2026-09-20T10:00:00.000Z',
     capabilities: [
       { capability: 'users.view', state: states.users ?? 'allowed', reasonCode: 'active_role' },
-      { capability: 'licenses.assign', state: states.licenses ?? 'allowed', reasonCode: 'active_role' },
+      { capability: 'licenses.view', state: states.licenses ?? 'allowed', reasonCode: 'active_role' },
       { capability: 'audit.view', state: states.audit ?? 'allowed', reasonCode: 'workspace_platform_role' },
       { capability: 'workspace.settings.manage', state: states.workspaceSettings ?? 'allowed', reasonCode: 'workspace_platform_role' },
     ],
@@ -20,11 +20,11 @@ function snapshot(states: { users?: 'allowed' | 'hidden'; licenses?: 'allowed' |
 describe('PrimaryNav', () => {
   afterEach(cleanup);
 
-  it('hides Workspace settings when the existing workspace settings capability is unavailable', () => {
-    render(<PrimaryNav capabilities={snapshot({ workspaceSettings: 'hidden' })} currentPath="/overview" />);
+  it('hides Settings when the workspace session does not grant settings access', () => {
+    render(<PrimaryNav capabilities={snapshot()} currentPath="/overview" session={{ user: {}, workspace: { id: 'w', name: 'Customer' }, workspaceAccess: { role: 'member', canManageMembers: false, canManageSettings: false } }} />);
 
     expect(screen.getByRole('navigation', { name: 'Primary navigation' })).toBeTruthy();
-    expect(screen.queryByRole('link', { name: 'Workspace settings' })).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Settings' })).toBeNull();
   });
 
   it('hides Users when users.view is unavailable', () => {
@@ -42,10 +42,10 @@ describe('PrimaryNav', () => {
   });
 
   it('marks the active route for assistive technology', () => {
-    render(<PrimaryNav capabilities={snapshot()} currentPath="/licenses" />);
+    render(<PrimaryNav capabilities={snapshot()} currentPath="/licenses" session={{ user: {}, workspace: { id: 'w', name: 'Customer' }, workspaceAccess: { role: 'workspace_owner', canManageMembers: true, canManageSettings: true, canManageModules: true } }} />);
 
     expect(screen.getByRole('link', { name: 'Licenses' }).getAttribute('aria-current')).toBe('page');
-    expect(screen.getByRole('link', { name: 'Workspace settings' })).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Settings' })).toBeTruthy();
   });
 
   it('hides Audit when audit.view is unavailable', () => {

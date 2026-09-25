@@ -12,7 +12,7 @@ import { useFocusContainment } from '../../components/useFocusContainment';
 
 const emptyFilters: DeviceFilters = { search: '', complianceState: '', operatingSystem: '' };
 
-export function DevicesPage({ loadDevices, capabilities = [] }: { loadDevices?: (filters: DeviceFilters, continuationToken?: string | null) => Promise<DevicesResponse>; capabilities?: CapabilityDecision[] }) {
+export function DevicesPage({ loadDevices, capabilities = [], moduleAssigned = true, moduleEnabled = true }: { loadDevices?: (filters: DeviceFilters, continuationToken?: string | null) => Promise<DevicesResponse>; capabilities?: CapabilityDecision[]; moduleAssigned?: boolean; moduleEnabled?: boolean }) {
   const api = useApi();
   const [filters, setFilters] = useState(emptyFilters);
   const [continuationToken, setContinuationToken] = useState<string | null>(null);
@@ -32,6 +32,10 @@ export function DevicesPage({ loadDevices, capabilities = [] }: { loadDevices?: 
   const viewDecision = capabilities.find((decision) => decision.capability === 'devices.view') ?? { capability: 'devices.view' as const, state: 'hidden' as const, reasonCode: 'capability_not_returned' };
   const privilegedDecision = capabilities.find((decision) => decision.capability === 'devices.privileged.manage') ?? { capability: 'devices.privileged.manage' as const, state: 'hidden' as const, reasonCode: 'capability_not_returned' };
   const viewReadable = viewDecision.state === 'allowed' || viewDecision.state === 'read_only';
+
+  if (!moduleEnabled || !moduleAssigned) {
+    return <section className="devices-page" aria-labelledby="devices-page-title"><header className="page-header"><div><p className="eyebrow">Devices and endpoints</p><h1 id="devices-page-title">Devices</h1><p>Device management is available to workspace administrators for setup guidance and to members who have been assigned this module.</p></div></header><section className="permission-panel" role="status"><h2>{moduleEnabled ? 'Device module access needed' : 'Device module is disabled'}</h2><p>{moduleEnabled ? 'Ask a workspace owner to assign you the Devices module. Your Entra role and PIM state will still determine whether device data is readable and which actions you can take.' : 'A workspace owner can enable Devices in Workspace settings. Enabling it does not grant Microsoft Graph scopes or Entra roles.'}</p>{!moduleEnabled && <a href="/settings/modules">Open workspace modules</a>}</section></section>;
+  }
 
   useEffect(() => {
     if (!viewReadable) {
@@ -175,13 +179,13 @@ function DevicesTable({ devices, canManage, onOpenDetails, onAction }: { devices
       <table className="users-table" aria-label={messages.devicesTableLabel}>
         <thead><tr><th>{messages.devicesNameColumn}</th><th>{messages.devicesPlatformColumn}</th><th>{messages.devicesComplianceColumn}</th><th>{messages.devicesOwnerColumn}</th><th>{messages.devicesLastSyncColumn}</th><th>{messages.devicesHardwareColumn}</th><th>{messages.devicesActionsColumn}</th></tr></thead>
         <tbody>{devices.map((device) => <tr key={device.id}>
-          <td><strong>{device.deviceName || messages.devicesUnknown}</strong><small>{device.id}</small></td>
-          <td>{device.operatingSystem || messages.devicesUnknown}<small>{device.osVersion || ''}</small></td>
-          <td><span className="status-badge" data-tone={tone(device.complianceState)}>{device.complianceState || messages.devicesUnknown}</span></td>
-          <td>{device.managedDeviceOwnerType || messages.devicesUnknown}<small>{device.userId || ''}</small></td>
-          <td>{device.lastSyncDateTime ? new Date(device.lastSyncDateTime).toLocaleString() : messages.devicesNotSynced}</td>
-          <td>{[device.manufacturer, device.model].filter(Boolean).join(' ') || messages.devicesUnknown}<small>{device.serialNumber || ''}</small></td>
-          <td className="detail-table__actions"><button type="button" className="table-action" aria-label={`${messages.devicesOpenDetails} for ${device.deviceName || device.id}`} onClick={(event) => onOpenDetails(device, event.currentTarget)}>{messages.devicesOpenDetails}</button>{canManage && <ActionMenu label={`${messages.devicesActionsFor} ${device.deviceName || device.id}`} items={actionItems(device, onAction)} />}</td>
+          <td data-label={messages.devicesNameColumn}><strong>{device.deviceName || messages.devicesUnknown}</strong><small>{device.id}</small></td>
+          <td data-label={messages.devicesPlatformColumn}>{device.operatingSystem || messages.devicesUnknown}<small>{device.osVersion || ''}</small></td>
+          <td data-label={messages.devicesComplianceColumn}><span className="status-badge" data-tone={tone(device.complianceState)}>{device.complianceState || messages.devicesUnknown}</span></td>
+          <td data-label={messages.devicesOwnerColumn}>{device.managedDeviceOwnerType || messages.devicesUnknown}<small>{device.userId || ''}</small></td>
+          <td data-label={messages.devicesLastSyncColumn}>{device.lastSyncDateTime ? new Date(device.lastSyncDateTime).toLocaleString() : messages.devicesNotSynced}</td>
+          <td data-label={messages.devicesHardwareColumn}>{[device.manufacturer, device.model].filter(Boolean).join(' ') || messages.devicesUnknown}<small>{device.serialNumber || ''}</small></td>
+          <td data-label={messages.devicesActionsColumn} className="detail-table__actions"><button type="button" className="table-action" aria-label={`${messages.devicesOpenDetails} for ${device.deviceName || device.id}`} onClick={(event) => onOpenDetails(device, event.currentTarget)}>{messages.devicesOpenDetails}</button>{canManage && <ActionMenu label={`${messages.devicesActionsFor} ${device.deviceName || device.id}`} items={actionItems(device, onAction)} />}</td>
         </tr>)}</tbody>
       </table>
     </div>

@@ -33,6 +33,7 @@ public sealed class WorkplaceDbContext(DbContextOptions<WorkplaceDbContext> opti
             entity.HasIndex(x => new { x.WorkspaceId, x.TenantObjectId }).IsUnique();
             entity.Property(x => x.Email).HasMaxLength(320).IsRequired();
             entity.Property(x => x.PlatformRole).HasMaxLength(100).IsRequired();
+            entity.Property(x => x.ModuleGrantsJson).HasColumnType("jsonb").HasDefaultValueSql("'[]'::jsonb").IsRequired();
             ConfigureUtc(entity.Property(x => x.CreatedAt));
             entity.HasOne(x => x.Workspace).WithMany(x => x.Memberships).HasForeignKey(x => x.WorkspaceId).OnDelete(DeleteBehavior.Cascade);
         });
@@ -60,6 +61,7 @@ public sealed class WorkplaceDbContext(DbContextOptions<WorkplaceDbContext> opti
             entity.Property(x => x.NonceHash).HasMaxLength(128).IsRequired();
             entity.Property(x => x.ApprovedTenantObjectId);
             entity.Property(x => x.Role).HasMaxLength(32).HasDefaultValue("customer_admin").IsRequired();
+            entity.Property(x => x.ModuleKeysJson).HasColumnType("jsonb").HasDefaultValueSql("'[]'::jsonb").IsRequired();
             ConfigureUtc(entity.Property(x => x.ExpiresAt));
             ConfigureUtc(entity.Property(x => x.RedeemedAt));
             ConfigureUtc(entity.Property(x => x.RevokedAt));

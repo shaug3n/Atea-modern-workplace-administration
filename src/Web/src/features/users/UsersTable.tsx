@@ -41,18 +41,18 @@ export function UsersTable({
             const displayName = user.displayName || user.userPrincipalName || user.mail || messages.usersUnnamedUser;
             return (
               <tr key={user.id}>
-                <th scope="row">{displayName}</th>
-                <td>{user.userPrincipalName || messages.usersUnavailableValue}</td>
-                <td>{user.mail || messages.usersUnavailableValue}</td>
-                <td>{user.userType || messages.usersUnavailableValue}</td>
-                {showAccountStatus && <td>{labelStatus(user.accountEnabled)}</td>}
-                <td>
+                <th scope="row" data-label={messages.usersNameColumn}>{displayName}</th>
+                <td data-label={messages.usersUpnColumn}>{user.userPrincipalName || messages.usersUnavailableValue}</td>
+                <td data-label={messages.usersMailColumn}>{user.mail || messages.usersUnavailableValue}</td>
+                <td data-label={messages.usersTypeColumn}>{user.userType || messages.usersUnavailableValue}</td>
+                {showAccountStatus && <td data-label={messages.usersAccountStatusColumn}>{labelStatus(user.accountEnabled)}</td>}
+                <td data-label={messages.usersOpenColumn}>
                   <button type="button" className="table-action" onClick={() => navigateToUser(user.id, onNavigate)} aria-label={`${messages.usersOpenAction} ${displayName}`}>
                     {messages.usersOpenAction}
                   </button>
                 </td>
                 {showActions && (
-                  <td>
+                    <td data-label={messages.usersActionsColumn}>
                     <PermissionState decision={disableDecision}>
                       <button
                         type="button"

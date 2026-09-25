@@ -196,6 +196,11 @@ namespace Atea.UnifiedWorkplace.Api.Infrastructure.Persistence.Migrations
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("ModuleKeysJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasDefaultValueSql("'[]'::jsonb");
+
                     b.Property<Guid?>("ApprovedTenantObjectId")
                         .HasColumnType("uuid");
 
@@ -338,6 +343,11 @@ namespace Atea.UnifiedWorkplace.Api.Infrastructure.Persistence.Migrations
 
                     b.Property<bool>("IsAteaOperator")
                         .HasColumnType("boolean");
+
+                    b.Property<string>("ModuleGrantsJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasDefaultValueSql("'[]'::jsonb");
 
                     b.Property<string>("PlatformRole")
                         .IsRequired()

@@ -7,7 +7,7 @@ public static class UserSessionCommandEndpoints
     public static IEndpointRouteBuilder MapUserSessionCommandEndpoints(this IEndpointRouteBuilder endpoints)
     {
         endpoints.MapPost("/api/users/{userObjectId}/revoke-sessions", RevokeAsync)
-            .RequireAuthorization().RequireCapability(Capability.UsersRevokeSessions);
+            .RequireAuthorization().RequireWorkspaceModule("users").RequireCapability(Capability.UsersRevokeSessions);
         return endpoints;
     }
 

@@ -240,7 +240,7 @@ public sealed class UserEndpointsTests
     private sealed class FixtureMembershipReader : IWorkspaceMembershipReader
     {
         public Task<WorkspaceMembership?> FindMembershipAsync(Guid tenantId, Guid objectId, CancellationToken cancellationToken = default) =>
-            Task.FromResult<WorkspaceMembership?>(new WorkspaceMembership(WorkspaceId, "Contoso Workplace", "member"));
+            Task.FromResult<WorkspaceMembership?>(new WorkspaceMembership(WorkspaceId, "Contoso Workplace", "member", ModuleKeys: ["users", "devices", "licenses"]));
     }
 
     private sealed class TestAuthenticationHandler(IOptionsMonitor<AuthenticationSchemeOptions> options, ILoggerFactory logger, UrlEncoder encoder)

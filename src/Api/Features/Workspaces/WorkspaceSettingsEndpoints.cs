@@ -3,6 +3,7 @@ using System.Text.Json;
 using Atea.UnifiedWorkplace.Api.Authorization;
 using Atea.UnifiedWorkplace.Api.Infrastructure.Persistence;
 using Atea.UnifiedWorkplace.Api.Infrastructure.Persistence.Entities;
+using Atea.UnifiedWorkplace.Api.Infrastructure.Persistence.Repositories;
 using Microsoft.EntityFrameworkCore;
 
 namespace Atea.UnifiedWorkplace.Api.Features.Workspaces;
@@ -29,7 +30,7 @@ public interface IWorkspaceSettingsService
 
 public sealed class WorkspaceSettingsService(WorkplaceDbContext db, IConfiguration configuration, WorkspaceSettingsMemoryCache memoryCache) : IWorkspaceSettingsService
 {
-    private static readonly HashSet<string> AllowedModules = new(StringComparer.OrdinalIgnoreCase) { "overview", "users", "licenses", "devices", "identity", "audit", "workspace-settings" };
+    private static readonly HashSet<string> AllowedModules = new(StringComparer.OrdinalIgnoreCase) { "users", "devices", "licenses", "exchange" };
     private static readonly HashSet<string> AllowedColumns = new(StringComparer.OrdinalIgnoreCase) { "displayName", "userPrincipalName", "mail", "accountStatus", "userType" };
     private static readonly HashSet<string> AllowedFilters = new(StringComparer.OrdinalIgnoreCase) { "accountStatus", "tenantRole", "license", "userType" };
 
@@ -57,6 +58,7 @@ public sealed class WorkspaceSettingsService(WorkplaceDbContext db, IConfigurati
     {
         var access = CapabilityEvaluator.EvaluatePlatformCapability(Capability.WorkspaceSettingsManage, context.Membership);
         if (access.State != CapabilityState.Allowed) throw new WorkspaceSettingsForbiddenException();
+        if (request.EnabledModules is not null) throw new WorkspaceSettingsValidationException("enabledModules must be changed through the audited modules endpoint.", "enabledModules");
         var current = await GetConfigurationAsync(context, cancellationToken);
         var updated = new WorkspaceSettingsResponse(
             ValidateDisplayName(request.DisplayName ?? context.Membership.WorkspaceName),
@@ -84,7 +86,7 @@ public sealed class WorkspaceSettingsService(WorkplaceDbContext db, IConfigurati
     }
 
     private bool HasDatabase() => !string.IsNullOrWhiteSpace(configuration.GetConnectionString("WorkplaceDb"));
-    private static WorkspaceConfiguration DefaultsConfiguration() => new(["overview", "users", "licenses", "devices", "identity", "audit", "workspace-settings"], ["displayName", "userPrincipalName"], new Dictionary<string, string>(), string.Empty, "light");
+    private static WorkspaceConfiguration DefaultsConfiguration() => new(WorkspaceModuleCatalog.Core, ["displayName", "userPrincipalName"], new Dictionary<string, string>(), string.Empty, "light");
     private static WorkspaceConfiguration FromEntity(WorkspaceSettings entity) => new(ParseList(entity.EnabledModulesJson), ParseList(entity.DefaultColumnsJson), ParseFilters(entity.DefaultFiltersJson), entity.SupportInstructions, entity.DefaultTheme);
     private static IReadOnlyCollection<string> ParseList(string value) { try { return JsonSerializer.Deserialize<string[]>(value) ?? []; } catch (JsonException) { return []; } }
     private static IReadOnlyDictionary<string, string> ParseFilters(string value) { try { return JsonSerializer.Deserialize<Dictionary<string, string>>(value) ?? new Dictionary<string, string>(); } catch (JsonException) { return new Dictionary<string, string>(); } }
@@ -104,7 +106,57 @@ public static class WorkspaceSettingsEndpoints
     {
         endpoints.MapGet("/api/workspaces/current/settings", GetAsync).RequireAuthorization().RequireCapability(Capability.WorkspaceSettingsManage);
         endpoints.MapPatch("/api/workspaces/current/settings", UpdateAsync).RequireAuthorization().RequireCapability(Capability.WorkspaceSettingsManage);
+        endpoints.MapGet("/api/workspaces/current/modules", GetModulesAsync).RequireAuthorization();
+        endpoints.MapPatch("/api/workspaces/current/modules", UpdateModulesAsync).RequireAuthorization();
         return endpoints;
+    }
+
+    private static async Task<IResult> GetModulesAsync(IWorkspaceContextAccessor accessor, IWorkspaceSettingsService service, IWorkspaceAccessRepository repository, CancellationToken cancellationToken)
+    {
+        if (accessor.Current is not { } context) return Results.StatusCode(StatusCodes.Status403Forbidden);
+        var enabled = (await service.GetConfigurationAsync(context, cancellationToken)).EnabledModules;
+        var owner = WorkspaceModuleCatalog.IsOwner(context.Membership.PlatformRole);
+        var (memberships, invitations) = await repository.ListAsync(context.Membership.WorkspaceId, cancellationToken);
+        var dormant = memberships.Where(member => !WorkspaceModuleCatalog.IsOwner(member.PlatformRole))
+            .Sum(member => ParseModules(member.ModuleGrantsJson).Except(enabled, StringComparer.OrdinalIgnoreCase).Count())
+            + invitations.Where(invite => invite.RevokedAt is null && invite.RedeemedAt is null).Sum(invite => ParseModules(invite.ModuleKeysJson).Except(enabled, StringComparer.OrdinalIgnoreCase).Count());
+        return Results.Ok(new { enabledModules = enabled, canManageModules = owner, dormantGrantCount = dormant });
+    }
+
+    private static async Task<IResult> UpdateModulesAsync(WorkspaceEnabledModulesRequest request, IWorkspaceContextAccessor accessor, IWorkspaceSettingsService service, WorkplaceDbContext db, Atea.UnifiedWorkplace.Api.Infrastructure.Observability.IAuditWriter audit, CancellationToken cancellationToken)
+    {
+        if (accessor.Current is not { } context) return Results.StatusCode(StatusCodes.Status403Forbidden);
+        if (!WorkspaceModuleCatalog.IsOwner(context.Membership.PlatformRole)) return Results.StatusCode(StatusCodes.Status403Forbidden);
+        if (request.EnabledModules is null || request.EnabledModules.Any(key => !WorkspaceModuleCatalog.IsKnown(key))) return Results.BadRequest(new { error = "invalid_enabled_modules" });
+        var normalized = WorkspaceModuleCatalog.Normalize(request.EnabledModules);
+        if (normalized.Count != request.EnabledModules.Distinct(StringComparer.OrdinalIgnoreCase).Count()) return Results.BadRequest(new { error = "invalid_enabled_modules" });
+
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        var current = await service.GetConfigurationAsync(context, cancellationToken);
+        var settings = await db.WorkspaceSettings.SingleOrDefaultAsync(x => x.WorkspaceId == context.Membership.WorkspaceId, cancellationToken);
+        if (settings is null)
+        {
+            settings = new WorkspaceSettings { WorkspaceId = context.Membership.WorkspaceId };
+            db.WorkspaceSettings.Add(settings);
+        }
+        settings.EnabledModulesJson = JsonSerializer.Serialize(normalized);
+        await db.SaveChangesAsync(cancellationToken);
+        await audit.WriteAsync(new AuditEvent
+        {
+            WorkspaceId = context.Membership.WorkspaceId, TenantId = context.User.TenantId,
+            ActorTenantId = context.User.TenantId, ActorObjectId = context.User.ObjectId,
+            Action = "workspace.modules.changed", TargetType = "workspace", TargetId = context.Membership.WorkspaceId.ToString("D"),
+            Outcome = "success", Timestamp = DateTimeOffset.UtcNow,
+            SafeMetadataJson = JsonSerializer.Serialize(new { enabledModules = normalized })
+        }, cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return Results.Ok(new { enabledModules = normalized, restoredDormantGrants = normalized.Except(current.EnabledModules, StringComparer.OrdinalIgnoreCase).Any() });
+    }
+
+    private static IReadOnlyCollection<string> ParseModules(string json)
+    {
+        try { return WorkspaceModuleCatalog.Normalize(JsonSerializer.Deserialize<string[]>(json)); }
+        catch (JsonException) { return []; }
     }
     private static async Task<IResult> GetAsync(IWorkspaceContextAccessor accessor, IWorkspaceSettingsService service, CancellationToken cancellationToken) => accessor.Current is { } context ? Results.Ok(await service.GetAsync(context, cancellationToken)) : Results.StatusCode(StatusCodes.Status403Forbidden);
     private static async Task<IResult> UpdateAsync(WorkspaceSettingsRequest request, IWorkspaceContextAccessor accessor, IWorkspaceSettingsService service, CancellationToken cancellationToken)

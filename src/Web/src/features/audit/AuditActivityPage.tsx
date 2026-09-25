@@ -216,12 +216,12 @@ function AuditEventsTable({ events }: { events: AuditEvent[] }) {
         <tbody>
           {events.map((event) => (
             <tr key={event.id}>
-              <td>{formatDate(event.timestamp)}</td>
-              <td>{event.action}</td>
-              <td>{event.targetId || event.targetType}</td>
-              <td>{event.failureCategory ? `${event.outcome} (${event.failureCategory})` : event.outcome}</td>
-              <td>{correlationText(event)}</td>
-              <td><code>{event.safeMetadataJson || '{}'}</code></td>
+              <td data-label={messages.auditTimeColumn}>{formatDate(event.timestamp)}</td>
+              <td data-label={messages.auditActionColumn}>{event.action}</td>
+              <td data-label={messages.auditTargetColumn}>{event.targetId || event.targetType}</td>
+              <td data-label={messages.auditOutcomeColumn}>{event.failureCategory ? `${event.outcome} (${event.failureCategory})` : event.outcome}</td>
+              <td data-label={messages.auditCorrelationColumn}>{correlationText(event)}</td>
+              <td data-label={messages.auditMetadataColumn}><code>{event.safeMetadataJson || '{}'}</code></td>
             </tr>
           ))}
         </tbody>

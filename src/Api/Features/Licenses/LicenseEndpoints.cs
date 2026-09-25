@@ -8,8 +8,8 @@ public static class LicenseEndpoints
 {
     public static IEndpointRouteBuilder MapLicenseEndpoints(this IEndpointRouteBuilder endpoints)
     {
-        endpoints.MapGet("/api/licenses", GetOverviewAsync).RequireAuthorization();
-        endpoints.MapGet("/api/users/{userObjectId}/licenses", GetUserLicensesAsync).RequireAuthorization();
+        endpoints.MapGet("/api/licenses", GetOverviewAsync).RequireAuthorization().RequireWorkspaceModule("licenses");
+        endpoints.MapGet("/api/users/{userObjectId}/licenses", GetUserLicensesAsync).RequireAuthorization().RequireWorkspaceModule("licenses");
         return endpoints;
     }
 

@@ -6,8 +6,8 @@ public static class PimEndpoints
 {
     public static IEndpointRouteBuilder MapPimEndpoints(this IEndpointRouteBuilder endpoints)
     {
-        endpoints.MapGet("/api/users/{userObjectId}/pim", GetUserPimAsync).RequireAuthorization();
-        endpoints.MapPost("/api/pim/activations", ActivateAsync).RequireAuthorization();
+        endpoints.MapGet("/api/users/{userObjectId}/pim", GetUserPimAsync).RequireAuthorization().RequireWorkspaceModule("users");
+        endpoints.MapPost("/api/pim/activations", ActivateAsync).RequireAuthorization().RequireWorkspaceModule("users");
         return endpoints;
     }
 
