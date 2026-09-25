@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { UserDetailPage } from '../../../../src/Web/src/features/users/UserDetailPage';
 import type { UserDetailResponse } from '../../../../src/Web/src/features/users/userDetailApi';
 import { appRoutes } from '../../../../src/Web/src/app/routes';
+import { readFileSync } from 'node:fs';
 
 const apiMock = vi.hoisted(() => vi.fn());
 const issueReporter = vi.hoisted(() => ({ report: vi.fn(), clear: vi.fn() }));
@@ -145,6 +146,41 @@ describe('UserDetailPage', () => {
     expect(screen.getByText('Directory data may be stale')).toBeTruthy();
     expect(screen.getAllByText('Section data is unavailable. Check Notifications for details.')).toHaveLength(2);
     expect(document.body.textContent).not.toContain('Microsoft Graph throttled this section request.');
+  });
+
+  it('retries partial section data in place and clears its issue after recovery', async () => {
+    const partial = { ...detail, licenses: { ...detail.licenses, access: { ...detail.licenses.access, partialData: true, freshness: 'stale' as const, error: { category: 'throttled', message: 'private Graph diagnostic' } } } };
+    let attempts = 0;
+    let finishRetry: ((value: UserDetailResponse) => void) | undefined;
+    render(<UserDetailPage userId="user-1" loadUserDetail={async () => ++attempts === 1 ? partial : new Promise<UserDetailResponse>(resolve => { finishRetry = resolve; })} />);
+    expect(await screen.findByRole('heading', { name: 'Ada Lovelace' })).toBeTruthy();
+    expect(screen.getByText(/partial user details/i)).toBeTruthy();
+    expect(issueReporter.report).toHaveBeenCalledWith(expect.objectContaining({ key: 'users:detail' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Retry user details' }));
+    await waitFor(() => expect(attempts).toBe(2));
+    expect(screen.getByRole('heading', { name: 'Ada Lovelace' })).toBeTruthy();
+    expect(screen.getByText(/partial user details/i)).toBeTruthy();
+    expect((screen.getByRole('button', { name: 'Retrying user details' }) as HTMLButtonElement).disabled).toBe(true);
+    finishRetry?.(detail);
+    await waitFor(() => expect(screen.queryByText(/partial user details/i)).toBeNull());
+    expect(issueReporter.clear).toHaveBeenCalledWith('users:detail');
+    expect(screen.getByRole('heading', { name: 'Ada Lovelace' })).toBeTruthy();
+  });
+
+  it('wraps a long principal name in the shared user detail header', async () => {
+    const style = document.createElement('style');
+    style.textContent = readFileSync('src/styles/theme.css', 'utf8');
+    document.head.appendChild(style);
+    try {
+      const longUpn = `${'a'.repeat(120)}@example.com`;
+      render(<UserDetailPage userId="user-1" loadUserDetail={async () => ({ ...detail, user: { ...detail.user!, userPrincipalName: longUpn } })} />);
+      await screen.findByRole('heading', { name: 'Ada Lovelace' });
+      const description = document.querySelector('.user-detail-hero .workspace-page-header__description');
+      expect(description?.textContent).toBe(longUpn);
+      if (!description) throw new Error('User detail header description missing');
+      expect(description.classList.contains('workspace-page-header__description')).toBe(true);
+      expect(getComputedStyle(description).overflowWrap).toBe('anywhere');
+    } finally { style.remove(); }
   });
 
   it('reports a failed detail read and clears it after a successful retry', async () => {

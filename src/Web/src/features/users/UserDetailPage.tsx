@@ -27,6 +27,8 @@ export function UserDetailPage({ userId, loadUserDetail, capabilities = [], modu
   const issueReporter = useWorkspaceIssueReporter();
   const api = useApi();
   const resolvedUserId = userId ?? userIdFromPath(window.location.pathname);
+  const [partialRetryFor, setPartialRetryFor] = useState<string | null>(null);
+  const partialRetryPending = partialRetryFor === resolvedUserId;
   const loader = useMemo(() => loadUserDetail ?? ((id: string) => fetchUserDetail(api as ApiFetch, id)), [api, loadUserDetail]);
   const [detail, setDetail] = useState<UserDetailResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -60,12 +62,12 @@ export function UserDetailPage({ userId, loadUserDetail, capabilities = [], modu
         if (!cancelled) { setError(loadError instanceof Error ? loadError : new Error('user_detail_unavailable')); issueReporter.report({ key: 'users:detail', area: 'users', kind: 'service', severity: 'warning', title: 'User detail unavailable', detail: 'Try loading user details again.' }); }
       })
       .finally(() => {
-        if (!cancelled) setLoading(false);
+        if (!cancelled) { setLoading(false); setPartialRetryFor(null); }
       });
     return () => { cancelled = true; };
   }, [loader, resolvedUserId, refreshVersion, issueReporter]);
 
-  if (loading) {
+  if (loading && (!partialRetryPending || !detail?.user)) {
     return <section className="user-detail-page"><WorkspacePageHeader eyebrow="Users" title={messages.userDetailTitle} /><WorkspaceDataState state="loading" message={messages.userDetailLoading} /></section>;
   }
 
@@ -154,7 +156,7 @@ export function UserDetailPage({ userId, loadUserDetail, capabilities = [], modu
             </div>
         </div>
       </div>
-      {[detail.access, detail.licenses.access, detail.groups.access, detail.roles.access, detail.pim.access].some(access => access.partialData || access.error) && <p className="workspace-partial-notice" role="status">Partial user details. Check Notifications for details.</p>}
+      {[detail.access, detail.licenses.access, detail.groups.access, detail.roles.access, detail.pim.access].some(access => access.partialData || access.error) && <div className="workspace-partial-notice user-detail-partial" role="status"><span>Partial user details. Check Notifications for details.</span><button type="button" disabled={partialRetryPending} onClick={() => { setPartialRetryFor(resolvedUserId); setRefreshVersion(version => version + 1); }}>{partialRetryPending ? 'Retrying user details' : 'Retry user details'}</button></div>}
       <div className="user-status-strip" role="region" aria-label="User status summary">
         <div><span>Account</span><strong>{user.accountEnabled === true ? 'Enabled' : user.accountEnabled === false ? 'Disabled' : 'Unavailable'}</strong></div>
         <div><span>MFA</span><strong>{authenticationMethodsDecision.state === 'allowed' || authenticationMethodsDecision.state === 'read_only' ? <a href="#authentication-methods-section-title">Review methods</a> : 'Unavailable in summary'}</strong></div>

@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import React from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { App } from '../../src/Web/src/app/App';
@@ -32,9 +32,10 @@ describe('customer overview route', () => {
     window.history.replaceState({}, '', '/invitations/test-nonce');
     apiFetch.mockImplementation(async (path: string) => {
       if (path === '/api/capabilities') return Response.json({ evaluatedAt: '2026-09-21T12:00:00Z', sourceState: 'unknown', capabilities: [] });
-      if (path === '/api/session') return Response.json({ user: { displayName: 'Customer admin' }, workspace: { id: 'workspace-1', name: 'Local customer' } });
+      if (path === '/api/session') return Response.json({ user: { displayName: 'Customer admin' }, workspace: { id: 'workspace-1', name: 'Local customer' }, workspaceAccess: { role: 'customer_admin', canManageMembers: true, canManageSettings: true } });
       if (path === '/api/overview') return Response.json({ freshness: 'live', fetchedAt: '2026-09-21T12:00:00Z', totalUsers: 0, licenseCoverage: { assigned: 0, available: 0, percentage: 0 }, permissionHealth: { state: 'healthy', allowedCount: 0, totalCount: 0 }, pimAttention: { requiresAttention: false, count: 0 }, partialData: false, access: { state: 'allowed' } });
       if (path === '/api/workspaces/current/connection-health') return Response.json({ status: 'consent_required', lastVerifiedAt: null });
+      if (path === '/api/workspaces/current/consent/start') return Response.json({ authorizationUrl: 'https://login.microsoftonline.com/tenant/adminconsent?client_id=demo' });
       return new Response(null, { status: 404 });
     });
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({ status: 'consent_required', workspaceId: 'workspace-1', workspaceName: 'Local customer', nextStep: '/overview' })));
@@ -43,18 +44,27 @@ describe('customer overview route', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Redeem invitation' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Continue to workspace' }));
 
-    await waitFor(() => expect(screen.getByRole('heading', { name: 'Get your workspace ready' })).toBeTruthy());
-    expect(window.location.pathname).toBe('/onboarding');
+    expect(await screen.findByRole('heading', { name: 'Workspace Settings' })).toBeTruthy();
+    expect(window.location.pathname + window.location.hash).toBe('/settings#connection');
+    expect(screen.getByRole('heading', { name: 'Connection', level: 2 })).toBeTruthy();
+    expect((await screen.findByTestId('connection-state')).textContent).toBe('Consent required');
+    fireEvent.click(screen.getByRole('button', { name: 'Start consent' }));
+    expect((await screen.findByRole('link', { name: 'Continue consent' })).getAttribute('href')).toMatch(/adminconsent/);
   });
 
-  it('keeps the session shell and onboarding route available when capabilities cannot load', async () => {
+  it('keeps the session shell and connection settings available when capabilities cannot load', async () => {
     window.history.replaceState({}, '', '/onboarding');
     render(<App
       loadSession={async () => ({ user: { displayName: 'Customer admin' }, workspace: { id: 'workspace-1', name: 'Local customer' }, workspaceAccess: { role: 'customer_admin', canManageMembers: true, canManageSettings: true } })}
       loadCapabilities={async () => { throw new Error('Graph unavailable'); }}
     />);
 
-    expect(await screen.findByRole('heading', { name: 'Get your workspace ready' })).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: 'Workspace Settings' })).toBeTruthy();
+    expect(window.location.pathname + window.location.hash).toBe('/settings#connection');
+    expect(screen.getByRole('heading', { name: 'Connection', level: 2 })).toBeTruthy();
+    const connection = screen.getByRole('heading', { name: 'Connection', level: 2 }).closest('section');
+    expect(connection).not.toBeNull();
+    expect(await within(connection!).findByRole('button', { name: 'Retry' })).toBeTruthy();
     expect(screen.getByRole('navigation', { name: 'Primary navigation' })).toBeTruthy();
     expect(screen.getByRole('switch', { name: /dark mode/i })).toBeTruthy();
   });
@@ -136,7 +146,10 @@ describe('customer overview route', () => {
 
     expect(await screen.findByText(/temporary-correlation-3/)).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
-    expect(await screen.findByRole('heading', { name: 'Get your workspace ready' })).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: 'Workspace Settings' })).toBeTruthy();
+    expect(window.location.pathname + window.location.hash).toBe('/settings#connection');
+    expect((await screen.findByTestId('connection-state')).textContent).toBe('Consent required');
+    expect(screen.getByRole('button', { name: 'Start consent' })).toBeTruthy();
     expect(sessionAttempts).toBe(2);
   });
 

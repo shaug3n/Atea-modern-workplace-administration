@@ -1464,9 +1464,11 @@ p {
   margin-top: var(--atea-space-1);
 }
 
-.user-detail-hero__upn {
+.user-detail-hero .workspace-page-header__description {
   margin-top: var(--atea-space-1);
   color: var(--uw-muted);
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .user-detail-hero__status {
@@ -2758,11 +2760,12 @@ p {
 .audit-page .responsive-data-view__table .audit-table { min-width: 0; table-layout: fixed; }
 .exchange-page .responsive-data-view__table th, .exchange-page .responsive-data-view__table td,
 .audit-page .responsive-data-view__table th, .audit-page .responsive-data-view__table td,
-.audit-reference, .user-detail-hero__upn, .workspace-partial-notice { min-width: 0; overflow-wrap: anywhere; word-break: break-word; }
+.audit-reference, .workspace-partial-notice { min-width: 0; overflow-wrap: anywhere; word-break: break-word; }
 .exchange-page .responsive-data-view__table th:first-child { width: 24%; }
 .exchange-page .responsive-data-view__table th:nth-child(2) { width: 29%; }
 .audit-reference { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; white-space: pre-wrap; }
 .workspace-partial-notice { color: var(--uw-warning-text); background: var(--uw-warning-surface); border-radius: var(--atea-radius-sm); padding: var(--atea-space-3); }
+.user-detail-partial { display: flex; align-items: center; gap: var(--atea-space-3); flex-wrap: wrap; }
 .user-detail-hero__main, .user-detail-hero__main > div { min-width: 0; }
 
 @media (max-width: 34rem) {
