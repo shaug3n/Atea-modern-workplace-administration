@@ -17,3 +17,10 @@ Base: `3f1154b` on `codex/atea-workspace-ui`. Scope: four Important UI findings 
 - Production build: `npm run build` in `src/Web` — passed. Existing Vite warnings remain for the AuthProvider dynamic import and a large generated chunk.
 
 No main checkout or merge was touched. The final commit is intentionally limited to these UI source, test, and SDD-report changes.
+
+## Independent review and final gate
+
+- Scoped re-review of `3f1154b..77af06f` approved with no Critical or Important findings. It verified all four corrections in the diff. Minor suggestions deferred: add an explicit out-of-order response-resolution test for the license request guard, and directly test the Overview denied-permission guidance branch; existing cancellation and permission-guidance code paths are present and the covered states pass.
+- The full E2E suite was rerun after the fix. It remains 22/24: the same two baseline `workspace-access.spec.tsx` expectations fail (invitation payload shape and role-change request). These are not caused by the reviewed UI changes.
+- Desktop/narrow/200% visual browser verification remains unperformed because the Mac was locked. No real-tenant Exchange or Graph flow was claimed as validated here.
+- The final implementation branch remains unmerged at `77af06f`; main checkout and its pre-existing untracked files are unchanged.
