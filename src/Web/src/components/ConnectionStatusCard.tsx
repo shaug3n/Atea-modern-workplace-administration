@@ -5,7 +5,7 @@ export function ConnectionStatusCard({ state, lastVerifiedAt, now, freshnessMs =
   const ageMs = new Date(now ?? Date.now()).getTime() - verifiedAtMs;
   const isStale = state === 'connected' && (!Number.isFinite(verifiedAtMs) || ageMs < 0 || ageMs > freshnessMs);
   const copy = messages.connectionState[state];
-  const showConsent = state === 'consent_required' || state === 'consent_revoked' || state === 'connection_failed';
+  const showConsent = state === 'consent_required' || state === 'permission_incomplete' || state === 'consent_revoked' || state === 'connection_failed';
   return <section aria-labelledby="connection-title" data-testid="connection-status-card" data-state={isStale ? 'stale' : state}>
     <h2 id="connection-title">{messages.connectionTitle}</h2>
     <p><strong data-testid="connection-state">{isStale ? messages.connectionStaleLabel : copy.label}</strong></p>

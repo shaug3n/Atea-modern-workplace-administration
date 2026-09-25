@@ -11,6 +11,11 @@ export type AppSession = {
     id: string;
     name: string;
   };
+  workspaceAccess?: {
+    role: string;
+    canManageMembers: boolean;
+    canManageSettings: boolean;
+  };
 };
 
 export function TenantContextHeader({ session, capabilitySnapshotFresh }: { session: AppSession; capabilitySnapshotFresh?: boolean }) {

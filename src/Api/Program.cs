@@ -40,6 +40,7 @@ builder.Services.AddScoped<IWorkspaceProvisioningService, WorkspaceProvisioningS
 builder.Services.AddScoped<IWorkspaceSettingsService, WorkspaceSettingsService>();
 builder.Services.AddSingleton<WorkspaceSettingsMemoryCache>();
 builder.Services.AddScoped<WorkspaceOnboardingRepository>();
+builder.Services.AddScoped<IWorkspaceAccessRepository, WorkspaceAccessRepository>();
 builder.Services.AddScoped<IOnboardingRepository>(services => services.GetRequiredService<WorkspaceOnboardingRepository>());
 builder.Services.AddScoped<IInvitationRepository>(services => services.GetRequiredService<WorkspaceOnboardingRepository>());
 builder.Services.AddScoped<IConsentChallengeRepository>(services => services.GetRequiredService<WorkspaceOnboardingRepository>());
@@ -149,10 +150,17 @@ app.MapGet("/api/session", async (IWorkspaceContextAccessor accessor, IWorkspace
             defaultFilters = configuration.DefaultFilters,
             supportInstructions = configuration.SupportInstructions,
             defaultTheme = configuration.DefaultTheme
+        },
+        workspaceAccess = new
+        {
+            role = context.Membership.PlatformRole,
+            canManageMembers = CapabilityEvaluator.EvaluatePlatformCapability(Capability.WorkspaceMembersManage, context.Membership).State == CapabilityState.Allowed,
+            canManageSettings = CapabilityEvaluator.EvaluatePlatformCapability(Capability.WorkspaceSettingsManage, context.Membership).State == CapabilityState.Allowed
         }
     });
 }).RequireAuthorization();
 app.MapWorkspaceEndpoints();
+app.MapWorkspaceAccessEndpoints();
 app.MapWorkspaceSettingsEndpoints();
 app.MapCapabilityEndpoints();
 app.MapUserPreferenceEndpoints();

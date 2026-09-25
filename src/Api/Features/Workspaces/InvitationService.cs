@@ -6,23 +6,38 @@ using Atea.UnifiedWorkplace.Api.Infrastructure.Persistence.Repositories;
 namespace Atea.UnifiedWorkplace.Api.Features.Workspaces;
 
 public sealed record InvitationCreationResult(Guid InvitationId, string InvitationUrl, DateTimeOffset ExpiresAt);
+public sealed record PreparedInvitation(PlatformInvitation Invitation, string InvitationUrl);
 
 public sealed class InvitationService(IInvitationRepository repository, Uri publicBaseUri)
 {
     public Task<InvitationCreationResult> CreateAsync(Guid workspaceId, string email, string displayName, DateTimeOffset expiresAt, CancellationToken cancellationToken = default) =>
         CreateAsync(workspaceId, email, displayName, expiresAt, null, cancellationToken);
 
-    public async Task<InvitationCreationResult> CreateAsync(Guid workspaceId, string email, string displayName, DateTimeOffset expiresAt, Guid? approvedTenantObjectId, CancellationToken cancellationToken = default)
+    public Task<InvitationCreationResult> CreateAsync(Guid workspaceId, string email, string displayName, DateTimeOffset expiresAt, Guid? approvedTenantObjectId, CancellationToken cancellationToken = default) =>
+        CreateForRoleAsync(workspaceId, email, displayName, expiresAt, "customer_admin", approvedTenantObjectId, cancellationToken);
+
+    public async Task<InvitationCreationResult> CreateForRoleAsync(Guid workspaceId, string email, string displayName, DateTimeOffset expiresAt, string role, Guid? approvedTenantObjectId = null, CancellationToken cancellationToken = default, AuditEvent? auditEvent = null)
     {
+        var prepared = PrepareForRole(workspaceId, email, displayName, expiresAt, role, approvedTenantObjectId);
+        var invitation = prepared.Invitation;
+        if (auditEvent is not null) auditEvent.TargetId = invitation.Id.ToString("D");
+        await (auditEvent is null
+            ? repository.CreateAsync(invitation, cancellationToken)
+            : repository.CreateAsync(invitation, auditEvent, cancellationToken));
+        return new InvitationCreationResult(invitation.Id, prepared.InvitationUrl, invitation.ExpiresAt);
+    }
+
+    public PreparedInvitation PrepareForRole(Guid workspaceId, string email, string displayName, DateTimeOffset expiresAt, string role, Guid? approvedTenantObjectId = null)
+    {
+        if (role is not ("member" or "customer_admin")) throw new ArgumentOutOfRangeException(nameof(role));
         var nonce = ToBase64Url(RandomNumberGenerator.GetBytes(32));
         var invitation = new PlatformInvitation
         {
-            Id = Guid.NewGuid(), WorkspaceId = workspaceId, Email = email.Trim(), DisplayName = displayName.Trim(), ApprovedTenantObjectId = approvedTenantObjectId,
+            Id = Guid.NewGuid(), WorkspaceId = workspaceId, Email = email.Trim(), DisplayName = displayName.Trim(), ApprovedTenantObjectId = approvedTenantObjectId, Role = role,
             NonceHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(nonce))).ToLowerInvariant(),
             ExpiresAt = expiresAt, CreatedAt = DateTimeOffset.UtcNow
         };
-        await repository.CreateAsync(invitation, cancellationToken);
-        return new InvitationCreationResult(invitation.Id, new Uri(publicBaseUri, $"invitations/{nonce}").ToString(), invitation.ExpiresAt);
+        return new PreparedInvitation(invitation, new Uri(publicBaseUri, $"invitations/{nonce}").ToString());
     }
 
     public async Task<InvitationRedemption?> RedeemDetailedAsync(string nonce, Guid tenantId, Guid tenantObjectId, string? email, string displayName, CancellationToken cancellationToken = default)

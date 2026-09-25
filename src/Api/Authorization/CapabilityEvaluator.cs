@@ -122,6 +122,7 @@ public static class CapabilityEvaluator
 
     public static bool IsPlatformOnly(string capability) =>
         string.Equals(capability, Capability.WorkspaceSettingsManage, StringComparison.OrdinalIgnoreCase)
+        || string.Equals(capability, Capability.WorkspaceMembersManage, StringComparison.OrdinalIgnoreCase)
         || string.Equals(capability, Capability.AuditView, StringComparison.OrdinalIgnoreCase);
 
     public static CapabilityDecision EvaluatePlatformCapability(string capability, WorkspaceMembership workspaceMembership)
@@ -299,6 +300,8 @@ public static class CapabilityEvaluator
 
     private static bool IsWorkspaceManager(WorkspaceMembership membership) =>
         membership.IsAteaOperator
+        || string.Equals(membership.PlatformRole, "customer_admin", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(membership.PlatformRole, "customeradmin", StringComparison.OrdinalIgnoreCase)
         || string.Equals(membership.PlatformRole, "admin", StringComparison.OrdinalIgnoreCase)
         || string.Equals(membership.PlatformRole, "workspace-manager", StringComparison.OrdinalIgnoreCase)
         || string.Equals(membership.PlatformRole, "owner", StringComparison.OrdinalIgnoreCase);

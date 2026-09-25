@@ -3,10 +3,12 @@ using PlatformWorkspaceScope = Atea.UnifiedWorkplace.Api.Authorization.PlatformW
 using Atea.UnifiedWorkplace.Api.Infrastructure.Persistence.Entities;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
+using System.Data;
+using Atea.UnifiedWorkplace.Api.Infrastructure.Observability;
 
 namespace Atea.UnifiedWorkplace.Api.Infrastructure.Persistence.Repositories;
 
-public sealed class WorkspaceProvisioningRepository(WorkplaceDbContext db) : IWorkspaceProvisioningRepository
+public sealed class WorkspaceProvisioningRepository(WorkplaceDbContext db, IAuditWriter auditWriter) : IWorkspaceProvisioningRepository
 {
     public async Task<IReadOnlyList<Workspace>> ListAsync(PlatformWorkspaceScope workspaceScope, CancellationToken cancellationToken = default)
     {
@@ -29,7 +31,7 @@ public sealed class WorkspaceProvisioningRepository(WorkplaceDbContext db) : IWo
                 workspace.TenantConnection == null ? null : workspace.TenantConnection.LastVerifiedAt,
                 workspace.TenantConnection == null ? null : workspace.TenantConnection.LastFailureCategory,
                 workspace.Memberships.OrderBy(membership => membership.Email).Select(membership => new WorkspaceMembershipDto(membership.Id, membership.TenantObjectId, membership.Email, membership.PlatformRole, membership.IsAteaOperator)).ToArray(),
-                db.PlatformInvitations.Where(invitation => invitation.WorkspaceId == workspace.Id).OrderByDescending(invitation => invitation.CreatedAt).Select(invitation => new InvitationSummaryDto(invitation.Id, invitation.Email, invitation.DisplayName, invitation.ExpiresAt, invitation.RedeemedAt)).ToArray()))
+                db.PlatformInvitations.Where(invitation => invitation.WorkspaceId == workspace.Id).OrderByDescending(invitation => invitation.CreatedAt).Select(invitation => new InvitationSummaryDto(invitation.Id, invitation.Email, invitation.DisplayName, invitation.ExpiresAt, invitation.RedeemedAt, invitation.Role, invitation.RevokedAt)).ToArray()))
             .SingleOrDefaultAsync(cancellationToken);
     }
 
@@ -59,14 +61,53 @@ public sealed class WorkspaceProvisioningRepository(WorkplaceDbContext db) : IWo
         }
     }
 
-    public async Task<WorkspaceMembership> AddMembershipAsync(Guid workspaceId, Guid tenantObjectId, string email, string platformRole, bool isAteaOperator, CancellationToken cancellationToken = default)
+    public async Task<Workspace> CreateWithInvitationAsync(Workspace workspace, PlatformInvitation invitation, AuditEvent auditEvent, CancellationToken cancellationToken = default)
     {
-        if (!await db.Workspaces.AnyAsync(workspace => workspace.Id == workspaceId, cancellationToken)) throw new KeyNotFoundException("Workspace not found.");
+        await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
+        invitation.WorkspaceId = workspace.Id;
+        auditEvent.WorkspaceId = workspace.Id;
+        auditEvent.TenantId = workspace.TenantId;
+        auditEvent.TargetId = workspace.Id.ToString("D");
+        db.Workspaces.Add(workspace);
+        db.PlatformInvitations.Add(invitation);
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+            await auditWriter.WriteAsync(auditEvent, cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+            return workspace;
+        }
+        catch (DbUpdateException exception) when (ContainsUniqueViolation(exception))
+        {
+            throw new WorkspaceUniqueConstraintException("Workspace tenant already exists.", exception);
+        }
+        catch (DbUpdateException exception)
+        {
+            throw new WorkspaceProvisioningDatabaseException("Workspace onboarding persistence is temporarily unavailable.", exception);
+        }
+    }
+
+    public async Task<WorkspaceMembership> AddMembershipAsync(Guid workspaceId, Guid tenantObjectId, string email, string platformRole, bool isAteaOperator, CancellationToken cancellationToken = default)
+        => await AddMembershipAsync(workspaceId, tenantObjectId, email, platformRole, isAteaOperator, auditEvent: null, cancellationToken);
+
+    public async Task<WorkspaceMembership> AddMembershipAsync(Guid workspaceId, Guid tenantObjectId, string email, string platformRole, bool isAteaOperator, AuditEvent? auditEvent, CancellationToken cancellationToken = default)
+    {
+        await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
+        var workspace = await db.Workspaces.SingleOrDefaultAsync(x => x.Id == workspaceId, cancellationToken);
+        if (workspace is null) throw new KeyNotFoundException("Workspace not found.");
         var membership = new WorkspaceMembership { Id = Guid.NewGuid(), WorkspaceId = workspaceId, TenantObjectId = tenantObjectId, Email = email, PlatformRole = platformRole, IsAteaOperator = isAteaOperator, CreatedAt = DateTimeOffset.UtcNow };
         db.WorkspaceMemberships.Add(membership);
         try
         {
             await db.SaveChangesAsync(cancellationToken);
+            if (auditEvent is not null)
+            {
+                auditEvent.WorkspaceId = workspaceId;
+                auditEvent.TenantId = workspace.TenantId;
+                auditEvent.TargetId = membership.Id.ToString("D");
+                await auditWriter.WriteAsync(auditEvent, cancellationToken);
+            }
+            await transaction.CommitAsync(cancellationToken);
             return membership;
         }
         catch (DbUpdateException exception) when (ContainsUniqueViolation(exception))

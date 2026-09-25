@@ -19,6 +19,6 @@ export default defineConfig({
   },
   test: {
     environment: 'jsdom',
-    include: ['users-directory.spec.tsx', 'user-detail.spec.tsx', 'user-lifecycle.spec.tsx', 'pim-activation.spec.tsx', 'audit-activity.spec.tsx', 'overview-and-settings.spec.tsx', 'admin-onboarding.spec.tsx', 'consent-callback.spec.tsx', 'local-v1-journey.spec.tsx']
+    include: ['users-directory.spec.tsx', 'user-detail.spec.tsx', 'user-lifecycle.spec.tsx', 'pim-activation.spec.tsx', 'audit-activity.spec.tsx', 'overview-and-settings.spec.tsx', 'admin-onboarding.spec.tsx', 'consent-callback.spec.tsx', 'local-v1-journey.spec.tsx', 'workspace-access.spec.tsx']
   }
 });

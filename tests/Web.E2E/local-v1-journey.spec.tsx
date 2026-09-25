@@ -6,9 +6,10 @@ import { UserDetailPage } from '../../src/Web/src/features/users/UserDetailPage'
 
 const apiFetch = vi.hoisted(() => vi.fn());
 const getApiToken = vi.hoisted(() => vi.fn().mockResolvedValue('api-token'));
+const signIn = vi.hoisted(() => vi.fn());
 
 vi.mock('../../src/Web/src/auth/useApi', () => ({ useApi: () => apiFetch }));
-vi.mock('../../src/Web/src/auth/AuthProvider', () => ({ useAuth: () => ({ account: { username: 'customer@example.com' }, getApiToken }) }));
+vi.mock('../../src/Web/src/auth/AuthProvider', () => ({ useAuth: () => ({ account: { username: 'customer@example.com' }, getApiToken, signIn }) }));
 
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); apiFetch.mockReset(); window.history.replaceState({}, '', '/'); });
 
@@ -42,8 +43,109 @@ describe('customer overview route', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Redeem invitation' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Continue to workspace' }));
 
-    await waitFor(() => expect(screen.getByRole('heading', { name: 'Overview' })).toBeTruthy());
-    expect(window.location.pathname).toBe('/overview');
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Get your workspace ready' })).toBeTruthy());
+    expect(window.location.pathname).toBe('/onboarding');
+  });
+
+  it('keeps the session shell and onboarding route available when capabilities cannot load', async () => {
+    window.history.replaceState({}, '', '/onboarding');
+    render(<App
+      loadSession={async () => ({ user: { displayName: 'Customer admin' }, workspace: { id: 'workspace-1', name: 'Local customer' }, workspaceAccess: { role: 'customer_admin', canManageMembers: true, canManageSettings: true } })}
+      loadCapabilities={async () => { throw new Error('Graph unavailable'); }}
+    />);
+
+    expect(await screen.findByRole('heading', { name: 'Get your workspace ready' })).toBeTruthy();
+    expect(screen.getByRole('navigation', { name: 'Primary navigation' })).toBeTruthy();
+    expect(screen.getByRole('switch', { name: /dark mode/i })).toBeTruthy();
+  });
+
+  it('shows an actionable customer connection state without requiring overview metrics', async () => {
+    window.history.replaceState({}, '', '/onboarding');
+    apiFetch.mockImplementation(async (path: string) => {
+      if (path === '/api/session') return Response.json({ user: { displayName: 'Customer admin' }, workspace: { id: 'workspace-1', name: 'Local customer' }, workspaceAccess: { role: 'customer_admin', canManageMembers: true, canManageSettings: true } });
+      if (path === '/api/capabilities') throw new Error('Graph unavailable');
+      if (path === '/api/workspaces/current/connection-health') return Response.json({ status: 'permission_incomplete', lastVerifiedAt: null, correlationId: 'health-correlation-1' });
+      if (path === '/api/workspaces/current/connection-health/check') return Response.json({ status: 'connected', lastVerifiedAt: '2026-09-23T12:00:00Z' });
+      return new Response(null, { status: 404 });
+    });
+    render(<App />);
+
+    expect(await screen.findByText(/permissions incomplete/i)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Check connection' }));
+    expect(await screen.findByText(/connected/i)).toBeTruthy();
+    expect(apiFetch.mock.calls.some(([path]) => path === '/api/overview')).toBe(false);
+  });
+
+  it('offers tenant consent from setup when delegated consent is required', async () => {
+    window.history.replaceState({}, '', '/onboarding');
+    apiFetch.mockImplementation(async (path: string, init?: RequestInit) => {
+      if (path === '/api/session') return Response.json({ user: { displayName: 'Customer admin' }, workspace: { id: 'workspace-1', name: 'Local customer' }, workspaceAccess: { role: 'customer_admin', canManageMembers: true, canManageSettings: true } });
+      if (path === '/api/capabilities') throw new Error('Graph unavailable');
+      if (path === '/api/workspaces/current/connection-health') return Response.json({ status: 'consent_required', lastVerifiedAt: null });
+      if (path === '/api/workspaces/current/consent/start' && init?.method === 'POST') return Response.json({ authorizationUrl: 'https://login.microsoftonline.com/tenant/adminconsent?client_id=demo' });
+      return new Response(null, { status: 404 });
+    });
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Start consent' }));
+    const continueConsent = await screen.findByRole('link', { name: 'Continue consent' });
+    expect(continueConsent.getAttribute('href')).toMatch(/adminconsent/);
+  });
+
+  it('distinguishes an expired sign-in session from missing workspace membership', async () => {
+    window.history.replaceState({}, '', '/onboarding');
+    apiFetch.mockImplementation(async (path: string) => {
+      if (path === '/api/session') return new Response(JSON.stringify({ code: 'authorization_denied', correlationId: 'session-correlation-2' }), { status: 403, headers: { 'Content-Type': 'application/problem+json' } });
+      if (path === '/api/capabilities') return Response.json({ evaluatedAt: '2026-09-21T12:00:00Z', sourceState: 'unknown', capabilities: [] });
+      return new Response(null, { status: 404 });
+    });
+    render(<App />);
+
+    expect(await screen.findByRole('heading', { name: /workspace access is not set up/i })).toBeTruthy();
+    expect(screen.getByText(/session-correlation-2/)).toBeTruthy();
+  });
+
+  it('gives an expired session a sign-in action instead of a membership error', async () => {
+    window.history.replaceState({}, '', '/onboarding');
+    apiFetch.mockImplementation(async (path: string) => {
+      if (path === '/api/session') return new Response(JSON.stringify({ title: 'Authentication required' }), { status: 401, headers: { 'Content-Type': 'application/problem+json' } });
+      if (path === '/api/capabilities') return Response.json({ evaluatedAt: '2026-09-21T12:00:00Z', sourceState: 'unknown', capabilities: [] });
+      return new Response(null, { status: 404 });
+    });
+    render(<App />);
+
+    expect(await screen.findByRole('heading', { name: 'Your sign-in has expired' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Return to sign in' }));
+    expect(signIn).toHaveBeenCalledOnce();
+  });
+
+  it('shows a correlation ID and retries a temporary session service failure', async () => {
+    window.history.replaceState({}, '', '/onboarding');
+    let sessionAttempts = 0;
+    apiFetch.mockImplementation(async (path: string) => {
+      if (path === '/api/session') {
+        sessionAttempts += 1;
+        if (sessionAttempts === 1) return new Response(JSON.stringify({ title: 'Temporary failure', correlationId: 'temporary-correlation-3' }), { status: 503, headers: { 'Content-Type': 'application/problem+json' } });
+        return Response.json({ user: { displayName: 'Customer admin' }, workspace: { id: 'workspace-1', name: 'Local customer' }, workspaceAccess: { role: 'customer_admin', canManageMembers: true, canManageSettings: true } });
+      }
+      if (path === '/api/capabilities') return Response.json({ evaluatedAt: '2026-09-21T12:00:00Z', sourceState: 'unknown', capabilities: [] });
+      if (path === '/api/workspaces/current/connection-health') return Response.json({ status: 'consent_required', lastVerifiedAt: null });
+      return new Response(null, { status: 404 });
+    });
+    render(<App />);
+
+    expect(await screen.findByText(/temporary-correlation-3/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    expect(await screen.findByRole('heading', { name: 'Get your workspace ready' })).toBeTruthy();
+    expect(sessionAttempts).toBe(2);
+  });
+
+  it('provides the customer access route to workspace admins, but denies members', async () => {
+    window.history.replaceState({}, '', '/workspace-access');
+    const loadSession = async () => ({ user: { displayName: 'Customer member' }, workspace: { id: 'workspace-1', name: 'Local customer' }, workspaceAccess: { role: 'member', canManageMembers: false, canManageSettings: false } });
+    render(<App loadSession={loadSession} loadCapabilities={async () => ({ evaluatedAt: '2026-09-21T12:00:00Z', sourceState: 'unknown', capabilities: [] })} />);
+
+    expect(await screen.findByRole('heading', { name: /workspace access is managed by an administrator/i })).toBeTruthy();
   });
 
   it('uses the fixture API boundary for user actions and associated-device navigation', async () => {
