@@ -14,7 +14,7 @@ vi.mock('../../src/Web/src/auth/AuthProvider', () => ({ useAuth: () => ({ accoun
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); apiFetch.mockReset(); window.history.replaceState({}, '', '/'); });
 
 describe('customer overview route', () => {
-  it('renders the customer overview connection state from route loaders', async () => {
+  it('keeps the connection state out of the customer overview route', async () => {
     window.history.replaceState({}, '', '/overview');
     render(<App
       loadSession={async () => ({ user: { displayName: 'Customer admin' }, workspace: { id: 'workspace-1', name: 'Local customer' } })}
@@ -25,7 +25,8 @@ describe('customer overview route', () => {
       loadConnectionHealth={async () => ({ status: 'connected', lastVerifiedAt: '2026-09-21T12:00:00Z' })}
     />);
 
-    expect((await screen.findByTestId('connection-state')).textContent).toMatch(/stale|connected/i);
+    expect(await screen.findByRole('heading', { name: 'Overview', level: 1 })).toBeTruthy();
+    expect(screen.queryByTestId('connection-state')).toBeNull();
   });
 
   it('renders the workspace after continuing from a redeemed invitation', async () => {

@@ -8,7 +8,7 @@ vi.mock('../../../../src/Web/src/auth/AuthProvider', () => ({ useAuth: () => ({ 
 
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.clearAllMocks(); });
 
-it('requests overview and connection health without querying a device search page', async () => {
+it('requests overview without querying connection health or a device search page', async () => {
   const requested: string[] = [];
   vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
     const path = String(input);
@@ -28,8 +28,7 @@ it('requests overview and connection health without querying a device search pag
   render(<OverviewPage session={{ user: {}, workspace: { id: 'w', name: 'Customer', moduleAccess: ['users', 'devices', 'licenses'] } }} />);
 
   await waitFor(() => expect(screen.getByText('No verified tenant total')).toBeTruthy());
-  await waitFor(() => expect(screen.getByTestId('connection-state').textContent).toBe('Connected'));
   expect(requested).toContain('/api/overview');
-  expect(requested).toContain('/api/workspaces/current/connection-health');
+  expect(requested).not.toContain('/api/workspaces/current/connection-health');
   expect(requested).not.toContain('/api/devices?pageSize=1');
 });

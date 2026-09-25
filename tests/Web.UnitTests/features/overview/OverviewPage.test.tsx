@@ -35,10 +35,10 @@ describe('OverviewPage', () => {
     expect(screen.getByText('Devices').closest('article')?.textContent).not.toContain('1');
   });
 
-  it('shows connection health while the summary request is still loading', async () => {
+  it('keeps connection status off the overview while the summary request is loading', async () => {
     render(<OverviewPage loadOverview={() => new Promise(() => {})} loadConnectionHealth={async () => ({ status: 'connected', lastVerifiedAt: new Date().toISOString() })} />);
-    await waitFor(() => expect(screen.getByTestId('connection-state').textContent).toBe('Connected'));
     expect(screen.getByText('Loading overview…')).toBeTruthy();
+    expect(screen.queryByTestId('connection-state')).toBeNull();
   });
 
   it('shows a verified permission count from the API healthy state', async () => {

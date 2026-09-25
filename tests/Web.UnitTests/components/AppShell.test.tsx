@@ -267,6 +267,7 @@ describe('AppShell', () => {
 
   it('refreshes injected capabilities from the notifications menu', async () => {
     window.history.pushState(null, '', '/overview');
+    apiMock.mockResolvedValue(Response.json({ freshness: 'live', fetchedAt: '2026-09-25T08:00:00Z', totalUsers: 1, licenseCoverage: { assigned: 0, available: 0, percentage: 0 }, permissionHealth: { state: 'healthy', allowedCount: 1, totalCount: 1 }, pimAttention: { requiresAttention: false, count: 0 }, partialData: false, access: { state: 'allowed' } }));
     let calls = 0;
     render(<App loadSession={async () => session} loadCapabilities={async () => {
       calls++;
@@ -280,6 +281,7 @@ describe('AppShell', () => {
 
   it('rechecks capabilities when returning to the workspace tab', async () => {
     window.history.pushState(null, '', '/overview');
+    apiMock.mockResolvedValue(Response.json({ freshness: 'live', fetchedAt: '2026-09-25T08:00:00Z', totalUsers: 1, licenseCoverage: { assigned: 0, available: 0, percentage: 0 }, permissionHealth: { state: 'healthy', allowedCount: 1, totalCount: 1 }, pimAttention: { requiresAttention: false, count: 0 }, partialData: false, access: { state: 'allowed' } }));
     let calls = 0;
     render(<App loadSession={async () => session} loadCapabilities={async () => {
       calls++;

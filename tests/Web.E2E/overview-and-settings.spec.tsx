@@ -14,6 +14,14 @@ describe('overview and settings browser states', () => {
     expect(screen.getByText('PIM attention needed')).toBeTruthy();
   });
 
+  it('keeps connection checks in settings and notifications, not on the overview', async () => {
+    render(<OverviewPage loadOverview={async () => ({
+      freshness: 'live', fetchedAt: '2026-09-21T10:00:00Z', totalUsers: 120, licenseCoverage: { assigned: 90, available: 30, percentage: 75 }, permissionHealth: { state: 'healthy', allowedCount: 4, totalCount: 6 }, pimAttention: { requiresAttention: false, count: 0 }, partialData: false, access: { state: 'allowed' }
+    })} loadConnectionHealth={async () => ({ status: 'connected', lastVerifiedAt: null })} />);
+    await waitFor(() => expect(screen.getByText('120')).toBeTruthy());
+    expect(screen.queryByText('Microsoft 365 connection')).toBeNull();
+  });
+
   it('shows retryable unavailable overview state on mobile-sized render', async () => {
     render(<OverviewPage loadOverview={async () => { throw new Error('unavailable'); }} />);
     expect((await screen.findByRole('alert')).textContent).toContain('Overview data is unavailable');
