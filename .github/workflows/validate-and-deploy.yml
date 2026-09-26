@@ -39,8 +39,10 @@ jobs:
           node-version: '22.x'
           cache: npm
           cache-dependency-path: src/Web/package-lock.json
-      - name: API tests
-        run: dotnet test Atea.UnifiedWorkplace.sln --configuration Release
+      - name: API unit and integration tests
+        run: |
+          dotnet test tests/Api.UnitTests/Api.UnitTests.csproj --configuration Release
+          dotnet test tests/Api.IntegrationTests/Api.IntegrationTests.csproj --configuration Release
       - name: Frontend tests and build
         run: |
           npm ci --prefix src/Web

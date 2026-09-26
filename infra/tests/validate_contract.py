@@ -116,6 +116,12 @@ def main() -> int:
     require_text(dockerfile, r"FROM mcr\.microsoft\.com/dotnet/aspnet:10\.0\.12 AS final", ".NET ASP.NET runtime container 10.0.12", errors)
     require_text(workflow, r"dotnet-version:\s*'10\.0\.401'", "CI .NET SDK 10.0.401", errors)
     require_text(global_json, r'"version"\s*:\s*"10\.0\.401"', "global .NET SDK pin 10.0.401", errors)
+    require_text(workflow, r"dotnet test tests/Api.UnitTests/Api\.UnitTests\.csproj --configuration Release", "CI API unit test project", errors)
+    require_text(workflow, r"dotnet test tests/Api.IntegrationTests/Api\.IntegrationTests\.csproj --configuration Release", "CI API integration test project", errors)
+    require_text(workflow, r"npm run test:behavior --prefix src/Web -- --run", "CI frontend behavior tests", errors)
+    require_text(workflow, r"npm run build --prefix src/Web", "CI frontend production build", errors)
+    if re.search(r"dotnet test\s+Atea\.UnifiedWorkplace\.sln\b", workflow):
+        errors.append("CI must invoke the API test projects explicitly instead of relying on solution configuration mappings")
     for build_arg in ("VITE_ENTRA_CLIENT_ID", "VITE_ENTRA_API_SCOPE", "VITE_ENTRA_AUTHORITY", "VITE_ENTRA_REDIRECT_URI"):
         require_text(dockerfile, rf"ARG\s+{build_arg}", f"SPA build argument {build_arg}", errors)
         require_text(workflow, rf"VITE_ENTRA_{build_arg.removeprefix('VITE_ENTRA_')}", f"workflow SPA build value {build_arg}", errors)
