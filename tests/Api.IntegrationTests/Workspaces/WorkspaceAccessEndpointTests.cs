@@ -32,7 +32,7 @@ public sealed class WorkspaceAccessEndpointTests : IAsyncLifetime
     private static readonly Guid MemberObjectId = Guid.Parse("33333333-3333-3333-3333-333333333333");
     private static readonly Guid InviteeObjectId = Guid.Parse("44444444-4444-4444-4444-444444444444");
     private static readonly Guid OtherTenantId = Guid.Parse("99999999-9999-9999-9999-999999999999");
-    private readonly PostgreSqlContainer postgres = new PostgreSqlBuilder().Build();
+    private readonly PostgreSqlContainer postgres = new PostgreSqlBuilder("postgres:16-alpine").Build();
     private WebApplicationFactory<Program> factory = null!;
 
     public async Task InitializeAsync()
@@ -182,7 +182,7 @@ public sealed class WorkspaceAccessEndpointTests : IAsyncLifetime
         invitation.Email.Should().Be("owner@customer.example");
         invitation.DisplayName.Should().Be("Workspace Owner");
         invitation.Role.Should().Be("workspace_owner");
-        invitation.ExpiresAt.Should().Be(expiresAt);
+        invitation.ExpiresAt.Should().BeCloseTo(expiresAt, TimeSpan.FromMicroseconds(1));
         invitation.NonceHash.Should().NotContain(invitationUrl.Split('/').Last());
     }
 
@@ -277,7 +277,7 @@ public sealed class WorkspaceAccessEndpointTests : IAsyncLifetime
         replacement.Email.Should().Be("person@example.com");
         replacement.DisplayName.Should().Be("Person");
         replacement.Role.Should().Be("member");
-        replacement.ExpiresAt.Should().Be(replacementExpiry);
+        replacement.ExpiresAt.Should().BeCloseTo(replacementExpiry, TimeSpan.FromMicroseconds(1));
     }
 
     [Fact]

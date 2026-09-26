@@ -12,7 +12,7 @@ namespace Atea.UnifiedWorkplace.Api.IntegrationTests.Persistence;
 
 public sealed class WorkspaceRepositoryTests : IAsyncLifetime
 {
-    private readonly PostgreSqlContainer postgres = new PostgreSqlBuilder().Build();
+    private readonly PostgreSqlContainer postgres = new PostgreSqlBuilder("postgres:16-alpine").Build();
     private WorkplaceDbContext db = null!;
 
     public async Task InitializeAsync()

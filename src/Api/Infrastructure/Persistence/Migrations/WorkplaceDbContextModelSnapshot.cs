@@ -245,6 +245,29 @@ namespace Atea.UnifiedWorkplace.Api.Infrastructure.Persistence.Migrations
                     b.ToTable("PlatformInvitations");
                 });
 
+            modelBuilder.Entity("Atea.UnifiedWorkplace.Api.Infrastructure.Persistence.Entities.PlatformWorkspaceGrant", b =>
+                {
+                    b.Property<Guid>("OperatorTenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("OperatorObjectId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("WorkspaceId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("OperatorTenantId", "OperatorObjectId", "WorkspaceId");
+
+                    b.HasIndex("OperatorTenantId", "OperatorObjectId");
+
+                    b.HasIndex("WorkspaceId");
+
+                    b.ToTable("PlatformWorkspaceGrants");
+                });
+
             modelBuilder.Entity("Atea.UnifiedWorkplace.Api.Infrastructure.Persistence.Entities.TenantConnection", b =>
                 {
                     b.Property<Guid>("WorkspaceId")
@@ -399,6 +422,17 @@ namespace Atea.UnifiedWorkplace.Api.Infrastructure.Persistence.Migrations
                 });
 
             modelBuilder.Entity("Atea.UnifiedWorkplace.Api.Infrastructure.Persistence.Entities.PlatformInvitation", b =>
+                {
+                    b.HasOne("Atea.UnifiedWorkplace.Api.Infrastructure.Persistence.Entities.Workspace", "Workspace")
+                        .WithMany()
+                        .HasForeignKey("WorkspaceId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Workspace");
+                });
+
+            modelBuilder.Entity("Atea.UnifiedWorkplace.Api.Infrastructure.Persistence.Entities.PlatformWorkspaceGrant", b =>
                 {
                     b.HasOne("Atea.UnifiedWorkplace.Api.Infrastructure.Persistence.Entities.Workspace", "Workspace")
                         .WithMany()

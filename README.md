@@ -58,7 +58,7 @@ Open `http://localhost:5173/admin` for the local Atea platform-admin login. Plat
 
 ## Azure infrastructure
 
-The Azure deployment foundation is in [`infra/main.bicep`](infra/main.bicep), with environment examples in [`infra/parameters`](infra/parameters) and the operational runbook in [`docs/operations/azure-deployment.md`](docs/operations/azure-deployment.md). It uses the same combined Docker image as local development, private PostgreSQL networking, Key Vault references through managed identity, controlled HTTPS ingress, health probes, and multiple bounded revisions.
+Azure deployment is split into the disposable foundation in [`infra/main.bicep`](infra/main.bicep), one-time private database bootstrap in [`infra/database-bootstrap.bicep`](infra/database-bootstrap.bicep), and application release in [`infra/application.bicep`](infra/application.bicep). GitHub Actions has separate manually dispatched foundation and test-release workflows; ACA ingress is restricted to the test operator's IP, and a stable revision-label URL supports interactive test-tenant validation before routing traffic. The runbook in [`docs/operations/azure-deployment.md`](docs/operations/azure-deployment.md) documents Entra callbacks, GitHub OIDC, secrets, migrations, rollback, cost alerts, and the later Atea handoff. No live Azure resources are created by local validation.
 
 Run the credential-free infrastructure contract validation locally:
 
@@ -66,7 +66,7 @@ Run the credential-free infrastructure contract validation locally:
 python3 infra/tests/validate_contract.py
 ```
 
-This checks the Bicep parameter contract, environment-separated Entra values, secret-free parameter examples, exact hosted redirect URI policy, SPA build arguments, health/revision/ingress settings, and CI/runbook coverage. It does not require Azure credentials and does not deploy resources. Do not commit `.env` files, passwords, connection strings, signing keys, or tenant credentials.
+This checks staged Bicep inputs, secret-free parameter examples, distinct callback paths, migration job settings, SPA build arguments, revision/traffic ordering, ingress allowlists, and runbook coverage. To compile all three templates, run `az bicep build --file infra/main.bicep`, `az bicep build --file infra/application.bicep`, and `az bicep build --file infra/database-bootstrap.bicep`. Neither validation step requires Azure credentials or deploys resources. Do not commit `.env` files, passwords, connection strings, signing keys, or tenant credentials.
 
 ## Tests
 

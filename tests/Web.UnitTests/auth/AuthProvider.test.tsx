@@ -74,6 +74,10 @@ describe('AuthProvider behavior', () => {
     expect(msalConfig.cache?.cacheLocation).toBe('sessionStorage');
   });
 
+  it('uses the current host for the Entra callback so labelled ACA revisions return to that revision', () => {
+    expect(msalConfig.auth.redirectUri).toBe(`${window.location.origin}/auth/callback`);
+  });
+
   it('shows an accessible sign-in error when redirect cannot start', async () => {
     auth.authenticated = false;
     const signInFailure = Object.assign(new Error('redirect failed'), { requestId: 'request-secret', correlationId: 'correlation-secret' });

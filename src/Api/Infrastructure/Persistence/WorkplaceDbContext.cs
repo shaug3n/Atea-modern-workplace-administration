@@ -15,6 +15,7 @@ public sealed class WorkplaceDbContext(DbContextOptions<WorkplaceDbContext> opti
     public DbSet<IdempotencyRecord> IdempotencyRecords => Set<IdempotencyRecord>();
     public DbSet<AuditEvent> AuditEvents => Set<AuditEvent>();
     public DbSet<ConsentChallenge> ConsentChallenges => Set<ConsentChallenge>();
+    public DbSet<PlatformWorkspaceGrant> PlatformWorkspaceGrants => Set<PlatformWorkspaceGrant>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -111,6 +112,13 @@ public sealed class WorkplaceDbContext(DbContextOptions<WorkplaceDbContext> opti
             ConfigureUtc(entity.Property(x => x.ExpiresAt));
             ConfigureUtc(entity.Property(x => x.ConsumedAt));
             entity.HasIndex(x => new { x.WorkspaceId, x.TenantId, x.ExpiresAt });
+            entity.HasOne(x => x.Workspace).WithMany().HasForeignKey(x => x.WorkspaceId).OnDelete(DeleteBehavior.Cascade);
+        });
+        modelBuilder.Entity<PlatformWorkspaceGrant>(entity =>
+        {
+            entity.HasKey(x => new { x.OperatorTenantId, x.OperatorObjectId, x.WorkspaceId });
+            entity.HasIndex(x => new { x.OperatorTenantId, x.OperatorObjectId });
+            ConfigureUtc(entity.Property(x => x.CreatedAt));
             entity.HasOne(x => x.Workspace).WithMany().HasForeignKey(x => x.WorkspaceId).OnDelete(DeleteBehavior.Cascade);
         });
     }

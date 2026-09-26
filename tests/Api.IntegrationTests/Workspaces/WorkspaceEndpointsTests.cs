@@ -81,6 +81,40 @@ public sealed class WorkspaceEndpointsTests : IClassFixture<WebApplicationFactor
     }
 
     [Fact]
+    public async Task Workspace_creation_passes_the_authenticated_operator_to_provisioning()
+    {
+        var service = new RecordingProvisioningService();
+        using var factory = CreateFactory(service, []);
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Test");
+
+        var response = await client.PostAsJsonAsync("/api/platform/workspaces", new { tenantId = TenantId, displayName = "Created" });
+
+        response.StatusCode.Should().Be(HttpStatusCode.Created);
+        service.LastCreateOperatorIdentity.Should().Be(new PlatformOperatorIdentity(TenantId, ObjectId));
+    }
+
+    [Fact]
+    public async Task Guided_onboarding_passes_the_authenticated_operator_to_provisioning()
+    {
+        var service = new RecordingProvisioningService();
+        using var factory = CreateFactory(service, []);
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Test");
+
+        var response = await client.PostAsJsonAsync("/api/platform/workspaces/onboard", new
+        {
+            tenantId = TenantId,
+            displayName = "Onboarded",
+            adminUpn = "owner@example.com",
+            adminDisplayName = "Workspace Owner"
+        });
+
+        response.StatusCode.Should().Be(HttpStatusCode.Created);
+        service.LastOnboardOperatorIdentity.Should().Be(new PlatformOperatorIdentity(TenantId, ObjectId));
+    }
+
+    [Fact]
     public async Task Platform_workspace_list_returns_only_authorized_workspaces()
     {
         var service = new RecordingProvisioningService
@@ -202,8 +236,12 @@ public sealed class WorkspaceEndpointsTests : IClassFixture<WebApplicationFactor
         public bool CreateConflict { get; init; }
         public bool MembershipUnavailable { get; init; }
         public int AddMembershipCalls { get; private set; }
+        public PlatformOperatorIdentity? LastCreateOperatorIdentity { get; private set; }
+        public PlatformOperatorIdentity? LastOnboardOperatorIdentity { get; private set; }
         public Task<WorkspaceProvisioningResult> CreateWorkspaceAsync(Guid tenantId, string displayName, CancellationToken cancellationToken = default) => Task.FromResult(CreateConflict ? WorkspaceProvisioningResult.Conflict() : WorkspaceProvisioningResult.Created(new Workspace { Id = Guid.NewGuid(), TenantId = tenantId, DisplayName = displayName, ConnectionStatus = "awaiting_invitation" }));
         public Task<WorkspaceOnboardingProvisioningResult> OnboardAsync(Guid tenantId, string displayName, string adminUpn, string adminDisplayName, AuditEvent auditEvent, CancellationToken cancellationToken = default) => Task.FromResult(WorkspaceOnboardingProvisioningResult.Created(new Workspace { Id = Guid.NewGuid(), TenantId = tenantId, DisplayName = displayName }, "http://localhost/invitations/token", DateTimeOffset.UtcNow.AddDays(7)));
+        public Task<WorkspaceProvisioningResult> CreateWorkspaceAsync(Guid tenantId, string displayName, PlatformOperatorIdentity? operatorIdentity, CancellationToken cancellationToken = default) { LastCreateOperatorIdentity = operatorIdentity; return CreateWorkspaceAsync(tenantId, displayName, cancellationToken); }
+        public Task<WorkspaceOnboardingProvisioningResult> OnboardAsync(Guid tenantId, string displayName, string adminUpn, string adminDisplayName, AuditEvent auditEvent, PlatformOperatorIdentity? operatorIdentity, CancellationToken cancellationToken = default) { LastOnboardOperatorIdentity = operatorIdentity; return OnboardAsync(tenantId, displayName, adminUpn, adminDisplayName, auditEvent, cancellationToken); }
         public Task<PersistenceWorkspaceMembership> AddMembershipAsync(Guid workspaceId, Guid tenantObjectId, string email, string platformRole, bool isAteaOperator, CancellationToken cancellationToken = default) { if (MembershipUnavailable) throw new WorkspaceProvisioningUnavailableException("database unavailable"); AddMembershipCalls++; return Task.FromResult(new PersistenceWorkspaceMembership { Id = Guid.NewGuid(), WorkspaceId = workspaceId, TenantObjectId = tenantObjectId, Email = email, PlatformRole = platformRole, IsAteaOperator = isAteaOperator }); }
         public Task<PersistenceWorkspaceMembership> AddMembershipAsync(Guid workspaceId, Guid tenantObjectId, string email, string platformRole, bool isAteaOperator, AuditEvent auditEvent, CancellationToken cancellationToken = default) => AddMembershipAsync(workspaceId, tenantObjectId, email, platformRole, isAteaOperator, cancellationToken);
         public Task<Workspace?> GetAsync(Guid workspaceId, CancellationToken cancellationToken = default) => Task.FromResult<Workspace?>(null);

@@ -41,14 +41,24 @@ public sealed class WorkspaceProvisioningRepository(WorkplaceDbContext db, IAudi
     public Task<Workspace?> FindByTenantIdAsync(Guid tenantId, CancellationToken cancellationToken = default) =>
         db.Workspaces.AsNoTracking().SingleOrDefaultAsync(workspace => workspace.TenantId == tenantId, cancellationToken);
 
-    public async Task<Workspace> CreateAsync(Guid tenantId, string displayName, CancellationToken cancellationToken = default)
+    public Task<Workspace> CreateAsync(Guid tenantId, string displayName, CancellationToken cancellationToken = default) =>
+        CreateAsync(tenantId, displayName, null, cancellationToken);
+
+    public async Task<Workspace> CreateAsync(Guid tenantId, string displayName, PlatformWorkspaceGrant? grant, CancellationToken cancellationToken = default)
     {
         var now = DateTimeOffset.UtcNow;
         var workspace = new Workspace { Id = Guid.NewGuid(), TenantId = tenantId, DisplayName = displayName, ConnectionStatus = "awaiting_invitation", CreatedAt = now, UpdatedAt = now };
+        await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
         db.Workspaces.Add(workspace);
+        if (grant is not null)
+        {
+            grant.WorkspaceId = workspace.Id;
+            db.PlatformWorkspaceGrants.Add(grant);
+        }
         try
         {
             await db.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
             return workspace;
         }
         catch (DbUpdateException exception) when (ContainsUniqueViolation(exception))
@@ -61,7 +71,10 @@ public sealed class WorkspaceProvisioningRepository(WorkplaceDbContext db, IAudi
         }
     }
 
-    public async Task<Workspace> CreateWithInvitationAsync(Workspace workspace, PlatformInvitation invitation, AuditEvent auditEvent, CancellationToken cancellationToken = default)
+    public Task<Workspace> CreateWithInvitationAsync(Workspace workspace, PlatformInvitation invitation, AuditEvent auditEvent, CancellationToken cancellationToken = default) =>
+        CreateWithInvitationAsync(workspace, invitation, auditEvent, null, cancellationToken);
+
+    public async Task<Workspace> CreateWithInvitationAsync(Workspace workspace, PlatformInvitation invitation, AuditEvent auditEvent, PlatformWorkspaceGrant? grant, CancellationToken cancellationToken = default)
     {
         await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
         invitation.WorkspaceId = workspace.Id;
@@ -70,6 +83,11 @@ public sealed class WorkspaceProvisioningRepository(WorkplaceDbContext db, IAudi
         auditEvent.TargetId = workspace.Id.ToString("D");
         db.Workspaces.Add(workspace);
         db.PlatformInvitations.Add(invitation);
+        if (grant is not null)
+        {
+            grant.WorkspaceId = workspace.Id;
+            db.PlatformWorkspaceGrants.Add(grant);
+        }
         try
         {
             await db.SaveChangesAsync(cancellationToken);

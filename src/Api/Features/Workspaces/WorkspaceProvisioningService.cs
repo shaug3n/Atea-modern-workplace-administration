@@ -1,6 +1,7 @@
 using Atea.UnifiedWorkplace.Api.Infrastructure.Persistence.Entities;
 using Atea.UnifiedWorkplace.Api.Infrastructure.Persistence.Repositories;
 using PlatformWorkspaceScope = Atea.UnifiedWorkplace.Api.Authorization.PlatformWorkspaceScope;
+using PlatformOperatorIdentity = Atea.UnifiedWorkplace.Api.Authorization.PlatformOperatorIdentity;
 
 namespace Atea.UnifiedWorkplace.Api.Features.Workspaces;
 
@@ -9,7 +10,11 @@ public interface IWorkspaceProvisioningService
     Task<IReadOnlyList<Workspace>> ListAsync(PlatformWorkspaceScope workspaceScope, CancellationToken cancellationToken = default);
     Task<WorkspaceAdminDetailDto?> GetAdminDetailAsync(Guid workspaceId, PlatformWorkspaceScope workspaceScope, CancellationToken cancellationToken = default);
     Task<WorkspaceProvisioningResult> CreateWorkspaceAsync(Guid tenantId, string displayName, CancellationToken cancellationToken = default);
+    Task<WorkspaceProvisioningResult> CreateWorkspaceAsync(Guid tenantId, string displayName, PlatformOperatorIdentity? operatorIdentity, CancellationToken cancellationToken = default) =>
+        CreateWorkspaceAsync(tenantId, displayName, cancellationToken);
     Task<WorkspaceOnboardingProvisioningResult> OnboardAsync(Guid tenantId, string displayName, string adminUpn, string adminDisplayName, AuditEvent auditEvent, CancellationToken cancellationToken = default);
+    Task<WorkspaceOnboardingProvisioningResult> OnboardAsync(Guid tenantId, string displayName, string adminUpn, string adminDisplayName, AuditEvent auditEvent, PlatformOperatorIdentity? operatorIdentity, CancellationToken cancellationToken = default) =>
+        OnboardAsync(tenantId, displayName, adminUpn, adminDisplayName, auditEvent, cancellationToken);
     Task<WorkspaceMembership> AddMembershipAsync(Guid workspaceId, Guid tenantObjectId, string email, string platformRole, bool isAteaOperator, CancellationToken cancellationToken = default);
     Task<WorkspaceMembership> AddMembershipAsync(Guid workspaceId, Guid tenantObjectId, string email, string platformRole, bool isAteaOperator, AuditEvent auditEvent, CancellationToken cancellationToken = default);
     Task<Workspace?> GetAsync(Guid workspaceId, CancellationToken cancellationToken = default);
@@ -38,11 +43,20 @@ public sealed class WorkspaceProvisioningService(IWorkspaceProvisioningRepositor
     public Task<WorkspaceAdminDetailDto?> GetAdminDetailAsync(Guid workspaceId, PlatformWorkspaceScope workspaceScope, CancellationToken cancellationToken = default) => repository.GetAdminDetailAsync(workspaceId, workspaceScope, cancellationToken);
 
     public async Task<WorkspaceProvisioningResult> CreateWorkspaceAsync(Guid tenantId, string displayName, CancellationToken cancellationToken = default)
+        => await CreateWorkspaceAsync(tenantId, displayName, null, cancellationToken);
+
+    public async Task<WorkspaceProvisioningResult> CreateWorkspaceAsync(Guid tenantId, string displayName, PlatformOperatorIdentity? operatorIdentity, CancellationToken cancellationToken = default)
     {
         if (await repository.FindByTenantIdAsync(tenantId, cancellationToken) is not null) return WorkspaceProvisioningResult.Conflict();
         try
         {
-            return WorkspaceProvisioningResult.Created(await repository.CreateAsync(tenantId, displayName, cancellationToken));
+            var grant = operatorIdentity is null ? null : new PlatformWorkspaceGrant
+            {
+                OperatorTenantId = operatorIdentity.TenantId,
+                OperatorObjectId = operatorIdentity.ObjectId,
+                CreatedAt = DateTimeOffset.UtcNow
+            };
+            return WorkspaceProvisioningResult.Created(await repository.CreateAsync(tenantId, displayName, grant, cancellationToken));
         }
         catch (WorkspaceUniqueConstraintException)
         {
@@ -55,6 +69,9 @@ public sealed class WorkspaceProvisioningService(IWorkspaceProvisioningRepositor
     }
 
     public async Task<WorkspaceOnboardingProvisioningResult> OnboardAsync(Guid tenantId, string displayName, string adminUpn, string adminDisplayName, AuditEvent auditEvent, CancellationToken cancellationToken = default)
+        => await OnboardAsync(tenantId, displayName, adminUpn, adminDisplayName, auditEvent, null, cancellationToken);
+
+    public async Task<WorkspaceOnboardingProvisioningResult> OnboardAsync(Guid tenantId, string displayName, string adminUpn, string adminDisplayName, AuditEvent auditEvent, PlatformOperatorIdentity? operatorIdentity, CancellationToken cancellationToken = default)
     {
         if (await repository.FindByTenantIdAsync(tenantId, cancellationToken) is not null) return WorkspaceOnboardingProvisioningResult.Conflict();
         var now = DateTimeOffset.UtcNow;
@@ -65,9 +82,15 @@ public sealed class WorkspaceProvisioningService(IWorkspaceProvisioningRepositor
             ConnectionStatus = "awaiting_invitation", CreatedAt = now, UpdatedAt = now
         };
         var prepared = invitations.PrepareForRole(workspace.Id, adminUpn, adminDisplayName, expiresAt, "workspace_owner");
+        var grant = operatorIdentity is null ? null : new PlatformWorkspaceGrant
+        {
+            OperatorTenantId = operatorIdentity.TenantId,
+            OperatorObjectId = operatorIdentity.ObjectId,
+            CreatedAt = now
+        };
         try
         {
-            await repository.CreateWithInvitationAsync(workspace, prepared.Invitation, auditEvent, cancellationToken);
+            await repository.CreateWithInvitationAsync(workspace, prepared.Invitation, auditEvent, grant, cancellationToken);
             return WorkspaceOnboardingProvisioningResult.Created(workspace, prepared.InvitationUrl, expiresAt);
         }
         catch (WorkspaceUniqueConstraintException)

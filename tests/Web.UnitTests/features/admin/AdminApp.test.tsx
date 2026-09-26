@@ -8,6 +8,10 @@ vi.mock('../../../../src/Web/src/features/admin/adminAuthApi', () => ({
   adminAuthApi: { getSession: vi.fn(), login: vi.fn(), logout: vi.fn() },
 }));
 
+vi.mock('../../../../src/Web/src/features/admin/HostedAdminAuth', () => ({
+  HostedAdminAuth: () => <main><h1>Sign in with Microsoft Entra ID</h1></main>,
+}));
+
 const authApi = vi.mocked(adminAuthApi);
 
 describe('AdminApp', () => {
@@ -21,6 +25,14 @@ describe('AdminApp', () => {
 
     expect(await screen.findByRole('heading', { name: 'Admin sign in' })).toBeTruthy();
     expect(screen.getByText('For local development only.')).toBeTruthy();
+  });
+
+  it('uses the hosted identity flow instead of the local password form when hosted', async () => {
+    render(<AdminApp authMode="hosted" />);
+
+    expect(await screen.findByRole('heading', { name: 'Sign in with Microsoft Entra ID' })).toBeTruthy();
+    expect(screen.queryByLabelText('Username')).toBeNull();
+    expect(authApi.getSession).not.toHaveBeenCalled();
   });
 
   it('renders the protected admin shell for a valid cookie session', async () => {

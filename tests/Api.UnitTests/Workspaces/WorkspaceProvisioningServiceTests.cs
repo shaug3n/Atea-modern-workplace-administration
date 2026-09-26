@@ -4,6 +4,7 @@ using Atea.UnifiedWorkplace.Api.Infrastructure.Persistence.Entities;
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
 using PlatformWorkspaceScope = Atea.UnifiedWorkplace.Api.Authorization.PlatformWorkspaceScope;
+using PlatformOperatorIdentity = Atea.UnifiedWorkplace.Api.Authorization.PlatformOperatorIdentity;
 
 namespace Atea.UnifiedWorkplace.Api.UnitTests.Workspaces;
 
@@ -82,6 +83,34 @@ public sealed class WorkspaceProvisioningServiceTests
     }
 
     [Fact]
+    public async Task Workspace_creation_passes_the_hosted_operator_grant_to_the_repository()
+    {
+        var repository = new RecordingProvisioningRepository();
+        var identity = new PlatformOperatorIdentity(Guid.NewGuid(), Guid.NewGuid());
+        var service = CreateService(repository);
+
+        await service.CreateWorkspaceAsync(Guid.NewGuid(), "Workspace", identity);
+
+        repository.LastGrant.Should().NotBeNull();
+        repository.LastGrant!.OperatorTenantId.Should().Be(identity.TenantId);
+        repository.LastGrant.OperatorObjectId.Should().Be(identity.ObjectId);
+    }
+
+    [Fact]
+    public async Task Guided_onboarding_passes_the_hosted_operator_grant_to_the_repository()
+    {
+        var repository = new RecordingProvisioningRepository();
+        var identity = new PlatformOperatorIdentity(Guid.NewGuid(), Guid.NewGuid());
+        var service = CreateService(repository);
+
+        await service.OnboardAsync(Guid.NewGuid(), "Workspace", "owner@example.com", "Workspace Owner", new AuditEvent(), identity);
+
+        repository.LastOnboardingGrant.Should().NotBeNull();
+        repository.LastOnboardingGrant!.OperatorTenantId.Should().Be(identity.TenantId);
+        repository.LastOnboardingGrant.OperatorObjectId.Should().Be(identity.ObjectId);
+    }
+
+    [Fact]
     public async Task Onboarding_invites_first_admin_as_workspace_owner()
     {
         var repository = new RecordingProvisioningRepository();
@@ -139,6 +168,8 @@ public sealed class WorkspaceProvisioningServiceTests
     private sealed class RecordingProvisioningRepository : IWorkspaceProvisioningRepository
     {
         public PlatformInvitation? LastInvitation { get; private set; }
+        public PlatformWorkspaceGrant? LastGrant { get; private set; }
+        public PlatformWorkspaceGrant? LastOnboardingGrant { get; private set; }
         public Task<IReadOnlyList<Workspace>> ListAsync(PlatformWorkspaceScope workspaceScope, CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<Workspace>>([]);
         public Task<WorkspaceAdminDetailDto?> GetAdminDetailAsync(Guid workspaceId, PlatformWorkspaceScope workspaceScope, CancellationToken cancellationToken = default) => Task.FromResult<WorkspaceAdminDetailDto?>(null);
         public int FindByTenantIdCalls { get; private set; }
@@ -148,6 +179,8 @@ public sealed class WorkspaceProvisioningServiceTests
         public Task<Workspace?> FindByTenantIdAsync(Guid tenantId, CancellationToken cancellationToken = default) { FindByTenantIdCalls++; LastTenantId = tenantId; return Task.FromResult<Workspace?>(null); }
         public Task<Workspace> CreateAsync(Guid tenantId, string displayName, CancellationToken cancellationToken = default) { CreateCalls++; LastTenantId = tenantId; return Task.FromResult(new Workspace { Id = Guid.NewGuid(), TenantId = tenantId, DisplayName = displayName }); }
         public Task<Workspace> CreateWithInvitationAsync(Workspace workspace, PlatformInvitation invitation, AuditEvent auditEvent, CancellationToken cancellationToken = default) { LastInvitation = invitation; return Task.FromResult(workspace); }
+        public Task<Workspace> CreateAsync(Guid tenantId, string displayName, PlatformWorkspaceGrant? grant, CancellationToken cancellationToken = default) { LastGrant = grant; return CreateAsync(tenantId, displayName, cancellationToken); }
+        public Task<Workspace> CreateWithInvitationAsync(Workspace workspace, PlatformInvitation invitation, AuditEvent auditEvent, PlatformWorkspaceGrant? grant, CancellationToken cancellationToken = default) { LastInvitation = invitation; LastOnboardingGrant = grant; return Task.FromResult(workspace); }
         public Task<WorkspaceMembership> AddMembershipAsync(Guid workspaceId, Guid tenantObjectId, string email, string platformRole, bool isAteaOperator, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<WorkspaceMembership> AddMembershipAsync(Guid workspaceId, Guid tenantObjectId, string email, string platformRole, bool isAteaOperator, AuditEvent auditEvent, CancellationToken cancellationToken = default) => throw new NotImplementedException();
     }

@@ -15,6 +15,11 @@ param environment string
 @description('Principal ID of the Container Apps workload identity.')
 param workloadIdentityPrincipalId string
 
+@description('Principal ID of the GitHub Actions deployment identity.')
+param deploymentPrincipalObjectId string = ''
+@description('Principal ID of the one-time GitHub Actions provision identity.')
+param provisionPrincipalObjectId string = ''
+
 resource registry 'Microsoft.ContainerRegistry/registries@2023-07-01' = {
   name: registryName
   location: location
@@ -25,10 +30,10 @@ resource registry 'Microsoft.ContainerRegistry/registries@2023-07-01' = {
     adminUserEnabled: false
     publicNetworkAccess: 'Enabled'
     policies: {
-      quarantine: {
+      quarantinePolicy: {
         status: 'enabled'
       }
-      retention: {
+      retentionPolicy: {
         days: environment == 'prod' ? 30 : 7
         status: 'enabled'
       }
@@ -52,6 +57,28 @@ resource acrPullRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-
     principalId: workloadIdentityPrincipalId
     principalType: 'ServicePrincipal'
     roleDefinitionId: acrPullRoleDefinitionId
+  }
+}
+
+var acrPushRoleDefinitionId = subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '8311e382-0749-4cb8-b61a-304f252e45ec')
+
+resource acrPushRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!empty(deploymentPrincipalObjectId)) {
+  name: guid(registry.id, deploymentPrincipalObjectId, 'acrpush')
+  scope: registry
+  properties: {
+    principalId: deploymentPrincipalObjectId
+    principalType: 'ServicePrincipal'
+    roleDefinitionId: acrPushRoleDefinitionId
+  }
+}
+
+resource provisionAcrPushRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!empty(provisionPrincipalObjectId)) {
+  name: guid(registry.id, provisionPrincipalObjectId, 'acrpush-provision')
+  scope: registry
+  properties: {
+    principalId: provisionPrincipalObjectId
+    principalType: 'ServicePrincipal'
+    roleDefinitionId: acrPushRoleDefinitionId
   }
 }
 

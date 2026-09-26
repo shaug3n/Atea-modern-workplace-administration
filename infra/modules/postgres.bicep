@@ -71,6 +71,9 @@ resource containerAppsSubnet 'Microsoft.Network/virtualNetworks/subnets@2023-09-
   name: 'container-apps'
   properties: {
     addressPrefix: '10.42.2.0/23'
+    serviceEndpoints: [
+      { service: 'Microsoft.Storage' }
+    ]
     delegations: [
       {
         name: 'container-apps-environment'

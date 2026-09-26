@@ -58,6 +58,9 @@ public sealed class AdminAuthEndpointTests
         builder.UseEnvironment("Development");
         builder.ConfigureAppConfiguration((_, configuration) => configuration.AddInMemoryCollection(new Dictionary<string, string?>
         {
+            ["Onboarding:PublicBaseUrl"] = "http://localhost:5173",
+            ["Onboarding:ConsentRedirectUri"] = "http://localhost:5173/onboarding/consent/callback",
+            ["Onboarding:ConsentSigningKey"] = Convert.ToBase64String(Enumerable.Range(0, 32).Select(value => (byte)value).ToArray()),
             ["AteaAdmin:LocalDevelopment:Enabled"] = "true",
             ["AteaAdmin:LocalDevelopment:Username"] = "admin",
             ["AteaAdmin:LocalDevelopment:Password"] = "secret",

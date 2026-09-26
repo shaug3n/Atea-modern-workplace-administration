@@ -23,7 +23,7 @@ namespace Atea.UnifiedWorkplace.Api.IntegrationTests.Security;
 
 public sealed class MutationReplayTests : IAsyncLifetime
 {
-    private readonly PostgreSqlContainer postgres = new PostgreSqlBuilder().Build();
+    private readonly PostgreSqlContainer postgres = new PostgreSqlBuilder("postgres:16-alpine").Build();
 
     public async Task InitializeAsync()
     {
