@@ -233,6 +233,26 @@ def main() -> int:
         require_text(workflow, re.escape(public_value), f"public SPA build value {public_value}", errors)
     provision = require_file(ROOT / ".github" / "workflows" / "provision-test.yml", errors)
     require_text(provision, r"workflow_dispatch", "manual-only foundation workflow", errors)
+    require_text(provision, r"bootstrap_only:\s*\n", "bootstrap-only recovery input", errors)
+    provision_job = provision.split("  provision-foundation:", 1)[-1].split("  bootstrap-database:", 1)[0]
+    bootstrap_job = provision.split("  bootstrap-database:", 1)[-1] if "  bootstrap-database:" in provision else ""
+    require_text(provision_job, r"if:.*!inputs\.bootstrap_only", "foundation bypass for bootstrap-only recovery", errors)
+    require_text(bootstrap_job, r"needs:\s*provision-foundation", "bootstrap depends on foundation job", errors)
+    require_text(bootstrap_job, r"if:.*always\(\).*inputs\.bootstrap_only.*needs\.provision-foundation\.result", "bootstrap runs after new foundation or verified recovery", errors)
+    require_text(bootstrap_job, r"environment:\s*test", "protected bootstrap environment", errors)
+    require_text(bootstrap_job, r"properties\.provisioningState", "bootstrap-only successful-foundation preflight", errors)
+    require_text(bootstrap_job, r"az keyvault secret list", "bootstrap refuses to overwrite existing runtime secrets", errors)
+    first_login = bootstrap_job.find("- uses: azure/login@v2")
+    second_login = bootstrap_job.find("- uses: azure/login@v2", first_login + 1)
+    third_login = bootstrap_job.find("- uses: azure/login@v2", second_login + 1)
+    image_build = bootstrap_job.find("docker build")
+    acr_login = bootstrap_job.find("az acr login")
+    secret_seed = bootstrap_job.find("az keyvault secret set")
+    if not (0 <= first_login < image_build < second_login < acr_login < third_login < secret_seed):
+        errors.append("bootstrap needs fresh OIDC logins after the image build and before ACR push and Key Vault seeding")
+    if "docker build" in provision_job or "az keyvault secret set" in provision_job:
+        errors.append("foundation job must not run database bootstrap steps")
+    require_text(provision.split("jobs:", 1)[0], r"concurrency:\s*\n\s+group:\s*workplace-test-foundation", "workflow-wide foundation/bootstrap serialization", errors)
     require_text(provision, r"template-file\s+infra/main\.bicep", "foundation deployment command", errors)
     require_text(provision, r"infra/database-bootstrap\.bicep", "private database-role bootstrap deployment", errors)
     require_text(provision, r"workplace-migration-db", "seeded migration connection string", errors)

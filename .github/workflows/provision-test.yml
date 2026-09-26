@@ -8,29 +8,36 @@ on:
         required: true
         type: boolean
         default: false
+      bootstrap_only:
+        description: 'Reuse an existing successful foundation deployment; do not redeploy billable resources'
+        required: true
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
+concurrency:
+  group: workplace-test-foundation
+  cancel-in-progress: false
+
+env:
+  AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+  AZURE_LOCATION: ${{ vars.AZURE_LOCATION || 'westeurope' }}
+  AZURE_ACR_NAME: ${{ vars.AZURE_ACR_NAME }}
+  AZURE_DEPLOYMENT_PRINCIPAL_OBJECT_ID: ${{ vars.AZURE_DEPLOYMENT_PRINCIPAL_OBJECT_ID }}
+  AZURE_PROVISION_PRINCIPAL_OBJECT_ID: ${{ vars.AZURE_PROVISION_PRINCIPAL_OBJECT_ID }}
+  AZURE_KEY_VAULT_NAME: ${{ vars.AZURE_KEY_VAULT_NAME }}
+  AZURE_DB_BOOTSTRAP_JOB_NAME: ${{ vars.AZURE_CONTAINER_APP_NAME }}-db-bootstrap
+
 jobs:
   provision-foundation:
-    if: inputs.confirm_test_subscription == true
+    if: inputs.confirm_test_subscription && !inputs.bootstrap_only
     runs-on: ubuntu-latest
     environment: test
-    concurrency:
-      group: workplace-test-foundation
-      cancel-in-progress: false
     permissions:
       contents: read
       id-token: write
-    env:
-      AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
-      AZURE_LOCATION: ${{ vars.AZURE_LOCATION || 'westeurope' }}
-      AZURE_ACR_NAME: ${{ vars.AZURE_ACR_NAME }}
-      AZURE_DEPLOYMENT_PRINCIPAL_OBJECT_ID: ${{ vars.AZURE_DEPLOYMENT_PRINCIPAL_OBJECT_ID }}
-      AZURE_PROVISION_PRINCIPAL_OBJECT_ID: ${{ vars.AZURE_PROVISION_PRINCIPAL_OBJECT_ID }}
-      AZURE_KEY_VAULT_NAME: ${{ vars.AZURE_KEY_VAULT_NAME }}
-      AZURE_DB_BOOTSTRAP_JOB_NAME: ${{ vars.AZURE_CONTAINER_APP_NAME }}-db-bootstrap
     steps:
       - uses: actions/checkout@v4
       - uses: azure/login@v2
@@ -68,19 +75,75 @@ jobs:
             echo '### Test Azure foundation provisioned'
             echo "Resource group: $AZURE_RESOURCE_GROUP"
             echo 'Foundation outputs are available in the Azure deployment named workplace-foundation.'
-            echo 'Next: verify the generated host, register exact Entra redirect URIs, bootstrap DB roles, and seed Key Vault secrets using docs/operations/azure-deployment.md.'
+            echo 'Next: the bootstrap-database job will use a fresh Azure login to create DB roles and seed Key Vault secrets.'
           } >> "$GITHUB_STEP_SUMMARY"
-      - name: Build and push the one-time PostgreSQL bootstrap image
+
+  bootstrap-database:
+    needs: provision-foundation
+    if: ${{ always() && !cancelled() && inputs.confirm_test_subscription && (inputs.bootstrap_only || needs.provision-foundation.result == 'success') }}
+    runs-on: ubuntu-latest
+    environment: test
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_PROVISION_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - name: Verify existing foundation and refuse runtime secret rotation
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$AZURE_RESOURCE_GROUP" && test -n "$AZURE_ACR_NAME" && test -n "$AZURE_KEY_VAULT_NAME"
+          test "$AZURE_DB_BOOTSTRAP_JOB_NAME" != '-db-bootstrap' || { echo 'AZURE_CONTAINER_APP_NAME is missing.'; exit 1; }
+          test "$(az account show --query id -o tsv)" = "${{ secrets.AZURE_SUBSCRIPTION_ID }}"
+          test "$(az account show --query tenantId -o tsv)" = "${{ secrets.AZURE_TENANT_ID }}"
+          test "$(az group show --name "$AZURE_RESOURCE_GROUP" --query location -o tsv)" = "$AZURE_LOCATION"
+          foundation_state="$(az deployment group show --name workplace-foundation --resource-group "$AZURE_RESOURCE_GROUP" --query properties.provisioningState -o tsv)"
+          test "$foundation_state" = Succeeded || { echo "Foundation deployment is not successful ($foundation_state)."; exit 1; }
+          foundation="$(az deployment group show --name workplace-foundation --resource-group "$AZURE_RESOURCE_GROUP" --query properties.outputs -o json)"
+          test "$(jq -r '.acrLoginServer.value // empty' <<< "$foundation")" = "$AZURE_ACR_NAME.azurecr.io"
+          test "$(jq -r '.keyVaultUri.value // empty' <<< "$foundation")" = "https://$AZURE_KEY_VAULT_NAME.vault.azure.net/"
+          for name in workloadIdentityResourceId containerAppsEnvironmentResourceId postgresFqdn postgresDatabaseName postgresAdminLogin; do
+            test -n "$(jq -r --arg name "$name" '.[$name].value // empty' <<< "$foundation")" || { echo "Foundation output $name is missing."; exit 1; }
+          done
+          existing_runtime_secrets="$(az keyvault secret list --vault-name "$AZURE_KEY_VAULT_NAME" --query "[?name=='workplace-db' || name=='workplace-migration-db' || name=='consent-signing-key' || name=='continuation-signing-key'].name" -o tsv)"
+          test -z "$existing_runtime_secrets" || { echo 'Runtime secrets already exist. Refusing to rotate them during bootstrap; use the recovery procedure.'; exit 1; }
+      - name: Check no previous database bootstrap is still running
+        shell: bash
+        run: |
+          set -euo pipefail
+          existing_bootstrap_job="$(az resource list --resource-group "$AZURE_RESOURCE_GROUP" --resource-type Microsoft.App/jobs --query "[?name=='${AZURE_DB_BOOTSTRAP_JOB_NAME}'].id" -o tsv)"
+          if [ -n "$existing_bootstrap_job" ]; then
+            echo 'A database bootstrap job already exists. Inspect and remove it before recovery.'
+            exit 1
+          fi
+      - name: Build the one-time PostgreSQL bootstrap image
         run: |
           test -n "$AZURE_ACR_NAME"
           docker build --file infra/scripts/db-bootstrap.Dockerfile \
             --tag "$AZURE_ACR_NAME.azurecr.io/atea-database-bootstrap:$GITHUB_SHA" .
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_PROVISION_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - name: Push the one-time PostgreSQL bootstrap image
+        run: |
           for attempt in $(seq 1 12); do
             if az acr login --name "$AZURE_ACR_NAME"; then break; fi
             test "$attempt" -lt 12 || { echo 'ACR push permission did not become available.'; exit 1; }
             sleep 10
           done
           docker push "$AZURE_ACR_NAME.azurecr.io/atea-database-bootstrap:$GITHUB_SHA"
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_PROVISION_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
       - name: Create database roles and seed runtime secrets from inside the private VNet
         env:
           POSTGRES_ADMIN_PASSWORD: ${{ secrets.POSTGRES_ADMIN_PASSWORD }}
