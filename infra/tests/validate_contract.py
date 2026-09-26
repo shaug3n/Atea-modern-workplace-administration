@@ -109,12 +109,17 @@ def main() -> int:
     for config_name in ("HostedAuth__CustomerRedirectUri", "HostedAuth__PlatformAdminRedirectUri", "PlatformAuthorization__HomeTenantId", "DataProtection__BlobUri", "DataProtection__KeyIdentifier", "DataProtection__ManagedIdentityClientId"):
         require_text(container_apps, re.escape(config_name), f"hosted configuration {config_name}", errors)
     key_vault = require_file(ROOT / "infra" / "modules" / "key-vault.bicep", errors)
+    require_text(key_vault, r"enablePurgeProtection:\s*true", "irreversible Key Vault purge protection on all environments", errors)
     require_text(key_vault, r"workplace-data-protection", "Key Vault Data Protection wrapping key", errors)
     require_text(key_vault, r"12338af0-0e69-4776-bea7-57ae8d297424", "least-privilege Key Vault Crypto User assignment", errors)
     require_text(key_vault, r"provisionPrincipalObjectId", "provision-only Key Vault Secrets Officer principal", errors)
     require_text(key_vault, r"b86a8fe4-44ce-4948-aee5-eccb2c155cd7", "provision-only Key Vault Secrets Officer assignment", errors)
     if "deploymentPrincipalObjectId" in key_vault:
         errors.append("routine deployment identity must not receive Key Vault access")
+    registry = require_file(ROOT / "infra" / "modules" / "container-registry.bicep", errors)
+    if re.search(r"trustPolicy\s*:", registry):
+        errors.append("new registries must not enable deprecated Docker Content Trust")
+    require_text(registry, r"properties:\s*environment\s*==\s*'prod'\s*\?", "Premium-only registry policies excluded from Basic dev registry", errors)
     require_text(container_apps, r"activeRevisionsMode\s*:\s*'Multiple'", "multiple revision mode", errors)
     require_text(container_apps, r"substring\(toLower\(imageTag\),\s*0,\s*12\)", "bounded first-revision suffix", errors)
     require_text(container_apps, r"minReplicas\s*:", "minimum replica bound", errors)

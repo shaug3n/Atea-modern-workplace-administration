@@ -26,7 +26,7 @@ resource registry 'Microsoft.ContainerRegistry/registries@2023-07-01' = {
   sku: {
     name: environment == 'prod' ? 'Premium' : 'Basic'
   }
-  properties: {
+  properties: environment == 'prod' ? {
     adminUserEnabled: false
     publicNetworkAccess: 'Enabled'
     policies: {
@@ -34,13 +34,13 @@ resource registry 'Microsoft.ContainerRegistry/registries@2023-07-01' = {
         status: 'enabled'
       }
       retentionPolicy: {
-        days: environment == 'prod' ? 30 : 7
-        status: 'enabled'
-      }
-      trustPolicy: {
+        days: 30
         status: 'enabled'
       }
     }
+  } : {
+    adminUserEnabled: false
+    publicNetworkAccess: 'Enabled'
   }
   tags: {
     'ateaworkplace:component': 'container-registry'
