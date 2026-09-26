@@ -13,12 +13,12 @@ ENV VITE_ENTRA_AUTHORITY=$VITE_ENTRA_AUTHORITY
 ENV VITE_ENTRA_REDIRECT_URI=$VITE_ENTRA_REDIRECT_URI
 RUN npm run build
 
-FROM mcr.microsoft.com/dotnet/sdk:9.0 AS api-build
+FROM mcr.microsoft.com/dotnet/sdk:10.0.401 AS api-build
 WORKDIR /src
 COPY . .
 RUN dotnet publish src/Api/Atea.UnifiedWorkplace.Api.csproj -c Release -o /app/publish
 
-FROM mcr.microsoft.com/dotnet/aspnet:9.0 AS final
+FROM mcr.microsoft.com/dotnet/aspnet:10.0.12 AS final
 WORKDIR /app
 COPY --from=api-build /app/publish .
 COPY --from=web /web/dist ./wwwroot

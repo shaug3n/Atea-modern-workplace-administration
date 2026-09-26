@@ -99,6 +99,23 @@ def main() -> int:
     require_text(container_apps, r"maxReplicas\s*:", "maximum replica bound", errors)
     require_text(container_apps, r"managedCertificates", "managed certificate resource", errors)
     dockerfile = require_file(ROOT / "Dockerfile", errors)
+    api_project = require_file(ROOT / "src" / "Api" / "Atea.UnifiedWorkplace.Api.csproj", errors)
+    unit_tests = require_file(ROOT / "tests" / "Api.UnitTests" / "Api.UnitTests.csproj", errors)
+    integration_tests = require_file(ROOT / "tests" / "Api.IntegrationTests" / "Api.IntegrationTests.csproj", errors)
+    global_json = require_file(ROOT / "global.json", errors)
+    for label, project in (
+        ("API", api_project),
+        ("unit tests", unit_tests),
+        ("integration tests", integration_tests),
+    ):
+        require_text(project, r"<TargetFramework>net10\.0</TargetFramework>", f"{label} targeting net10.0", errors)
+    require_text(api_project, r'Include="Microsoft\.EntityFrameworkCore\.(?:Design|Tools)" Version="10\.0\.12"', "EF Core tooling 10.0.12", errors)
+    require_text(api_project, r'Include="Npgsql\.EntityFrameworkCore\.PostgreSQL" Version="10\.0\.3"', "Npgsql EF provider 10.0.3", errors)
+    require_text(api_project, r'Include="Microsoft\.Identity\.Web" Version="4\.15\.0"', "Microsoft.Identity.Web 4.15.0", errors)
+    require_text(dockerfile, r"FROM mcr\.microsoft\.com/dotnet/sdk:10\.0\.401 AS api-build", ".NET SDK container 10.0.401", errors)
+    require_text(dockerfile, r"FROM mcr\.microsoft\.com/dotnet/aspnet:10\.0\.12 AS final", ".NET ASP.NET runtime container 10.0.12", errors)
+    require_text(workflow, r"dotnet-version:\s*'10\.0\.401'", "CI .NET SDK 10.0.401", errors)
+    require_text(global_json, r'"version"\s*:\s*"10\.0\.401"', "global .NET SDK pin 10.0.401", errors)
     for build_arg in ("VITE_ENTRA_CLIENT_ID", "VITE_ENTRA_API_SCOPE", "VITE_ENTRA_AUTHORITY", "VITE_ENTRA_REDIRECT_URI"):
         require_text(dockerfile, rf"ARG\s+{build_arg}", f"SPA build argument {build_arg}", errors)
         require_text(workflow, rf"VITE_ENTRA_{build_arg.removeprefix('VITE_ENTRA_')}", f"workflow SPA build value {build_arg}", errors)

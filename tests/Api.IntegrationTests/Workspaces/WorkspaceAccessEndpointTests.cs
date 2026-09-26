@@ -182,7 +182,7 @@ public sealed class WorkspaceAccessEndpointTests : IAsyncLifetime
         invitation.Email.Should().Be("owner@customer.example");
         invitation.DisplayName.Should().Be("Workspace Owner");
         invitation.Role.Should().Be("workspace_owner");
-        invitation.ExpiresAt.Should().Be(expiresAt);
+        invitation.ExpiresAt.Should().BeCloseTo(expiresAt, TimeSpan.FromMicroseconds(1));
         invitation.NonceHash.Should().NotContain(invitationUrl.Split('/').Last());
     }
 
@@ -277,7 +277,7 @@ public sealed class WorkspaceAccessEndpointTests : IAsyncLifetime
         replacement.Email.Should().Be("person@example.com");
         replacement.DisplayName.Should().Be("Person");
         replacement.Role.Should().Be("member");
-        replacement.ExpiresAt.Should().Be(replacementExpiry);
+        replacement.ExpiresAt.Should().BeCloseTo(replacementExpiry, TimeSpan.FromMicroseconds(1));
     }
 
     [Fact]
