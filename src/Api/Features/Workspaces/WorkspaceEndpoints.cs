@@ -32,16 +32,16 @@ public static class WorkspaceEndpoints
 
     private static async Task<IResult> ListWorkspacesAsync(HttpContext httpContext, IPlatformAuthorization authorization, IWorkspaceProvisioningService provisioning, CancellationToken cancellationToken)
     {
-        var scope = authorization.GetWorkspaceScope(httpContext.User);
         if (!authorization.IsAuthorized(httpContext.User)) return Results.Forbid();
+        var scope = await authorization.GetWorkspaceScopeAsync(httpContext.User, cancellationToken);
         var workspaces = await provisioning.ListAsync(scope, cancellationToken);
         return Results.Ok(workspaces.Select(ToDto));
     }
 
     private static async Task<IResult> GetWorkspaceDetailAsync(Guid workspaceId, HttpContext httpContext, IPlatformAuthorization authorization, IWorkspaceProvisioningService provisioning, CancellationToken cancellationToken)
     {
-        var scope = authorization.GetWorkspaceScope(httpContext.User);
         if (!authorization.IsAuthorized(httpContext.User)) return Results.Forbid();
+        var scope = await authorization.GetWorkspaceScopeAsync(httpContext.User, cancellationToken);
         var detail = await provisioning.GetAdminDetailAsync(workspaceId, scope, cancellationToken);
         return detail is null ? Results.NotFound() : Results.Ok(detail);
     }
@@ -52,7 +52,8 @@ public static class WorkspaceEndpoints
         if (request.TenantId == Guid.Empty || string.IsNullOrWhiteSpace(request.DisplayName)) return Results.BadRequest(new { error = "invalid_workspace" });
         try
         {
-            var result = await provisioning.CreateWorkspaceAsync(request.TenantId, request.DisplayName.Trim(), cancellationToken);
+            var operatorIdentity = PlatformOperatorIdentityReader.Read(httpContext.User);
+            var result = await provisioning.CreateWorkspaceAsync(request.TenantId, request.DisplayName.Trim(), operatorIdentity, cancellationToken);
             if (result.IsConflict) return Results.Conflict(new { error = "workspace_already_exists" });
             var workspace = result.Workspace!;
             return Results.Created($"/api/platform/workspaces/{workspace.Id}", ToDto(workspace));
@@ -70,7 +71,8 @@ public static class WorkspaceEndpoints
         try
         {
             var audit = CreatePlatformAudit(httpContext.User, Guid.Empty, "workspace.onboarded", "workspace", "{}");
-            var result = await provisioning.OnboardAsync(request.TenantId, request.DisplayName.Trim(), upn, adminDisplayName, audit, cancellationToken);
+            var operatorIdentity = PlatformOperatorIdentityReader.Read(httpContext.User);
+            var result = await provisioning.OnboardAsync(request.TenantId, request.DisplayName.Trim(), upn, adminDisplayName, audit, operatorIdentity, cancellationToken);
             if (result.IsConflict) return Results.Conflict(new { error = "workspace_already_exists" });
             var workspace = result.Workspace!;
             return Results.Created($"/api/platform/workspaces/{workspace.Id}", new WorkspaceOnboardingResponse(ToDto(workspace), result.InvitationUrl!, result.ExpiresAt!.Value));
@@ -80,7 +82,7 @@ public static class WorkspaceEndpoints
 
     private static async Task<IResult> AddMembershipAsync(Guid workspaceId, AddWorkspaceMembershipRequest request, HttpContext httpContext, IPlatformAuthorization authorization, IWorkspaceProvisioningService provisioning, CancellationToken cancellationToken)
     {
-        if (!authorization.CanManageWorkspace(httpContext.User, workspaceId)) return Results.Json(new { error = "workspace_provisioning_scope_required" }, statusCode: StatusCodes.Status403Forbidden);
+        if (!await authorization.CanManageWorkspaceAsync(httpContext.User, workspaceId, cancellationToken)) return Results.Json(new { error = "workspace_provisioning_scope_required" }, statusCode: StatusCodes.Status403Forbidden);
         if (request.TenantObjectId == Guid.Empty || string.IsNullOrWhiteSpace(request.Email) || string.IsNullOrWhiteSpace(request.PlatformRole)) return Results.BadRequest(new { error = "invalid_membership" });
         try
         {
@@ -103,7 +105,7 @@ public static class WorkspaceEndpoints
 
     private static async Task<IResult> CreateInvitationAsync(Guid workspaceId, InvitationRequest request, HttpContext httpContext, IPlatformAuthorization authorization, InvitationService invitations, CancellationToken cancellationToken)
     {
-        if (!authorization.CanManageWorkspace(httpContext.User, workspaceId)) return Results.Forbid();
+        if (!await authorization.CanManageWorkspaceAsync(httpContext.User, workspaceId, cancellationToken)) return Results.Forbid();
         if (string.IsNullOrWhiteSpace(request.Email) || string.IsNullOrWhiteSpace(request.DisplayName) || request.ExpiresAt <= DateTimeOffset.UtcNow) return Results.BadRequest(new { error = "invalid_invitation" });
         var audit = CreatePlatformAudit(httpContext.User, workspaceId, "workspace.invitation.created", "invitation", "{}");
         var result = await invitations.CreateForRoleAsync(workspaceId, request.Email, request.DisplayName, request.ExpiresAt, "customer_admin", request.ApprovedTenantObjectId, cancellationToken, audit);
@@ -112,7 +114,7 @@ public static class WorkspaceEndpoints
 
     private static async Task<IResult> ReissueInvitationAsync(Guid workspaceId, Guid invitationId, HttpContext httpContext, IPlatformAuthorization authorization, IWorkspaceAccessRepository accessRepository, InvitationService invitations, CancellationToken cancellationToken)
     {
-        if (!authorization.CanManageWorkspace(httpContext.User, workspaceId)) return Results.Json(new { error = "workspace_provisioning_scope_required" }, statusCode: StatusCodes.Status403Forbidden);
+        if (!await authorization.CanManageWorkspaceAsync(httpContext.User, workspaceId, cancellationToken)) return Results.Json(new { error = "workspace_provisioning_scope_required" }, statusCode: StatusCodes.Status403Forbidden);
         var current = await accessRepository.GetInvitationAsync(workspaceId, invitationId, cancellationToken);
         if (current is null || current.RedeemedAt is not null || current.RevokedAt is not null) return Results.NotFound();
         var audit = CreatePlatformAudit(httpContext.User, workspaceId, "workspace.invitation.reissued", "invitation", System.Text.Json.JsonSerializer.Serialize(new { previousInvitationId = invitationId }));
@@ -122,7 +124,7 @@ public static class WorkspaceEndpoints
 
     private static async Task<IResult> RevokeInvitationAsync(Guid workspaceId, Guid invitationId, HttpContext httpContext, IPlatformAuthorization authorization, IWorkspaceAccessRepository accessRepository, CancellationToken cancellationToken)
     {
-        if (!authorization.CanManageWorkspace(httpContext.User, workspaceId)) return Results.Json(new { error = "workspace_provisioning_scope_required" }, statusCode: StatusCodes.Status403Forbidden);
+        if (!await authorization.CanManageWorkspaceAsync(httpContext.User, workspaceId, cancellationToken)) return Results.Json(new { error = "workspace_provisioning_scope_required" }, statusCode: StatusCodes.Status403Forbidden);
         var audit = CreatePlatformAudit(httpContext.User, workspaceId, "workspace.invitation.revoked", "invitation", "{}");
         return await accessRepository.RevokeInvitationAsync(workspaceId, invitationId, audit, cancellationToken) ? Results.NoContent() : Results.NotFound();
     }

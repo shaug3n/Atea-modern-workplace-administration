@@ -1,9 +1,11 @@
 using System.Net;
+using System.Net.Http.Json;
 using System.Net.Http.Headers;
 using System.Security.Claims;
 using System.Text;
 using Atea.UnifiedWorkplace.Api.Authorization;
 using Atea.UnifiedWorkplace.Api.Features.Users;
+using Atea.UnifiedWorkplace.Api.Features.Workspaces;
 using Atea.UnifiedWorkplace.Api.Infrastructure.Graph;
 using Atea.UnifiedWorkplace.Api.Infrastructure.Observability;
 using Atea.UnifiedWorkplace.Api.Infrastructure.Persistence;
@@ -129,6 +131,91 @@ public sealed class CrossTenantAccessTests : IAsyncLifetime
         commands.UpdateCalls.Should().Be(0);
     }
 
+    [Fact]
+    public async Task Recovery_creation_grants_creator_only_until_a_second_operator_is_explicitly_granted()
+    {
+        using var creatorFactory = CreateFactory(new TestIdentity(TenantA, UserA), useDatabase: true, useHostedPlatformAuthorization: true);
+        using var creator = AuthenticatedClient(creatorFactory);
+        creator.DefaultRequestHeaders.Add("X-Test-Scopes", "platform.admin");
+
+        var createResponse = await creator.PostAsJsonAsync("/api/platform/workspaces", new { tenantId = TenantB, displayName = "Tenant B Hosted" });
+        createResponse.StatusCode.Should().Be(HttpStatusCode.Created);
+        var workspace = await createResponse.Content.ReadFromJsonAsync<WorkspaceDto>();
+
+        await using (var db = Database())
+        {
+            (await db.PlatformWorkspaceGrants.CountAsync(grant => grant.OperatorTenantId == TenantA && grant.OperatorObjectId == UserA && grant.WorkspaceId == workspace!.Id)).Should().Be(1);
+        }
+
+        using var secondOperatorFactory = CreateFactory(new TestIdentity(TenantA, UserB), useDatabase: true, useHostedPlatformAuthorization: true);
+        using var secondOperator = AuthenticatedClient(secondOperatorFactory);
+        secondOperator.DefaultRequestHeaders.Add("X-Test-Scopes", "platform.admin");
+
+        var hidden = await secondOperator.GetAsync("/api/platform/workspaces");
+        hidden.StatusCode.Should().Be(HttpStatusCode.OK);
+        (await hidden.Content.ReadFromJsonAsync<List<WorkspaceDto>>()).Should().BeEmpty();
+
+        await using (var db = Database())
+        {
+            db.PlatformWorkspaceGrants.Add(new PlatformWorkspaceGrant
+            {
+                OperatorTenantId = TenantA,
+                OperatorObjectId = UserB,
+                WorkspaceId = workspace!.Id,
+                CreatedAt = DateTimeOffset.UtcNow
+            });
+            await db.SaveChangesAsync();
+        }
+
+        var visibleAfterGrant = await secondOperator.GetAsync("/api/platform/workspaces");
+        visibleAfterGrant.StatusCode.Should().Be(HttpStatusCode.OK);
+        (await visibleAfterGrant.Content.ReadFromJsonAsync<List<WorkspaceDto>>()).Should().ContainSingle(item => item.Id == workspace!.Id);
+    }
+
+    [Fact]
+    public async Task Guided_onboarding_grants_creator_and_rolls_back_workspace_invitation_and_grant_together()
+    {
+        var onboardingTenant = Guid.Parse("88888888-8888-8888-8888-888888888888");
+        using var creatorFactory = CreateFactory(new TestIdentity(TenantA, UserA), useDatabase: true, useHostedPlatformAuthorization: true);
+        using var creator = AuthenticatedClient(creatorFactory);
+        creator.DefaultRequestHeaders.Add("X-Test-Scopes", "platform.admin");
+
+        var onboarding = await creator.PostAsJsonAsync("/api/platform/workspaces/onboard", new
+        {
+            tenantId = onboardingTenant,
+            displayName = "Tenant B Onboarded",
+            adminUpn = "owner@tenant-b.example",
+            adminDisplayName = "Tenant B Owner"
+        });
+        onboarding.StatusCode.Should().Be(HttpStatusCode.Created);
+        var workspace = await onboarding.Content.ReadFromJsonAsync<WorkspaceOnboardingResponse>();
+
+        await using (var db = Database())
+        {
+            (await db.PlatformWorkspaceGrants.CountAsync(grant => grant.WorkspaceId == workspace!.Workspace.Id && grant.OperatorObjectId == UserA)).Should().Be(1);
+            (await db.PlatformInvitations.CountAsync(invitation => invitation.WorkspaceId == workspace!.Workspace.Id)).Should().Be(1);
+        }
+
+        using var failingFactory = CreateFactory(new TestIdentity(TenantA, UserA), useDatabase: true, useHostedPlatformAuthorization: true, failAudit: true);
+        using var failingClient = AuthenticatedClient(failingFactory);
+        failingClient.DefaultRequestHeaders.Add("X-Test-Scopes", "platform.admin");
+        var failedTenant = Guid.Parse("99999999-9999-9999-9999-999999999999");
+
+        var failed = await failingClient.PostAsJsonAsync("/api/platform/workspaces/onboard", new
+        {
+            tenantId = failedTenant,
+            displayName = "Must Roll Back",
+            adminUpn = "rollback@example.com",
+            adminDisplayName = "Rollback Owner"
+        });
+        failed.StatusCode.Should().Be(HttpStatusCode.InternalServerError);
+
+        await using var verify = Database();
+        (await verify.Workspaces.CountAsync(workspaceRow => workspaceRow.TenantId == failedTenant)).Should().Be(0);
+        (await verify.PlatformInvitations.CountAsync(invitation => invitation.Workspace.TenantId == failedTenant)).Should().Be(0);
+        (await verify.PlatformWorkspaceGrants.CountAsync(grant => grant.OperatorTenantId == TenantA && grant.OperatorObjectId == UserA && grant.Workspace.TenantId == failedTenant)).Should().Be(0);
+    }
+
     private async Task SeedAuditEventsAsync()
     {
         await using var db = new WorkplaceDbContext(new DbContextOptionsBuilder<WorkplaceDbContext>()
@@ -180,6 +267,10 @@ public sealed class CrossTenantAccessTests : IAsyncLifetime
         await db.SaveChangesAsync();
     }
 
+    private WorkplaceDbContext Database() => new(new DbContextOptionsBuilder<WorkplaceDbContext>()
+        .UseNpgsql(postgres.GetConnectionString())
+        .Options);
+
     private static HttpClient AuthenticatedClient(WebApplicationFactory<Program> factory)
     {
         var client = factory.CreateClient();
@@ -192,7 +283,9 @@ public sealed class CrossTenantAccessTests : IAsyncLifetime
         GraphAuthorizationSnapshot? snapshot = null,
         IUserDirectoryReader? directory = null,
         IUserLifecycleCommands? commands = null,
-        bool useDatabase = false) =>
+        bool useDatabase = false,
+        bool useHostedPlatformAuthorization = false,
+        bool failAudit = false) =>
         new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
         {
             var configuration = new Dictionary<string, string?>
@@ -203,6 +296,12 @@ public sealed class CrossTenantAccessTests : IAsyncLifetime
             if (useDatabase)
             {
                 configuration["ConnectionStrings:WorkplaceDb"] = postgres.GetConnectionString();
+            }
+            if (useHostedPlatformAuthorization)
+            {
+                configuration["PlatformAuthorization:HomeTenantId"] = TenantA.ToString();
+                configuration["PlatformAuthorization:AdminObjectIds:0"] = UserA.ToString();
+                configuration["PlatformAuthorization:AdminObjectIds:1"] = UserB.ToString();
             }
 
             builder.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(configuration));
@@ -225,7 +324,15 @@ public sealed class CrossTenantAccessTests : IAsyncLifetime
                 services.RemoveAll<IIdempotencyService>();
                 services.AddSingleton<IIdempotencyService, MemoryIdempotencyService>();
                 services.RemoveAll<IAuditWriter>();
-                services.AddSingleton<IAuditWriter, NoOpAuditWriter>();
+                services.AddSingleton<IAuditWriter>(failAudit ? new FailingAuditWriter() : new NoOpAuditWriter());
+                if (useHostedPlatformAuthorization)
+                {
+                    services.AddAuthorization(options => options.AddPolicy("PlatformAdminPolicy", policy => policy
+                        .AddAuthenticationSchemes(TestAuthenticationHandler.Scheme)
+                        .RequireAuthenticatedUser()
+                        .RequireClaim("oid")
+                        .AddRequirements(new PlatformScopeRequirement("platform.admin"))));
+                }
                 if (useDatabase)
                 {
                     services.RemoveAll<DbContextOptions<WorkplaceDbContext>>();
@@ -298,6 +405,12 @@ public sealed class CrossTenantAccessTests : IAsyncLifetime
             Task.FromResult(GraphOperationResult.Success());
     }
 
+    private sealed class FailingAuditWriter : IAuditWriter
+    {
+        public Task WriteAsync(AuditEvent auditEvent, CancellationToken cancellationToken) =>
+            throw new InvalidOperationException("Injected audit failure.");
+    }
+
     private sealed class TestAuthenticationHandler(IOptionsMonitor<AuthenticationSchemeOptions> options, ILoggerFactory logger, UrlEncoder encoder, TestIdentity identity)
         : AuthenticationHandler<AuthenticationSchemeOptions>(options, logger, encoder)
     {
@@ -310,6 +423,7 @@ public sealed class CrossTenantAccessTests : IAsyncLifetime
             {
                 new Claim("oid", identity.ObjectId.ToString()),
                 new Claim("tid", identity.TenantId.ToString()),
+                new Claim("scp", Request.Headers["X-Test-Scopes"].ToString()),
                 new Claim("preferred_username", "alex@example.com"),
                 new Claim("name", "Alex Example"),
                 new Claim("aud", "api://atea-unified-workplace-api")
