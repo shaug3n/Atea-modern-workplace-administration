@@ -21,15 +21,41 @@ function statusError(status: number): Error {
   if (status === 503) return new Error('The workspace platform is temporarily unavailable. Try again later.');
   return new Error('The platform request could not be completed. Try again later.');
 }
+
+type PlatformTokenProvider = () => Promise<string>;
+let platformTokenProvider: PlatformTokenProvider | null = null;
+
+export function setAdminPlatformTokenProvider(provider: PlatformTokenProvider | null): () => void {
+  const previous = platformTokenProvider;
+  platformTokenProvider = provider;
+  return () => {
+    if (platformTokenProvider === provider) platformTokenProvider = previous;
+  };
+}
+
+async function requestInit(path: string, init: RequestInit | undefined): Promise<RequestInit> {
+  const isPlatformApi = path === '/api/platform' || path.startsWith('/api/platform/');
+  const headers = new Headers(init?.headers);
+  if (isPlatformApi && platformTokenProvider) {
+    headers.set('Authorization', `Bearer ${await platformTokenProvider()}`);
+  }
+  if (init?.body) headers.set('Content-Type', 'application/json');
+  return {
+    ...init,
+    headers,
+    credentials: isPlatformApi && platformTokenProvider ? 'omit' : 'include',
+  };
+}
+
 async function request<T>(path: string, init: RequestInit | undefined, guard: (value: unknown) => value is T): Promise<T> {
-  const response = await fetch(path, { ...init, credentials: 'include', ...(init?.body ? { headers: { 'Content-Type': 'application/json', ...(init.headers ?? {}) } } : {}) });
+  const response = await fetch(path, await requestInit(path, init));
   if (!response.ok) throw statusError(response.status);
   const value: unknown = await response.json();
   if (!guard(value)) throw invalid();
   return value;
 }
 async function requestNoContent(path: string, init: RequestInit): Promise<void> {
-  const response = await fetch(path, { ...init, credentials: 'include' });
+  const response = await fetch(path, await requestInit(path, init));
   if (!response.ok) throw statusError(response.status);
 }
 const arrayOf = <T>(guard: (value: unknown) => value is T) => (value: unknown): value is T[] => Array.isArray(value) && value.every(guard);

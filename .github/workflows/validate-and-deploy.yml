@@ -59,6 +59,11 @@ jobs:
             --build-arg VITE_ENTRA_API_SCOPE="${{ vars.ENTRA_API_SCOPE }}" \
             --build-arg VITE_ENTRA_AUTHORITY="${{ vars.ENTRA_AUTHORITY }}" \
             --build-arg VITE_ENTRA_REDIRECT_URI="${{ vars.ENTRA_REDIRECT_URI }}" \
+            --build-arg VITE_ADMIN_AUTH_MODE=hosted \
+            --build-arg VITE_PLATFORM_ADMIN_CLIENT_ID="${{ vars.PLATFORM_ADMIN_CLIENT_ID }}" \
+            --build-arg VITE_PLATFORM_ADMIN_AUTHORITY="${{ vars.PLATFORM_ADMIN_AUTHORITY }}" \
+            --build-arg VITE_PLATFORM_ADMIN_SCOPE="${{ vars.PLATFORM_ADMIN_SCOPE }}" \
+            --build-arg VITE_PLATFORM_ADMIN_REDIRECT_URI="${{ vars.PLATFORM_ADMIN_REDIRECT_URI }}" \
             --tag "$IMAGE_REPOSITORY:$IMAGE_TAG" .
           docker save "$IMAGE_REPOSITORY:$IMAGE_TAG" --output /tmp/atea-unified-workplace-image.tar
       - uses: actions/upload-artifact@v4

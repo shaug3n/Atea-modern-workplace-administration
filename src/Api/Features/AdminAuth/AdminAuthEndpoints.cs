@@ -25,14 +25,16 @@ public static class AdminAuthEndpoints
         return Results.Ok(new { authenticated = true, displayName = options.Value.DisplayName, objectId = options.Value.ObjectId });
     }
 
-    private static async Task<IResult> LogoutAsync(HttpContext context)
+    private static async Task<IResult> LogoutAsync(HttpContext context, IOptions<LocalAdminOptions> options, IHostEnvironment environment)
     {
+        if (!LocalAdminAuthentication.IsConfigured(environment, options.Value)) return Results.Unauthorized();
         await context.SignOutAsync(LocalAdminAuthentication.Scheme);
         return Results.NoContent();
     }
 
-    private static async Task<IResult> Session(HttpContext context)
+    private static async Task<IResult> Session(HttpContext context, IOptions<LocalAdminOptions> options, IHostEnvironment environment)
     {
+        if (!LocalAdminAuthentication.IsConfigured(environment, options.Value)) return Results.Unauthorized();
         var result = await context.AuthenticateAsync(LocalAdminAuthentication.Scheme);
         var user = result.Principal;
         if (!result.Succeeded || user is null || !user.HasClaim(LocalAdminAuthentication.LocalAdminClaim, "true"))

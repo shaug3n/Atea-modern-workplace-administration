@@ -44,6 +44,22 @@ public sealed class CrossTenantAccessTests : IAsyncLifetime
     public async Task DisposeAsync() => await postgres.DisposeAsync();
 
     [Fact]
+    public async Task Platform_session_returns_only_allowlisted_operator_identity()
+    {
+        using var factory = CreateFactory(new TestIdentity(TenantA, UserA), useHostedPlatformAuthorization: true);
+        using var client = AuthenticatedClient(factory);
+        client.DefaultRequestHeaders.Add("X-Test-Scopes", "platform.admin");
+
+        var response = await client.GetAsync("/api/platform/session");
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await response.Content.ReadAsStringAsync();
+        body.Should().Contain(UserA.ToString());
+        body.Should().Contain(TenantA.ToString());
+        body.Should().Contain("alex@example.com");
+        body.Should().NotContain("accessToken").And.NotContain("password");
+    }
+
+    [Fact]
     public async Task Client_supplied_tenant_selection_cannot_switch_the_verified_workspace()
     {
         using var factory = CreateFactory(new TestIdentity(TenantA, UserA));

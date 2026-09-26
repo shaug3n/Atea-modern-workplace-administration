@@ -12,6 +12,7 @@ public static class WorkspaceEndpoints
     public static IEndpointRouteBuilder MapWorkspaceEndpoints(this IEndpointRouteBuilder endpoints)
     {
         var platform = endpoints.MapGroup("/api/platform").RequireAuthorization("PlatformAdminPolicy");
+        platform.MapGet("/session", GetPlatformSessionAsync);
         platform.MapPost("/workspaces/onboard", OnboardWorkspaceAsync);
         platform.MapPost("/workspaces", CreateWorkspaceAsync);
         platform.MapGet("/workspaces", ListWorkspacesAsync);
@@ -28,6 +29,26 @@ public static class WorkspaceEndpoints
         endpoints.MapPost("/api/workspaces/current/consent/complete", CompleteConsentAsync).RequireAuthorization();
         endpoints.MapPost("/api/invitations/{nonce}/redeem", RedeemInvitationAsync).RequireAuthorization();
         return endpoints;
+    }
+
+    private static IResult GetPlatformSessionAsync(HttpContext httpContext, IPlatformAuthorization authorization)
+    {
+        if (!authorization.IsAuthorized(httpContext.User)) return Results.Forbid();
+        var tenantId = httpContext.User.FindFirstValue("tid");
+        var objectId = httpContext.User.FindFirstValue("oid");
+        if (!Guid.TryParse(tenantId, out var parsedTenantId) || !Guid.TryParse(objectId, out var parsedObjectId))
+            return Results.Forbid();
+        var displayName = httpContext.User.FindFirstValue("name")
+            ?? httpContext.User.FindFirstValue("preferred_username")
+            ?? string.Empty;
+        return Results.Ok(new
+        {
+            authenticated = true,
+            tenantId = parsedTenantId,
+            objectId = parsedObjectId,
+            displayName,
+            userPrincipalName = httpContext.User.FindFirstValue("preferred_username")
+        });
     }
 
     private static async Task<IResult> ListWorkspacesAsync(HttpContext httpContext, IPlatformAuthorization authorization, IWorkspaceProvisioningService provisioning, CancellationToken cancellationToken)

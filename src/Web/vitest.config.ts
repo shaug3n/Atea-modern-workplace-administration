@@ -6,7 +6,11 @@ export default defineConfig({
     'import.meta.env.VITE_ENTRA_API_SCOPE': JSON.stringify('api://test-api/access_as_user'),
     'import.meta.env.VITE_ENTRA_CLIENT_ID': JSON.stringify('test-client-id'),
     'import.meta.env.VITE_ENTRA_AUTHORITY': JSON.stringify('https://login.microsoftonline.com/organizations'),
-    'import.meta.env.VITE_ENTRA_REDIRECT_URI': JSON.stringify('http://localhost:5173/auth/callback')
+    'import.meta.env.VITE_ENTRA_REDIRECT_URI': JSON.stringify('http://localhost:5173/auth/callback'),
+    'import.meta.env.VITE_PLATFORM_ADMIN_CLIENT_ID': JSON.stringify('platform-admin-client'),
+    'import.meta.env.VITE_PLATFORM_ADMIN_AUTHORITY': JSON.stringify('https://login.microsoftonline.com/atea-tenant'),
+    'import.meta.env.VITE_PLATFORM_ADMIN_SCOPE': JSON.stringify('api://platform-api/access_as_user'),
+    'import.meta.env.VITE_PLATFORM_ADMIN_REDIRECT_URI': JSON.stringify('http://localhost:5173/admin/auth/callback')
   },
   server: { fs: { allow: ['../..'] } },
   resolve: {
