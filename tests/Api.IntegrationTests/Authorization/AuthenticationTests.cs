@@ -8,6 +8,7 @@ using FluentAssertions;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
@@ -18,6 +19,54 @@ namespace Atea.UnifiedWorkplace.Api.IntegrationTests.Authorization;
 
 public sealed class AuthenticationTests
 {
+    [Theory]
+    [InlineData("/")]
+    [InlineData("/index.html")]
+    [InlineData("/admin")]
+    [InlineData("/auth/callback")]
+    public async Task UnauthenticatedSpaRoutesServeTheSignInPage(string path)
+    {
+        var webRoot = Directory.CreateTempSubdirectory("atea-spa-test-");
+        try
+        {
+            await File.WriteAllTextAsync(Path.Combine(webRoot.FullName, "index.html"), "<!doctype html><title>Atea test SPA</title>");
+            using var factory = CreateFactory(webRootPath: webRoot.FullName);
+            using var client = factory.CreateClient();
+
+            var response = await client.GetAsync(path);
+
+            response.StatusCode.Should().Be(HttpStatusCode.OK);
+            response.Content.Headers.ContentType?.MediaType.Should().Be("text/html");
+            (await response.Content.ReadAsStringAsync()).Should().Contain("Atea test SPA");
+        }
+        finally
+        {
+            webRoot.Delete(recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task UnauthenticatedSpaAssetIsServedBeforeApiAuthorization()
+    {
+        var webRoot = Directory.CreateTempSubdirectory("atea-spa-test-");
+        try
+        {
+            var assets = Directory.CreateDirectory(Path.Combine(webRoot.FullName, "assets"));
+            await File.WriteAllTextAsync(Path.Combine(assets.FullName, "app.js"), "export const app = 'atea-test';");
+            using var factory = CreateFactory(webRootPath: webRoot.FullName);
+            using var client = factory.CreateClient();
+
+            var response = await client.GetAsync("/assets/app.js");
+
+            response.StatusCode.Should().Be(HttpStatusCode.OK);
+            (await response.Content.ReadAsStringAsync()).Should().Contain("atea-test");
+        }
+        finally
+        {
+            webRoot.Delete(recursive: true);
+        }
+    }
+
     [Fact]
     public async Task UnauthenticatedApiCallReturnsStructured401()
     {
@@ -29,6 +78,17 @@ public sealed class AuthenticationTests
         var problem = await AssertProblemAsync(response, ApiProblemCode.AuthenticationRequired);
         problem.RootElement.GetProperty("title").GetString().Should().Be("Authentication required");
         problem.RootElement.GetProperty("correlationId").GetString().Should().Be("problem-correlation-123");
+    }
+
+    [Fact]
+    public async Task UnauthenticatedPlatformSessionReturnsOneStructuredChallenge()
+    {
+        using var client = CreateFactory().CreateClient();
+
+        var response = await client.GetAsync("/api/platform/session");
+
+        response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+        await AssertProblemAsync(response, ApiProblemCode.AuthenticationRequired);
     }
 
     [Fact]
@@ -81,6 +141,27 @@ public sealed class AuthenticationTests
     }
 
     [Fact]
+    public async Task UnmatchedApiRouteDoesNotFallThroughToPublicSpa()
+    {
+        var webRoot = Directory.CreateTempSubdirectory("atea-spa-test-");
+        try
+        {
+            await File.WriteAllTextAsync(Path.Combine(webRoot.FullName, "index.html"), "<!doctype html><title>Atea test SPA</title>");
+            using var factory = CreateFactory(webRootPath: webRoot.FullName);
+            using var client = factory.CreateClient();
+
+            var response = await client.GetAsync("/api/does-not-exist");
+
+            response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+            await AssertProblemAsync(response, ApiProblemCode.AuthenticationRequired);
+        }
+        finally
+        {
+            webRoot.Delete(recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task Allowlisted_customer_bearer_without_platform_scope_is_forbidden_before_platform_endpoint()
     {
         using var client = CreateFactory(includePlatformAdmin: true).CreateClient();
@@ -105,9 +186,10 @@ public sealed class AuthenticationTests
         (await response.Content.ReadAsStringAsync()).Should().Contain("invalid_workspace");
     }
 
-    private static WebApplicationFactory<Program> CreateFactory(bool includeMembership = false, bool malformedIdentity = false, bool includePlatformAdmin = false) =>
+    private static WebApplicationFactory<Program> CreateFactory(bool includeMembership = false, bool malformedIdentity = false, bool includePlatformAdmin = false, string? webRootPath = null) =>
         new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
         {
+            if (webRootPath is not null) builder.UseWebRoot(webRootPath);
             builder.ConfigureAppConfiguration((_, configuration) => configuration.AddInMemoryCollection(new Dictionary<string, string?>
             {
                 ["AzureAd:Audience"] = "api://atea-unified-workplace-api",

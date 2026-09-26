@@ -7,6 +7,7 @@ using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
 using Atea.UnifiedWorkplace.Api.Features.AdminAuth;
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Atea.UnifiedWorkplace.Api.Infrastructure.Http;
 
 namespace Atea.UnifiedWorkplace.Api.Authorization;
 
@@ -32,6 +33,12 @@ public static class PlatformAuthorization
                 options.Cookie.HttpOnly = true;
                 options.Cookie.SameSite = SameSiteMode.Strict;
                 options.Cookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
+                options.Events.OnRedirectToLogin = context => context.Response.HasStarted
+                    ? Task.CompletedTask
+                    : ApiProblemDetails.WriteAsync(context.HttpContext, ApiProblemCode.AuthenticationRequired);
+                options.Events.OnRedirectToAccessDenied = context => context.Response.HasStarted
+                    ? Task.CompletedTask
+                    : ApiProblemDetails.WriteAsync(context.HttpContext, ApiProblemCode.AuthorizationDenied);
             });
         }
         services.PostConfigure<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme, options =>
@@ -81,15 +88,11 @@ public static class PlatformAuthorization
         return services;
     }
 
-    public static IApplicationBuilder UsePlatformAuthorization(this IApplicationBuilder application)
+    public static IApplicationBuilder UseWorkspaceContext(this IApplicationBuilder application)
     {
-        application.UseWhen(context => context.Request.Path.StartsWithSegments("/api"), apiBranch =>
-        {
-            apiBranch.UseAuthentication();
-            apiBranch.UseWhen(context => !context.Request.Path.StartsWithSegments("/api/platform"), workspaceBranch =>
-                workspaceBranch.UseMiddleware<WorkspaceContextMiddleware>());
-            apiBranch.UseAuthorization();
-        });
+        application.UseWhen(context => context.Request.Path.StartsWithSegments("/api") &&
+            !context.Request.Path.StartsWithSegments("/api/platform"), workspaceBranch =>
+            workspaceBranch.UseMiddleware<WorkspaceContextMiddleware>());
         return application;
     }
 

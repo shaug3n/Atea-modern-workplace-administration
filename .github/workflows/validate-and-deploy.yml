@@ -141,6 +141,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: Local infrastructure contract validation
         run: python3 infra/tests/validate_contract.py
+      - name: Candidate HTTP smoke check tests
+        run: python3 -m unittest infra/tests/test_candidate_http.py -v
       - name: Install Bicep compiler
         run: az bicep install
       - name: Compile both deployment stages
@@ -323,8 +325,7 @@ jobs:
             test "$attempt" -lt 30 || { echo 'Candidate health check timed out; prior traffic remains unchanged.'; exit 1; }
             sleep 10
           done
-          status="$(curl --silent --output /dev/null --write-out '%{http_code}' "https://${{ steps.candidate.outputs.fqdn }}/api/platform/session")"
-          test "$status" = 401 || { echo "Unauthenticated platform session returned $status, expected 401."; exit 1; }
+          bash infra/scripts/check-candidate-http.sh "https://${{ steps.candidate.outputs.fqdn }}"
       - name: Save release evidence metadata
         run: |
           {

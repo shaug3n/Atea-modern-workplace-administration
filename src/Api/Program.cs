@@ -142,7 +142,9 @@ app.MapGet("/health/ready", (WorkplaceDbContext database, CancellationToken canc
     HealthEndpoints.CheckDatabaseReadinessAsync(database.Database.CanConnectAsync, cancellationToken)).AllowAnonymous();
 app.UseMiddleware<CorrelationMiddleware>();
 app.UseMiddleware<ApiProblemDetailsMiddleware>();
-app.UsePlatformAuthorization();
+app.UseAuthentication();
+app.UseWorkspaceContext();
+app.UseAuthorization();
 app.MapGet("/api/ping", () => Results.Ok(new { status = "ok" }));
 app.MapAdminAuthEndpoints();
 app.MapGet("/api/session", async (IWorkspaceContextAccessor accessor, IWorkspaceSettingsService settingsService, CancellationToken cancellationToken) =>
@@ -202,7 +204,9 @@ app.MapUserAssociatedDeviceEndpoints();
 app.MapAuthenticationMethodEndpoints();
 app.MapUserSessionCommandEndpoints();
 app.MapExchangeEndpoints();
-app.MapFallbackToFile("index.html");
+app.MapFallback("/api/{**path}", () => Results.NotFound())
+    .WithMetadata(new HttpMethodMetadata(["GET", "HEAD"]));
+app.MapFallbackToFile("index.html").AllowAnonymous();
 
 await app.RunAsync();
 }
