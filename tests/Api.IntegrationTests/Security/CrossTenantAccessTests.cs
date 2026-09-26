@@ -332,6 +332,18 @@ public sealed class CrossTenantAccessTests : IAsyncLifetime
                         .RequireAuthenticatedUser()
                         .RequireClaim("oid")
                         .AddRequirements(new PlatformScopeRequirement("platform.admin"))));
+
+                    services.RemoveAll<IPlatformAuthorization>();
+                    services.AddScoped<IPlatformAuthorization>(serviceProvider =>
+                    {
+                        var configuredTenantId = serviceProvider.GetRequiredService<IConfiguration>()["PlatformAuthorization:HomeTenantId"];
+                        configuredTenantId.Should().Be(TenantA.ToString(), "the hosted test factory must inject its tenant-pinned authorization configuration");
+                        return new AllowlistPlatformAuthorization(
+                            TenantA.ToString(),
+                            [UserA.ToString(), UserB.ToString()],
+                            new Dictionary<Guid, IReadOnlySet<Guid>>(),
+                            serviceProvider.GetRequiredService<IPlatformWorkspaceGrantReader>());
+                    });
                 }
                 if (useDatabase)
                 {
