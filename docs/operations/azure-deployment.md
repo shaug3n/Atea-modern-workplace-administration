@@ -73,9 +73,9 @@ If the foundation deployment succeeded but the bootstrap job failed (for example
 1. Confirm the release app has federated credentials for both `test` and `test-promotion`. Then run **Validate and deploy** manually and check `confirm_test_tenant` only after verifying the test subscription, tenant, and absence of customer data. PR/push runs build, test, scan, and compile but do not deploy.
 2. The deploy job verifies the active subscription, Entra tenant, generated app hostname, migration-job name, and required public configuration. The release identity deliberately cannot read Key Vault secret values; missing secret references cause readiness/startup to fail before the candidate can be promoted. It builds and pushes an immutable image tagged by commit SHA.
 3. The dedicated migration job runs `dotnet Atea.UnifiedWorkplace.Api.dll --migrate` against the migration-only DB connection. If it fails, candidate deployment stops and existing traffic remains on its current revision. Review logs before retrying; do not bypass a failed migration.
-4. The new revision receives the stable `candidate` label and remains out of primary traffic. Automated checks validate `/health`, `/health/ready`, and that unauthenticated `/api/platform/session` returns 401.
+4. The new revision receives the stable `candidate` label. On the **first** release, Azure requires the only revision to have 100% of the primary-host traffic; access remains limited to `AZURE_SMOKE_TEST_SOURCE_CIDR` while migration, automated checks, and human review run. Later releases keep the previous revision on primary traffic and test the new candidate by its label URL. Automated checks validate `/health`, `/health/ready`, and that unauthenticated `/api/platform/session` returns 401.
 5. Open the candidate URL printed in the GitHub Actions summary **from the network matching `AZURE_SMOKE_TEST_SOURCE_CIDR`**. Sign in with the nominated test-tenant admin, verify the workspace and intended module paths, then approve `test-promotion`. Do not approve if the candidate cannot sign in or complete the smoke checks. Candidate sign-in requires the exact candidate callback URI above.
-6. The promotion job routes the primary host to the approved candidate. A post-route readiness failure triggers a traffic rollback to the previous revision.
+6. The promotion job pins the primary host to the approved candidate. A post-route readiness failure rolls back to the previous revision when one exists. The first release has no previous revision to roll back to; keep the test IP allowlist in place and disable ingress if the initial deployment must be taken offline.
 
 The workflow's unauthenticated HTTP checks do not prove real Entra, Graph, PIM, consent, or tenant authorization behavior. Perform the human test-tenant check for each relevant flow and record any permissions/consent that still need configuration. The API consent callback uses the primary host; test tenant consent/onboarding separately on the primary URL after the first deployment if its callback flow must be exercised.
 
@@ -114,7 +114,7 @@ az containerapp ingress traffic set \
   --revision-weight "<known-good-revision>=100" "<bad-revision>=0"
 ```
 
-The workflow keeps the current revision on primary traffic until candidate health and human smoke gates pass. Database migrations are not automatically reversed by app rollback; migrations must be additive/backward compatible, and restore procedures must be tested before production. Run no unreviewed destructive SQL in a release.
+For subsequent releases, the workflow keeps the current revision on primary traffic until candidate health and human smoke gates pass. The first release has only one revision, so its primary host is operator-IP-restricted rather than unrouted. Database migrations are not automatically reversed by app rollback; migrations must be additive/backward compatible, and restore procedures must be tested before production. Run no unreviewed destructive SQL in a release.
 
 ## Alert ownership, cost, retention, and cleanup
 

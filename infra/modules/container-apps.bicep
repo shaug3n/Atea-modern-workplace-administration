@@ -155,7 +155,14 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
           certificateId: resourceId('Microsoft.App/managedEnvironments/managedCertificates', containerAppEnvironmentName, hostname)
           name: hostname
         }]
-        traffic: []
+        // The first release has no previous revision; ACA still requires weights to total 100.
+        // The test deployment remains restricted to the operator CIDR until it is reviewed.
+        traffic: [
+          {
+            latestRevision: true
+            weight: 100
+          }
+        ]
       }
     }
     template: {

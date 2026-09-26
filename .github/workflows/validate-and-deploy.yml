@@ -148,6 +148,8 @@ jobs:
           az bicep build --file infra/main.bicep --outfile /tmp/atea-foundation.json
           az bicep build --file infra/application.bicep --outfile /tmp/atea-application.json
           az bicep build --file infra/database-bootstrap.bicep --outfile /tmp/atea-database-bootstrap.json
+      - name: Validate compiled first-release traffic
+        run: python3 infra/tests/validate_compiled_application.py /tmp/atea-application.json
 
   deploy-candidate:
     if: github.event_name == 'workflow_dispatch'
@@ -300,7 +302,7 @@ jobs:
             echo "Candidate URL: https://$fqdn"
             echo 'Automated gate checks API liveness/readiness and auth enforcement. This stable candidate-label URL targets this exact revision. Sign in with the nominated test-tenant admin, verify the workspace, then approve the test-promotion environment.'
           } >> "$GITHUB_STEP_SUMMARY"
-      - name: Smoke test candidate without routing user traffic
+      - name: Smoke test candidate with restricted ingress
         run: |
           set -euo pipefail
           runner_ip="$(curl --ipv4 --fail --silent --show-error --max-time 10 https://api.ipify.org)"
