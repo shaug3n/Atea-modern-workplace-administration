@@ -1,0 +1,30 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "environment": { "value": "prod" },
+    "location": { "value": "westeurope" },
+    "containerAppEnvironmentName": { "value": "atea-workplace-prod-env" },
+    "containerAppName": { "value": "atea-workplace-prod" },
+    "registryLoginServer": { "value": "replace-with-foundation-acr-output.azurecr.io" },
+    "imageRepository": { "value": "atea-unified-workplace" },
+    "imageTag": { "value": "replace-with-git-sha" },
+    "workloadIdentityResourceId": { "value": "/subscriptions/replace/resourceGroups/replace/providers/Microsoft.ManagedIdentity/userAssignedIdentities/replace" },
+    "workloadIdentityClientId": { "value": "00000000-0000-0000-0000-000000000000" },
+    "keyVaultUri": { "value": "https://replace-with-foundation-output.vault.azure.net/" },
+    "logAnalyticsWorkspaceResourceId": { "value": "/subscriptions/replace/resourceGroups/replace/providers/Microsoft.OperationalInsights/workspaces/replace" },
+    "entraApiClientId": { "value": "00000000-0000-0000-0000-000000000000" },
+    "entraApiAudience": { "value": "api://00000000-0000-0000-0000-000000000000" },
+    "consentRedirectUri": { "value": "https://replace-after-foundation.invalid/onboarding/consent/callback" },
+    "customerRedirectUri": { "value": "https://replace-after-foundation.invalid/auth/callback" },
+    "platformAdminRedirectUri": { "value": "https://replace-after-foundation.invalid/admin/auth/callback" },
+    "platformHomeTenantId": { "value": "00000000-0000-0000-0000-000000000000" },
+    "platformAdminObjectIds": { "value": ["00000000-0000-0000-0000-000000000000"] },
+    "dataProtectionBlobUri": { "value": "https://replace.blob.core.windows.net/dataprotection/keys.xml" },
+    "dataProtectionKeyIdentifier": { "value": "https://replace.vault.azure.net/keys/workplace-data-protection" },
+    "publicBaseUrl": { "value": "https://replace-after-foundation.invalid" },
+    "smokeTestSourceCidr": { "value": "203.0.113.10/32" },
+    "allowedIngressHostnames": { "value": [] },
+    "externalIngressEnabled": { "value": false }
+  }
+}

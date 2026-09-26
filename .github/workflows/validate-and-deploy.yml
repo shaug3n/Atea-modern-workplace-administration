@@ -6,17 +6,17 @@ on:
       - 'Dockerfile'
       - 'src/**'
       - 'infra/**'
-      - '.github/workflows/validate-and-deploy.yml'
+      - 'global.json'
+      - '.github/workflows/**'
   push:
-    branches: [main]
+    branches: [master]
   workflow_dispatch:
     inputs:
-      environment:
-        description: 'Non-production deployment target'
+      confirm_test_tenant:
+        description: 'Confirm this deployment targets the disposable test tenant and contains no customer data'
         required: true
-        default: dev
-        type: choice
-        options: [dev]
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -29,6 +29,15 @@ env:
 jobs:
   build-test:
     runs-on: ubuntu-latest
+    env:
+      VITE_ENTRA_CLIENT_ID: ${{ vars.CUSTOMER_SPA_CLIENT_ID || '00000000-0000-0000-0000-000000000000' }}
+      VITE_ENTRA_API_SCOPE: ${{ vars.CUSTOMER_API_SCOPE || 'api://00000000-0000-0000-0000-000000000000/access_as_user' }}
+      VITE_ENTRA_AUTHORITY: ${{ vars.CUSTOMER_ENTRA_AUTHORITY || 'https://login.microsoftonline.com/organizations' }}
+      VITE_ENTRA_REDIRECT_URI: ${{ vars.AZURE_APP_PUBLIC_URL && format('{0}/auth/callback', vars.AZURE_APP_PUBLIC_URL) || 'https://localhost:5173/auth/callback' }}
+      VITE_PLATFORM_ADMIN_CLIENT_ID: ${{ vars.PLATFORM_ADMIN_CLIENT_ID || '00000000-0000-0000-0000-000000000000' }}
+      VITE_PLATFORM_ADMIN_AUTHORITY: ${{ vars.PLATFORM_HOME_TENANT_ID && format('https://login.microsoftonline.com/{0}', vars.PLATFORM_HOME_TENANT_ID) || 'https://login.microsoftonline.com/organizations' }}
+      VITE_PLATFORM_ADMIN_SCOPE: ${{ vars.PLATFORM_ADMIN_SCOPE || 'api://00000000-0000-0000-0000-000000000000/platform.admin' }}
+      VITE_PLATFORM_ADMIN_REDIRECT_URI: ${{ vars.AZURE_APP_PUBLIC_URL && format('{0}/admin/auth/callback', vars.AZURE_APP_PUBLIC_URL) || 'https://localhost:5173/admin/auth/callback' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
@@ -52,18 +61,38 @@ jobs:
         run: |
           docker compose config --quiet
           docker compose build
-      - name: Build the exact deployment image once
+      - name: Ensure deploy dispatch has registered public app settings
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          DEPLOY_CONFIRMATION: ${{ inputs.confirm_test_tenant }}
+          PUBLIC_URL: ${{ vars.AZURE_APP_PUBLIC_URL }}
+          PLATFORM_TENANT: ${{ vars.PLATFORM_HOME_TENANT_ID }}
+          API_CLIENT_ID: ${{ vars.ENTRA_API_CLIENT_ID }}
+          API_AUDIENCE: ${{ vars.ENTRA_API_AUDIENCE }}
+          CUSTOMER_SPA_ID: ${{ vars.CUSTOMER_SPA_CLIENT_ID }}
+          CUSTOMER_SCOPE: ${{ vars.CUSTOMER_API_SCOPE }}
+          ADMIN_SPA_ID: ${{ vars.PLATFORM_ADMIN_CLIENT_ID }}
+          ADMIN_SCOPE: ${{ vars.PLATFORM_ADMIN_SCOPE }}
+          SMOKE_TEST_SOURCE_CIDR: ${{ vars.AZURE_SMOKE_TEST_SOURCE_CIDR }}
+        run: |
+          test "$DEPLOY_CONFIRMATION" = true
+          for value in "$PUBLIC_URL" "$PLATFORM_TENANT" "$API_CLIENT_ID" "$API_AUDIENCE" "$CUSTOMER_SPA_ID" "$CUSTOMER_SCOPE" "$ADMIN_SPA_ID" "$ADMIN_SCOPE" "$SMOKE_TEST_SOURCE_CIDR"; do
+            test -n "$value" || { echo 'Required public Entra or host variable is missing.'; exit 1; }
+          done
+          case "$PUBLIC_URL" in https://*) ;; *) echo 'AZURE_APP_PUBLIC_URL must be HTTPS.'; exit 1 ;; esac
+          python3 -c 'import ipaddress,sys; net=ipaddress.ip_network(sys.argv[1], strict=False); assert net.version == 4 and net.prefixlen > 0' "$SMOKE_TEST_SOURCE_CIDR"
+      - name: Build the immutable hosted image
         run: |
           docker build \
-            --build-arg VITE_ENTRA_CLIENT_ID="${{ vars.ENTRA_CLIENT_ID }}" \
-            --build-arg VITE_ENTRA_API_SCOPE="${{ vars.ENTRA_API_SCOPE }}" \
-            --build-arg VITE_ENTRA_AUTHORITY="${{ vars.ENTRA_AUTHORITY }}" \
-            --build-arg VITE_ENTRA_REDIRECT_URI="${{ vars.ENTRA_REDIRECT_URI }}" \
+            --build-arg VITE_ENTRA_CLIENT_ID="$VITE_ENTRA_CLIENT_ID" \
+            --build-arg VITE_ENTRA_API_SCOPE="$VITE_ENTRA_API_SCOPE" \
+            --build-arg VITE_ENTRA_AUTHORITY="$VITE_ENTRA_AUTHORITY" \
+            --build-arg VITE_ENTRA_REDIRECT_URI="$VITE_ENTRA_REDIRECT_URI" \
             --build-arg VITE_ADMIN_AUTH_MODE=hosted \
-            --build-arg VITE_PLATFORM_ADMIN_CLIENT_ID="${{ vars.PLATFORM_ADMIN_CLIENT_ID }}" \
-            --build-arg VITE_PLATFORM_ADMIN_AUTHORITY="${{ vars.PLATFORM_ADMIN_AUTHORITY }}" \
-            --build-arg VITE_PLATFORM_ADMIN_SCOPE="${{ vars.PLATFORM_ADMIN_SCOPE }}" \
-            --build-arg VITE_PLATFORM_ADMIN_REDIRECT_URI="${{ vars.PLATFORM_ADMIN_REDIRECT_URI }}" \
+            --build-arg VITE_PLATFORM_ADMIN_CLIENT_ID="$VITE_PLATFORM_ADMIN_CLIENT_ID" \
+            --build-arg VITE_PLATFORM_ADMIN_AUTHORITY="$VITE_PLATFORM_ADMIN_AUTHORITY" \
+            --build-arg VITE_PLATFORM_ADMIN_SCOPE="$VITE_PLATFORM_ADMIN_SCOPE" \
+            --build-arg VITE_PLATFORM_ADMIN_REDIRECT_URI="$VITE_PLATFORM_ADMIN_REDIRECT_URI" \
             --tag "$IMAGE_REPOSITORY:$IMAGE_TAG" .
           docker save "$IMAGE_REPOSITORY:$IMAGE_TAG" --output /tmp/atea-unified-workplace-image.tar
       - uses: actions/upload-artifact@v4
@@ -85,8 +114,17 @@ jobs:
           node-version: '22.x'
       - name: Node dependency audit
         run: npm ci --prefix src/Web && npm audit --prefix src/Web --omit=dev --audit-level=high
-      - name: .NET vulnerable package audit
-        run: dotnet list src/Api/Atea.UnifiedWorkplace.Api.csproj package --vulnerable --include-transitive
+      - name: .NET production and test dependency audit
+        run: |
+          set -euo pipefail
+          audit_project() {
+            project="$1"
+            report="$RUNNER_TEMP/$(basename "$project").vulnerabilities.json"
+            dotnet package list --project "$project" --include-transitive --vulnerable --format json > "$report"
+            python3 -c 'import json,sys; d=json.load(open(sys.argv[1], encoding="utf-8")); ps=d.get("projects"); bad=[p for p in ps or [] if set(p) != {"path"}]; sys.exit("NuGet vulnerability results found in " + sys.argv[1] if bad else (0 if ps else "NuGet audit returned no project results"))' "$report"
+          }
+          audit_project src/Api/Atea.UnifiedWorkplace.Api.csproj
+          audit_project tests/Api.IntegrationTests/Api.IntegrationTests.csproj
       - name: Filesystem scan
         uses: aquasecurity/trivy-action@0.28.0
         with:
@@ -103,29 +141,55 @@ jobs:
       - uses: actions/checkout@v4
       - name: Local infrastructure contract validation
         run: python3 infra/tests/validate_contract.py
-      - name: Bicep compile
-        run: az bicep build --file infra/main.bicep --outfile /tmp/atea-unified-workplace-main.json
+      - name: Install Bicep compiler
+        run: az bicep install
+      - name: Compile both deployment stages
+        run: |
+          az bicep build --file infra/main.bicep --outfile /tmp/atea-foundation.json
+          az bicep build --file infra/application.bicep --outfile /tmp/atea-application.json
+          az bicep build --file infra/database-bootstrap.bicep --outfile /tmp/atea-database-bootstrap.json
 
-  deploy-nonproduction:
+  deploy-candidate:
     if: github.event_name == 'workflow_dispatch'
     needs: [build-test, dependency-security, validate-infra]
     runs-on: ubuntu-latest
-    environment: ${{ inputs.environment || 'dev' }}
+    environment: test
+    concurrency:
+      group: workplace-test-deployment
+      cancel-in-progress: false
     permissions:
       contents: read
       id-token: write
     env:
       AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+      AZURE_LOCATION: ${{ vars.AZURE_LOCATION || 'westeurope' }}
       AZURE_ACR_NAME: ${{ vars.AZURE_ACR_NAME }}
       AZURE_CONTAINER_APP_NAME: ${{ vars.AZURE_CONTAINER_APP_NAME }}
+      AZURE_CA_ENVIRONMENT_NAME: ${{ vars.AZURE_CA_ENVIRONMENT_NAME }}
       AZURE_MIGRATION_JOB_NAME: ${{ vars.AZURE_MIGRATION_JOB_NAME }}
+      AZURE_APP_PUBLIC_URL: ${{ vars.AZURE_APP_PUBLIC_URL }}
+      AZURE_SMOKE_TEST_SOURCE_CIDR: ${{ vars.AZURE_SMOKE_TEST_SOURCE_CIDR }}
+      PLATFORM_HOME_TENANT_ID: ${{ vars.PLATFORM_HOME_TENANT_ID }}
+      PLATFORM_ADMIN_OBJECT_IDS_JSON: ${{ vars.PLATFORM_ADMIN_OBJECT_IDS_JSON }}
+    outputs:
+      candidate_fqdn: ${{ steps.candidate.outputs.fqdn }}
+      candidate_revision: ${{ steps.candidate.outputs.revision }}
+      previous_revision: ${{ steps.candidate.outputs.previous }}
     steps:
       - uses: actions/checkout@v4
       - uses: azure/login@v2
         with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          client-id: ${{ secrets.AZURE_DEPLOY_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - name: Verify the selected test subscription and generated host
+        run: |
+          test -n "$AZURE_RESOURCE_GROUP" && test -n "$AZURE_CONTAINER_APP_NAME" && test -n "$AZURE_MIGRATION_JOB_NAME"
+          test "$AZURE_MIGRATION_JOB_NAME" = "$AZURE_CONTAINER_APP_NAME-migration"
+          test "$(az account show --query id -o tsv)" = "${{ secrets.AZURE_SUBSCRIPTION_ID }}"
+          test "$(az account show --query tenantId -o tsv)" = "$PLATFORM_HOME_TENANT_ID"
+          expected_host="$AZURE_CONTAINER_APP_NAME.$(az containerapp env show --name "$AZURE_CA_ENVIRONMENT_NAME" --resource-group "$AZURE_RESOURCE_GROUP" --query properties.defaultDomain -o tsv)"
+          test "$AZURE_APP_PUBLIC_URL" = "https://$expected_host" || { echo 'Configured public URL differs from the Container Apps generated hostname.'; exit 1; }
       - uses: actions/download-artifact@v4
         with:
           name: atea-unified-workplace-image-${{ github.sha }}
@@ -136,58 +200,187 @@ jobs:
           az acr login --name "$AZURE_ACR_NAME"
           docker tag "$IMAGE_REPOSITORY:$IMAGE_TAG" "$AZURE_ACR_NAME.azurecr.io/$IMAGE_REPOSITORY:$IMAGE_TAG"
           docker push "$AZURE_ACR_NAME.azurecr.io/$IMAGE_REPOSITORY:$IMAGE_TAG"
-      - name: Bicep what-if against non-production resource group
+      - name: Determine whether this is the first application release
+        id: current
+        run: |
+          if az containerapp show --name "$AZURE_CONTAINER_APP_NAME" --resource-group "$AZURE_RESOURCE_GROUP" --query name -o tsv >/dev/null 2>&1; then
+            echo 'first=false' >> "$GITHUB_OUTPUT"
+            traffic="$(az containerapp show --name "$AZURE_CONTAINER_APP_NAME" --resource-group "$AZURE_RESOURCE_GROUP" --query properties.configuration.ingress.traffic -o json)"
+            target="$(echo "$traffic" | jq -r '[.[] | select(.weight == 100)][0] | if .revisionName then .revisionName elif .latestRevision then "LATEST" else empty end')"
+            current="$target"
+            if test "$target" = LATEST; then
+              current="$(az containerapp show --name "$AZURE_CONTAINER_APP_NAME" --resource-group "$AZURE_RESOURCE_GROUP" --query properties.latestRevisionName -o tsv)"
+            fi
+            if test -n "$current"; then
+              az containerapp ingress traffic set --name "$AZURE_CONTAINER_APP_NAME" --resource-group "$AZURE_RESOURCE_GROUP" --revision-weight "$current=100" --output none
+            fi
+            echo "previous=$current" >> "$GITHUB_OUTPUT"
+          else
+            echo 'first=true' >> "$GITHUB_OUTPUT"
+            echo 'previous=' >> "$GITHUB_OUTPUT"
+          fi
+      - name: Deploy application and manual migration job on first release
+        if: steps.current.outputs.first == 'true'
         env:
-          POSTGRES_ADMIN_PASSWORD: ${{ secrets.POSTGRES_ADMIN_PASSWORD }}
+          CUSTOMER_SPA_CLIENT_ID: ${{ vars.CUSTOMER_SPA_CLIENT_ID }}
+          ENTRA_API_CLIENT_ID: ${{ vars.ENTRA_API_CLIENT_ID }}
+          ENTRA_API_AUDIENCE: ${{ vars.ENTRA_API_AUDIENCE }}
+          PLATFORM_ADMIN_OBJECT_IDS_JSON: ${{ vars.PLATFORM_ADMIN_OBJECT_IDS_JSON }}
         run: |
-          az deployment group what-if \
-            --resource-group "$AZURE_RESOURCE_GROUP" \
-            --template-file infra/main.bicep \
-            --parameters @infra/parameters/dev.json \
-            imageTag="$IMAGE_TAG" \
-            postgresAdminPassword="$POSTGRES_ADMIN_PASSWORD" \
-            --no-pretty-print
-      - name: Database migration job
+          foundation="$(az deployment group show --name workplace-foundation --resource-group "$AZURE_RESOURCE_GROUP" --query properties.outputs -o json)"
+          out() { echo "$foundation" | jq -r ".${1}.value"; }
+          registry="$(out acrLoginServer)"
+          key_vault="$(out keyVaultUri)"
+          identity_id="$(out workloadIdentityResourceId)"
+          identity_client="$(out workloadIdentityClientId)"
+          logs_id="$(out logAnalyticsWorkspaceResourceId)"
+          key_blob="$(out dataProtectionBlobUri)"
+          key_id="$(out dataProtectionKeyIdentifier)"
+          az deployment group what-if --resource-group "$AZURE_RESOURCE_GROUP" --template-file infra/application.bicep \
+            --parameters environment=dev location="$AZURE_LOCATION" containerAppEnvironmentName="$AZURE_CA_ENVIRONMENT_NAME" \
+            containerAppName="$AZURE_CONTAINER_APP_NAME" registryLoginServer="$registry" imageRepository="$IMAGE_REPOSITORY" imageTag="$IMAGE_TAG" \
+            workloadIdentityResourceId="$identity_id" workloadIdentityClientId="$identity_client" keyVaultUri="$key_vault" \
+            logAnalyticsWorkspaceResourceId="$logs_id" entraApiClientId="$ENTRA_API_CLIENT_ID" entraApiAudience="$ENTRA_API_AUDIENCE" \
+            consentRedirectUri="$AZURE_APP_PUBLIC_URL/onboarding/consent/callback" customerRedirectUri="$AZURE_APP_PUBLIC_URL/auth/callback" \
+            platformAdminRedirectUri="$AZURE_APP_PUBLIC_URL/admin/auth/callback" platformHomeTenantId="$PLATFORM_HOME_TENANT_ID" \
+            platformAdminObjectIds="$PLATFORM_ADMIN_OBJECT_IDS_JSON" dataProtectionBlobUri="$key_blob" dataProtectionKeyIdentifier="$key_id" \
+            publicBaseUrl="$AZURE_APP_PUBLIC_URL" smokeTestSourceCidr="$AZURE_SMOKE_TEST_SOURCE_CIDR" allowedIngressHostnames='[]' externalIngressEnabled=true
+          az deployment group create --name workplace-application --resource-group "$AZURE_RESOURCE_GROUP" --template-file infra/application.bicep \
+            --parameters environment=dev location="$AZURE_LOCATION" containerAppEnvironmentName="$AZURE_CA_ENVIRONMENT_NAME" \
+            containerAppName="$AZURE_CONTAINER_APP_NAME" registryLoginServer="$registry" imageRepository="$IMAGE_REPOSITORY" imageTag="$IMAGE_TAG" \
+            workloadIdentityResourceId="$identity_id" workloadIdentityClientId="$identity_client" keyVaultUri="$key_vault" \
+            logAnalyticsWorkspaceResourceId="$logs_id" entraApiClientId="$ENTRA_API_CLIENT_ID" entraApiAudience="$ENTRA_API_AUDIENCE" \
+            consentRedirectUri="$AZURE_APP_PUBLIC_URL/onboarding/consent/callback" customerRedirectUri="$AZURE_APP_PUBLIC_URL/auth/callback" \
+            platformAdminRedirectUri="$AZURE_APP_PUBLIC_URL/admin/auth/callback" platformHomeTenantId="$PLATFORM_HOME_TENANT_ID" \
+            platformAdminObjectIds="$PLATFORM_ADMIN_OBJECT_IDS_JSON" dataProtectionBlobUri="$key_blob" dataProtectionKeyIdentifier="$key_id" \
+            publicBaseUrl="$AZURE_APP_PUBLIC_URL" smokeTestSourceCidr="$AZURE_SMOKE_TEST_SOURCE_CIDR" allowedIngressHostnames='[]' externalIngressEnabled=true --output none
+      - name: Database migration job before candidate revision
+        id: migration
         run: |
-          test -n "$AZURE_MIGRATION_JOB_NAME"
-          az containerapp job update \
-            --name "$AZURE_MIGRATION_JOB_NAME" \
-            --resource-group "$AZURE_RESOURCE_GROUP" \
-            --image "$AZURE_ACR_NAME.azurecr.io/$IMAGE_REPOSITORY:$IMAGE_TAG" \
-            --output none
+          az containerapp job update --name "$AZURE_MIGRATION_JOB_NAME" --resource-group "$AZURE_RESOURCE_GROUP" \
+            --image "$AZURE_ACR_NAME.azurecr.io/$IMAGE_REPOSITORY:$IMAGE_TAG" --output none
           execution="$(az containerapp job start --name "$AZURE_MIGRATION_JOB_NAME" --resource-group "$AZURE_RESOURCE_GROUP" --query name -o tsv)"
           test -n "$execution"
-          for attempt in $(seq 1 30); do
+          for attempt in $(seq 1 90); do
             status="$(az containerapp job execution show --name "$AZURE_MIGRATION_JOB_NAME" --resource-group "$AZURE_RESOURCE_GROUP" --job-execution-name "$execution" --query properties.status -o tsv)"
             case "$status" in
-              Succeeded) exit 0 ;;
-              Failed|Canceled|Degraded) echo "Migration job ended with status: $status"; exit 1 ;;
+              Succeeded) echo "execution=$execution" >> "$GITHUB_OUTPUT"; exit 0 ;;
+              Failed|Canceled|Degraded) echo "Migration execution failed ($status); application traffic was not changed."; exit 1 ;;
             esac
             sleep 10
           done
-          echo 'Migration job did not complete within the bounded wait window.'
+          echo 'Migration job exceeded its bounded 15-minute wait; application traffic was not changed.'
           exit 1
-      - name: Deploy revision
+      - name: Deploy candidate revision after migration
+        id: candidate
         run: |
-          az containerapp update \
-            --name "$AZURE_CONTAINER_APP_NAME" \
-            --resource-group "$AZURE_RESOURCE_GROUP" \
-            --image "$AZURE_ACR_NAME.azurecr.io/$IMAGE_REPOSITORY:$IMAGE_TAG" \
-            --revision-suffix "$IMAGE_TAG" \
-            --revisions-mode multiple \
-            --output none
-      - name: Smoke test new revision
-        id: smoke
+          if test "${{ steps.current.outputs.first }}" = true; then
+            fqdn="$(az containerapp show --name "$AZURE_CONTAINER_APP_NAME" --resource-group "$AZURE_RESOURCE_GROUP" --query properties.latestRevisionFqdn -o tsv)"
+            revision="$(az containerapp show --name "$AZURE_CONTAINER_APP_NAME" --resource-group "$AZURE_RESOURCE_GROUP" --query properties.latestRevisionName -o tsv)"
+          else
+            az containerapp update --name "$AZURE_CONTAINER_APP_NAME" --resource-group "$AZURE_RESOURCE_GROUP" \
+              --image "$AZURE_ACR_NAME.azurecr.io/$IMAGE_REPOSITORY:$IMAGE_TAG" --revision-suffix "${IMAGE_TAG:0:12}-$GITHUB_RUN_ATTEMPT" --revisions-mode multiple --output none
+            revision="$(az containerapp show --name "$AZURE_CONTAINER_APP_NAME" --resource-group "$AZURE_RESOURCE_GROUP" --query properties.latestRevisionName -o tsv)"
+            fqdn="$(az containerapp show --name "$AZURE_CONTAINER_APP_NAME" --resource-group "$AZURE_RESOURCE_GROUP" --query properties.latestRevisionFqdn -o tsv)"
+            old="${{ steps.current.outputs.previous }}"
+            if test -n "$old"; then
+              az containerapp ingress traffic set --name "$AZURE_CONTAINER_APP_NAME" --resource-group "$AZURE_RESOURCE_GROUP" --revision-weight "$old=100" "$revision=0" --output none
+            fi
+          fi
+          test -n "$fqdn" && test -n "$revision"
+          az containerapp revision label add --name "$AZURE_CONTAINER_APP_NAME" --resource-group "$AZURE_RESOURCE_GROUP" --label candidate --revision "$revision" --output none
+          default_domain="$(az containerapp env show --name "$AZURE_CA_ENVIRONMENT_NAME" --resource-group "$AZURE_RESOURCE_GROUP" --query properties.defaultDomain -o tsv)"
+          fqdn="${AZURE_CONTAINER_APP_NAME}---candidate.${default_domain}"
+          echo "fqdn=$fqdn" >> "$GITHUB_OUTPUT"
+          echo "revision=$revision" >> "$GITHUB_OUTPUT"
+          echo "previous=${{ steps.current.outputs.previous }}" >> "$GITHUB_OUTPUT"
+          {
+            echo '### Candidate ready for smoke test'
+            echo "Revision: \`$revision\`"
+            echo "Candidate URL: https://$fqdn"
+            echo 'Automated gate checks API liveness/readiness and auth enforcement. This stable candidate-label URL targets this exact revision. Sign in with the nominated test-tenant admin, verify the workspace, then approve the test-promotion environment.'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Smoke test candidate without routing user traffic
         run: |
-          fqdn="$(az containerapp show --name "$AZURE_CONTAINER_APP_NAME" --resource-group "$AZURE_RESOURCE_GROUP" --query properties.latestRevisionFqdn -o tsv)"
-          curl --fail --silent --show-error "https://$fqdn/health" >/dev/null
-      - name: Route customer traffic only after smoke test
-        if: steps.smoke.outcome == 'success'
+          set -euo pipefail
+          runner_ip="$(curl --ipv4 --fail --silent --show-error --max-time 10 https://api.ipify.org)"
+          python3 -c 'import ipaddress,sys; assert ipaddress.ip_address(sys.argv[1]).version == 4' "$runner_ip"
+          runner_rule="gh-${GITHUB_RUN_ID}"
+          az containerapp ingress access-restriction set --name "$AZURE_CONTAINER_APP_NAME" --resource-group "$AZURE_RESOURCE_GROUP" \
+            --rule-name "$runner_rule" --description 'Temporary GitHub health probe' --ip-address "$runner_ip/32" --action Allow --output none
+          remove_runner_rule() {
+            az containerapp ingress access-restriction remove --name "$AZURE_CONTAINER_APP_NAME" --resource-group "$AZURE_RESOURCE_GROUP" --rule-name "$runner_rule" --output none \
+              || { echo 'Could not remove the temporary GitHub runner ingress rule; inspect the app access restrictions.'; return 1; }
+          }
+          trap remove_runner_rule EXIT
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent --show-error "https://${{ steps.candidate.outputs.fqdn }}/health" >/dev/null && \
+               curl --fail --silent --show-error "https://${{ steps.candidate.outputs.fqdn }}/health/ready" >/dev/null; then
+              break
+            fi
+            test "$attempt" -lt 30 || { echo 'Candidate health check timed out; prior traffic remains unchanged.'; exit 1; }
+            sleep 10
+          done
+          status="$(curl --silent --output /dev/null --write-out '%{http_code}' "https://${{ steps.candidate.outputs.fqdn }}/api/platform/session")"
+          test "$status" = 401 || { echo "Unauthenticated platform session returned $status, expected 401."; exit 1; }
+      - name: Save release evidence metadata
         run: |
-          revision="$(az containerapp revision list --name "$AZURE_CONTAINER_APP_NAME" --resource-group "$AZURE_RESOURCE_GROUP" --query "[?properties.template.revisionSuffix=='$IMAGE_TAG'].name | [0]" -o tsv)"
-          test -n "$revision"
-          az containerapp ingress traffic set \
-            --name "$AZURE_CONTAINER_APP_NAME" \
-            --resource-group "$AZURE_RESOURCE_GROUP" \
-            --revision-weight "$revision=100" \
-            --output none
+          {
+            echo "Image SHA: $IMAGE_TAG"
+            echo "Candidate revision: ${{ steps.candidate.outputs.revision }}"
+            echo "Candidate URL: https://${{ steps.candidate.outputs.fqdn }}"
+            echo "Previous revision: ${{ steps.candidate.outputs.previous }}"
+            echo "Migration execution: ${{ steps.migration.outputs.execution }}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  promote:
+    if: github.event_name == 'workflow_dispatch'
+    needs: deploy-candidate
+    runs-on: ubuntu-latest
+    environment: test-promotion
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+      AZURE_CONTAINER_APP_NAME: ${{ vars.AZURE_CONTAINER_APP_NAME }}
+    steps:
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_DEPLOY_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - name: Route traffic after smoke and human approval
+        id: route
+        run: |
+          candidate='${{ needs.deploy-candidate.outputs.candidate_revision }}'
+          previous='${{ needs.deploy-candidate.outputs.previous_revision }}'
+          if test -n "$previous"; then
+            az containerapp ingress traffic set --name "$AZURE_CONTAINER_APP_NAME" --resource-group "$AZURE_RESOURCE_GROUP" --revision-weight "$previous=0" "$candidate=100" --output none
+          else
+            az containerapp ingress traffic set --name "$AZURE_CONTAINER_APP_NAME" --resource-group "$AZURE_RESOURCE_GROUP" --revision-weight "$candidate=100" --output none
+          fi
+      - name: Verify promoted application readiness
+        run: |
+          set -euo pipefail
+          runner_ip="$(curl --ipv4 --fail --silent --show-error --max-time 10 https://api.ipify.org)"
+          python3 -c 'import ipaddress,sys; assert ipaddress.ip_address(sys.argv[1]).version == 4' "$runner_ip"
+          runner_rule="gh-promote-${GITHUB_RUN_ID}"
+          az containerapp ingress access-restriction set --name "$AZURE_CONTAINER_APP_NAME" --resource-group "$AZURE_RESOURCE_GROUP" \
+            --rule-name "$runner_rule" --description 'Temporary GitHub promotion probe' --ip-address "$runner_ip/32" --action Allow --output none
+          remove_runner_rule() {
+            az containerapp ingress access-restriction remove --name "$AZURE_CONTAINER_APP_NAME" --resource-group "$AZURE_RESOURCE_GROUP" --rule-name "$runner_rule" --output none \
+              || { echo 'Could not remove the temporary GitHub promotion ingress rule; inspect the app access restrictions.'; return 1; }
+          }
+          trap remove_runner_rule EXIT
+          curl --fail --silent --show-error "${{ vars.AZURE_APP_PUBLIC_URL }}/health/ready" >/dev/null
+      - name: Restore the previous traffic weights if promotion verification fails
+        if: failure() && steps.route.outcome == 'success'
+        run: |
+          candidate='${{ needs.deploy-candidate.outputs.candidate_revision }}'
+          previous='${{ needs.deploy-candidate.outputs.previous_revision }}'
+          if test -n "$previous"; then
+            az containerapp ingress traffic set --name "$AZURE_CONTAINER_APP_NAME" --resource-group "$AZURE_RESOURCE_GROUP" --revision-weight "$previous=100" "$candidate=0" --output none
+          else
+            az containerapp ingress traffic set --name "$AZURE_CONTAINER_APP_NAME" --resource-group "$AZURE_RESOURCE_GROUP" --revision-weight "$candidate=0" --output none
+          fi

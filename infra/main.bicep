@@ -1,118 +1,60 @@
 targetScope = 'resourceGroup'
 
-@description('Atea-approved single Azure region. The development default stays in the EU/EEA.')
+@description('Atea-approved EU/EEA Azure region.')
 param location string = 'westeurope'
 
-@allowed([
-  'dev'
-  'prod'
-])
-@description('Deployment environment.')
+@allowed(['dev', 'prod'])
 param environment string
 
-@description('Immutable container image tag, normally the Git commit SHA.')
-param imageTag string
-
-@description('Container image repository in ACR.')
-param imageRepository string = 'atea-unified-workplace'
-
-@description('Globally unique Azure Container Registry name.')
-param containerRegistryName string
-
-@description('Container Apps managed environment name.')
 param containerAppEnvironmentName string
-
-@description('Combined API and SPA Container App name.')
-param containerAppName string
-
-@description('User-assigned workload identity name.')
-param workloadIdentityName string
-
-@description('Globally unique Key Vault name.')
+param containerAppsStorageAccountName string
+param containerRegistryName string
 param keyVaultName string
-
-@description('Log Analytics workspace name used by Container Apps and Application Insights.')
 param logAnalyticsWorkspaceName string
-
-@description('Application Insights component name.')
 param applicationInsightsName string
-
-@description('PostgreSQL Flexible Server name.')
 param postgresServerName string
-
-@description('PostgreSQL database name.')
 param postgresDatabaseName string = 'workplace'
-
-@description('PostgreSQL administrator login.')
 param postgresAdminLogin string = 'workplaceadmin'
 
 @secure()
-@description('PostgreSQL administrator password. Supply from a secret store at deployment time; never commit it to a parameter file.')
 param postgresAdminPassword string
 
-@description('PostgreSQL SKU.')
-param postgresSkuName string
-
-@description('PostgreSQL storage size in GB.')
-param postgresStorageSizeGb int
-
-@description('PostgreSQL major version.')
+param postgresSkuName string = 'Standard_B1ms'
+param postgresStorageSizeGb int = 32
 param postgresVersion string = '16'
-
-@description('Virtual network name shared by private PostgreSQL and Container Apps.')
 param virtualNetworkName string
-
-@description('Approved exact hostnames for HTTPS ingress. Wildcard hostnames are not allowed.')
-param allowedIngressHostnames array
-
-@description('Development Entra app client ID. Keep separate from production.')
-param entraDevelopmentClientId string
-
-@description('Development Entra API audience.')
-param entraDevelopmentAudience string
-
-@description('Development Entra redirect URI allowlist.')
-param entraDevelopmentRedirectUris array
-
-@description('Production Entra app client ID. Keep separate from development.')
-param entraProductionClientId string
-
-@description('Production Entra API audience.')
-param entraProductionAudience string
-
-@description('Production Entra redirect URI allowlist.')
-param entraProductionRedirectUris array
-
-var selectedEntraClientId = environment == 'prod' ? entraProductionClientId : entraDevelopmentClientId
-var selectedEntraAudience = environment == 'prod' ? entraProductionAudience : entraDevelopmentAudience
-var selectedEntraRedirectUri = first(environment == 'prod' ? entraProductionRedirectUris : entraDevelopmentRedirectUris)
+param workloadIdentityName string = 'workplace-runtime'
+@description('Object ID for GitHub Actions OIDC deployment service principal. Required to push application images to ACR.')
+param deploymentPrincipalObjectId string = ''
+@description('Object ID for the one-time GitHub Actions foundation/bootstrap principal.')
+param provisionPrincipalObjectId string = ''
 
 module identity 'modules/identity.bicep' = {
-  name: 'identity'
-  params: {
-    identityName: workloadIdentityName
-    location: location
-  }
+  name: 'workload-identity'
+  params: { identityName: workloadIdentityName, location: location }
 }
 
-module containerregistry 'modules/container-registry.bicep' = {
-  name: 'containerregistry'
+module registry 'modules/container-registry.bicep' = {
+  name: 'container-registry'
   params: {
     environment: environment
     location: location
     registryName: containerRegistryName
     workloadIdentityPrincipalId: identity.outputs.principalId
+    deploymentPrincipalObjectId: deploymentPrincipalObjectId
+    provisionPrincipalObjectId: provisionPrincipalObjectId
   }
 }
 
-module keyvault 'modules/key-vault.bicep' = {
-  name: 'keyvault'
+module keyVault 'modules/key-vault.bicep' = {
+  name: 'key-vault'
   params: {
     environment: environment
     keyVaultName: keyVaultName
     location: location
     tenantId: subscription().tenantId
     workloadIdentityPrincipalId: identity.outputs.principalId
+    provisionPrincipalObjectId: provisionPrincipalObjectId
   }
 }
 
@@ -127,7 +69,7 @@ module monitoring 'modules/monitoring.bicep' = {
 }
 
 module postgres 'modules/postgres.bicep' = {
-  name: 'postgres'
+  name: 'private-postgres'
   params: {
     environment: environment
     location: location
@@ -142,31 +84,47 @@ module postgres 'modules/postgres.bicep' = {
   }
 }
 
-module containerapps 'modules/container-apps.bicep' = {
-  name: 'containerapps'
+module dataProtection 'modules/data-protection-storage.bicep' = {
+  name: 'shared-data-protection-storage'
   params: {
-    allowedIngressHostnames: allowedIngressHostnames
-    containerAppEnvironmentName: containerAppEnvironmentName
-    containerAppName: containerAppName
-    containerAppsSubnetId: postgres.outputs.containerAppsSubnetId
-    entraAudience: selectedEntraAudience
-    entraClientId: selectedEntraClientId
-    entraRedirectUri: selectedEntraRedirectUri
     environment: environment
-    imageRepository: imageRepository
-    imageTag: imageTag
-    keyVaultUri: keyvault.outputs.vaultUri
     location: location
-    logAnalyticsCustomerId: monitoring.outputs.workspaceCustomerId
-    logAnalyticsWorkspaceResourceId: monitoring.outputs.workspaceResourceId
-    logAnalyticsSharedKey: monitoring.outputs.workspaceSharedKey
-    registryLoginServer: containerregistry.outputs.loginServer
-    workloadIdentityResourceId: identity.outputs.resourceId
+    storageAccountName: containerAppsStorageAccountName
+    workloadIdentityPrincipalId: identity.outputs.principalId
+    allowedSubnetId: postgres.outputs.containerAppsSubnetId
   }
 }
 
-output containerAppResourceId string = containerapps.outputs.containerAppResourceId
-output containerAppName string = containerapps.outputs.containerAppName
-output containerAppHost string = containerapps.outputs.latestRevisionFqdn
-output keyVaultResourceId string = keyvault.outputs.resourceId
-output postgresServerFqdn string = postgres.outputs.serverFqdn
+module containerAppsEnvironment 'modules/container-app-environment.bicep' = {
+  name: 'container-apps-environment'
+  params: {
+    containerAppEnvironmentName: containerAppEnvironmentName
+    containerAppsSubnetId: postgres.outputs.containerAppsSubnetId
+    environment: environment
+    location: location
+    logAnalyticsCustomerId: monitoring.outputs.workspaceCustomerId
+    logAnalyticsSharedKey: monitoring.outputs.workspaceSharedKey
+  }
+}
+
+output acrLoginServer string = registry.outputs.loginServer
+output acrResourceId string = registry.outputs.resourceId
+output keyVaultUri string = keyVault.outputs.vaultUri
+output keyVaultResourceId string = keyVault.outputs.resourceId
+output postgresFqdn string = postgres.outputs.serverFqdn
+output postgresDatabaseName string = postgres.outputs.databaseName
+output postgresAdminLogin string = postgresAdminLogin
+output workloadIdentityResourceId string = identity.outputs.resourceId
+output workloadIdentityClientId string = identity.outputs.clientId
+output workloadIdentityPrincipalId string = identity.outputs.principalId
+output containerAppsEnvironmentResourceId string = containerAppsEnvironment.outputs.resourceId
+output containerAppsEnvironmentName string = containerAppsEnvironment.outputs.name
+output containerAppsDefaultDomain string = containerAppsEnvironment.outputs.defaultDomain
+output containerAppsStaticIp string = containerAppsEnvironment.outputs.staticIp
+output containerAppsSubnetId string = postgres.outputs.containerAppsSubnetId
+output dataProtectionStorageAccountName string = dataProtection.outputs.storageAccountName
+output dataProtectionBlobUri string = dataProtection.outputs.blobUri
+output dataProtectionKeyIdentifier string = keyVault.outputs.dataProtectionKeyIdentifier
+output logAnalyticsWorkspaceResourceId string = monitoring.outputs.workspaceResourceId
+output logAnalyticsWorkspaceCustomerId string = monitoring.outputs.workspaceCustomerId
+output applicationInsightsResourceId string = monitoring.outputs.applicationInsightsResourceId

@@ -41,7 +41,7 @@ Record only the corresponding object IDs and role assignment/template IDs. Do no
 
 ### Onboarding
 
-Use `OnboardingScenario.Steps` to provision/select the workspace, create the one-time invitation, redeem it as the customer administrator, start delegated consent, and check `/api/workspaces/current/connection-health/check`. The expected healthy state is `connected`. Remove consent manually in Entra and repeat the read-only check; the expected state is `consent_revoked`. The scenario must never claim connected after consent is removed.
+Use `OnboardingScenario.Steps` to call the Atea-only `/api/platform/workspaces/onboard` endpoint once with the test tenant ID, workspace name, and nominated first-admin sign-in address. It creates the workspace and first-admin invitation atomically. Copy the one-time invitation URL once, redeem it using the nominated admin's federated Entra sign-in, then confirm the workspace setup view loads even before Graph consent is configured. Start delegated consent and check `/api/workspaces/current/connection-health/check`; the expected healthy state is `connected`. Remove consent manually in Entra and repeat the read-only check; the expected state is `consent_revoked`. The scenario must never claim connected after consent is removed.
 
 The invitation URL/nonce is a credential. Copy it once through the approved secure channel, use it once, and do not save it in evidence.
 

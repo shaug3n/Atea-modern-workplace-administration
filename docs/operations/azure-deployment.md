@@ -1,80 +1,129 @@
 # Azure deployment runbook
 
-This runbook covers the v1 single-region Azure foundation for the combined ASP.NET Core API and React SPA image. The declarative entrypoint is [`infra/main.bicep`](../../infra/main.bicep); it creates ACR, private PostgreSQL Flexible Server networking, Key Vault, Log Analytics/Application Insights, a managed Container Apps environment, HTTPS ingress and a revision-bounded app.
+This runbook deploys the application to a disposable personal Azure test subscription. It does not deploy to Atea's tenant or make the service customer-ready. Wait for the Daybreak security review and resolve its findings before inviting external customers or enabling privileged operations.
 
-## Provisioning prerequisites
+The deployment is staged: an operator provisions a private foundation and database roles, configures Entra and GitHub, then dispatches a signed image release. Atea production requires a separate approval, subscription, Entra registration, secrets, backup/restore design, and operational review.
 
-- An Azure subscription and non-production resource group in an Atea-approved EU/EEA region. `westeurope` is the safe development default.
-- Azure CLI with the Bicep extension, Docker, and permission to create the listed resources and role assignments.
-- A federated GitHub Actions identity with `AcrPush`, `Contributor` on the deployment resource group, and permission to start the approved migration job.
-- Two separate Entra app registrations: development and production. Register only exact redirect URIs; wildcard redirect URIs are forbidden. The production default is `https://workplace.atea.com/auth/callback`.
-- DNS control for every hostname in `allowedIngressHostnames`. Azure Container Apps managed certificates use CNAME validation.
+## Before spending credits
 
-Before the first app deployment, create the resource group and put the PostgreSQL administrator password in the CI secret store. Bootstrap the Key Vault module first, seed `workplace-db` and `consent-signing-key` through the approved secret-management process, then deploy the full template with the password supplied at invocation time. The Container App references those secret names at creation time, so they must exist before the first app revision is provisioned. Never write the password or secret values to a parameter file or shell trace.
+1. Confirm the selected Azure subscription and directory are the personal test tenant, not an Atea subscription. The workflows check the subscription and tenant IDs before applying changes.
+2. In Azure Portal, create an **empty resource group** in the selected test subscription: **Resource groups → Create**, choose the subscription, enter a name, select the approved region, and select **Review + create**. The dev example uses `westeurope`. Record the exact name as `AZURE_RESOURCE_GROUP`; the GitHub deployment identities receive roles scoped to this existing group. The workflow verifies its location and creates resources *inside* it.
+3. Open **Cost Management + Billing → Budgets** and create a monthly budget scoped to the dedicated subscription or resource group, with alerts such as 50%, 75%, and 90% to an inbox you monitor. A budget is an alert, **not** a spending cap; Azure credits do not prevent charges if services outlive those credits. Review current regional pricing and quota availability before continuing.
+4. Choose unique Container Registry, Key Vault, storage, and PostgreSQL names in `infra/parameters/dev.json`. Do not deploy the example names unchanged if they are already in use.
+5. Keep the workflow inputs explicit. The foundation workflow creates billable resources. Running `what-if` is only a preview; confirming the workflow continues into resource creation.
 
-## Local validation and provisioning
+## Prerequisites
 
-Run the credential-free contract check from the repository root:
+- A personal Azure subscription with enough quota for Azure Container Apps, Container Registry, Key Vault, Storage, Log Analytics, and private Azure Database for PostgreSQL Flexible Server.
+- A Microsoft Entra test tenant and (for both customer and platform-admin paths) three app registrations: one API app registration exposing delegated `access_as_user` and `platform.admin` scopes; one customer SPA registration granted `access_as_user`; and a separate Atea platform-admin SPA registration granted `platform.admin`. Configure the API's Microsoft Graph delegated permissions and tenant consent for the modules being tested.
+- Two GitHub OIDC identities. The provision identity needs a credential for the GitHub `test` environment; the release identity needs **two** credentials, one for `test` and another for `test-promotion`. Use audience `api://AzureADTokenExchange` for each. Do not create client secrets for GitHub Actions. The provision identity needs Contributor and temporary User Access Administrator at the existing dedicated resource-group scope to create foundation resources and narrowly scoped role assignments. The release identity needs Contributor at that resource group; the foundation grants it ACR Push. The provision identity alone receives Key Vault Secrets Officer on the dedicated test vault so it can seed values; it is not used for ordinary releases. Remove temporary User Access Administrator from the provision identity after foundation setup and retain it only when an approved foundation reprovision is necessary. Keep both identities' access limited to this test resource group.
+- Docker, GitHub Actions, and the workflow files from this repository.
 
-```bash
-python3 infra/tests/validate_contract.py
-```
+In Entra, create both single-tenant GitHub OIDC app registrations/service principals. Under each app registration, open **Certificates & secrets → Federated credentials → Add credential → GitHub Actions deploying Azure resources**; choose the repository owner/name and entity type **Environment**. Add `test` to both apps and `test-promotion` to the release app. For the name-based GitHub OIDC format, the subjects end in `repo:<owner>/<repo>:environment:test` and `repo:<owner>/<repo>:environment:test-promotion`, respectively. Repositories using GitHub's newer immutable subject format include the numeric owner and repository IDs; confirm the generated subject matches the token format your repository uses rather than assuming the name-based form ([GitHub OIDC reference](https://docs.github.com/en/actions/reference/security/oidc)). A personal GitHub account can be the repository owner; if Entra asks for Organization ID or Repository ID, use the numeric `id` fields from GitHub's user and repository API responses, not the Entra tenant ID or `node_id`. Copy each app's **client ID** into the matching GitHub environment secret, and its service principal's **object ID** into the matching repository variable. Assign the provision principal Contributor and temporary User Access Administrator on the disposable resource group; assign the release principal Contributor there. Do not add either identity to the Atea platform-operator allowlist.
 
-When Azure CLI is available, compile and preview the template without deploying:
+The Container Apps candidate revision is reached through a stable revision-label URL that has a unique ACA hostname. Revision labels provide a stable URL pinned to one revision, independent of primary traffic weighting ([Microsoft revision docs](https://learn.microsoft.com/en-us/azure/container-apps/revisions-manage)). Ingress allow rules limit the app to explicitly listed IPv4 ranges ([Microsoft IP restrictions](https://learn.microsoft.com/en-us/azure/container-apps/ip-restrictions)). Add the following **exact** callback URLs to their corresponding Entra SPA registrations before the first application release:
 
-```bash
-az bicep build --file infra/main.bicep
-az deployment group what-if \
-  --resource-group "$AZURE_RESOURCE_GROUP" \
-  --template-file infra/main.bicep \
-  --parameters @infra/parameters/dev.json \
-  imageTag="$GIT_SHA" \
-  postgresAdminPassword="$POSTGRES_ADMIN_PASSWORD"
-```
+| SPA registration | Primary host callback | Candidate host callback |
+| --- | --- | --- |
+| Customer SPA | `https://<app>.<environment-domain>/auth/callback` | `https://<app>---candidate.<environment-domain>/auth/callback` |
+| Platform admin SPA | `https://<app>.<environment-domain>/admin/auth/callback` | `https://<app>---candidate.<environment-domain>/admin/auth/callback` |
 
-`postgresAdminPassword` is a secure parameter and is intentionally absent from both checked-in parameter examples. The Key Vault secrets `workplace-db` and `consent-signing-key` must be created through the secret-management process before the app revision is made customer-facing.
+Use the environment's actual `defaultDomain` output, including its unique environment and region components. Do not use wildcard redirect URIs. The SPA computes its sign-in callback from the current origin, which makes candidate-host sign-in return to the candidate revision. The API consent callback remains the primary host at `/onboarding/consent/callback`. If you configure a custom domain, register its exact callbacks as well and validate the ACA certificate/DNS process separately.
+
+## GitHub configuration
+
+Create the `test` environment and protect it with required reviewers for foundation/deployment operations. Create a separate `test-promotion` environment with a required reviewer; approving this job is the explicit human confirmation that the candidate was opened, signed in, and inspected before customer traffic is routed.
+
+Add the non-secret values below as **repository variables**. The `build-test` job has no GitHub Environment, so setting SPA build values only on `test` would silently fall back to placeholders. These repository variables are visible to both protected deploy jobs:
+
+- `AZURE_RESOURCE_GROUP`, `AZURE_LOCATION`, `AZURE_ACR_NAME`, `AZURE_KEY_VAULT_NAME`, `AZURE_CONTAINER_APP_NAME`, `AZURE_CA_ENVIRONMENT_NAME`.
+- `AZURE_MIGRATION_JOB_NAME`, exactly `<AZURE_CONTAINER_APP_NAME>-migration`.
+- `AZURE_DEPLOYMENT_PRINCIPAL_OBJECT_ID` and `AZURE_PROVISION_PRINCIPAL_OBJECT_ID`: the OIDC service principals' **object IDs**, used to grant ACR Push and provision-only Key Vault write access.
+- `AZURE_APP_PUBLIC_URL`: exact HTTPS primary host, `https://<app>.<environment-domain>` (no trailing slash).
+- `AZURE_SMOKE_TEST_SOURCE_CIDR`: your test operator's current public IPv4 CIDR (usually `<address>/32`). Do not use `0.0.0.0/0`. The app's ACA ingress allows only this range; CI temporarily adds its runner egress IP during health probes and removes that rule afterwards. If your ISP/VPN address changes, update the variable and rerun deployment before opening the hosted URL.
+- `PLATFORM_HOME_TENANT_ID`, `PLATFORM_ADMIN_OBJECT_IDS_JSON` (a JSON array of Atea/test operator object IDs).
+- `ENTRA_API_CLIENT_ID`, `ENTRA_API_AUDIENCE`, `CUSTOMER_SPA_CLIENT_ID`, `CUSTOMER_API_SCOPE`, `CUSTOMER_ENTRA_AUTHORITY`, `PLATFORM_ADMIN_CLIENT_ID`, and `PLATFORM_ADMIN_SCOPE`.
+
+Add these GitHub environment secrets (the `test` environment needs the provision and deploy credentials; `test-promotion` needs only the deploy credential plus tenant/subscription):
+
+- `AZURE_DEPLOY_CLIENT_ID`, `AZURE_PROVISION_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID` for OIDC login. Duplicate the deploy client ID and tenant/subscription secrets into both protected GitHub environments (`test` and `test-promotion`); the provision client ID is needed only in `test`. The tenant must match the selected subscription and the platform home tenant used by the test deployment.
+- `POSTGRES_ADMIN_PASSWORD`, a unique high-entropy password for the one-time database role bootstrap. This is never passed into the application container.
+
+Never put API client secrets, DB passwords, signing keys, or connection strings in GitHub variables, source files, workflow outputs, or checked-in parameter files. Keep the API app-registration client secret ready to enter directly into Key Vault after the foundation has been provisioned.
+
+## Provision the foundation and database
+
+1. Run locally first: `python3 infra/tests/validate_contract.py`. Compile `infra/main.bicep`, `infra/application.bicep`, and `infra/database-bootstrap.bicep` with `az bicep build`.
+2. Confirm the empty resource group exists, the provision identity has the resource-group roles above, and the workflow's `az group create` step has been replaced with a read-only existence check. In GitHub Actions, manually run **Provision test foundation**. Check `confirm_test_subscription` only after verifying the selected disposable test subscription. The job performs a Bicep what-if, then provisions billable resources inside the existing group.
+3. The workflow uses a short-lived private Container Apps Job to connect to PostgreSQL inside the VNet, create restricted runtime and migration database roles, and put the resulting connection strings/signing keys in Key Vault. It deletes the temporary job and bootstrap-only Key Vault secrets on exit. If the workflow is interrupted, inspect and remove the named `*-db-bootstrap` job and `postgres-bootstrap-*` secrets after diagnosis.
+4. In Azure Portal, open the test Key Vault's **Secrets** page and create `api-client-secret` with the API app registration's client secret. The one-time provision identity writes bootstrap values and connection strings; the release identity never reads or writes secret contents. Confirm the other secrets exist: `workplace-db`, `workplace-migration-db`, `consent-signing-key`, and `continuation-signing-key`. The bootstrap job creates the latter four automatically. Secret **names** are fixed; never paste values into GitHub issues or chat. After provisioning, remove User Access Administrator from the provision principal; retain its vault-scoped Secrets Officer assignment only while bootstrap/recovery workflows need it.
+5. Retrieve the Container Apps environment's `defaultDomain` and construct the primary and candidate URLs. For example:
+
+   ```bash
+   az deployment group show --name workplace-foundation --resource-group "$AZURE_RESOURCE_GROUP" \
+     --query properties.outputs.containerAppsDefaultDomain.value -o tsv
+   ```
+
+   Set `<app>.<defaultDomain>` as the primary URL and `<app>---candidate.<defaultDomain>` as the stable candidate URL. Finish registering both host callbacks in Entra before releasing the application.
+
+If ACR login fails immediately after provisioning, allow role-assignment propagation and retry the workflow. The bootstrap workflow retries for a bounded period and stops rather than printing credentials.
+
+## Deploy and validate a release
+
+1. Confirm the release app has federated credentials for both `test` and `test-promotion`. Then run **Validate and deploy** manually and check `confirm_test_tenant` only after verifying the test subscription, tenant, and absence of customer data. PR/push runs build, test, scan, and compile but do not deploy.
+2. The deploy job verifies the active subscription, Entra tenant, generated app hostname, migration-job name, and required public configuration. The release identity deliberately cannot read Key Vault secret values; missing secret references cause readiness/startup to fail before the candidate can be promoted. It builds and pushes an immutable image tagged by commit SHA.
+3. The dedicated migration job runs `dotnet Atea.UnifiedWorkplace.Api.dll --migrate` against the migration-only DB connection. If it fails, candidate deployment stops and existing traffic remains on its current revision. Review logs before retrying; do not bypass a failed migration.
+4. The new revision receives the stable `candidate` label and remains out of primary traffic. Automated checks validate `/health`, `/health/ready`, and that unauthenticated `/api/platform/session` returns 401.
+5. Open the candidate URL printed in the GitHub Actions summary **from the network matching `AZURE_SMOKE_TEST_SOURCE_CIDR`**. Sign in with the nominated test-tenant admin, verify the workspace and intended module paths, then approve `test-promotion`. Do not approve if the candidate cannot sign in or complete the smoke checks. Candidate sign-in requires the exact candidate callback URI above.
+6. The promotion job routes the primary host to the approved candidate. A post-route readiness failure triggers a traffic rollback to the previous revision.
+
+The workflow's unauthenticated HTTP checks do not prove real Entra, Graph, PIM, consent, or tenant authorization behavior. Perform the human test-tenant check for each relevant flow and record any permissions/consent that still need configuration. The API consent callback uses the primary host; test tenant consent/onboarding separately on the primary URL after the first deployment if its callback flow must be exercised.
 
 ## Configuration mapping
 
-| Local contract | Azure source |
+| Local configuration | Azure source |
 | --- | --- |
-| `ConnectionStrings__WorkplaceDb` | Key Vault secret `workplace-db`, referenced by Container Apps managed identity |
-| `Onboarding__ConsentSigningKey` | Key Vault secret `consent-signing-key`, referenced by Container Apps managed identity |
-| `AzureAd__ClientId` / `AzureAd__Audience` | Selected development or production Entra parameters |
-| `Onboarding__PublicBaseUrl` | First exact allowed ingress hostname with `https://` |
-| `Onboarding__ConsentRedirectUri` | First exact redirect URI from the selected Entra registration |
-| `ASPNETCORE_URLS` | `http://+:8080` behind controlled HTTPS ingress |
-| `GET /health` | Startup, readiness and liveness probes |
+| `ConnectionStrings__WorkplaceDb` | Key Vault secret `workplace-db`, read by the workload's managed identity |
+| `ConnectionStrings__WorkplaceMigrationDb` | Key Vault secret `workplace-migration-db`, consumed only by the migration job |
+| `Onboarding__ConsentSigningKey` | Key Vault secret `consent-signing-key` |
+| `Users__ContinuationSigningKey` | Key Vault secret `continuation-signing-key` |
+| `AzureAd__ClientSecret` | Key Vault secret `api-client-secret` |
+| `AzureAd__ClientId` / `AzureAd__Audience` | API Entra app ID and configured audience |
+| `PlatformAuthorization__HomeTenantId` / `__AdminObjectIds__N` | Test platform tenant and explicit operator object IDs |
+| `Onboarding__PublicBaseUrl` | Primary public URL |
+| `Onboarding__ConsentRedirectUri` | Primary URL plus `/onboarding/consent/callback` |
+| `HostedAuth__CustomerRedirectUri` / `HostedAuth__PlatformAdminRedirectUri` | Runtime validation copies of the primary SPA callback URLs |
+| `DataProtection__BlobUri` / `DataProtection__KeyIdentifier` | Shared Blob key ring and Key Vault wrapping key, accessed via managed identity |
+| `ASPNETCORE_URLS` | `http://+:8080` behind HTTPS ingress |
+| `/health` / `/health/ready` | Liveness and bounded database readiness probes; Graph is not part of either |
 
-The same Dockerfile builds the frontend and publishes the API in both profiles. The deployment workflow supplies the four public `VITE_ENTRA_*` build arguments so the static SPA uses the selected hosted Entra registration; local development continues to use its local Vite environment. Only managed services and configuration sources differ; the API still uses the existing PostgreSQL migrations and port 8080 contract.
-
-## Deployment stages
-
-`.github/workflows/validate-and-deploy.yml` runs build/test, dependency and security checks, local infrastructure validation, Bicep compilation, builds and pushes the immutable image tag with the hosted SPA configuration, runs non-production what-if, updates and waits for the version-pinned migration job, deploys the revision, performs a `/health` smoke test, and routes traffic only as the final step.
-
-The migration job is deliberately an explicit operational gate. It must use the approved migration image/command for the deployed application version and complete successfully before the revision is routed. The current API applies migrations only in its Development startup profile, so production migration command ownership must be agreed before enabling a production pipeline environment; this foundation does not claim production readiness by itself.
+Both local and Azure use the same Dockerfile, API migrations, and HTTP port. Azure runs in `Staging`, not `Development`, so local password administration is disabled. Only the infrastructure/configuration source changes.
 
 ## Secret rotation
 
-Rotate `workplace-db` and `consent-signing-key` in Key Vault, wait for the new version to be available, then restart or redeploy the affected revision. Do not put secret values in GitHub Actions parameters, Bicep files, Container App plain environment values, or log output. The managed identity needs only the Key Vault Secrets User role assigned by the module.
+Rotate `workplace-db`, `workplace-migration-db`, `api-client-secret`, `consent-signing-key`, or `continuation-signing-key` through Key Vault and the approved operations process. Restart/redeploy affected revisions so references refresh. Do not put values into Bicep parameters, Container Apps plaintext settings, workflow logs, or source. The workload identity has only the secret and Data Protection permissions it needs.
 
-## Rollback
+## Rollback and migrations
 
-Container Apps runs in multiple revision mode. If a smoke test or post-deploy check fails, leave customer traffic on the previous revision (the workflow routes traffic only after smoke success). For an already-routed revision, route 100% back to the last known-good revision with `az containerapp ingress traffic set`, then investigate logs before retrying the immutable image tag.
+The application runs in ACA multiple-revision mode. For a previously promoted release, return 100% to the last known-good revision:
 
-## Migration procedure
+```bash
+az containerapp ingress traffic set \
+  --name "$AZURE_CONTAINER_APP_NAME" \
+  --resource-group "$AZURE_RESOURCE_GROUP" \
+  --revision-weight "<known-good-revision>=100" "<bad-revision>=0"
+```
 
-1. Build and scan the exact immutable image tag.
-2. Run the non-production what-if and confirm only expected changes.
-3. Start the approved migration job and wait for successful completion.
-4. Deploy the revision with the same image tag.
-5. Smoke-test `/health` on the new revision hostname.
-6. Route traffic and verify application, audit and alert signals.
+The workflow keeps the current revision on primary traffic until candidate health and human smoke gates pass. Database migrations are not automatically reversed by app rollback; migrations must be additive/backward compatible, and restore procedures must be tested before production. Run no unreviewed destructive SQL in a release.
 
-Never run an unreviewed destructive SQL script as part of deployment. PostgreSQL is private-networked through the shared VNet and delegated subnet.
+## Alert ownership, cost, retention, and cleanup
 
-## Alert ownership and log retention
+The platform operator owns Azure availability, revision failures, Key Vault references, PostgreSQL health, and deployment alerts. The application owner owns authn/authz, Graph consent/PIM, audit, and tenant-isolation alerts. The dev Log Analytics workspace retains 30 days; production example uses 90 days. Confirm data retention with the security/privacy owner before real customer use.
 
-The Atea platform operations owner owns Container Apps availability, revision failures, Key Vault reference failures, PostgreSQL health and deployment alerts. The application owner owns API authorization, Graph consent/PIM and data-isolation alerts. Log Analytics retention is 30 days for dev and 90 days for prod; Application Insights is workspace-based. Extend retention only through an approved data-retention decision.
+Review actual Azure Cost Management charges during the test. Budgets notify but do not stop resources or cap charges. To stop ongoing spend, use Azure Portal to inspect the dedicated resource group and delete the test deployment when no longer needed; this removes all data and is destructive. Export any required demo evidence/backups first and validate deletion targets carefully.
 
-No Azure deployment or live test-tenant validation is performed by the local validation command. A deployed URL and real-tenant evidence are still required before production readiness can be claimed.
+## Production boundary and handoff to Atea
+
+Do not treat a successful test deployment as production-ready. Before any external customer access, wait for the Daybreak security review, remediate findings, complete a formal threat/security review, test backup restore and incident response, define retention/support/on-call, check regional availability and costs, and obtain Atea change approval. For later transfer, create separate Atea-owned subscriptions, workload identities, Entra registrations, Key Vault secrets, storage encryption keys, database, DNS/certificates, and GitHub OIDC environment. Never carry test-tenant credentials or keys into Atea. Import/migrate only explicitly approved test data; validate tenant IDs, audit history, and owner access before opening customer access.
+
+No Azure resource has been deployed by local validation. A live subscription rollout, signed-in browser verification, and Daybreak review remain external steps.

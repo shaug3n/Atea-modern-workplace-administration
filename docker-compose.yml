@@ -19,11 +19,25 @@ services:
       Onboarding__ConsentRedirectUri: ${Onboarding__ConsentRedirectUri:-http://localhost:5173/onboarding/consent/callback}
       Onboarding__ConsentSigningKey: ${Onboarding__ConsentSigningKey:-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=}
       PlatformAuthorization__RequiredScope: ${PlatformAuthorization__RequiredScope:-platform.admin}
+      PlatformAuthorization__HomeTenantId: ${PlatformAuthorization__HomeTenantId:-}
+      PlatformAuthorization__AdminObjectIds__0: ${PlatformAuthorization__AdminObjectIds__0:-}
     ports: ["8080:8080"]
     depends_on:
       postgres: { condition: service_healthy }
   web:
-    build: { context: ., target: web }
+    build:
+      context: .
+      target: web
+      args:
+        VITE_ENTRA_CLIENT_ID: ${VITE_ENTRA_CLIENT_ID:-}
+        VITE_ENTRA_API_SCOPE: ${VITE_ENTRA_API_SCOPE:-}
+        VITE_ENTRA_AUTHORITY: ${VITE_ENTRA_AUTHORITY:-}
+        VITE_ENTRA_REDIRECT_URI: ${VITE_ENTRA_REDIRECT_URI:-}
+        VITE_ADMIN_AUTH_MODE: ${VITE_ADMIN_AUTH_MODE:-local}
+        VITE_PLATFORM_ADMIN_CLIENT_ID: ${VITE_PLATFORM_ADMIN_CLIENT_ID:-}
+        VITE_PLATFORM_ADMIN_AUTHORITY: ${VITE_PLATFORM_ADMIN_AUTHORITY:-}
+        VITE_PLATFORM_ADMIN_SCOPE: ${VITE_PLATFORM_ADMIN_SCOPE:-}
+        VITE_PLATFORM_ADMIN_REDIRECT_URI: ${VITE_PLATFORM_ADMIN_REDIRECT_URI:-}
     command: ["npm", "run", "dev", "--", "--host", "0.0.0.0"]
     environment:
       VITE_API_PROXY_TARGET: http://api:8080
@@ -31,6 +45,11 @@ services:
       VITE_ENTRA_AUTHORITY: ${VITE_ENTRA_AUTHORITY:-}
       VITE_ENTRA_API_SCOPE: ${VITE_ENTRA_API_SCOPE:-}
       VITE_ENTRA_REDIRECT_URI: ${VITE_ENTRA_REDIRECT_URI:-}
+      VITE_ADMIN_AUTH_MODE: ${VITE_ADMIN_AUTH_MODE:-local}
+      VITE_PLATFORM_ADMIN_CLIENT_ID: ${VITE_PLATFORM_ADMIN_CLIENT_ID:-}
+      VITE_PLATFORM_ADMIN_AUTHORITY: ${VITE_PLATFORM_ADMIN_AUTHORITY:-}
+      VITE_PLATFORM_ADMIN_SCOPE: ${VITE_PLATFORM_ADMIN_SCOPE:-}
+      VITE_PLATFORM_ADMIN_REDIRECT_URI: ${VITE_PLATFORM_ADMIN_REDIRECT_URI:-}
     ports: ["5173:5173"]
   postgres:
     image: postgres:16-alpine

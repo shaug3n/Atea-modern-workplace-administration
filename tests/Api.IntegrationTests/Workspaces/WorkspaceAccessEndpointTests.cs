@@ -32,7 +32,7 @@ public sealed class WorkspaceAccessEndpointTests : IAsyncLifetime
     private static readonly Guid MemberObjectId = Guid.Parse("33333333-3333-3333-3333-333333333333");
     private static readonly Guid InviteeObjectId = Guid.Parse("44444444-4444-4444-4444-444444444444");
     private static readonly Guid OtherTenantId = Guid.Parse("99999999-9999-9999-9999-999999999999");
-    private readonly PostgreSqlContainer postgres = new PostgreSqlBuilder().Build();
+    private readonly PostgreSqlContainer postgres = new PostgreSqlBuilder("postgres:16-alpine").Build();
     private WebApplicationFactory<Program> factory = null!;
 
     public async Task InitializeAsync()

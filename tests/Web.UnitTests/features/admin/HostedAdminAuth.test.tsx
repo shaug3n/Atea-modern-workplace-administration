@@ -39,7 +39,7 @@ describe('HostedAdminAuth', () => {
 
     expect(msal.instance.loginRedirect).toHaveBeenCalledWith({
       scopes: ['api://platform-api/access_as_user'],
-      redirectUri: 'http://localhost:5173/admin/auth/callback',
+      redirectUri: `${window.location.origin}/admin/auth/callback`,
     });
   });
 

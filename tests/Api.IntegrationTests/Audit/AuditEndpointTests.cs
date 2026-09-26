@@ -21,7 +21,7 @@ namespace Atea.UnifiedWorkplace.Api.IntegrationTests.Audit;
 
 public sealed class AuditEndpointTests : IAsyncLifetime
 {
-    private readonly PostgreSqlContainer postgres = new PostgreSqlBuilder().Build();
+    private readonly PostgreSqlContainer postgres = new PostgreSqlBuilder("postgres:16-alpine").Build();
 
     public async Task InitializeAsync()
     {

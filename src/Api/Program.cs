@@ -22,9 +22,11 @@ using Atea.UnifiedWorkplace.Api.Features.Identity;
 using Atea.UnifiedWorkplace.Api.Features.Exchange;
 using Atea.UnifiedWorkplace.Api.Features.Exports;
 using Atea.UnifiedWorkplace.Api.Infrastructure.Http;
+using Atea.UnifiedWorkplace.Api.Infrastructure.Configuration;
 using Microsoft.Extensions.Options;
 
 var builder = WebApplication.CreateBuilder(args);
+builder.Services.AddHostedService<HostedConfigurationValidationService>();
 builder.Services.AddOptions<OnboardingOptions>()
     .Bind(builder.Configuration.GetSection("Onboarding"))
     .Validate(options =>
@@ -70,7 +72,7 @@ builder.Services.AddScoped<IUserCommandService, UserCommandService>();
 builder.Services.AddScoped<IIdempotencyService, IdempotencyService>();
 builder.Services.AddSingleton<ICorrelationContextAccessor, CorrelationContextAccessor>();
 builder.Services.AddScoped<IAuditWriter, AuditWriter>();
-builder.Services.AddDataProtection();
+builder.Services.AddSharedDataProtection(builder.Configuration, builder.Environment);
 builder.Services.AddSingleton<AuditContinuationTokenProtector>();
 builder.Services.AddSingleton(_ => new UserContinuationTokenProtector(
     UserContinuationConfiguration.ResolveSigningKey(builder.Configuration, builder.Environment.IsDevelopment())));
@@ -122,6 +124,12 @@ builder.Services.Configure<JwtBearerOptions>(JwtBearerDefaults.AuthenticationSch
 });
 
 var app = builder.Build();
+if (args.Length == 1 && string.Equals(args[0], "--migrate", StringComparison.Ordinal))
+{
+    Environment.ExitCode = await DatabaseMigrationRunner.RunAsync(app.Services, CancellationToken.None);
+}
+else
+{
 if (app.Environment.IsDevelopment() && !string.IsNullOrWhiteSpace(builder.Configuration.GetConnectionString("WorkplaceDb")))
 {
     await using var scope = app.Services.CreateAsyncScope();
@@ -130,6 +138,8 @@ if (app.Environment.IsDevelopment() && !string.IsNullOrWhiteSpace(builder.Config
 app.UseDefaultFiles();
 app.UseStaticFiles();
 app.MapGet("/health", () => Results.Json(new { status = "ok" })).AllowAnonymous();
+app.MapGet("/health/ready", (WorkplaceDbContext database, CancellationToken cancellationToken) =>
+    HealthEndpoints.CheckDatabaseReadinessAsync(database.Database.CanConnectAsync, cancellationToken)).AllowAnonymous();
 app.UseMiddleware<CorrelationMiddleware>();
 app.UseMiddleware<ApiProblemDetailsMiddleware>();
 app.UsePlatformAuthorization();
@@ -194,6 +204,7 @@ app.MapUserSessionCommandEndpoints();
 app.MapExchangeEndpoints();
 app.MapFallbackToFile("index.html");
 
-app.Run();
+await app.RunAsync();
+}
 
 public partial class Program { }

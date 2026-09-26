@@ -139,23 +139,17 @@ public static class OnboardingScenario
     public static IReadOnlyList<ManualScenarioStep> Steps { get; } =
     [
         new(
-            "Provision or select the workspace",
+            "Create the workspace and first-admin invitation atomically",
             "POST",
-            "/api/platform/workspaces",
-            "201 Created, or 409 workspace_already_exists when the recorded workspace object ID is reused",
-            "Run only with the platform-admin token in the dedicated test tenant. Never point this at production."),
-        new(
-            "Create the one-time invitation",
-            "POST",
-            "/api/platform/workspaces/{workspaceId}/invitations",
-            "200 with an invitation URL; copy it once through the approved secure channel and do not log it",
-            "The invitation nonce is a credential. Keep it transient; do not put it in evidence or source control."),
+            "/api/platform/workspaces/onboard",
+            "201 Created with workspace metadata and a one-time first-admin invitation URL; duplicate tenant returns a conflict",
+            "Run only with the platform-admin token in the dedicated test tenant. The invitation nonce is a credential: copy once through the approved secure channel and never log it or put it in evidence."),
         new(
             "Redeem as the customer administrator",
             "POST",
             "/api/invitations/{nonce}/redeem",
-            "200 with status consent_required",
-            "Switch to the customer-admin session. The API must validate tenant, object ID, email match and nonce expiry."),
+            "200 with status consent_required and customer workspace setup available independently of Graph readiness",
+            "Switch to the nominated customer-admin Entra session. Redemption binds the invite to the authenticated tenant/object ID; the first admin receives workspace-owner access."),
         new(
             "Start delegated consent",
             "POST",

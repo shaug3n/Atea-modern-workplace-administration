@@ -27,7 +27,7 @@ namespace Atea.UnifiedWorkplace.Api.IntegrationTests.Security;
 
 public sealed class CrossTenantAccessTests : IAsyncLifetime
 {
-    private readonly PostgreSqlContainer postgres = new PostgreSqlBuilder().Build();
+    private readonly PostgreSqlContainer postgres = new PostgreSqlBuilder("postgres:16-alpine").Build();
 
     public async Task InitializeAsync()
     {
@@ -57,6 +57,19 @@ public sealed class CrossTenantAccessTests : IAsyncLifetime
         body.Should().Contain(TenantA.ToString());
         body.Should().Contain("alex@example.com");
         body.Should().NotContain("accessToken").And.NotContain("password");
+    }
+
+    [Fact]
+    public async Task Liveness_and_readiness_do_not_depend_on_graph_availability()
+    {
+        using var factory = CreateFactory(new TestIdentity(TenantA, UserA), useDatabase: true);
+        using var client = AuthenticatedClient(factory);
+
+        var liveness = await client.GetAsync("/health");
+        var readiness = await client.GetAsync("/health/ready");
+
+        liveness.StatusCode.Should().Be(HttpStatusCode.OK);
+        readiness.StatusCode.Should().Be(HttpStatusCode.OK);
     }
 
     [Fact]

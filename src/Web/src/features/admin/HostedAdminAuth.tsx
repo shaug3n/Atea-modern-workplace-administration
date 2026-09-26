@@ -9,7 +9,9 @@ const required = (value: string | undefined) => value?.trim() || null;
 const clientId = required(import.meta.env.VITE_PLATFORM_ADMIN_CLIENT_ID);
 const authority = required(import.meta.env.VITE_PLATFORM_ADMIN_AUTHORITY);
 const scope = required(import.meta.env.VITE_PLATFORM_ADMIN_SCOPE);
-const redirectUri = required(import.meta.env.VITE_PLATFORM_ADMIN_REDIRECT_URI);
+const redirectUri = typeof window === 'undefined'
+  ? required(import.meta.env.VITE_PLATFORM_ADMIN_REDIRECT_URI)
+  : `${window.location.origin}/admin/auth/callback`;
 
 type ViewState = 'loading' | 'signed-out' | 'authenticated' | 'unauthorized' | 'forbidden' | 'unavailable' | 'misconfigured';
 
