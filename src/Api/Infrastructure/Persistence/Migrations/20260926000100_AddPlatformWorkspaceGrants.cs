@@ -36,6 +36,11 @@ public sealed class AddPlatformWorkspaceGrants : Migration
             name: "IX_PlatformWorkspaceGrants_OperatorTenantId_OperatorObjectId",
             table: "PlatformWorkspaceGrants",
             columns: new[] { "OperatorTenantId", "OperatorObjectId" });
+
+        migrationBuilder.CreateIndex(
+            name: "IX_PlatformWorkspaceGrants_WorkspaceId",
+            table: "PlatformWorkspaceGrants",
+            column: "WorkspaceId");
     }
 
     protected override void Down(MigrationBuilder migrationBuilder) =>

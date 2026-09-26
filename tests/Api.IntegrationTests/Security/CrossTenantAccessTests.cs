@@ -419,15 +419,16 @@ public sealed class CrossTenantAccessTests : IAsyncLifetime
         protected override Task<AuthenticateResult> HandleAuthenticateAsync()
         {
             if (!Request.Headers.ContainsKey("Authorization")) return Task.FromResult(AuthenticateResult.NoResult());
-            var claims = new[]
+            var claims = new List<Claim>
             {
                 new Claim("oid", identity.ObjectId.ToString()),
                 new Claim("tid", identity.TenantId.ToString()),
-                new Claim("scp", Request.Headers["X-Test-Scopes"].ToString()),
                 new Claim("preferred_username", "alex@example.com"),
                 new Claim("name", "Alex Example"),
                 new Claim("aud", "api://atea-unified-workplace-api")
             };
+            if (Request.Headers.TryGetValue("X-Test-Scopes", out var scopes) && !string.IsNullOrWhiteSpace(scopes))
+                claims.Add(new Claim("scp", scopes.ToString()));
             return Task.FromResult(AuthenticateResult.Success(new AuthenticationTicket(new ClaimsPrincipal(new ClaimsIdentity(claims, Scheme)), Scheme)));
         }
     }

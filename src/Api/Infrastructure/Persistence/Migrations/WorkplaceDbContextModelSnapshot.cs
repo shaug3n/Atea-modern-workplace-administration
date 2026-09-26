@@ -263,6 +263,8 @@ namespace Atea.UnifiedWorkplace.Api.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("OperatorTenantId", "OperatorObjectId");
 
+                    b.HasIndex("WorkspaceId");
+
                     b.ToTable("PlatformWorkspaceGrants");
                 });
 
