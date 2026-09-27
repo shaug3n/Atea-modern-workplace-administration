@@ -285,7 +285,7 @@ jobs:
             revision="$(az containerapp show --name "$AZURE_CONTAINER_APP_NAME" --resource-group "$AZURE_RESOURCE_GROUP" --query properties.latestRevisionName -o tsv)"
           else
             az containerapp update --name "$AZURE_CONTAINER_APP_NAME" --resource-group "$AZURE_RESOURCE_GROUP" \
-              --image "$AZURE_ACR_NAME.azurecr.io/$IMAGE_REPOSITORY:$IMAGE_TAG" --revision-suffix "${IMAGE_TAG:0:12}-$GITHUB_RUN_ATTEMPT" --output none
+              --image "$AZURE_ACR_NAME.azurecr.io/$IMAGE_REPOSITORY:$IMAGE_TAG" --revision-suffix "${IMAGE_TAG:0:12}-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" --output none
             revision="$(az containerapp show --name "$AZURE_CONTAINER_APP_NAME" --resource-group "$AZURE_RESOURCE_GROUP" --query properties.latestRevisionName -o tsv)"
             fqdn="$(az containerapp show --name "$AZURE_CONTAINER_APP_NAME" --resource-group "$AZURE_RESOURCE_GROUP" --query properties.latestRevisionFqdn -o tsv)"
             old="${{ steps.current.outputs.previous }}"
@@ -294,7 +294,7 @@ jobs:
             fi
           fi
           test -n "$fqdn" && test -n "$revision"
-          az containerapp revision label add --name "$AZURE_CONTAINER_APP_NAME" --resource-group "$AZURE_RESOURCE_GROUP" --label candidate --revision "$revision" --output none
+          az containerapp revision label add --name "$AZURE_CONTAINER_APP_NAME" --resource-group "$AZURE_RESOURCE_GROUP" --label candidate --revision "$revision" --yes --output none
           default_domain="$(az containerapp env show --name "$AZURE_CA_ENVIRONMENT_NAME" --resource-group "$AZURE_RESOURCE_GROUP" --query properties.defaultDomain -o tsv)"
           fqdn="${AZURE_CONTAINER_APP_NAME}---candidate.${default_domain}"
           echo "fqdn=$fqdn" >> "$GITHUB_OUTPUT"

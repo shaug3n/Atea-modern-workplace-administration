@@ -161,7 +161,7 @@ def main() -> int:
     require_text(workflow, r"revision label add[\s\S]{0,300}--label candidate", "stable candidate revision label", errors)
     require_text(workflow, r"AZURE_SMOKE_TEST_SOURCE_CIDR", "test-only ingress operator allowlist", errors)
     require_text(workflow, r"ingress access-restriction set", "temporary GitHub runner ingress allowlist", errors)
-    require_text(workflow, r"--revision-suffix \"\$\{IMAGE_TAG:0:12\}-\$GITHUB_RUN_ATTEMPT\"", "bounded unique subsequent revision suffix", errors)
+    require_text(workflow, r"--revision-suffix \"\$\{IMAGE_TAG:0:12\}-\$GITHUB_RUN_ID-\$GITHUB_RUN_ATTEMPT\"", "bounded unique subsequent revision suffix", errors)
     require_text(workflow, r'\$\{AZURE_CONTAINER_APP_NAME\}---candidate\.\$\{default_domain\}', "candidate label FQDN", errors)
     require_text(workflow, r"verify the workspace, then approve the test-promotion environment", "explicit interactive candidate smoke gate", errors)
     require_text(global_json, r'"version"\s*:\s*"10\.0\.401"', "global .NET SDK pin 10.0.401", errors)
