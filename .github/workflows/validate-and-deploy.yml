@@ -143,6 +143,8 @@ jobs:
         run: python3 infra/tests/validate_contract.py
       - name: Candidate HTTP smoke check tests
         run: python3 -m unittest infra/tests/test_candidate_http.py -v
+      - name: Candidate Azure CLI option validation
+        run: python3 -m unittest infra/tests/test_release_cli.py -v
       - name: Install Bicep compiler
         run: az bicep install
       - name: Compile both deployment stages
@@ -283,7 +285,7 @@ jobs:
             revision="$(az containerapp show --name "$AZURE_CONTAINER_APP_NAME" --resource-group "$AZURE_RESOURCE_GROUP" --query properties.latestRevisionName -o tsv)"
           else
             az containerapp update --name "$AZURE_CONTAINER_APP_NAME" --resource-group "$AZURE_RESOURCE_GROUP" \
-              --image "$AZURE_ACR_NAME.azurecr.io/$IMAGE_REPOSITORY:$IMAGE_TAG" --revision-suffix "${IMAGE_TAG:0:12}-$GITHUB_RUN_ATTEMPT" --revisions-mode multiple --output none
+              --image "$AZURE_ACR_NAME.azurecr.io/$IMAGE_REPOSITORY:$IMAGE_TAG" --revision-suffix "${IMAGE_TAG:0:12}-$GITHUB_RUN_ATTEMPT" --output none
             revision="$(az containerapp show --name "$AZURE_CONTAINER_APP_NAME" --resource-group "$AZURE_RESOURCE_GROUP" --query properties.latestRevisionName -o tsv)"
             fqdn="$(az containerapp show --name "$AZURE_CONTAINER_APP_NAME" --resource-group "$AZURE_RESOURCE_GROUP" --query properties.latestRevisionFqdn -o tsv)"
             old="${{ steps.current.outputs.previous }}"
