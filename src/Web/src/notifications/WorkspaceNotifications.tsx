@@ -1,4 +1,4 @@
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useState, type ReactNode } from 'react';
 import type { CapabilitySnapshot } from '../capabilities/capabilityTypes';
 import type { AppSession } from '../components/TenantContextHeader';
 import type { ConnectionHealth, ConnectionHealthLoader } from '../features/overview/OverviewPage';
@@ -41,7 +41,7 @@ export function WorkspaceNotificationsProvider({ session, sessionScope = 0, capa
     });
   }, [capabilities, workspaceId, sessionScope]);
   const refresh = useCallback(async () => { await Promise.all([onRefresh(), reloadHealth()]); }, [onRefresh, reloadHealth]);
-  useEffect(() => {
+  useLayoutEffect(() => {
     const onReturn = () => { void refresh(); };
     window.addEventListener('focus', onReturn);
     return () => window.removeEventListener('focus', onReturn);
