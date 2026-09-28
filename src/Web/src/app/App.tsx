@@ -27,7 +27,7 @@ export function App({ loadCapabilities, loadSession, loadConnectionHealth, theme
 
 function AuthenticatedApp({ loadConnectionHealth }: { loadConnectionHealth?: ConnectionHealthLoader }) {
   const api = useApi();
-  const { signIn } = useAuth();
+  const { signIn, switchAccount } = useAuth();
   const loadSession = useCallback(async () => {
     const response = await api('/api/session');
     if (!response.ok) {
@@ -41,14 +41,14 @@ function AuthenticatedApp({ loadConnectionHealth }: { loadConnectionHealth?: Con
     if (!response.ok) throw new Error('connection_health_unavailable');
     return await response.json() as Awaited<ReturnType<ConnectionHealthLoader>>;
   }, [api]);
-  return <AppThemeProvider><AppExperience loadSession={loadSession} loadConnectionHealth={loadConnectionHealth ?? loadHealth} signInAction={signIn} /></AppThemeProvider>;
+  return <AppThemeProvider><AppExperience loadSession={loadSession} loadConnectionHealth={loadConnectionHealth ?? loadHealth} signInAction={signIn} switchAccountAction={switchAccount} /></AppThemeProvider>;
 }
 
 async function safeProblem(response: Response): Promise<{ title?: string; correlationId?: string }> {
   try { return await response.json() as { title?: string; correlationId?: string }; } catch { return {}; }
 }
 
-function AppExperience({ loadCapabilities, loadSession, loadConnectionHealth, signInAction }: { loadCapabilities?: CapabilityLoader; loadSession: SessionLoader; loadConnectionHealth?: ConnectionHealthLoader; signInAction?: () => Promise<void> }) {
+function AppExperience({ loadCapabilities, loadSession, loadConnectionHealth, signInAction, switchAccountAction }: { loadCapabilities?: CapabilityLoader; loadSession: SessionLoader; loadConnectionHealth?: ConnectionHealthLoader; signInAction?: () => Promise<void>; switchAccountAction?: () => Promise<void> }) {
   const [path, setPath] = useState(() => window.location.pathname + window.location.hash);
   useEffect(() => {
     const onPopState = () => setPath(window.location.pathname + window.location.hash);
@@ -65,20 +65,20 @@ function AppExperience({ loadCapabilities, loadSession, loadConnectionHealth, si
   }, []);
 
   if (isInvitationPath(path)) return <InvitationRedemptionPage nonce={path.slice('/invitations/'.length)} />;
-  return <WorkspaceExperience path={path} navigate={navigate} loadCapabilities={loadCapabilities} loadSession={loadSession} loadConnectionHealth={loadConnectionHealth} signInAction={signInAction} />;
+  return <WorkspaceExperience path={path} navigate={navigate} loadCapabilities={loadCapabilities} loadSession={loadSession} loadConnectionHealth={loadConnectionHealth} signInAction={signInAction} switchAccountAction={switchAccountAction} />;
 }
 
-function WorkspaceExperience({ path, navigate, loadCapabilities, loadSession, loadConnectionHealth, signInAction }: { path: string; navigate: (path: string) => void; loadCapabilities?: CapabilityLoader; loadSession: SessionLoader; loadConnectionHealth?: ConnectionHealthLoader; signInAction?: () => Promise<void> }) {
-  if (loadCapabilities) return <InjectedWorkspaceExperience path={path} navigate={navigate} loadCapabilities={loadCapabilities} loadSession={loadSession} loadConnectionHealth={loadConnectionHealth} signInAction={signInAction} />;
-  return <ApiWorkspaceExperience path={path} navigate={navigate} loadSession={loadSession} loadConnectionHealth={loadConnectionHealth} signInAction={signInAction} />;
+function WorkspaceExperience({ path, navigate, loadCapabilities, loadSession, loadConnectionHealth, signInAction, switchAccountAction }: { path: string; navigate: (path: string) => void; loadCapabilities?: CapabilityLoader; loadSession: SessionLoader; loadConnectionHealth?: ConnectionHealthLoader; signInAction?: () => Promise<void>; switchAccountAction?: () => Promise<void> }) {
+  if (loadCapabilities) return <InjectedWorkspaceExperience path={path} navigate={navigate} loadCapabilities={loadCapabilities} loadSession={loadSession} loadConnectionHealth={loadConnectionHealth} signInAction={signInAction} switchAccountAction={switchAccountAction} />;
+  return <ApiWorkspaceExperience path={path} navigate={navigate} loadSession={loadSession} loadConnectionHealth={loadConnectionHealth} signInAction={signInAction} switchAccountAction={switchAccountAction} />;
 }
 
-function ApiWorkspaceExperience(props: { path: string; navigate: (path: string) => void; loadSession: SessionLoader; loadConnectionHealth?: ConnectionHealthLoader; signInAction?: () => Promise<void> }) {
+function ApiWorkspaceExperience(props: { path: string; navigate: (path: string) => void; loadSession: SessionLoader; loadConnectionHealth?: ConnectionHealthLoader; signInAction?: () => Promise<void>; switchAccountAction?: () => Promise<void> }) {
   const state = useCapabilities();
   return <LoadedWorkspaceExperience {...props} capabilities={state.capabilities} capabilitiesLoading={state.loading} capabilitiesError={state.error} refreshCapabilities={state.refresh} />;
 }
 
-function InjectedWorkspaceExperience(props: { path: string; navigate: (path: string) => void; loadCapabilities: CapabilityLoader; loadSession: SessionLoader; loadConnectionHealth?: ConnectionHealthLoader; signInAction?: () => Promise<void> }) {
+function InjectedWorkspaceExperience(props: { path: string; navigate: (path: string) => void; loadCapabilities: CapabilityLoader; loadSession: SessionLoader; loadConnectionHealth?: ConnectionHealthLoader; signInAction?: () => Promise<void>; switchAccountAction?: () => Promise<void> }) {
   const state = useInjectedCapabilities(props.loadCapabilities);
   return <LoadedWorkspaceExperience {...props} capabilities={state.capabilities} capabilitiesLoading={state.loading} capabilitiesError={state.error} refreshCapabilities={state.refresh} />;
 }
@@ -100,7 +100,7 @@ function useInjectedCapabilities(loadCapabilities: CapabilityLoader) {
   return { capabilities, loading, error, refresh };
 }
 
-function LoadedWorkspaceExperience({ path, navigate, capabilities, capabilitiesLoading, capabilitiesError, refreshCapabilities, loadSession, loadConnectionHealth, signInAction }: { path: string; navigate: (path: string) => void; capabilities: CapabilitySnapshot | null; capabilitiesLoading: boolean; capabilitiesError: Error | null; refreshCapabilities: () => Promise<void>; loadSession: SessionLoader; loadConnectionHealth?: ConnectionHealthLoader; signInAction?: () => Promise<void> }) {
+function LoadedWorkspaceExperience({ path, navigate, capabilities, capabilitiesLoading, capabilitiesError, refreshCapabilities, loadSession, loadConnectionHealth, signInAction, switchAccountAction }: { path: string; navigate: (path: string) => void; capabilities: CapabilitySnapshot | null; capabilitiesLoading: boolean; capabilitiesError: Error | null; refreshCapabilities: () => Promise<void>; loadSession: SessionLoader; loadConnectionHealth?: ConnectionHealthLoader; signInAction?: () => Promise<void>; switchAccountAction?: () => Promise<void> }) {
   const { session, sessionRevision, loading: sessionLoading, error: sessionError, retry } = useSession(loadSession);
   const legacyDestinations: Record<string, string> = {
     '/onboarding': '/settings#connection', '/settings/setup': '/settings#connection',
@@ -114,7 +114,7 @@ function LoadedWorkspaceExperience({ path, navigate, capabilities, capabilitiesL
   }, [legacyRedirect, navigate]);
 
   if (sessionLoading) return <main className="loading-state" role="status">{messages.shellLoading}</main>;
-  if (sessionError || !session) return <SessionFailure error={sessionError ?? new Error('session_unavailable')} onRetry={retry} onSignIn={signInAction} />;
+  if (sessionError || !session) return <SessionFailure error={sessionError ?? new Error('session_unavailable')} onRetry={retry} onSignIn={signInAction} onSwitchAccount={switchAccountAction} />;
 
   const route = matchRoute(path.split('#')[0]);
   if (legacyRedirect) return <main className="loading-state" role="status">Redirecting…</main>;
@@ -148,14 +148,14 @@ function LoadedWorkspaceExperience({ path, navigate, capabilities, capabilitiesL
   return <WorkspaceNotificationsProvider key={`${session.workspace.id}:${sessionRevision}`} session={session} sessionScope={sessionRevision} capabilities={capabilities} capabilitiesError={capabilitiesError} onRefresh={refreshCapabilities} loadConnectionHealth={loadConnectionHealth}><AppShell capabilities={capabilities} currentPath={path.split('#')[0]} session={session} onNavigate={navigate}>{routeContent}</AppShell></WorkspaceNotificationsProvider>;
 }
 
-function SessionFailure({ error, onRetry, onSignIn }: { error: Error; onRetry: () => void; onSignIn?: () => Promise<void> }) {
+function SessionFailure({ error, onRetry, onSignIn, onSwitchAccount }: { error: Error; onRetry: () => void; onSignIn?: () => Promise<void>; onSwitchAccount?: () => Promise<void> }) {
   const status = (error as Error & { status?: number }).status;
   const correlationId = (error as Error & { correlationId?: string }).correlationId;
   const isSignIn = status === 401;
   const isMembership = status === 403;
   const title = isSignIn ? messages.sessionSignInTitle : isMembership ? messages.sessionMembershipTitle : messages.sessionUnavailableTitle;
   const body = isSignIn ? messages.sessionSignInBody : isMembership ? messages.sessionMembershipBody : messages.sessionUnavailableBody;
-  return <main className="permission-panel" role="alert"><h1>{title}</h1><p>{body}</p>{correlationId && <p>{messages.correlationIdLabel}: <code>{correlationId}</code></p>}{isSignIn ? <button type="button" onClick={() => onSignIn ? void onSignIn() : window.location.assign('/')}>{messages.sessionSignInAction}</button> : <button type="button" onClick={onRetry}>{messages.retry}</button>}</main>;
+  return <main className="permission-panel" role="alert"><h1>{title}</h1><p>{body}</p>{correlationId && <p>{messages.correlationIdLabel}: <code>{correlationId}</code></p>}{isSignIn ? <button type="button" onClick={() => onSignIn ? void onSignIn() : window.location.assign('/')}>{messages.sessionSignInAction}</button> : isMembership ? <><button type="button" onClick={() => onSwitchAccount ? void onSwitchAccount() : onRetry()}>{messages.authSwitchAccount}</button><button type="button" onClick={onRetry}>{messages.retry}</button></> : <button type="button" onClick={onRetry}>{messages.retry}</button>}</main>;
 }
 
 function GraphRouteState({ route, state, onRetry, reportCause, session, navigate, loadConnectionHealth }: { route: AppRoute; state: 'loading' | 'unavailable'; onRetry?: () => Promise<void>; reportCause?: 'access' | 'service'; session?: AppSession; navigate?: (path: string) => void; loadConnectionHealth?: ConnectionHealthLoader }) {

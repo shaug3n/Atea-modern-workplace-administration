@@ -31,9 +31,9 @@ import { msalConfig } from '../../../src/Web/src/auth/msalConfig';
 import { useApi } from '../../../src/Web/src/auth/useApi';
 
 function Harness() {
-  const { signIn, signOut, getApiToken } = useAuth();
+  const { signIn, switchAccount, signOut, getApiToken } = useAuth();
   const api = useApi();
-  return <><button onClick={() => void signIn()}>sign-in</button><button onClick={() => void signOut()}>sign-out</button><button onClick={() => void getApiToken().catch(() => undefined)}>token</button><button onClick={() => void api('/api/session').catch(() => undefined)}>api</button></>;
+  return <><button onClick={() => void signIn()}>sign-in</button><button onClick={() => void switchAccount()}>switch-account</button><button onClick={() => void signOut()}>sign-out</button><button onClick={() => void getApiToken().catch(() => undefined)}>token</button><button onClick={() => void api('/api/session').catch(() => undefined)}>api</button></>;
 }
 
 describe('AuthProvider behavior', () => {
@@ -53,6 +53,16 @@ describe('AuthProvider behavior', () => {
     fireEvent.click(screen.getByText('sign-out'));
     await waitFor(() => expect(auth.instance.loginRedirect).toHaveBeenCalledWith({ scopes: [expect.any(String)] }));
     expect(auth.instance.logoutRedirect).toHaveBeenCalledOnce();
+  });
+
+  it('supports switching accounts with an explicit account chooser prompt', async () => {
+    render(<AuthProvider instance={auth.instance as never}><Harness /></AuthProvider>);
+    fireEvent.click(screen.getByText('switch-account'));
+    await waitFor(() => expect(auth.instance.logoutRedirect).toHaveBeenCalledWith({
+      account: auth.account,
+      onRedirectNavigate: expect.any(Function),
+    }));
+    expect(auth.instance.loginRedirect).toHaveBeenCalledWith({ scopes: [expect.any(String)], prompt: 'select_account' });
   });
 
   it('waits for MSAL initialization before enabling sign-in', () => {

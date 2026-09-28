@@ -68,6 +68,16 @@ export function HostedAdminAuth() {
     try { await client.loginRedirect({ scopes: [scope], redirectUri }); }
     catch { setState('unavailable'); setBusy(false); }
   };
+  const switchAccount = async () => {
+    if (!client || !scope || !redirectUri) return;
+    setBusy(true);
+    try {
+      const account = client.getActiveAccount() ?? client.getAllAccounts()[0];
+      await client.logoutRedirect({ account, onRedirectNavigate: () => false });
+      await client.loginRedirect({ scopes: [scope], redirectUri, prompt: 'select_account' });
+    }
+    catch { setState('unavailable'); setBusy(false); }
+  };
   const signOut = async () => {
     const account = client?.getActiveAccount();
     if (!client) return;
@@ -87,6 +97,6 @@ export function HostedAdminAuth() {
     : <main className="admin-login" aria-live="polite"><section className="admin-login__card">
       <h1>{state === 'loading' ? 'Checking your admin session…' : state === 'signed-out' ? 'Atea platform administration' : errorState ? message[state].title : ''}</h1>
       {state !== 'loading' && <p>{state === 'signed-out' ? 'Use your Atea Microsoft Entra account to continue.' : errorState ? message[state].body : ''}</p>}
-      {state !== 'loading' && state !== 'misconfigured' && <button type="button" disabled={busy || !client} onClick={() => void signIn()}>{busy ? 'Redirecting…' : state === 'signed-out' ? 'Sign in with Microsoft Entra ID' : 'Try again with Microsoft Entra ID'}</button>}
+      {state !== 'loading' && state !== 'misconfigured' && <button type="button" disabled={busy || !client} onClick={() => void (state === 'signed-out' ? signIn() : switchAccount())}>{busy ? 'Redirecting…' : state === 'signed-out' ? 'Sign in with Microsoft Entra ID' : 'Try again with Microsoft Entra ID'}</button>}
     </section></main>}</ThemeProvider>;
 }
