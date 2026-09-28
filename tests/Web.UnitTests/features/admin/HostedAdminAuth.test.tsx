@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -61,5 +61,15 @@ describe('HostedAdminAuth', () => {
 
     expect(await screen.findByRole('heading', { name: 'You are not authorized for platform administration' })).toBeTruthy();
     expect(screen.getByText(/not on the Atea platform operator allowlist/i)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Try again with Microsoft Entra ID' }));
+    await waitFor(() => expect(msal.instance.logoutRedirect).toHaveBeenCalledWith({
+      account: msal.account,
+      onRedirectNavigate: expect.any(Function),
+    }));
+    expect(msal.instance.loginRedirect).toHaveBeenCalledWith({
+      scopes: ['api://platform-api/access_as_user'],
+      redirectUri: `${window.location.origin}/admin/auth/callback`,
+      prompt: 'select_account',
+    });
   });
 });

@@ -5,7 +5,7 @@ import { messages } from '../app/messages';
 import { apiScope, msalConfig } from './msalConfig';
 
 const msalInstance = new PublicClientApplication(msalConfig);
-type AuthContextValue = { account: AccountInfo | null; getApiToken: () => Promise<string>; signIn: () => Promise<void>; signOut: () => Promise<void> };
+type AuthContextValue = { account: AccountInfo | null; getApiToken: () => Promise<string>; signIn: () => Promise<void>; switchAccount: () => Promise<void>; signOut: () => Promise<void> };
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function createAuthActions(instance: Pick<PublicClientApplication, 'loginRedirect' | 'logoutRedirect' | 'acquireTokenSilent' | 'acquireTokenRedirect'>, account: AccountInfo | null, setError: (error: string | null) => void): AuthContextValue {
@@ -19,6 +19,11 @@ export function createAuthActions(instance: Pick<PublicClientApplication, 'login
         request.state = window.crypto.randomUUID();
       }
       await instance.loginRedirect(request);
+    },
+    switchAccount: async () => {
+      setError(null);
+      await instance.logoutRedirect({ account: account ?? undefined, onRedirectNavigate: () => false });
+      await instance.loginRedirect({ scopes: [apiScope], prompt: 'select_account' });
     },
     signOut: async () => { setError(null); await instance.logoutRedirect(); },
     getApiToken: async () => {
