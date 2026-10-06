@@ -6,6 +6,7 @@ import { App } from '../../src/Web/src/app/App';
 
 const workspaceId = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
 const customerTenantId = '11111111-1111-1111-1111-111111111111';
+const futureExpiration = () => new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
 
 const workspace = {
   id: workspaceId,
@@ -51,10 +52,10 @@ describe('local Atea admin onboarding flow', () => {
         return jsonResponse({ displayName: 'Local Atea Admin' });
       }
       if (path === '/api/platform/workspaces' && (!init?.method || init.method === 'GET')) return jsonResponse([]);
-      if (path === '/api/platform/workspaces/onboard' && init?.method === 'POST') return jsonResponse({ workspace, invitationUrl: 'https://example.test/invitations/one-time-first-admin', expiresAt: '2026-09-27T12:00:00Z' }, 201);
-      if (path === `/api/platform/workspaces/${workspaceId}`) return jsonResponse({ ...initialDetail, invitations: [{ id: 'invitation-1', email: 'customer.admin@example.test', displayName: 'Customer Admin', role: 'customer_admin', expiresAt: '2026-09-27T12:00:00Z', redeemedAt: null, revokedAt: null }] });
+      if (path === '/api/platform/workspaces/onboard' && init?.method === 'POST') return jsonResponse({ workspace, invitationUrl: 'https://example.test/invitations/one-time-first-admin', expiresAt: futureExpiration() }, 201);
+      if (path === `/api/platform/workspaces/${workspaceId}`) return jsonResponse({ ...initialDetail, invitations: [{ id: 'invitation-1', email: 'customer.admin@example.test', displayName: 'Customer Admin', role: 'customer_admin', expiresAt: futureExpiration(), redeemedAt: null, revokedAt: null }] });
       if (path === `/api/platform/workspaces/${workspaceId}/invitations/invitation-1/reissue` && init?.method === 'POST') {
-        return jsonResponse({ invitationUrl: 'https://example.test/invitations/reissued-admin', expiresAt: '2026-10-01T12:00:00Z' });
+        return jsonResponse({ invitationUrl: 'https://example.test/invitations/reissued-admin', expiresAt: futureExpiration() });
       }
       if (path === `/api/platform/workspaces/${workspaceId}/invitations/invitation-1` && init?.method === 'DELETE') return new Response(null, { status: 204 });
       throw new Error(`Unexpected request: ${path}`);

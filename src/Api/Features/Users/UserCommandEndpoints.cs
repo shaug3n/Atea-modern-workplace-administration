@@ -11,6 +11,7 @@ public static class UserCommandEndpoints
         endpoints.MapPatch("/api/users/{userObjectId}", UpdateUserAsync).RequireAuthorization().RequireWorkspaceModule("users").RequireCapability(Capability.UsersUpdate);
         endpoints.MapPost("/api/users/{userObjectId}/disable", DisableUserAsync).RequireAuthorization().RequireWorkspaceModule("users").RequireCapability(Capability.UsersDisable);
         endpoints.MapPost("/api/users/{userObjectId}/reactivate", ReactivateUserAsync).RequireAuthorization().RequireWorkspaceModule("users").RequireCapability(Capability.UsersDisable);
+        endpoints.MapPost("/api/users/{userObjectId}/reset-password", ResetPasswordAsync).RequireAuthorization().RequireWorkspaceModule("users").RequireCapability(Capability.UsersResetPassword);
         endpoints.MapPost("/api/users/{userObjectId}/groups/{groupObjectId}", AddGroupAsync).RequireAuthorization().RequireWorkspaceModule("users").RequireCapability(Capability.GroupsManageMembers);
         endpoints.MapDelete("/api/users/{userObjectId}/groups/{groupObjectId}", RemoveGroupAsync).RequireAuthorization().RequireWorkspaceModule("users").RequireCapability(Capability.GroupsManageMembers);
         endpoints.MapPost("/api/users/{userObjectId}/licenses/{skuId}", AssignLicenseAsync).RequireAuthorization().RequireWorkspaceModule("licenses").RequireCapability(Capability.LicensesAssign);
@@ -74,6 +75,26 @@ public static class UserCommandEndpoints
         HttpRequest request,
         CancellationToken cancellationToken) =>
         SetAccountEnabledAsync(userObjectId, true, accessor, service, request, cancellationToken);
+
+    private static async Task<IResult> ResetPasswordAsync(
+        string userObjectId,
+        IWorkspaceContextAccessor accessor,
+        IUserCommandService service,
+        HttpRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (!TryContext(accessor, out var context, out var missingContext))
+        {
+            return missingContext;
+        }
+
+        if (!TryIdempotencyKey(request, out var idempotencyKey, out var missingKey))
+        {
+            return missingKey;
+        }
+
+        return ToResult(await service.ResetPasswordAsync(context, userObjectId, idempotencyKey, cancellationToken));
+    }
 
     private static async Task<IResult> SetAccountEnabledAsync(
         string userObjectId,

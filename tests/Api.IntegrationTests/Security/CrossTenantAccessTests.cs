@@ -444,6 +444,9 @@ public sealed class CrossTenantAccessTests : IAsyncLifetime
 
         public Task<GraphOperationResult> SetAccountEnabledAsync(string userObjectId, bool accountEnabled, string idempotencyKey, CancellationToken cancellationToken) =>
             Task.FromResult(GraphOperationResult.Success());
+
+        public Task<GraphOperationResult> ResetPasswordAsync(string userObjectId, TemporaryPasswordProfile passwordProfile, string idempotencyKey, CancellationToken cancellationToken) =>
+            Task.FromResult(GraphOperationResult.Success());
     }
 
     private sealed class FailingAuditWriter : IAuditWriter

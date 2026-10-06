@@ -4,6 +4,12 @@ on:
   pull_request:
     paths:
       - 'Dockerfile'
+      - 'docker-compose.yml'
+      - '.dockerignore'
+      - '.env.example'
+      - 'README.md'
+      - 'docs/**'
+      - 'tests/**'
       - 'src/**'
       - 'infra/**'
       - 'global.json'
@@ -57,6 +63,10 @@ jobs:
           npm ci --prefix src/Web
           npm run test:behavior --prefix src/Web -- --run
           npm run build --prefix src/Web
+      - name: Web unit Node contract tests
+        run: npm test --prefix tests/Web.UnitTests
+      - name: Web E2E TAP and Vitest/jsdom contract tests
+        run: npm test --prefix tests/Web.E2E -- --reporter=verbose
       - name: Compose contract and image build
         run: |
           docker compose config --quiet

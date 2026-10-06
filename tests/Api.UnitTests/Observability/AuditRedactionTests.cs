@@ -132,6 +132,9 @@ public sealed class AuditRedactionTests
 
         public Task<GraphOperationResult> SetAccountEnabledAsync(string userObjectId, bool accountEnabled, string idempotencyKey, CancellationToken cancellationToken) =>
             Task.FromResult(GraphOperationResult.Success("graph-corr-1", "graph-request-1"));
+
+        public Task<GraphOperationResult> ResetPasswordAsync(string userObjectId, TemporaryPasswordProfile passwordProfile, string idempotencyKey, CancellationToken cancellationToken) =>
+            Task.FromResult(GraphOperationResult.Success("graph-corr-1", "graph-request-1"));
     }
 
     private sealed class RecordingGroupCommands : IGroupMembershipCommands

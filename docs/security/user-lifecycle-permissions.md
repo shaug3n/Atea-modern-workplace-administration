@@ -13,6 +13,7 @@ Directory-synchronized or otherwise external-source users are read-only for Task
 | Action | API route | Required capability | Delegated Graph scopes | Tenant role expectation |
 | --- | --- | --- | --- | --- |
 | Create cloud user | `POST /api/users` | `users.create` | `Directory.Read.All`, `User.Read.All`, `User.Create` | User Administrator or Global Administrator, active and tenant-wide |
+| Reset password | `POST /api/users/{id}/reset-password` | `users.reset_password` | `User-PasswordProfile.ReadWrite.All` | User Administrator for non-admin users; Privileged Authentication Administrator for admins |
 | Edit approved profile fields | `PATCH /api/users/{id}` | `users.update` | `Directory.Read.All`, `User.Read.All`, `User.ReadWrite.All` | User Administrator or Global Administrator, active and tenant-wide |
 | Disable sign-in | `POST /api/users/{id}/disable` | `users.disable` | `Directory.Read.All`, `User.Read.All`, `User.EnableDisableAccount.All` | User Administrator or Global Administrator, active and tenant-wide |
 | Reactivate sign-in | `POST /api/users/{id}/reactivate` | `users.disable` | `Directory.Read.All`, `User.Read.All`, `User.EnableDisableAccount.All` | User Administrator or Global Administrator, active and tenant-wide |
@@ -29,7 +30,7 @@ The idempotency record stores only a request fingerprint, result category, HTTP 
 
 ## Temporary Password Handling
 
-Create-user generates a temporary password in memory immediately before the Graph request. The Graph request sets `forceChangePasswordNextSignIn=true`. The plaintext password is returned only on the initial successful create response as `temporaryCredentialNotice`; it is not persisted in idempotency, audit, logs, or database rows. Replays return the safe result without the plaintext password.
+Create-user and password-reset operations generate a temporary password in memory immediately before the Graph request. Both Graph requests set `forceChangePasswordNextSignIn=true`. The plaintext is returned only on the initial successful response as `temporaryCredentialNotice`; it is not persisted in idempotency, audit, logs, or database rows. Replays return the safe result without the plaintext password.
 
 ## Audit Hooks
 

@@ -78,7 +78,7 @@ describe('browser security boundaries', () => {
     assertNoGraphExposure(document.documentElement.outerHTML);
   });
 
-  it('renders denied capability UX from injected state without contacting a tenant or Graph', async () => {
+  it('keeps the users view unavailable when the Graph capability requires consent', async () => {
     window.history.replaceState({}, '', '/users');
 
     render(React.createElement(App, {
@@ -86,14 +86,13 @@ describe('browser security boundaries', () => {
       loadSession: async () => session,
     }));
 
-    await waitFor(() => expect(screen.getByRole('heading', { name: 'Permission required' })).toBeTruthy());
-    expect(screen.getByRole('status').textContent).toContain('Delegated Microsoft Graph consent is required before this action can run.');
-    expect(screen.getByText('This workspace section is not available for your current role or tenant state.')).toBeTruthy();
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Users' })).toBeTruthy());
+    expect(screen.getByText('Data cannot be shown right now. Check Notifications for details.')).toBeTruthy();
     expect(apiMock).not.toHaveBeenCalled();
     assertNoGraphExposure(document.documentElement.outerHTML);
   });
 
-  it('renders read-only UX for an existing role without presenting a mutation path', async () => {
+  it('does not let a Graph read-only capability substitute for workspace-management access', async () => {
     window.history.replaceState({}, '', '/workspace-settings');
 
     render(React.createElement(App, {
@@ -101,8 +100,8 @@ describe('browser security boundaries', () => {
       loadSession: async () => session,
     }));
 
-    await waitFor(() => expect(screen.getByRole('heading', { name: 'Permission required' })).toBeTruthy());
-    expect(screen.getByRole('status').textContent).toContain('This action is read-only for your current Entra role.');
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Workspace access is managed by an administrator' })).toBeTruthy());
+    expect(screen.getByText('A customer workspace administrator can grant you application access. Your Microsoft 365 permissions are still determined by your Entra roles.')).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Save settings' })).toBeNull();
     expect(apiMock).not.toHaveBeenCalled();
     assertNoGraphExposure(document.documentElement.outerHTML);

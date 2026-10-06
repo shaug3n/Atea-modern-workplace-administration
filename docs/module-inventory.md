@@ -22,6 +22,11 @@ Task 5 snapshot, 25 September 2026. “Current” means implemented in this bran
 
 The precise current gate is the API, not this table. See [Graph scope catalog](../src/Api/Infrastructure/Graph/GraphScopeCatalog.cs), [role capability matrix](security/entra-role-capability-matrix.md), and the device recovery implementation for per-target decisions.
 
+The standalone **Identity & Security** page/module is deferred and is not
+implemented in this branch. Existing user-detail security actions remain part
+of the supported Users workflow; there is no standalone Identity & Security
+route, sidebar entry, or workspace module.
+
 ## Prism-inspired candidates, outside live navigation
 
 “Unknown” means the source, delegated permission, RBAC, PIM or tenant prerequisite needs a design and tenant validation before implementation. A proposed source is a discovery direction, not a claim that the app has that integration.

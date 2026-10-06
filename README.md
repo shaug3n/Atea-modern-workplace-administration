@@ -2,7 +2,7 @@
 
 ## Requirements
 
-- .NET SDK 9.x
+- .NET SDK 10.0.401 (pinned in `global.json`)
 - Node.js 22.x and npm 10+
 - Docker Engine with Compose v2
 
@@ -70,4 +70,30 @@ This checks staged Bicep inputs, secret-free parameter examples, distinct callba
 
 ## Tests
 
-Run `dotnet test tests/Api.UnitTests/Api.UnitTests.csproj` and `dotnet test tests/Api.IntegrationTests/Api.IntegrationTests.csproj` for API tests. From the repository root, run `cd src/Web && npm ci && npm run build`, then run `npm run test --prefix tests/Web.UnitTests` and `npm run test --prefix tests/Web.E2E`. Run `docker compose config` to validate Compose.
+Use the pinned .NET SDK and run the API suites with:
+
+```bash
+dotnet test tests/Api.UnitTests/Api.UnitTests.csproj
+dotnet test tests/Api.IntegrationTests/Api.IntegrationTests.csproj
+```
+
+Install web dependencies with `npm ci --prefix src/Web`, then run the
+Vitest/jsdom component suite and production build:
+
+```bash
+npm run test:behavior --prefix src/Web -- --run
+npm run build --prefix src/Web
+```
+
+Run the Node TAP contracts and E2E-directory browser-boundary suite with:
+
+```bash
+npm test --prefix tests/Web.UnitTests
+npm test --prefix tests/Web.E2E
+```
+
+The `tests/Web.E2E` command runs TAP contracts plus Vitest/jsdom scenarios; it
+does not launch a real browser or sign in to Entra. These deterministic fixtures
+do not verify live Graph permissions, tenant consent, Entra roles, or PIM
+policy. Follow the dedicated test-tenant runbooks for those real-tenant checks.
+Run `docker compose config --quiet` to validate Compose.

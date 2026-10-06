@@ -268,6 +268,9 @@ public sealed class UserCommandServiceTests
             AccountStates.Add((userObjectId, accountEnabled));
             return Task.FromResult(Result);
         }
+
+        public Task<GraphOperationResult> ResetPasswordAsync(string userObjectId, TemporaryPasswordProfile passwordProfile, string idempotencyKey, CancellationToken cancellationToken) =>
+            Task.FromResult(Result);
     }
 
     private sealed class RecordingGroupCommands : IGroupMembershipCommands
