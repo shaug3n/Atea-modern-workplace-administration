@@ -399,3 +399,83 @@ jobs:
           else
             az containerapp ingress traffic set --name "$AZURE_CONTAINER_APP_NAME" --resource-group "$AZURE_RESOURCE_GROUP" --revision-weight "$candidate=0" --output none
           fi
+
+  report:
+    if: always()
+    needs: [build-test, dependency-security, validate-infra, deploy-candidate, promote]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Post workflow summary to the pull request
+        uses: actions/github-script@v7
+        continue-on-error: true
+        env:
+          NEEDS_JSON: ${{ toJSON(needs) }}
+          PUBLIC_URL: ${{ vars.AZURE_APP_PUBLIC_URL }}
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            let prNumber = context.payload.pull_request?.number;
+            if (!prNumber && context.eventName === 'workflow_dispatch') {
+              const { data } = await github.rest.pulls.list({ owner, repo, state: 'open', head: `${owner}:${context.ref.replace('refs/heads/', '')}` });
+              prNumber = data[0]?.number;
+            }
+            if (!prNumber && context.eventName === 'push') {
+              const { data } = await github.rest.repos.listPullRequestsAssociatedWithCommit({ owner, repo, commit_sha: context.sha });
+              prNumber = data[0]?.number;
+            }
+            if (!prNumber) {
+              core.info('No pull request associated with this run; skipping comment.');
+              return;
+            }
+
+            const needs = JSON.parse(process.env.NEEDS_JSON);
+            const icons = { success: '✅', failure: '❌', cancelled: '⚪', skipped: '⏭️' };
+            const labels = {
+              'build-test': 'Build and tests',
+              'dependency-security': 'Dependency security',
+              'validate-infra': 'Infrastructure validation',
+              'deploy-candidate': 'Deploy candidate',
+              promote: 'Promote',
+            };
+            const rows = Object.entries(labels).map(([job, label]) => {
+              const result = needs[job]?.result ?? 'skipped';
+              return `| ${label} | ${icons[result] ?? '❔'} ${result} |`;
+            });
+            const results = Object.keys(labels).map((job) => needs[job]?.result);
+            const failed = results.some((r) => r === 'failure' || r === 'cancelled');
+            const deploy = needs['deploy-candidate'];
+            const runUrl = `${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId}`;
+            const shortSha = context.sha.slice(0, 7);
+
+            const lines = [
+              `<!-- validate-and-deploy:${context.eventName} -->`,
+              `### ${failed ? '❌' : '✅'} Validate and deploy — ${failed ? 'failed' : 'succeeded'}`,
+              `Trigger: \`${context.eventName}\` · Commit: \`${shortSha}\` · [View run](${runUrl})`,
+              '',
+              '| Job | Result |',
+              '| --- | --- |',
+              ...rows,
+              '',
+            ];
+            if (needs.promote?.result === 'success' && process.env.PUBLIC_URL) {
+              lines.push(`🚀 **Published:** ${process.env.PUBLIC_URL}`);
+            }
+            if (deploy?.result === 'success' && deploy.outputs?.candidate_fqdn) {
+              lines.push(`🧪 **Candidate:** https://${deploy.outputs.candidate_fqdn} (revision \`${deploy.outputs.candidate_revision}\`)`);
+            }
+            if (deploy?.result === 'skipped') {
+              lines.push('_No deployment for this trigger; run the workflow manually to deploy._');
+            }
+            const body = lines.join('\n');
+
+            const marker = lines[0];
+            const comments = await github.paginate(github.rest.issues.listComments, { owner, repo, issue_number: prNumber, per_page: 100 });
+            const existing = comments.find((c) => c.user?.type === 'Bot' && c.body?.startsWith(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
+            } else {
+              await github.rest.issues.createComment({ owner, repo, issue_number: prNumber, body });
+            }
