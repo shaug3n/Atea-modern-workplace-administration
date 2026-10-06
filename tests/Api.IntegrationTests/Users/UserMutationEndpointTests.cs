@@ -16,6 +16,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 using System.Text.Encodings.Web;
+using AuditEvent = Atea.UnifiedWorkplace.Api.Infrastructure.Persistence.Entities.AuditEvent;
 
 namespace Atea.UnifiedWorkplace.Api.IntegrationTests.Users;
 
@@ -56,6 +57,33 @@ public sealed class UserMutationEndpointTests
         commands.CreateCalls.Should().Be(1);
         body.Should().NotContain("access_token");
         body.Should().NotContain("raw graph");
+    }
+
+    [Fact]
+    public async Task Password_reset_route_uses_authorized_idempotent_service_and_discloses_secret_only_once()
+    {
+        var commands = new RecordingUserCommands();
+        var audit = new RecordingAuditWriter();
+        using var factory = CreateFactory(commands, auditWriter: audit);
+        using var client = AuthenticatedClient(factory);
+
+        var first = await client.PostAsync("/api/users/user-1/reset-password", Json("{}", "password-reset-key"));
+        var firstBody = await first.Content.ReadAsStringAsync();
+        var replay = await client.PostAsync("/api/users/user-1/reset-password", Json("{}", "password-reset-key"));
+        var replayBody = await replay.Content.ReadAsStringAsync();
+
+        first.StatusCode.Should().Be(HttpStatusCode.OK);
+        firstBody.Should().Contain("\"temporaryPassword\"");
+        firstBody.Should().Contain("\"forceChangePasswordNextSignIn\":true");
+        replay.StatusCode.Should().Be(HttpStatusCode.OK);
+        replayBody.Should().Contain("\"replayed\":true");
+        replayBody.Should().NotContain("\"temporaryPassword\"");
+        commands.PasswordResets.Should().ContainSingle().Which.ForceChangePasswordNextSignIn.Should().BeTrue();
+        commands.PasswordResets.Single().IdempotencyKey.Should().Be("password-reset-key");
+        audit.Events.Should().ContainSingle();
+        audit.Events.Single().Action.Should().Be("users.reset_password");
+        audit.Events.Single().SafeMetadataJson.Should().NotContain(commands.PasswordResets.Single().TemporaryPassword);
+        replayBody.Should().NotContain(commands.PasswordResets.Single().TemporaryPassword);
     }
 
     [Fact]
@@ -246,7 +274,8 @@ public sealed class UserMutationEndpointTests
         RecordingGroupCommands? groupCommands = null,
         RecordingLicenseCommands? licenseCommands = null,
         RecordingGroupCatalogReader? groupCatalog = null,
-        RecordingLicenseCatalogReader? licenseCatalog = null) =>
+        RecordingLicenseCatalogReader? licenseCatalog = null,
+        RecordingAuditWriter? auditWriter = null) =>
         new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
         {
             builder.ConfigureAppConfiguration((_, config) =>
@@ -284,13 +313,13 @@ public sealed class UserMutationEndpointTests
                 services.RemoveAll<IIdempotencyService>();
                 services.AddSingleton<IIdempotencyService>(new MemoryIdempotencyService());
                 services.RemoveAll<IAuditWriter>();
-                services.AddSingleton<IAuditWriter, NoOpAuditWriter>();
+                services.AddSingleton<IAuditWriter>(auditWriter is not null ? auditWriter : new NoOpAuditWriter());
             });
         });
 
     private static readonly GraphAuthorizationSnapshot AdminSnapshot = GraphAuthorizationSnapshot.Available(
         "actor-1",
-        ["Directory.Read.All", "User.Read.All", "User.Create", "User.ReadWrite.All", "User.EnableDisableAccount.All", "Group.Read.All", "GroupMember.ReadWrite.All", "LicenseAssignment.ReadWrite.All"],
+        ["Directory.Read.All", "User.Read.All", "User.Create", "User.ReadWrite.All", "User.EnableDisableAccount.All", "User-PasswordProfile.ReadWrite.All", "Group.Read.All", "GroupMember.ReadWrite.All", "LicenseAssignment.ReadWrite.All"],
         [
             new DirectoryRoleSnapshot(EntraRoleCatalog.UserAdministratorTemplateId, "User Administrator", DirectoryRoleAssignmentState.Active, "/"),
             new DirectoryRoleSnapshot(EntraRoleCatalog.GroupsAdministratorTemplateId, "Groups Administrator", DirectoryRoleAssignmentState.Active, "/"),
@@ -326,6 +355,7 @@ public sealed class UserMutationEndpointTests
     {
         public int CreateCalls { get; private set; }
         public int UpdateCalls { get; private set; }
+        public List<(string UserId, string TemporaryPassword, bool ForceChangePasswordNextSignIn, string IdempotencyKey)> PasswordResets { get; } = [];
 
         public Task<GraphOperationResult> CreateUserAsync(GraphUserCreateRequest request, string idempotencyKey, CancellationToken cancellationToken)
         {
@@ -341,6 +371,23 @@ public sealed class UserMutationEndpointTests
 
         public Task<GraphOperationResult> SetAccountEnabledAsync(string userObjectId, bool accountEnabled, string idempotencyKey, CancellationToken cancellationToken) =>
             Task.FromResult(GraphOperationResult.Success("corr-1", "req-1"));
+
+        public Task<GraphOperationResult> ResetPasswordAsync(string userObjectId, TemporaryPasswordProfile passwordProfile, string idempotencyKey, CancellationToken cancellationToken)
+        {
+            PasswordResets.Add((userObjectId, passwordProfile.TemporaryPassword, passwordProfile.ForceChangePasswordNextSignIn, idempotencyKey));
+            return Task.FromResult(GraphOperationResult.Success("corr-1", "req-1"));
+        }
+    }
+
+    private sealed class RecordingAuditWriter : IAuditWriter
+    {
+        public List<AuditEvent> Events { get; } = [];
+
+        public Task WriteAsync(AuditEvent auditEvent, CancellationToken cancellationToken)
+        {
+            Events.Add(auditEvent);
+            return Task.CompletedTask;
+        }
     }
 
     private sealed class RecordingGroupCommands : IGroupMembershipCommands

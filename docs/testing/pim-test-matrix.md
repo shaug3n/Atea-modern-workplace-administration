@@ -23,6 +23,11 @@ Task 11 covers Microsoft Entra directory-role PIM only. Azure resource roles and
 | Web unit | Guided handoff | Pending result shows next step and does not claim the role is active |
 | Web E2E | Browser boundary | Browser calls only `/api/pim/activations`, never Microsoft Graph directly |
 
+These automated API and browser cases use deterministic fixtures. The E2E
+Vitest suite runs in jsdom and does not authenticate to Entra or verify live
+Graph consent, role assignments, Conditional Access, MFA, or tenant PIM policy.
+The real-tenant checks below are a separate manual validation surface.
+
 ## Real Test Tenant
 
 Use a dedicated Microsoft 365 test tenant with one cloud-only operator account. Assign the operator eligible Entra directory-role PIM access for a supported role such as Privileged Role Administrator or User Administrator. The operator should also have a Global Reader active assignment so the app can read directory and capability state without granting hidden mutation authority.

@@ -1,5 +1,7 @@
 using System.Text;
 using System.Text.Json;
+using Microsoft.Identity.Client;
+using Microsoft.Identity.Web;
 
 namespace Atea.UnifiedWorkplace.Api.Infrastructure.Graph;
 
@@ -21,6 +23,7 @@ public interface IUserLifecycleCommands
     Task<GraphOperationResult> CreateUserAsync(GraphUserCreateRequest request, string idempotencyKey, CancellationToken cancellationToken);
     Task<GraphOperationResult> UpdateProfileAsync(string userObjectId, GraphUserProfileUpdate update, string idempotencyKey, CancellationToken cancellationToken);
     Task<GraphOperationResult> SetAccountEnabledAsync(string userObjectId, bool accountEnabled, string idempotencyKey, CancellationToken cancellationToken);
+    Task<GraphOperationResult> ResetPasswordAsync(string userObjectId, TemporaryPasswordProfile passwordProfile, string idempotencyKey, CancellationToken cancellationToken);
 }
 
 public sealed class GraphUserLifecycle(IDelegatedGraphClientFactory clientFactory) : IUserLifecycleCommands, IGraphMutationExecutor
@@ -86,10 +89,20 @@ internal static class GraphMutationExecutor
 
         ArgumentException.ThrowIfNullOrWhiteSpace(idempotencyKey);
 
-        await using var lease = await clientFactory.CreateForCurrentUserAsync(mutation.Scopes, cancellationToken);
-        var response = await lease.Transport.SendAsync(mutation.CreateRequest(idempotencyKey), cancellationToken);
-
-        return response.Result;
+        try
+        {
+            await using var lease = await clientFactory.CreateForCurrentUserAsync(mutation.Scopes, cancellationToken);
+            var response = await lease.Transport.SendAsync(mutation.CreateRequest(idempotencyKey), cancellationToken);
+            return response.Result;
+        }
+        catch (MicrosoftIdentityWebChallengeUserException exception)
+        {
+            return GraphTokenAcquisitionErrorMapper.Map(exception);
+        }
+        catch (MsalUiRequiredException exception)
+        {
+            return GraphTokenAcquisitionErrorMapper.Map(exception);
+        }
     }
 }
 

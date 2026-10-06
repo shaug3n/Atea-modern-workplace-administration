@@ -133,7 +133,11 @@ public sealed class GraphRoleAndPimService(IDelegatedGraphClientFactory clientFa
         var roleDefinition = element.TryGetProperty("roleDefinition", out var role) && role.ValueKind == JsonValueKind.Object ? role : default;
         var roleDefinitionId = OptionalString(element, "roleDefinitionId") ?? OptionalString(roleDefinition, "id");
         var templateId = OptionalString(roleDefinition, "templateId") ?? OptionalString(element, "roleTemplateId") ?? roleDefinitionId ?? string.Empty;
-        var requirement = PimStateMapper.ToPimRequirement(OptionalString(element, "status") ?? "Eligible");
+        var requirement = PimStateMapper.ToPimRequirement(OptionalString(element, "status"));
+        if (PimStateMapper.ToPimRequirement(OptionalDateTimeOffset(element, "endDateTime")) == PimRequirement.EligibilityExpired)
+        {
+            requirement = PimRequirement.EligibilityExpired;
+        }
         var status = requirement switch
         {
             PimRequirement.ApprovalRequired => "approval_required",

@@ -3,6 +3,7 @@ using System.Reflection;
 using System.Text.Json;
 using Atea.UnifiedWorkplace.Api.Infrastructure.Graph;
 using FluentAssertions;
+using Microsoft.Identity.Client;
 
 namespace Atea.UnifiedWorkplace.Api.UnitTests.Graph;
 
@@ -59,6 +60,18 @@ public sealed class GraphAdapterBoundaryTests
         request.PathAndQuery.Should().Be("/v1.0/users/user-1");
         request.Headers.Should().ContainKey("Idempotency-Key").WhoseValue.Should().Be("idem-1");
         (await ReadJsonAsync(request)).RootElement.GetProperty("accountEnabled").GetBoolean().Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task User_lifecycle_maps_token_acquisition_consent_failure_to_graph_result()
+    {
+        var lifecycle = new GraphUserLifecycle(new ThrowingGraphClientFactory(
+            new MsalUiRequiredException("consent_required", "Delegated consent is required.")));
+
+        var result = await lifecycle.SetAccountEnabledAsync("user-1", false, "idem-token", CancellationToken.None);
+
+        result.IsSuccess.Should().BeFalse();
+        result.Category.Should().Be("consent_required");
     }
 
     [Fact]
@@ -167,6 +180,24 @@ public sealed class GraphAdapterBoundaryTests
         body.GetProperty("scheduleInfo").GetProperty("expiration").GetProperty("duration").GetString().Should().Be("PT60M");
     }
 
+    [Fact]
+    public async Task Pim_eligibility_expired_by_end_date_is_not_reported_as_activatable()
+    {
+        var transport = new RecordingGraphTransport(new GraphTransportResponse(
+            GraphOperationResult.Success(),
+            """{"value":[{"id":"eligibility-1","roleDefinitionId":"role-id","directoryScopeId":"/","status":"Eligible","endDateTime":"2020-01-01T00:00:00Z","roleDefinition":{"id":"role-id","templateId":"role-template","displayName":"Example role"}}]}""",
+            1,
+            new Dictionary<string, IReadOnlyCollection<string>>()));
+        var roles = new GraphRoleAndPimService(new RecordingGraphClientFactory(transport));
+
+        var result = await ((IRoleAndPimReader)roles).ReadUserPimEligibilityAsync("user-1", CancellationToken.None);
+
+        result.Error.Should().BeNull();
+        result.Value.Should().ContainSingle().Which.Status.Should().Be("eligibility_expired");
+        result.Value.Single().ActivationAvailable.Should().BeFalse();
+        result.Value.Single().ActivationAction.Should().BeNull();
+    }
+
     [Theory]
     [InlineData("consent_required", false, true, false, false, "consent_required")]
     [InlineData("not_authorized", false, false, true, false, "not_authorized")]
@@ -195,6 +226,19 @@ public sealed class GraphAdapterBoundaryTests
         result.ConsentRevoked.Should().Be(expectedConsentRevoked);
         result.ProblemCategory.Should().Be(expectedProblem);
         transport.Requests.Single().PathAndQuery.Should().Be("/v1.0/me?$select=id,userPrincipalName,displayName");
+    }
+
+    [Fact]
+    public async Task Delegated_connection_probe_maps_token_acquisition_consent_failure()
+    {
+        var probe = new DelegatedGraphConnectionProbe(new ThrowingGraphClientFactory(
+            new MsalUiRequiredException("consent_required", "Delegated consent is required.")));
+
+        var result = await probe.ProbeAsync(Guid.NewGuid(), GraphScopeCatalog.V1DelegatedScopes, CancellationToken.None);
+
+        result.IsSuccessful.Should().BeFalse();
+        result.ConsentRequired.Should().BeTrue();
+        result.ProblemCategory.Should().Be("consent_required");
     }
 
     [Fact]
@@ -230,6 +274,12 @@ public sealed class GraphAdapterBoundaryTests
             RequestedScopes.Add(scopes);
             return Task.FromResult(new GraphClientLease(transport, scopes));
         }
+    }
+
+    private sealed class ThrowingGraphClientFactory(Exception exception) : IDelegatedGraphClientFactory
+    {
+        public Task<GraphClientLease> CreateForCurrentUserAsync(IReadOnlyCollection<string> scopes, CancellationToken cancellationToken) =>
+            Task.FromException<GraphClientLease>(exception);
     }
 
     private sealed class RecordingGraphTransport(GraphTransportResponse? response = null) : IGraphTransport

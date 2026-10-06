@@ -7,9 +7,10 @@ Microsoft Graph directly.
 
 ## Start the local stack
 
-Prerequisites are Docker, the .NET 9 SDK, Node.js/npm, and a dedicated test
-tenant if the real-tenant checks below are being performed. From the repository
-root, copy the local example configuration and keep the copy untracked:
+Prerequisites are Docker, the .NET SDK pinned to 10.0.401 in `global.json`,
+Node.js/npm, and a dedicated test tenant if the real-tenant checks below are
+being performed. From the repository root, copy the local example
+configuration and keep the copy untracked:
 
 ```bash
 cp .env.example .env
@@ -137,7 +138,22 @@ approved experiment ever needs one, use only a disposable device whose owner
 has approved the irreversible data-loss and enrollment consequences, and keep
 that experiment outside automated tests.
 
+## Deterministic checks versus real-tenant checks
+
+The automated `tests/Web.UnitTests` Node suite and `tests/Web.E2E` TAP plus
+Vitest/jsdom suites use deterministic local fixtures and same-origin API
+boundaries. The browser scenarios do not sign in to Entra, call Microsoft
+Graph, or prove that a tenant has consented to a permission or assigned a
+required role. The separate steps above marked as tenant demonstrations
+require a dedicated non-production Entra tenant, approved test identities,
+real delegated consent, and the relevant role/PIM state. Keep tenant evidence
+to safe object IDs, scope names, states, and correlation IDs.
+
 ## Validation and cleanup
+
+The automated unit and E2E-directory suites use deterministic fixtures; see
+[Deterministic checks versus real-tenant checks](#deterministic-checks-versus-real-tenant-checks)
+before interpreting their results.
 
 Run the repository checks from the repository root or their stated working
 directories:
@@ -149,13 +165,13 @@ dotnet test tests/Api.IntegrationTests/Api.IntegrationTests.csproj
 
 ```bash
 cd src/Web
-npm run test:behavior
+npm run test:behavior -- --run
 npm run build
 ```
 
 ```bash
-cd tests/Web.E2E
-npm test
+npm test --prefix tests/Web.UnitTests
+npm test --prefix tests/Web.E2E
 ```
 
 After the demonstration, deactivate temporary PIM assignments, remove the

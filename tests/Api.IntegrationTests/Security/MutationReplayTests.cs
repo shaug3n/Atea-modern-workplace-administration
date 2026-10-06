@@ -192,6 +192,9 @@ public sealed class MutationReplayTests : IAsyncLifetime
 
         public Task<GraphOperationResult> SetAccountEnabledAsync(string userObjectId, bool accountEnabled, string idempotencyKey, CancellationToken cancellationToken) =>
             Task.FromResult(GraphOperationResult.Success());
+
+        public Task<GraphOperationResult> ResetPasswordAsync(string userObjectId, TemporaryPasswordProfile passwordProfile, string idempotencyKey, CancellationToken cancellationToken) =>
+            Task.FromResult(GraphOperationResult.Success());
     }
 
     private sealed class TestAuthenticationHandler(IOptionsMonitor<AuthenticationSchemeOptions> options, ILoggerFactory logger, UrlEncoder encoder, TestIdentity identity)

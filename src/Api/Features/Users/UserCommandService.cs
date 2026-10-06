@@ -14,6 +14,7 @@ public interface IUserCommandService
     Task<UserCommandResult> CreateAsync(WorkspaceContext context, CreateUserCommand command, string idempotencyKey, CancellationToken cancellationToken);
     Task<UserCommandResult> UpdateAsync(WorkspaceContext context, string userObjectId, UpdateUserCommand command, string idempotencyKey, CancellationToken cancellationToken);
     Task<UserCommandResult> SetAccountEnabledAsync(WorkspaceContext context, string userObjectId, SetAccountEnabledCommand command, string idempotencyKey, CancellationToken cancellationToken);
+    Task<UserCommandResult> ResetPasswordAsync(WorkspaceContext context, string userObjectId, string idempotencyKey, CancellationToken cancellationToken);
     Task<UserCommandResult> AddGroupAsync(WorkspaceContext context, string userObjectId, GroupMembershipCommand command, string idempotencyKey, CancellationToken cancellationToken);
     Task<UserCommandResult> RemoveGroupAsync(WorkspaceContext context, string userObjectId, GroupMembershipCommand command, string idempotencyKey, CancellationToken cancellationToken);
     Task<UserCommandResult> AssignLicenseAsync(WorkspaceContext context, string userObjectId, LicenseAssignmentCommand command, string idempotencyKey, CancellationToken cancellationToken);
@@ -109,6 +110,29 @@ public sealed class UserCommandService(
             () => userCommands.SetAccountEnabledAsync(userObjectId, command.Enabled, idempotencyKey, cancellationToken),
             cancellationToken);
 
+    public Task<UserCommandResult> ResetPasswordAsync(WorkspaceContext context, string userObjectId, string idempotencyKey, CancellationToken cancellationToken)
+    {
+        string? temporaryPassword = null;
+        return ExecuteVerifiedUserMutationAsync(
+            context,
+            userObjectId,
+            Capability.UsersResetPassword,
+            "users.reset_password",
+            new { forceChangePasswordNextSignIn = true },
+            idempotencyKey,
+            () =>
+            {
+                temporaryPassword = temporaryPasswordGenerator();
+                return userCommands.ResetPasswordAsync(
+                    userObjectId,
+                    new TemporaryPasswordProfile(temporaryPassword, true),
+                    idempotencyKey,
+                    cancellationToken);
+            },
+            cancellationToken,
+            () => temporaryPassword);
+    }
+
     public Task<UserCommandResult> AddGroupAsync(WorkspaceContext context, string userObjectId, GroupMembershipCommand command, string idempotencyKey, CancellationToken cancellationToken) =>
         ExecuteVerifiedUserMutationAsync(
             context,
@@ -161,7 +185,8 @@ public sealed class UserCommandService(
         object requestPayload,
         string idempotencyKey,
         Func<Task<GraphOperationResult>> graphMutation,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        Func<string?>? temporaryPasswordProvider = null)
     {
         var authorization = await AuthorizeAsync(context, capability, cancellationToken);
         if (authorization.State != CapabilityState.Allowed)
@@ -203,7 +228,7 @@ public sealed class UserCommandService(
             capability,
             requestPayload,
             idempotencyKey,
-            async () => MapGraphResult(await graphMutation(), capability),
+            async () => MapGraphResult(await graphMutation(), capability, temporaryPasswordProvider?.Invoke()),
             cancellationToken);
     }
 

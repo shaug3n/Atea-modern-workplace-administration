@@ -47,7 +47,7 @@ describe('PIM activation browser boundary', () => {
             requiredCapability: 'pim.activate',
             activationAvailable: true,
             requiresApproval: true,
-            requiresMfa: false,
+            requiresMfa: true,
             requiresJustification: true,
             maximumDurationMinutes: 480,
             directoryScopeId: '/',
@@ -58,6 +58,7 @@ describe('PIM activation browser boundary', () => {
     );
 
     fireEvent.click(screen.getByRole('button', { name: 'Request activation for Privileged Role Administrator' }));
+    expect(screen.getByRole('dialog').querySelector('[aria-label="PIM policy requirements"]')?.textContent).toContain('MFA required');
     const submit = screen.getByRole('button', { name: 'Request activation' }) as HTMLButtonElement;
     expect(submit.disabled).toBe(true);
     fireEvent.change(screen.getByLabelText('Business justification'), { target: { value: 'Approved support case' } });
@@ -72,7 +73,8 @@ describe('PIM activation browser boundary', () => {
     expect(path).toBe('/api/pim/activations');
     expect(path).not.toMatch(/graph\.microsoft\.com/i);
     expect(init.headers['Idempotency-Key']).toBeTruthy();
-    expect(JSON.parse(String(init.body)).confirmed).toBe(true);
+    expect(JSON.parse(String(init.body))).toMatchObject({ confirmed: true, roleType: 'directoryRole' });
+    expect(JSON.parse(String(init.body))).not.toHaveProperty('mfaCompleted');
     expect(await screen.findByText('The activation request is pending.')).toBeTruthy();
     expect(screen.getByText('Wait for PIM approval')).toBeTruthy();
   });
