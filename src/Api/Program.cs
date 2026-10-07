@@ -63,6 +63,9 @@ builder.Services.AddSingleton<OverviewDataCache>();
 builder.Services.AddScoped<IOverviewDataReader, GraphOverviewDataReader>();
 builder.Services.AddScoped<IOverviewService, OverviewService>();
 builder.Services.AddHttpClient("MicrosoftGraph", client => client.BaseAddress = new Uri("https://graph.microsoft.com"));
+builder.Services.AddHttpClient("EntraTenantDiscovery", client => client.Timeout = TimeSpan.FromSeconds(5))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+builder.Services.AddSingleton<ITenantResolver, OidcTenantResolver>();
 builder.Services.AddScoped<IGraphTokenProvider, MicrosoftIdentityGraphTokenProvider>();
 builder.Services.AddScoped<IDelegatedGraphClientFactory, DelegatedGraphClientFactory>();
 builder.Services.AddScoped<IUserDirectoryReader, GraphDirectoryReader>();

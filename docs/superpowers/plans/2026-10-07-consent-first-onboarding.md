@@ -63,7 +63,7 @@ The files below are the planned change surface. New test files are named in thei
 - Produces: `TenantResolutionResult(TenantResolutionStatus Status, Guid? TenantId)` where status is `Resolved`, `InvalidInput`, `NotFound`, or `Unavailable`.
 - Consumes: `IHttpClientFactory` named client `EntraTenantDiscovery`; no provisioning/database interface.
 
-- [ ] **Step 1: Write failing resolver tests.**
+- [x] **Step 1: Write failing resolver tests.**
 
 ```csharp
 [Fact] public async Task ResolveAsync_uses_fixed_discovery_url_and_canonical_issuer()
@@ -81,21 +81,21 @@ The files below are the planned change surface. New test files are named in thei
 
 Also assert `common`, an IP address, URL syntax, ports, wildcards, and invalid IDN input return `InvalidInput`; timeout returns `Unavailable`, a 404 returns `NotFound`, and successful aliases are cached while failures are not.
 
-- [ ] **Step 2: Run the focused tests.**
+- [x] **Step 2: Run the focused tests.**
 
 Run: `dotnet test tests/Api.UnitTests/Api.UnitTests.csproj --filter FullyQualifiedName~TenantResolverTests`
 Expected: FAIL because the resolver types and fixed-metadata validation do not exist.
 
-- [ ] **Step 3: Implement `OidcTenantResolver.ResolveAsync` in `TenantResolver.cs`.**
+- [x] **Step 3: Implement `OidcTenantResolver.ResolveAsync` in `TenantResolver.cs`.**
 
 Normalize trimmed/lowercase DNS and IDN names to ASCII; issue only the fixed HTTPS discovery request with redirects disabled, a five-second timeout and a 64-KiB body cap. Require a GUID issuer segment ending `/v2.0` and authorization/token endpoints on the same trusted host and tenant. Cache successful mappings for one hour only.
 
-- [ ] **Step 4: Re-run the focused resolver tests.**
+- [x] **Step 4: Re-run the focused resolver tests.**
 
 Run: `dotnet test tests/Api.UnitTests/Api.UnitTests.csproj --filter FullyQualifiedName~TenantResolverTests`
 Expected: PASS, including all fake-handler cases with no network access.
 
-- [ ] **Step 5: Commit.**
+- [x] **Step 5: Commit.**
 
 ```bash
 git add src/Api/Features/Workspaces/TenantResolver.cs src/Api/Program.cs tests/Api.UnitTests/Workspaces/TenantResolverTests.cs
