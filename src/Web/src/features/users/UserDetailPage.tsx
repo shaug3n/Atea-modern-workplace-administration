@@ -20,10 +20,13 @@ import { ActionMenu } from '../../components/ActionMenu';
 import { AssociatedDevicesSection } from './AssociatedDevicesSection';
 import { RevokeSessionsDialog } from './RevokeSessionsDialog';
 import { WorkspacePageHeader } from '../../components/WorkspacePageHeader';
+import { StatusBadge } from '../../components/StatusBadge';
+import { DataFreshness } from '../../components/DataFreshness';
+import { SectionRetryContext } from './IdentitySection';
 import { WorkspaceDataState } from '../../components/WorkspaceDataState';
 import { useWorkspaceIssueReporter } from '../../notifications/WorkspaceNotifications';
 
-export function UserDetailPage({ userId, loadUserDetail, capabilities = [], modules }: { userId?: string; loadUserDetail?: (userId: string) => Promise<UserDetailResponse>; capabilities?: CapabilityDecision[]; modules?: string[] }) {
+export function UserDetailPage({ userId, loadUserDetail, capabilities = [], modules, onNavigate }: { onNavigate?: (path: string) => void; userId?: string; loadUserDetail?: (userId: string) => Promise<UserDetailResponse>; capabilities?: CapabilityDecision[]; modules?: string[] }) {
   const issueReporter = useWorkspaceIssueReporter();
   const api = useApi();
   const resolvedUserId = userId ?? userIdFromPath(window.location.pathname);
@@ -42,6 +45,7 @@ export function UserDetailPage({ userId, loadUserDetail, capabilities = [], modu
   const [groupAction, setGroupAction] = useState<{ id: string | null; target?: string; mode: 'add' | 'remove' } | null>(null);
   const [licenseAction, setLicenseAction] = useState<{ id: string | null; target?: string; mode: 'assign' | 'remove' } | null>(null);
   const [revokeSessionsOpen, setRevokeSessionsOpen] = useState(false);
+  const [disableOpen, setDisableOpen] = useState(false);
   const updateDecision = findDecision(capabilities, 'users.update');
   const disableDecision = findDecision(capabilities, 'users.disable');
   const resetPasswordDecision = findDecision(capabilities, 'users.reset_password');
@@ -109,6 +113,34 @@ export function UserDetailPage({ userId, loadUserDetail, capabilities = [], modu
     setRefreshVersion((version) => version + 1);
   };
 
+  const displayName = user.displayName || user.userPrincipalName || user.id;
+  const refreshDetail = () => { setPartialRetryFor(resolvedUserId); setRefreshVersion(version => version + 1); };
+  const sectionFailed = (access: UserDetailResponse['access']) => access.partialData || access.freshness === 'unavailable' || Boolean(access.error);
+  const failedSections = [
+    sectionFailed(detail.access) && 'Identity',
+    sectionFailed(detail.licenses.access) && 'Licenses',
+    sectionFailed(detail.groups.access) && 'Groups',
+    (sectionFailed(detail.roles.access) || sectionFailed(detail.pim.access)) && 'Roles',
+  ].filter((value): value is string => Boolean(value));
+  const moreActions = [
+    revokeSessionsDecision.state === 'allowed' && !user.isReadOnly ? { label: 'Revoke sessions', description: 'Signs the user out everywhere.', onSelect: () => setRevokeSessionsOpen(true) } : null,
+    disableDecision.state === 'allowed' && !user.isReadOnly && user.accountEnabled !== false ? { label: 'Disable user', description: 'Blocks sign-in for this user.', danger: true, separatorBefore: true, onSelect: () => { setMutationError(null); setDisableOpen(true); } } : null,
+  ].filter((item): item is NonNullable<typeof item> => item !== null);
+
+  const submitDisable = async () => {
+    setMutationPending(true);
+    setMutationError(null);
+    try {
+      const response = await mutateUser(api as ApiFetch, `/api/users/${encodeURIComponent(user.id)}/disable`, 'POST', {});
+      if (response.status === 'succeeded') { setDisableOpen(false); refreshAfterSuccess(); }
+      else setMutationError(formatMutationError(response));
+    } catch {
+      setMutationError('Sign-in could not be disabled. Review the user and try again.');
+    } finally {
+      setMutationPending(false);
+    }
+  };
+
   const submitReactivate = async () => {
     if (disableDecision.state !== 'allowed') {
       setMutationError(messages.userDisablePermissionDenied);
@@ -131,32 +163,31 @@ export function UserDetailPage({ userId, loadUserDetail, capabilities = [], modu
   return (
     <section className="user-detail-page" aria-label="User details">
       <div className="user-detail-hero">
-        <a className="back-link" href="/users">← {messages.navUsers}</a>
-        <div className="user-detail-hero__main">
-          <div className="user-avatar" aria-hidden="true">{initials(user.displayName || user.userPrincipalName || '')}</div>
-          <div>
-            <WorkspacePageHeader eyebrow={messages.userDetailTitle} title={detail.user.displayName || detail.user.userPrincipalName || messages.usersUnnamedUser} description={user.userPrincipalName || messages.usersUnavailableValue} />
-            <div className="user-detail-hero__status" aria-label="User status">
-              <span className="status-badge" data-tone={user.accountEnabled === false ? 'danger' : user.accountEnabled === true ? 'success' : 'warning'}>{user.accountEnabled === false ? messages.userAccountDisabled : user.accountEnabled === true ? messages.userAccountEnabled : 'Account status unavailable'}</span>
-              {user.userType && <span className="status-badge" data-tone="info">{user.userType}</span>}
-              {user.isReadOnly && <span className="status-badge" data-tone="warning">Read-only source</span>}
-            </div>
-          </div>
-        </div>
-        <div className="page-action-bar user-detail-hero__actions" aria-label="User management actions">
+        <WorkspacePageHeader
+          title={user.displayName || user.userPrincipalName || messages.usersUnnamedUser}
+          description={user.userPrincipalName || messages.usersUnavailableValue}
+          backLink={{ label: 'Back to Users', href: '/users', onNavigate }}
+          meta={<>
+            <StatusBadge tone={user.accountEnabled === false ? 'neutral' : user.accountEnabled === true ? 'success' : 'warning'} label={user.accountEnabled === false ? messages.userAccountDisabled : user.accountEnabled === true ? messages.userAccountEnabled : 'Account status unavailable'} />
+            {user.userType && <StatusBadge tone="info" label={user.userType} />}
+            {user.isReadOnly && <StatusBadge tone="warning" label="Read-only source" />}
+            <DataFreshness fetchedAt={detail.access.fetchedAt} freshness={detail.access.freshness} partialData={false} source="Microsoft Graph" />
+          </>}
+          actions={<div className="page-action-bar user-detail-hero__actions" role="group" aria-label="User management actions">
             {updateDecision.state === 'allowed' && !user.isReadOnly && <button className="button button--secondary" type="button" onClick={() => { setMutationError(null); setEditOpen(true); }}>Edit user</button>}
             {disableDecision.state === 'allowed' && user.accountEnabled === false && <button className="button button--secondary" type="button" onClick={() => { setMutationError(null); setReactivateOpen(true); }}>Reactivate user</button>}
-            {resetPasswordDecision.state === 'allowed' && !user.isReadOnly && <button className="button button--primary" type="button" onClick={() => { setMutationError(null); setResetPasswordOpen(true); }}>Reset password</button>}
-            {revokeSessionsDecision.state === 'allowed' && !user.isReadOnly && <ActionMenu label="Actions" items={[{ label: 'Revoke sessions', danger: true, onSelect: () => setRevokeSessionsOpen(true) }]} />}
-            <div className="user-action-guidance" aria-label="Action availability">
-              <ActionGuidance label="Edit user" decision={updateDecision} readOnlySource={user.isReadOnly} />
-              {user.accountEnabled === false && <ActionGuidance label="Reactivate user" decision={disableDecision} readOnlySource={user.isReadOnly} />}
-              <ActionGuidance label="Reset password" decision={resetPasswordDecision} readOnlySource={user.isReadOnly} />
-              <ActionGuidance label="Revoke sessions" decision={revokeSessionsDecision} readOnlySource={user.isReadOnly} />
-            </div>
+            {resetPasswordDecision.state === 'allowed' && !user.isReadOnly && <button className="button button--secondary" type="button" onClick={() => { setMutationError(null); setResetPasswordOpen(true); }}>Reset password</button>}
+            {moreActions.length > 0 && <ActionMenu label="More actions" items={moreActions} />}
+          </div>}
+        />
+        <div className="user-action-guidance" aria-label="Action availability">
+          <ActionGuidance label="Edit user" decision={updateDecision} readOnlySource={user.isReadOnly} />
+          {user.accountEnabled === false && <ActionGuidance label="Reactivate user" decision={disableDecision} readOnlySource={user.isReadOnly} />}
+          <ActionGuidance label="Reset password" decision={resetPasswordDecision} readOnlySource={user.isReadOnly} />
+          <ActionGuidance label="Revoke sessions" decision={revokeSessionsDecision} readOnlySource={user.isReadOnly} />
         </div>
       </div>
-      {[detail.access, detail.licenses.access, detail.groups.access, detail.roles.access, detail.pim.access].some(access => access.partialData || access.error) && <div className="workspace-partial-notice user-detail-partial" role="status"><span>Partial user details. Check Notifications for details.</span><button type="button" disabled={partialRetryPending} onClick={() => { setPartialRetryFor(resolvedUserId); setRefreshVersion(version => version + 1); }}>{partialRetryPending ? 'Retrying user details' : 'Retry user details'}</button></div>}
+      {failedSections.length > 0 && <WorkspaceDataState kind="partial" title="Some sections couldn't load" message="The rest of this page is up to date." affected={failedSections} retryLabel="Retry user details" retrying={partialRetryPending} onRetry={refreshDetail} />}
       <div className="user-status-strip" role="region" aria-label="User status summary">
         <div><span>Account</span><strong>{user.accountEnabled === true ? 'Enabled' : user.accountEnabled === false ? 'Disabled' : 'Unavailable'}</strong></div>
         <div><span>MFA</span><strong>{authenticationMethodsDecision.state === 'allowed' || authenticationMethodsDecision.state === 'read_only' ? <a href="#authentication-methods-section-title">Review methods</a> : 'Unavailable in summary'}</strong></div>
@@ -166,7 +197,9 @@ export function UserDetailPage({ userId, loadUserDetail, capabilities = [], modu
       {editOpen && <UserEditDialog user={user} onCancel={() => { if (!mutationPending) setEditOpen(false); }} onCompleted={(response) => response.status === 'succeeded' ? refreshAfterSuccess() : setMutationError(formatMutationError(response))} />}
       {reactivateOpen && <ConfirmationDialog title="Reactivate user" target={user.displayName || user.userPrincipalName || user.id} proposedChange="Restore sign-in for this user." requiredCapability="users.disable" confirmLabel={messages.confirmEnableUser} busy={mutationPending} onConfirm={submitReactivate} onCancel={() => { if (!mutationPending) setReactivateOpen(false); }} />}
       {resetPasswordOpen && <PasswordResetDialog user={user} onClose={() => setResetPasswordOpen(false)} />}
+      {disableOpen && <ConfirmationDialog title={messages.userDisableDialogTitle} target={displayName} proposedChange={messages.userDisableProposedChange} requiredCapability="users.disable" destructivePhrase="DISABLE" confirmLabel={messages.confirmDisableUser} consequence={messages.confirmDisableUserConsequence(displayName)} tone="danger" busy={mutationPending} onConfirm={submitDisable} onCancel={() => { if (!mutationPending) setDisableOpen(false); }} />}
       {revokeSessionsOpen && <RevokeSessionsDialog userId={user.id} target={user.displayName || user.userPrincipalName || user.id} onClose={() => setRevokeSessionsOpen(false)} />}
+      <SectionRetryContext.Provider value={refreshDetail}>
       <div className="user-detail-grid">
         <IdentitySection user={user} access={detail.access} />
         <JobInformationSection user={user} access={detail.access} />
@@ -176,6 +209,7 @@ export function UserDetailPage({ userId, loadUserDetail, capabilities = [], modu
         {authenticationMethodsDecision.state !== 'hidden' && <AuthenticationMethodsSection userId={user.id} userLabel={user.displayName || user.userPrincipalName || user.id} decision={authenticationMethodsDecision} manageDecision={authenticationMethodsManageDecision} />}
         {(modules === undefined || modules.includes('devices')) && <AssociatedDevicesSection userId={user.id} decision={devicesViewDecision} />}
       </div>
+      </SectionRetryContext.Provider>
       {groupAction && <GroupMembershipDialog userId={user.id} groupId={groupAction.id} target={groupAction.target} assignedGroupIds={detail.groups.items.map((item) => item.id)} mode={groupAction.mode} onCancel={() => setGroupAction(null)} onCompleted={(response) => response.status === 'succeeded' ? (setGroupAction(null), refreshAfterSuccess()) : setMutationError(formatMutationError(response))} />}
       {licenseAction && (modules === undefined || modules.includes('licenses')) && <LicenseAssignmentDialog userId={user.id} skuId={licenseAction.id} target={licenseAction.target} assignedSkuIds={detail.licenses.items.map((item) => item.skuId)} mode={licenseAction.mode} onCancel={() => setLicenseAction(null)} onCompleted={(response) => response.status === 'succeeded' ? (setLicenseAction(null), refreshAfterSuccess()) : setMutationError(formatMutationError(response))} />}
     </section>

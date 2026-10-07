@@ -1279,7 +1279,8 @@ p {
 
 .user-detail-page {
   display: grid;
-  gap: var(--atea-space-5);
+  gap: var(--atea-space-6);
+  min-width: 0;
   max-width: 96rem;
 }
 
@@ -2067,15 +2068,17 @@ p {
   text-align: left;
 }
 
-.user-detail-page {
-  gap: var(--atea-space-8);
-}
-
 .user-detail-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--atea-space-6);
   align-items: start;
+}
+
+@media (min-width: 72rem) {
+  .user-detail-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 .detail-card {
@@ -2496,8 +2499,7 @@ p {
 }
 
 /* Users directory and profile */
-.users-page,
-.user-detail-page {
+.users-page {
   min-width: 0;
 }
 

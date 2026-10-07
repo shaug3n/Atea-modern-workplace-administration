@@ -70,7 +70,7 @@ export const appRoutes: AppRoute[] = [
     pageTitle: messages.userDetailTitle,
     module: 'users',
     capability: 'users.view',
-    render: (options) => <UserDetailPage capabilities={options?.capabilities} modules={effectiveAssignedModules(options?.session)} />,
+    render: (options) => <UserDetailPage onNavigate={options?.navigate} capabilities={options?.capabilities} modules={effectiveAssignedModules(options?.session)} />,
   },
   {
     path: '/licenses',
