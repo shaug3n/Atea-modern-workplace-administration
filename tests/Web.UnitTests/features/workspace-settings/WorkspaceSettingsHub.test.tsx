@@ -68,7 +68,7 @@ describe('Workspace Settings hub', () => {
     });
     renderAt('/settings');
     expect(await screen.findByText('Workspace modules are unavailable.')).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Save settings' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Save changes' })).toBeTruthy();
     expect(screen.getByText('No workspace members have been added yet.')).toBeTruthy();
   });
 

@@ -21,8 +21,8 @@ describe('WorkspaceSettingsPage', () => {
     });
     render(<WorkspaceSettingsPage />);
     fireEvent.change(await screen.findByLabelText('Workspace display name'), { target: { value: 'Operations' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
-    expect(await screen.findByText('Settings saved')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+    expect(await screen.findByText(/^Saved/)).toBeTruthy();
     expect(submitted).toEqual({ displayName: 'Operations', defaultColumns: ['displayName'], defaultFilters: { userType: 'Member' }, supportInstructions: 'Contact support.', defaultTheme: 'light' });
     expect(submitted).not.toHaveProperty('enabledModules');
     expect(submitted).not.toHaveProperty('access');
@@ -32,13 +32,13 @@ describe('WorkspaceSettingsPage', () => {
     const save = async () => ({ displayName: 'Operations', enabledModules: ['overview'], defaultColumns: ['displayName'], defaultFilters: {}, supportInstructions: 'Contact support.', defaultTheme: 'light', access: { state: 'allowed' } });
     render(<WorkspaceSettingsPage loadSettings={async () => ({ displayName: 'Example', enabledModules: ['overview'], defaultColumns: ['displayName'], defaultFilters: {}, supportInstructions: '', defaultTheme: 'light', access: { state: 'allowed' } })} saveSettings={save} />);
     await waitFor(() => expect((screen.getByLabelText('Workspace display name') as HTMLInputElement).value).toBe('Example'));
-    expect(screen.getByRole('button', { name: 'Save settings' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Save changes' })).toBeTruthy();
   });
 
   it('shows no-permission state for a hidden platform capability', async () => {
     render(<WorkspaceSettingsPage loadSettings={async () => ({ displayName: '', enabledModules: [], defaultColumns: [], defaultFilters: {}, supportInstructions: '', defaultTheme: 'light', access: { state: 'hidden' } })} />);
     await waitFor(() => expect(screen.getByRole('heading', { name: 'Permission required' })).toBeTruthy());
-    expect(screen.queryByRole('button', { name: 'Save settings' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Save changes' })).toBeNull();
   });
 
   it('keeps the General page header through loading, error and retry', async () => {

@@ -141,8 +141,8 @@ describe('customer workspace redesign', () => {
     render(<WorkspaceModulesPage />);
     await screen.findByRole('heading', { name: 'Modules' });
     fireEvent.click(screen.getByLabelText('Exchange'));
-    fireEvent.click(screen.getByRole('button', { name: 'Save modules' }));
-    expect((await screen.findByRole('status')).textContent).toContain('Modules saved');
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+    expect((await screen.findByRole('status')).textContent).toContain('Saved');
   });
 
   it('labels Exchange directory records as unverified and shows row-level unavailable state', async () => {

@@ -897,3 +897,7 @@ td.numeric {
   .settings-layout { grid-template-columns: 12rem minmax(0, 1fr); align-items: start; }
   .settings-index { position: sticky; top: var(--atea-space-5); display: grid; gap: var(--atea-space-1); padding: 0; border-block: 0; overflow: visible; white-space: normal; }
 }
+
+.settings-form-footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.75rem; }
+.settings-form-footer__buttons { display: inline-flex; gap: 0.5rem; margin-inline-start: auto; }
+.settings-form-footer__dirty { color: var(--status-warning-text, currentColor); font-weight: 600; }

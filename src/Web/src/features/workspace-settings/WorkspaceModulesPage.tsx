@@ -1,5 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useApi } from '../../auth/useApi';
+import { StatusBadge } from '../../components/StatusBadge';
+import { SettingsFormFooter } from './SettingsFormFooter';
 
 export const workspaceModules = [
   { key: 'users', label: 'Users', description: 'Directory users, lifecycle and identity details.' },
@@ -16,10 +18,10 @@ export function WorkspaceModulesPage({ embedded = false }: { embedded?: boolean 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [saved, setSaved] = useState(false);
+  const [savedAt, setSavedAt] = useState<string | null>(null);
   const [dormantGrantCount, setDormantGrantCount] = useState(0);
   const [restoreConfirmation, setRestoreConfirmation] = useState(false);
-  const originalModules = useRef<string[]>([]);
+  const [originalModules, setOriginalModules] = useState<string[]>([]);
   const load = useCallback(async () => {
     setLoading(true); setError(null);
     try {
@@ -27,18 +29,19 @@ export function WorkspaceModulesPage({ embedded = false }: { embedded?: boolean 
       if (!response.ok) throw new Error('modules unavailable');
       const value = await response.json() as WorkspaceModulesResponse;
       setEnabledModules(value.enabledModules);
-      originalModules.current = value.enabledModules;
+      setOriginalModules(value.enabledModules);
       setDormantGrantCount(value.dormantGrantCount ?? 0);
     } catch { setError('Workspace modules are unavailable.'); } finally { setLoading(false); }
   }, [api]);
   useEffect(() => { void load(); }, [load]);
+  const dirty = enabledModules.length !== originalModules.length || enabledModules.some(key => !originalModules.includes(key));
   const save = async (confirmed = false) => {
-    const reenabled = enabledModules.some(key => !originalModules.current.includes(key));
+    const reenabled = enabledModules.some(key => !originalModules.includes(key));
     if (!confirmed && reenabled && dormantGrantCount > 0) {
       setRestoreConfirmation(true);
       return;
     }
-    setSaving(true); setSaved(false); setError(null);
+    setSaving(true); setSavedAt(null); setError(null);
     try {
       const response = await api('/api/workspaces/current/modules', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enabledModules }) });
       if (!response.ok) throw new Error('save failed');
@@ -46,7 +49,7 @@ export function WorkspaceModulesPage({ embedded = false }: { embedded?: boolean 
       setEnabledModules(value.enabledModules);
       setRestoreConfirmation(false);
       await load();
-      setSaved(true);
+      setSavedAt(new Date().toISOString());
     } catch { setError('Modules could not be saved. Review owner permissions and try again.'); } finally { setSaving(false); }
   };
   return <section className="settings-page" aria-labelledby="modules-title">
@@ -56,11 +59,11 @@ export function WorkspaceModulesPage({ embedded = false }: { embedded?: boolean 
     {!loading && !error && <>
     {dormantGrantCount > 0 && <p className="integration-note">{dormantGrantCount} existing member or invitation module grant{dormantGrantCount === 1 ? '' : 's'} are dormant because a module is disabled. They remain stored and will become effective again if you re-enable that module.</p>}
     <div className="module-settings-list">{workspaceModules.map(module => <label className="module-setting" key={module.key}>
-      <input type="checkbox" aria-label={module.label} checked={enabledModules.includes(module.key)} onChange={() => setEnabledModules(current => current.includes(module.key) ? current.filter(key => key !== module.key) : [...current, module.key])} />
-      <span><strong>{module.label}</strong><small>{module.description}</small></span>
+      <input type="checkbox" role="switch" aria-label={module.label} checked={enabledModules.includes(module.key)} onChange={() => { setSavedAt(null); setEnabledModules(current => current.includes(module.key) ? current.filter(key => key !== module.key) : [...current, module.key]); }} />
+      <span><strong>{module.label}</strong><small>{module.description}</small></span><StatusBadge tone={enabledModules.includes(module.key) ? 'success' : 'neutral'} label={enabledModules.includes(module.key) ? 'Enabled' : 'Disabled'} />
     </label>)}</div>
     {restoreConfirmation && <section className="integration-note" role="alertdialog" aria-labelledby="restore-grants-title"><h2 id="restore-grants-title">Restore existing module access?</h2><p>Re-enabling a module will reactivate stored access grants for existing members and pending invitations. Those people will be able to use the module, still subject to their Entra permissions and PIM state.</p><div className="settings-form-actions"><button type="button" disabled={saving} onClick={() => setRestoreConfirmation(false)}>Keep module disabled</button><button type="button" className="button--primary" disabled={saving} onClick={() => void save(true)}>Confirm and restore access</button></div></section>}
-    <div className="settings-form-actions"><button type="button" className="button--primary" disabled={saving} onClick={() => void save()}>{saving ? 'Saving…' : 'Save modules'}</button>{saved && <span role="status">Modules saved</span>}</div>
+    <SettingsFormFooter dirty={dirty} saving={saving} savedAt={savedAt} onReset={() => { setEnabledModules(originalModules); setRestoreConfirmation(false); setError(null); }} onSave={() => void save()} />
     </>}
   </section>;
 }
