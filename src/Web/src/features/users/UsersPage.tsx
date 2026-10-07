@@ -197,10 +197,10 @@ export function UsersPage({ capabilities, onNavigate, loadUsers, authorizationUn
       <WorkspacePageHeader eyebrow={messages.usersEyebrow} title={messages.usersTitle} description={messages.usersDirectoryIntro} actions={
         <div className="users-page__actions">
           <PermissionState decision={usersCreate}>
-            <button type="button" onClick={() => setCreateOpen(true)}>{messages.usersCreateAction}</button>
+            <button type="button" className="button button--primary" onClick={() => setCreateOpen(true)}>{messages.usersCreateAction}</button>
           </PermissionState>
-          <button type="button" onClick={() => setRefreshVersion((version) => version + 1)}>{messages.usersRefreshAction}</button>
-          <button type="button" onClick={() => void exportUsers()} disabled={!readable || exportPending}>Export filtered CSV</button>
+          <button type="button" className="button button--secondary" onClick={() => setRefreshVersion((version) => version + 1)}>{messages.usersRefreshAction}</button>
+          <button type="button" className="button button--secondary" onClick={() => void exportUsers()} disabled={!readable || exportPending}>Export filtered CSV</button>
         </div>} />
 
       {exportMessage && <p role="status">{exportMessage}</p>}

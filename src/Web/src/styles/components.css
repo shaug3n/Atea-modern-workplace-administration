@@ -847,3 +847,24 @@ td.numeric {
   margin: 0;
   color: var(--uw-muted);
 }
+
+/* Table cells */
+.cell-primary-link {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.cell-secondary {
+  display: block;
+  max-width: 28ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--uw-muted);
+}
+
+.users-name-cell {
+  display: grid;
+  gap: 0.125rem;
+  min-width: 0;
+}

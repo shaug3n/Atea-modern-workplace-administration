@@ -1,6 +1,8 @@
-import React, { useState } from 'react';
+import React from 'react';
 import type { CapabilityDecision } from '../../capabilities/capabilityTypes';
-import { PermissionState } from '../../components/PermissionState';
+import { ActionMenu, type ActionMenuItem } from '../../components/ActionMenu';
+import { StatusBadge } from '../../components/StatusBadge';
+import { humanizeCapability } from '../../format/humanize';
 import { messages } from '../../app/messages';
 import { ResponsiveDataView } from '../../components/ResponsiveDataView';
 import type { UserSummary as ApiUserSummary } from './usersApi';
@@ -18,63 +20,55 @@ export function UsersTable({
   onNavigate?: (path: string) => void;
   onDisable?: (user: UserSummary) => void;
 }) {
-  const [expanded, setExpanded] = useState<string[]>([]);
   const updateDecision = findDecision(capabilities, 'users.update');
   const disableDecision = findDecision(capabilities, 'users.disable');
   const showAccountStatus = updateDecision.state !== 'hidden' || disableDecision.state !== 'hidden';
   const showActions = disableDecision.state !== 'hidden';
+  const nameOf = (user: UserSummary) => user.displayName || user.userPrincipalName || user.mail || messages.usersUnnamedUser;
+  const nameLink = (user: UserSummary) => <a className="cell-primary-link" href={`/users/${encodeURIComponent(user.id)}`} onClick={(event) => { event.preventDefault(); navigateToUser(user.id, onNavigate); }}>{nameOf(user)}</a>;
+  const status = (user: UserSummary) => <StatusBadge tone={user.accountEnabled === true ? 'success' : 'neutral'} label={labelStatus(user.accountEnabled)} />;
+  const menu = (user: UserSummary) => {
+    if (!showActions) return null;
+    const allowed = disableDecision.state === 'allowed';
+    const items: ActionMenuItem[] = [
+      { label: 'Open details', onSelect: () => navigateToUser(user.id, onNavigate) },
+      {
+        label: 'Disable user',
+        danger: true,
+        separatorBefore: true,
+        disabled: !allowed || !onDisable,
+        description: !allowed ? `Requires permission: ${humanizeCapability('users.disable')}` : !onDisable ? messages.usersDisableDeferredAction : undefined,
+        onSelect: () => onDisable?.(user),
+      },
+    ];
+    return <ActionMenu label="Actions" ariaLabel={`Actions for ${nameOf(user)}`} items={items} />;
+  };
 
   return (
     <ResponsiveDataView items={users} keyOf={user => user.id} label="Users"
-      renderCompact={user => {
-        const name = user.displayName || user.userPrincipalName || user.mail || messages.usersUnnamedUser;
-        return <><strong>{name}</strong><dl className="responsive-data-view__details"><div><dt>{messages.usersUpnColumn}</dt><dd>{user.userPrincipalName || messages.usersUnavailableValue}</dd></div>{showAccountStatus && <div><dt>{messages.usersAccountStatusColumn}</dt><dd>{labelStatus(user.accountEnabled)}</dd></div>}<div><dt>{messages.usersMailColumn}</dt><dd>{user.mail || messages.usersUnavailableValue}</dd></div><div><dt>{messages.usersTypeColumn}</dt><dd>{user.userType || messages.usersUnavailableValue}</dd></div></dl><div className="responsive-data-view__actions"><button type="button" className="table-action" aria-label={`${messages.usersOpenAction} ${name}`} onClick={() => navigateToUser(user.id, onNavigate)}>{messages.usersOpenAction}</button>{disableDecision.state === 'allowed' && <PermissionState decision={disableDecision}><button type="button" className="table-action" aria-label={`${messages.usersDisableAction} ${name}`} disabled={!onDisable} onClick={() => onDisable?.(user)}>{messages.usersDisableAction}</button></PermissionState>}</div></>;
-      }}
+      renderCompact={user => <>
+        <strong>{nameLink(user)}</strong>
+        <dl className="responsive-data-view__details"><div><dt>{messages.usersUpnColumn}</dt><dd className="cell-secondary" title={user.userPrincipalName || undefined}>{user.userPrincipalName || messages.usersUnavailableValue}</dd></div>{showAccountStatus && <div><dt>{messages.usersAccountStatusColumn}</dt><dd>{status(user)}</dd></div>}<div><dt>{messages.usersMailColumn}</dt><dd>{user.mail || messages.usersUnavailableValue}</dd></div><div><dt>{messages.usersTypeColumn}</dt><dd>{user.userType || messages.usersUnavailableValue}</dd></div></dl>
+        <div className="responsive-data-view__actions">{menu(user)}</div>
+      </>}
       renderTable={rows => <div className="users-table-wrap"><table className="users-table">
         <thead>
           <tr>
             <th scope="col">{messages.usersNameColumn}</th>
-            <th scope="col">{messages.usersUpnColumn}</th>
             {showAccountStatus && <th scope="col">{messages.usersAccountStatusColumn}</th>}
-            <th scope="col">{messages.usersOpenColumn}</th>
-            {showActions && <th scope="col">{messages.usersActionsColumn}</th>}
+            <th scope="col">{messages.usersTypeColumn}</th>
+            {showActions && <th scope="col"><span className="sr-only">{messages.usersActionsColumn}</span></th>}
           </tr>
         </thead>
         <tbody>
-          {rows.map((user) => {
-            const displayName = user.displayName || user.userPrincipalName || user.mail || messages.usersUnnamedUser;
-            return (
-              <React.Fragment key={user.id}>
-              <tr>
-                <th scope="row" data-label={messages.usersNameColumn}><span className="users-name-cell"><strong>{displayName}</strong><button type="button" className="table-action" aria-label={`${expanded.includes(user.id) ? 'Less' : 'More'} details for ${displayName}`} aria-expanded={expanded.includes(user.id)} aria-controls={expanded.includes(user.id) ? `user-more-${user.id}` : undefined} onClick={() => setExpanded((current) => current.includes(user.id) ? current.filter((id) => id !== user.id) : [...current, user.id])}>{expanded.includes(user.id) ? 'Less' : 'More'}</button></span></th>
-                <td data-label={messages.usersUpnColumn}>{user.userPrincipalName || messages.usersUnavailableValue}</td>
-                {showAccountStatus && <td data-label={messages.usersAccountStatusColumn}>{labelStatus(user.accountEnabled)}</td>}
-                <td data-label={messages.usersOpenColumn}>
-                  <button type="button" className="table-action" onClick={() => navigateToUser(user.id, onNavigate)} aria-label={`${messages.usersOpenAction} ${displayName}`}>
-                    {messages.usersOpenAction}
-                  </button>
-                </td>
-                {showActions && (
-                    <td data-label={messages.usersActionsColumn}>
-                    <PermissionState decision={disableDecision}>
-                      <button
-                        type="button"
-                        className="table-action"
-                        aria-label={`${messages.usersDisableAction} ${displayName}`}
-                        disabled={!onDisable}
-                        title={!onDisable ? messages.usersDisableDeferredAction : undefined}
-                        onClick={() => onDisable?.(user)}
-                      >
-                        {messages.usersDisableAction}
-                      </button>
-                    </PermissionState>
-                  </td>
-                )}
-              </tr>
-              {expanded.includes(user.id) && <tr id={`user-more-${user.id}`} className="users-table__detail"><td colSpan={3 + Number(showAccountStatus) + Number(showActions)}><dl><div><dt>{messages.usersMailColumn}</dt><dd>{user.mail || messages.usersUnavailableValue}</dd></div><div><dt>{messages.usersTypeColumn}</dt><dd>{user.userType || messages.usersUnavailableValue}</dd></div></dl></td></tr>}
-              </React.Fragment>
-            );
-          })}
+          {rows.map((user) => (
+            <tr key={user.id}>
+              <th scope="row" data-label={messages.usersNameColumn}><span className="users-name-cell">{nameLink(user)}{user.userPrincipalName && user.userPrincipalName !== nameOf(user) && <small className="cell-secondary" title={user.userPrincipalName}>{user.userPrincipalName}</small>}</span></th>
+              {showAccountStatus && <td data-label={messages.usersAccountStatusColumn}>{status(user)}</td>}
+              <td data-label={messages.usersTypeColumn}>{user.userType || messages.usersUnavailableValue}</td>
+              {showActions && <td data-label={messages.usersActionsColumn}>{menu(user)}</td>}
+            </tr>
+          ))}
         </tbody>
       </table></div>}
     />

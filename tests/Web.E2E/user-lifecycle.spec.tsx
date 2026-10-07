@@ -63,7 +63,8 @@ describe('user lifecycle browser boundary', () => {
 
     render(<UsersPage capabilities={capabilities} loadUsers={loadUsers} />);
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Disable Ada Lovelace' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Actions for Ada Lovelace' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Disable user' }));
     const confirm = screen.getByRole('button', { name: 'Disable user' }) as HTMLButtonElement;
     fireEvent.change(screen.getByLabelText('Type DISABLE to confirm'), { target: { value: 'DISABLE' } });
     expect(confirm.disabled).toBe(true);

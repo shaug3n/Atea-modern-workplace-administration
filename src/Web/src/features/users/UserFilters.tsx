@@ -24,6 +24,7 @@ export function UserFilters({ filters, onChange }: { filters: UserFiltersState; 
 
   const clear = (key: keyof UserFiltersState) => update({ [key]: '' });
   const chips = activeChips(draft);
+  const moreCount = [draft.license, draft.tenantRole].filter(Boolean).length;
 
   return (
     <form className="users-filters" role="search" onSubmit={(event) => event.preventDefault()}>
@@ -54,7 +55,7 @@ export function UserFilters({ filters, onChange }: { filters: UserFiltersState; 
         </select>
       </label>
       <details className="users-filters__more" open={Boolean(draft.license) || moreOpen} onToggle={event => setMoreOpen(event.currentTarget.open)} onFocusCapture={() => setMoreOpen(true)}>
-        <summary>More filters</summary>
+        <summary>{moreCount > 0 ? `More filters (${moreCount})` : 'More filters'}</summary>
         <div className="users-filters__more-fields">
           <label>
             <span>{messages.usersLicenseLabel}</span>
