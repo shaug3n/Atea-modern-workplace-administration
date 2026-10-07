@@ -474,24 +474,6 @@ p {
   color: var(--uw-heading);
 }
 
-.theme-toggle {
-  min-width: 5rem;
-  padding: 0 var(--atea-space-4);
-  border-color: var(--uw-primary);
-  background: var(--uw-primary);
-  color: var(--uw-on-primary);
-}
-
-.theme-toggle:hover {
-  background: var(--uw-primary-hover);
-  border-color: var(--uw-primary-hover);
-}
-
-.theme-toggle:active {
-  background: var(--uw-primary-pressed);
-  border-color: var(--uw-primary-pressed);
-}
-
 .app-body {
   display: grid;
   grid-template-columns: 15rem minmax(0, 1fr);

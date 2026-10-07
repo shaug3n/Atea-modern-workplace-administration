@@ -6,7 +6,7 @@ export const moduleMessages = {
 } as const;
 
 export const messages = {
-  appTitle: 'Atea Unified Workplace', enableDarkMode: 'Enable dark mode', disableDarkMode: 'Disable dark mode',
+  appTitle: 'Atea Unified Workplace',
   devicesNotProvisionedTitle: 'Intune is not provisioned for this tenant',
   homeLinkLabel: 'Atea Unified Workplace home', skipToContent: 'Skip to main content', shellLoading: 'Loading workspace shell…', shellUnavailable: 'Workspace shell is unavailable. Try again later.',
   primaryNavigationLabel: 'Primary navigation', tenantContextLabel: 'Current workspace and signed-in user', workspaceLabel: 'Workspace', signedInUserLabel: 'Signed-in user', signedInAs: 'Signed in as', unknownUser: 'Unknown user',
@@ -64,4 +64,5 @@ export const messages = {
     retire: { label: 'Retire device', consequence: 'Company data is removed and the device leaves management. This cannot be undone.', tone: 'danger' },
     wipe: { label: 'Wipe device', consequence: 'Erases all data and resets the device. This cannot be undone.', tone: 'danger' },
   },
+  darkModeLabel: 'Dark mode',
 } as const;
