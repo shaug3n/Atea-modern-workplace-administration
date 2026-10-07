@@ -19,6 +19,6 @@ export function AdminShell({ session, onSignOut }: { session: AdminSession; onSi
       <a href="/admin" className="brand-link" aria-label="Atea platform administration home"><img src={greyLogo} alt="Atea" className="brand-logo" /> <span>Platform administration</span></a>
       <div className="admin-user"><span>{session.displayName}</span><ThemeToggle /><button type="button" onClick={onSignOut}>Sign out</button></div>
     </header>
-    <main className="admin-content"><h1 className="admin-shell-title">Atea platform administration</h1>{content}</main>
+    <main className="admin-content"><p className="admin-brand">Atea platform administration</p>{content}</main>
   </div>;
 }

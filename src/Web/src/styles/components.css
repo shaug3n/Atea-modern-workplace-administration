@@ -901,3 +901,11 @@ td.numeric {
 .settings-form-footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.75rem; }
 .settings-form-footer__buttons { display: inline-flex; gap: 0.5rem; margin-inline-start: auto; }
 .settings-form-footer__dirty { color: var(--status-warning-text, currentColor); font-weight: 600; }
+
+.pim-steps { padding-inline-start: 2rem; display: grid; gap: 1rem; }
+.pim-steps li p { margin: 0.25rem 0 0; }
+.not-found { display: grid; gap: 1rem; justify-items: start; }
+.admin-brand { margin: 0 0 0.5rem; color: var(--text-muted, inherit); font-weight: 600; }
+.admin-list__item { display: grid; gap: 0.25rem; }
+.admin-list__open { display: grid; gap: 0.25rem; text-align: start; background: none; border: 0; padding: 0; color: inherit; font: inherit; cursor: pointer; }
+.admin-list__meta { display: inline-flex; align-items: center; gap: 0.5rem; }

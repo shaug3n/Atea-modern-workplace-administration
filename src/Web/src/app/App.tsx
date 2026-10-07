@@ -143,7 +143,7 @@ function LoadedWorkspaceExperience({ path, navigate, capabilities, capabilitiesL
     const decision = capabilityDecisionFor(route, unavailableSnapshot.capabilities);
     routeContent = decision && decision.state !== 'allowed' && decision.state !== 'read_only'
       ? <GraphRouteState route={route} state="unavailable" onRetry={refreshCapabilities} reportCause={decision.state === 'hidden' || decision.state === 'disabled' ? 'access' : undefined} session={session} navigate={navigate} loadConnectionHealth={loadConnectionHealth} />
-      : route.render({ loadConnectionHealth, capabilities: unavailableSnapshot.capabilities, navigate, session });
+      : route.render({ loadConnectionHealth, capabilities: unavailableSnapshot.capabilities, navigate, session, onRefreshAccess: refreshCapabilities });
   }
 
   return <WorkspaceNotificationsProvider key={`${session.workspace.id}:${sessionRevision}`} session={session} sessionScope={sessionRevision} capabilities={capabilities} capabilitiesError={capabilitiesError} onRefresh={refreshCapabilities} loadConnectionHealth={loadConnectionHealth}><AppShell capabilities={capabilities} currentPath={path.split('#')[0]} session={session} onNavigate={navigate}>{routeContent}</AppShell></WorkspaceNotificationsProvider>;

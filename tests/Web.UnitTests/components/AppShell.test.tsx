@@ -95,7 +95,7 @@ describe('AppShell', () => {
   it('keeps unsupported Prism URLs out of routes and navigation', async () => {
     window.history.pushState(null, '', '/services/meeting-rooms');
     render(<App loadCapabilities={async () => allowedCapabilities} loadSession={async () => session} />);
-    await waitFor(() => expect(screen.getByRole('heading', { name: 'Page not found' })).toBeTruthy());
+    await waitFor(() => expect(screen.getByRole('heading', { name: "This page isn't available" })).toBeTruthy());
     const nav = screen.getByRole('navigation', { name: 'Primary navigation' });
     expect(nav.textContent).not.toContain('Meeting Rooms');
     expect(nav.textContent).not.toContain('Copilot');
@@ -275,7 +275,7 @@ describe('AppShell', () => {
     }} loadConnectionHealth={async () => ({ status: 'connected', lastVerifiedAt: null })} />);
     fireEvent.click(await screen.findByRole('button', { name: /notifications, 1 need attention/i }));
     expect(screen.getByText('Microsoft Graph consent required')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Refresh' }));
+    fireEvent.click(within(screen.getByRole('region', { name: 'Workspace notifications' })).getByRole('button', { name: 'Refresh' }));
     await waitFor(() => expect(screen.getByRole('button', { name: /notifications, 0 need attention/i })).toBeTruthy());
   });
 
