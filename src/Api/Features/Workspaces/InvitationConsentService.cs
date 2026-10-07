@@ -354,9 +354,12 @@ public sealed class InvitationRequestSecurityMiddleware(RequestDelegate next, IO
         await next(context);
     }
 
-    private static bool IsConsentPost(PathString path) =>
-        path.Value?.EndsWith("/consent/start", StringComparison.OrdinalIgnoreCase) == true ||
-        path.Value?.EndsWith("/consent/resume", StringComparison.OrdinalIgnoreCase) == true;
+    private static bool IsConsentPost(PathString path)
+    {
+        var normalizedPath = path.Value?.TrimEnd('/');
+        return normalizedPath?.EndsWith("/consent/start", StringComparison.OrdinalIgnoreCase) == true ||
+            normalizedPath?.EndsWith("/consent/resume", StringComparison.OrdinalIgnoreCase) == true;
+    }
 
     private static bool HasSameOrigin(HttpRequest request, string configuredPublicBaseUrl)
     {

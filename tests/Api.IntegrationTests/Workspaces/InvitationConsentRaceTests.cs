@@ -117,7 +117,7 @@ public sealed class InvitationConsentRaceTests : IAsyncLifetime
             stateHash, invitationId, workspaceId, tenantId, redeemerId, DateTimeOffset.UtcNow);
         unredeemed.Should().BeFalse();
 
-        await repository.CreateAsync(new PlatformInvitation
+        var reissued = await repository.ReissueAsync(new PlatformInvitation
         {
             Id = Guid.NewGuid(),
             WorkspaceId = workspaceId,
@@ -128,11 +128,49 @@ public sealed class InvitationConsentRaceTests : IAsyncLifetime
             NonceHash = Hash("DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD"),
             ExpiresAt = DateTimeOffset.UtcNow.AddHours(2),
             CreatedAt = DateTimeOffset.UtcNow
-        });
+        }, invitationId, null);
+        reissued.Should().BeTrue();
 
         var oldChallengeAfterReissue = await repository.TryConsumeInvitationAsync(
             stateHash, invitationId, workspaceId, tenantId, redeemerId, DateTimeOffset.UtcNow);
         oldChallengeAfterReissue.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Reissue_fails_if_redemption_wins_after_the_handler_read()
+    {
+        var invitationId = Guid.NewGuid();
+        var workspaceId = Guid.NewGuid();
+        var tenantId = Guid.NewGuid();
+        var redeemerId = Guid.NewGuid();
+        const string nonce = "EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE";
+        var nonceHash = Hash(nonce);
+        var state = new ConsentChallengeService(new byte[32])
+            .CreateInvitation(workspaceId, tenantId, invitationId, DateTimeOffset.UtcNow.AddHours(1));
+        var stateHash = ConsentChallengeService.HashState(state.Challenge);
+        await SeedRedeemableInvitationAsync(invitationId, workspaceId, tenantId, nonceHash, stateHash, state);
+
+        await using var db = CreateDb();
+        var repository = new WorkspaceOnboardingRepository(db);
+        var redemption = await repository.RedeemAsync(nonceHash, tenantId, redeemerId, "admin@example.com", "Admin", stateHash);
+        redemption.Should().NotBeNull();
+
+        var created = await repository.ReissueAsync(new PlatformInvitation
+        {
+            Id = Guid.NewGuid(),
+            WorkspaceId = workspaceId,
+            Email = "admin@example.com",
+            DisplayName = "Admin",
+            Role = "customer_admin",
+            ModuleKeysJson = "[]",
+            NonceHash = Hash("FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF"),
+            ExpiresAt = DateTimeOffset.UtcNow.AddHours(2),
+            CreatedAt = DateTimeOffset.UtcNow
+        }, invitationId, null);
+
+        created.Should().BeFalse();
+        (await db.PlatformInvitations.CountAsync(x => x.WorkspaceId == workspaceId)).Should().Be(1);
+        (await db.PlatformInvitations.SingleAsync(x => x.Id == invitationId)).RevokedAt.Should().BeNull();
     }
 
     private async Task SeedRedeemableInvitationAsync(

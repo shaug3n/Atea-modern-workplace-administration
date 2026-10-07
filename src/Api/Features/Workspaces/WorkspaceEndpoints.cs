@@ -250,7 +250,8 @@ public static class WorkspaceEndpoints
         var current = await accessRepository.GetInvitationAsync(workspaceId, invitationId, cancellationToken);
         if (current is null || current.RedeemedAt is not null || current.RevokedAt is not null) return Results.NotFound();
         var audit = CreatePlatformAudit(httpContext.User, workspaceId, "workspace.invitation.reissued", "invitation", System.Text.Json.JsonSerializer.Serialize(new { previousInvitationId = invitationId }));
-        var result = await invitations.CreateForRoleAsync(workspaceId, current.Email, current.DisplayName, DateTimeOffset.UtcNow.AddDays(7), current.Role, current.ApprovedTenantObjectId, cancellationToken, audit);
+        var result = await invitations.ReissueForRoleAsync(invitationId, workspaceId, current.Email, current.DisplayName, DateTimeOffset.UtcNow.AddDays(7), current.Role, current.ApprovedTenantObjectId, cancellationToken, audit);
+        if (result is null) return Results.NotFound();
         return Results.Ok(new WorkspaceInvitationLink(result.InvitationId, result.InvitationUrl, result.ExpiresAt));
     }
 

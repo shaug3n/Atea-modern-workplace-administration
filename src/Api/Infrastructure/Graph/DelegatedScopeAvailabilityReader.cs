@@ -10,7 +10,18 @@ public sealed class DelegatedScopeAvailabilityReader(IDelegatedGraphClientFactor
 
     public async Task<IReadOnlyCollection<DelegatedScopeResult>> ReadAsync(
         IReadOnlyCollection<string> scopes,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default) =>
+        await ReadCoreAsync(scopes, cancellationToken, preserveResultsOnCancellation: false);
+
+    public async Task<IReadOnlyCollection<DelegatedScopeResult>> ReadPartialAsync(
+        IReadOnlyCollection<string> scopes,
+        CancellationToken cancellationToken = default) =>
+        await ReadCoreAsync(scopes, cancellationToken, preserveResultsOnCancellation: true);
+
+    private async Task<IReadOnlyCollection<DelegatedScopeResult>> ReadCoreAsync(
+        IReadOnlyCollection<string> scopes,
+        CancellationToken cancellationToken,
+        bool preserveResultsOnCancellation)
     {
         var requestedScopes = scopes
             .Where(scope => !string.IsNullOrWhiteSpace(scope))
@@ -20,18 +31,21 @@ public sealed class DelegatedScopeAvailabilityReader(IDelegatedGraphClientFactor
         if (requestedScopes.Length == 0) return [];
 
         using var concurrency = new SemaphoreSlim(MaximumConcurrentProbes, MaximumConcurrentProbes);
-        var probes = requestedScopes.Select(scope => ProbeAsync(scope, concurrency, cancellationToken));
+        var probes = requestedScopes.Select(scope => ProbeAsync(scope, concurrency, cancellationToken, preserveResultsOnCancellation));
         return await Task.WhenAll(probes);
     }
 
     private async Task<DelegatedScopeResult> ProbeAsync(
         string scope,
         SemaphoreSlim concurrency,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool preserveResultsOnCancellation)
     {
-        await concurrency.WaitAsync(cancellationToken);
+        var entered = false;
         try
         {
+            await concurrency.WaitAsync(cancellationToken);
+            entered = true;
             try
             {
                 await using var lease = await clientFactory.CreateForCurrentUserAsync([scope], cancellationToken);
@@ -54,9 +68,13 @@ public sealed class DelegatedScopeAvailabilityReader(IDelegatedGraphClientFactor
                 return new DelegatedScopeResult(scope, ScopeAvailability.Unknown, "temporarily_unavailable");
             }
         }
+        catch (OperationCanceledException) when (preserveResultsOnCancellation && cancellationToken.IsCancellationRequested)
+        {
+            return new DelegatedScopeResult(scope, ScopeAvailability.Unknown, "temporarily_unavailable");
+        }
         finally
         {
-            concurrency.Release();
+            if (entered) concurrency.Release();
         }
     }
 

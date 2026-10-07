@@ -3,6 +3,7 @@ using Atea.UnifiedWorkplace.Api.Features.Workspaces;
 using Atea.UnifiedWorkplace.Api.Infrastructure.Graph;
 using Atea.UnifiedWorkplace.Api.Infrastructure.Persistence.Repositories;
 using FluentAssertions;
+using Microsoft.Identity.Client;
 
 namespace Atea.UnifiedWorkplace.Api.UnitTests.Workspaces;
 
@@ -120,6 +121,26 @@ public sealed class ConnectionVerificationServiceTests
     }
 
     [Fact]
+    public async Task Comprehensive_probe_timeout_preserves_definite_missing_scope_results()
+    {
+        var onboarding = new RecordingOnboardingService();
+        var scopeReader = new DelegatedScopeAvailabilityReader(new PartialTimeoutGraphClientFactory());
+        var service = new ConnectionVerificationService(
+            new FixtureConnectionHealthReader(new ConnectionHealthReadResult(ConnectionHealthStatus.Connected, ["User.Read"])),
+            scopeReader,
+            onboarding,
+            TimeSpan.FromMilliseconds(50));
+
+        var result = await service.VerifyAsync(Context(), includePermissionCoverage: true);
+
+        result.Health.Status.Should().Be(ConnectionState.PermissionIncomplete);
+        result.PermissionCoverage!.MissingScopes.Should().Contain("User.Read.All");
+        result.PermissionCoverage.UnknownScopes.Should().NotBeEmpty();
+        result.PermissionCoverage.AvailableScopes.Should().BeEmpty();
+        onboarding.RecordedStatus.Should().Be(ConnectionState.PermissionIncomplete);
+    }
+
+    [Fact]
     public async Task Last_verified_time_is_persisted_only_when_an_observed_check_is_recorded()
     {
         var repository = new RecordingOnboardingRepository();
@@ -191,6 +212,20 @@ public sealed class ConnectionVerificationServiceTests
         {
             await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
             return [];
+        }
+    }
+
+    private sealed class PartialTimeoutGraphClientFactory : IDelegatedGraphClientFactory
+    {
+        public async Task<GraphClientLease> CreateForCurrentUserAsync(
+            IReadOnlyCollection<string> scopes,
+            CancellationToken cancellationToken)
+        {
+            if (scopes.Single() == "User.Read.All")
+                throw new MsalUiRequiredException("consent_required", "Consent is required.");
+
+            await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+            throw new InvalidOperationException("The blocked probe should be cancelled by the verifier timeout.");
         }
     }
 

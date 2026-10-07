@@ -125,6 +125,22 @@ public sealed class InvitationConsentEndpointTests
     }
 
     [Fact]
+    public async Task Anonymous_consent_post_with_trailing_slash_rejects_cross_origin_requests()
+    {
+        using var factory = CreateFactory();
+        using var client = factory.CreateClient();
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/invitations/invalid/consent/start/")
+        {
+            Content = new StringContent("{}", Encoding.UTF8, "application/json")
+        };
+        request.Headers.Add("Origin", "https://attacker.example");
+
+        var response = await client.SendAsync(request);
+
+        response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+    }
+
+    [Fact]
     public async Task Existing_workspace_routes_remain_authenticated()
     {
         using var factory = CreateFactory();
@@ -194,6 +210,22 @@ public sealed class InvitationConsentEndpointTests
 
         response.StatusCode.Should().Be(HttpStatusCode.RequestEntityTooLarge);
         response.Headers.CacheControl!.NoStore.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Resume_with_trailing_slash_rejects_oversized_callback_bodies_before_parsing_state()
+    {
+        using var factory = CreateFactory();
+        using var client = factory.CreateClient();
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/invitations/invalid/consent/resume/")
+        {
+            Content = new StringContent($"{{\"state\":\"{new string('x', 9000)}\"}}", Encoding.UTF8, "application/json")
+        };
+        request.Headers.Add("Origin", "http://localhost");
+
+        var response = await client.SendAsync(request);
+
+        response.StatusCode.Should().Be(HttpStatusCode.RequestEntityTooLarge);
     }
 
     [Fact]

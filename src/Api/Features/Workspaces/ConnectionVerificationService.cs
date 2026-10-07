@@ -67,9 +67,10 @@ public sealed class ConnectionVerificationService(
         IReadOnlyCollection<DelegatedScopeResult> scopeResults;
         try
         {
-            scopeResults = await scopeAvailabilityReader.ReadAsync(
+            scopeResults = await scopeAvailabilityReader.ReadPartialAsync(
                 GraphScopeCatalog.CapabilityEvaluationScopes,
                 timeoutSource.Token);
+            cancellationToken.ThrowIfCancellationRequested();
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {

@@ -159,6 +159,27 @@ public sealed class WorkspaceOnboardingRepository(WorkplaceDbContext db) : IOnbo
         return invitation;
     }
 
+    public async Task<bool> ReissueAsync(
+        PlatformInvitation invitation,
+        Guid replacedInvitationId,
+        AuditEvent? auditEvent,
+        CancellationToken cancellationToken = default)
+    {
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        var now = DateTimeOffset.UtcNow;
+        var revoked = await db.PlatformInvitations
+            .Where(x => x.Id == replacedInvitationId &&
+                x.WorkspaceId == invitation.WorkspaceId &&
+                x.RedeemedAt == null &&
+                x.RevokedAt == null)
+            .ExecuteUpdateAsync(updates => updates.SetProperty(x => x.RevokedAt, now), cancellationToken);
+        if (revoked != 1) return false;
+
+        await CreateAsync(invitation, auditEvent, cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return true;
+    }
+
     public Task<InvitationRedemption?> RedeemAsync(
         string nonceHash,
         Guid tenantId,
