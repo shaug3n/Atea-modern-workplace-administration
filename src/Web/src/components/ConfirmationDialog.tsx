@@ -1,5 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useId, useState } from 'react';
 import { messages } from '../app/messages';
+import { humanizeCapability } from '../format/humanize';
+import { Icon } from './icons';
+import { TechnicalDetails } from './TechnicalDetails';
 import { useFocusContainment } from './useFocusContainment';
 
 export type ConfirmationDialogProps = {
@@ -17,6 +20,9 @@ export type ConfirmationDialogProps = {
   children?: React.ReactNode;
   embedded?: boolean;
   showTitle?: boolean;
+  confirmLabel?: string;
+  consequence?: string;
+  tone?: 'default' | 'danger';
 };
 
 export function ConfirmationDialog({
@@ -34,9 +40,13 @@ export function ConfirmationDialog({
   children,
   embedded = false,
   showTitle = true,
+  confirmLabel = messages.userMutationConfirm,
+  consequence,
+  tone = 'default',
 }: ConfirmationDialogProps) {
   const [reviewed, setReviewed] = useState(false);
   const [phrase, setPhrase] = useState('');
+  const consequenceId = useId();
   const phraseMatches = !destructivePhrase || phrase === destructivePhrase;
   const canConfirm = reviewed && phraseMatches && !busy && !sourceLimitation;
   const dialogRef = useFocusContainment<HTMLElement>(!embedded, onCancel && !busy ? onCancel : undefined);
@@ -55,9 +65,16 @@ export function ConfirmationDialog({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [busy, onCancel]);
 
+  const danger = tone === 'danger';
   const content = (
     <>
       {showTitle && <h2 id="mutation-dialog-title">{title}</h2>}
+      {consequence && (
+        <p id={consequenceId} className={`mutation-consequence${danger ? ' mutation-consequence--danger' : ''}`}>
+          {danger && <Icon name="alert-triangle" size={18} />}
+          <span>{consequence}</span>
+        </p>
+      )}
       <dl className="detail-list">
         <div>
           <dt>{messages.userMutationTarget}</dt>
@@ -69,29 +86,30 @@ export function ConfirmationDialog({
         </div>
         <div>
           <dt>{messages.userRequiredCapability}</dt>
-          <dd>{requiredCapability}</dd>
+          <dd>{humanizeCapability(requiredCapability)}</dd>
         </div>
       </dl>
+      <TechnicalDetails items={[{ label: 'Capability key', value: requiredCapability }]} />
       {children}
       {sourceLimitation && <p role="alert">{sourceLimitation}</p>}
-      <p>{auditNotice}</p>
+      <p className="mutation-audit-notice">{auditNotice}</p>
       {destructivePhrase && (
-        <label>
-          {destructivePhraseLabel}
-          <input value={phrase} onChange={(event) => setPhrase(event.target.value)} aria-label={destructivePhraseLabel} />
+        <label className="mutation-phrase">
+          <span>{destructivePhraseLabel}</span>
+          <input value={phrase} onChange={(event) => setPhrase(event.target.value)} autoComplete="off" />
         </label>
       )}
-      <label>
+      <label className="checkbox-field">
         <input type="checkbox" checked={reviewed} onChange={(event) => setReviewed(event.target.checked)} />
-        {messages.userMutationReviewedConfirmation}
+        <span>{messages.userMutationReviewedConfirmation}</span>
       </label>
-      <div className="page-action-bar">
-        {onCancel && <button type="button" className="button button--quiet" onClick={onCancel}>{messages.userMutationCancel}</button>}
-        <button type="button" className="button button--primary" disabled={!canConfirm} onClick={onConfirm}>{busy ? messages.userMutationSaving : messages.userMutationConfirm}</button>
+      <div className="page-action-bar mutation-dialog__footer">
+        {onCancel && <button type="button" className="button button--secondary" onClick={onCancel}>{messages.userMutationCancel}</button>}
+        <button type="button" className={danger ? 'button button--danger button--danger-solid' : 'button button--primary'} disabled={!canConfirm} onClick={onConfirm}>{busy ? `${confirmLabel}…` : confirmLabel}</button>
       </div>
     </>
   );
 
   if (embedded) return <div className="mutation-confirmation">{content}</div>;
-  return <div className="modal-backdrop"><section ref={dialogRef} className="mutation-dialog" role="dialog" aria-modal="true" aria-labelledby="mutation-dialog-title">{content}</section></div>;
+  return <div className="modal-backdrop"><section ref={dialogRef} className="mutation-dialog" role="dialog" aria-modal="true" aria-labelledby="mutation-dialog-title" aria-describedby={consequence ? consequenceId : undefined}>{content}</section></div>;
 }

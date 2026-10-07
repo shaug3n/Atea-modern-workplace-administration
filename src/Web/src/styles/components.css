@@ -296,3 +296,106 @@
   height: 1px;
   background: var(--uw-border);
 }
+
+/* Page header */
+.workspace-page-header__intro {
+  gap: var(--uw-gap-xs);
+}
+
+.workspace-page-header__intro h1 {
+  font-size: var(--uw-font-page-title);
+  font-weight: 700;
+  letter-spacing: 0;
+}
+
+.workspace-page-header__back {
+  width: fit-content;
+  color: var(--uw-link);
+  font-size: var(--uw-font-meta);
+  font-weight: 600;
+}
+
+.workspace-page-header__description {
+  max-width: 70ch;
+}
+
+.workspace-page-header__meta {
+  margin-top: var(--uw-gap-xs);
+}
+
+.workspace-page-header__actions {
+  justify-content: flex-end;
+}
+
+/* Dialogs */
+.mutation-dialog {
+  width: min(36rem, 100vw - 2rem);
+  max-height: calc(100vh - 4rem);
+  border-radius: var(--uw-radius-lg);
+  box-shadow: var(--uw-elevation-3);
+}
+
+.mutation-dialog--create {
+  width: min(44rem, 100vw - 2rem);
+}
+
+.mutation-dialog label.checkbox-field,
+.mutation-confirmation label.checkbox-field {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--uw-gap-sm);
+  color: var(--uw-text);
+  font-size: var(--uw-font-body);
+  font-weight: 400;
+}
+
+.mutation-consequence {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--uw-gap-sm);
+  margin: 0;
+  padding: var(--uw-gap-sm) var(--uw-gap-md);
+  border-left: 3px solid var(--uw-status-info-border);
+  border-radius: var(--uw-radius-sm);
+  background: var(--uw-status-info-bg);
+  color: var(--uw-status-info-fg);
+}
+
+.mutation-consequence--danger {
+  border-left-color: var(--uw-status-danger-border);
+  background: var(--uw-status-danger-bg);
+  color: var(--uw-status-danger-fg);
+}
+
+.mutation-audit-notice {
+  margin: 0;
+  color: var(--uw-muted);
+  font-size: var(--uw-font-meta);
+}
+
+.mutation-phrase {
+  display: grid;
+  gap: var(--uw-gap-xs);
+  font-weight: 600;
+}
+
+.mutation-phrase input {
+  width: 100%;
+}
+
+.mutation-dialog__footer {
+  justify-content: flex-end;
+  position: sticky;
+  bottom: 0;
+  background: var(--uw-surface);
+}
+
+@media (max-width: 50rem) {
+  .mutation-dialog__footer {
+    flex-direction: column-reverse;
+  }
+
+  .mutation-dialog__footer .button {
+    width: 100%;
+  }
+}
