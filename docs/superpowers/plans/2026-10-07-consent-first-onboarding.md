@@ -433,7 +433,7 @@ git commit -m "fix: bind invitation recovery to redeemer identity"
 - Produces: `DelegatedScopeResult(string Scope, ScopeAvailability Status, string? ProblemCategory)` with `Available`, `MissingConsent`, or `Unknown`.
 - Consumes: `IDelegatedGraphClientFactory.CreateForCurrentUserAsync(IReadOnlyCollection<string> scopes, CancellationToken)`; the scope reader must not call role/assignment endpoints.
 
-- [ ] **Step 1: Write failing extraction and classification tests.**
+- [x] **Step 1: Write failing extraction and classification tests.**
 
 ```csharp
 [Fact] public async Task Classifies_only_positive_missing_consent_as_missing()
@@ -450,20 +450,20 @@ git commit -m "fix: bind invitation recovery to redeemer identity"
 
 Also assert caller cancellation propagates, leases are disposed, unknown token/Conditional Access/MFA and temporary errors remain `Unknown`, and the extracted reader issues no role read.
 
-- [ ] **Step 2: Run the focused graph unit tests.**
+- [x] **Step 2: Run the focused graph unit tests.**
 
 Run: `dotnet test tests/Api.UnitTests/Api.UnitTests.csproj --filter FullyQualifiedName~DelegatedScopeAvailabilityReaderTests`
 Expected: FAIL because scope probing is private to `GraphAuthorizationSnapshotReader`.
 
-- [ ] **Step 3: Extract and register the reader.**
+- [x] **Step 3: Extract and register the reader.**
 
 Move the per-scope OBO probe into `DelegatedGraphScopeAvailabilityReader`; classify only the token mapper's positive consent-required outcome as `MissingConsent`, all unclassified/temporary/Conditional Access outcomes as `Unknown`. Limit concurrency to four and pass cancellation through each lease.
 
-- [ ] **Step 4: Reuse the reader in the authorization snapshot.**
+- [x] **Step 4: Reuse the reader in the authorization snapshot.**
 
 Inject `IDelegatedScopeAvailabilityReader` into `GraphAuthorizationSnapshotReader`; preserve its authorization-role read boundary and 15-second snapshot cache, using reader results only to populate current scope availability.
 
-- [ ] **Step 5: Run graph tests and commit.**
+- [x] **Step 5: Run graph tests and commit.**
 
 Run: `dotnet test tests/Api.UnitTests/Api.UnitTests.csproj --filter "FullyQualifiedName~DelegatedScopeAvailabilityReaderTests|FullyQualifiedName~GraphAuthorizationSnapshotReaderTests"`
 Expected: PASS; authorization snapshot behavior remains unchanged and scope-probe guarantees hold.

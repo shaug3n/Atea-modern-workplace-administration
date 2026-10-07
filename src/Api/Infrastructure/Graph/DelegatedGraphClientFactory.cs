@@ -9,9 +9,12 @@ public interface IDelegatedGraphClientFactory
         CancellationToken cancellationToken);
 }
 
-public sealed record GraphClientLease(IGraphTransport Transport, IReadOnlyCollection<string> Scopes) : IAsyncDisposable
+public sealed record GraphClientLease(
+    IGraphTransport Transport,
+    IReadOnlyCollection<string> Scopes,
+    IAsyncDisposable? OwnedResource = null) : IAsyncDisposable
 {
-    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    public ValueTask DisposeAsync() => OwnedResource?.DisposeAsync() ?? ValueTask.CompletedTask;
 }
 
 public sealed class DelegatedGraphClientFactory(

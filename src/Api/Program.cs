@@ -138,6 +138,7 @@ builder.Services.AddScoped<IInvitationConsentService>(services =>
 builder.Services.AddScoped<IDelegatedConnectionProbe, DelegatedGraphConnectionProbe>();
 builder.Services.AddScoped<IConnectionHealthReader, ConnectionHealthReader>();
 builder.Services.AddScoped<IGraphAuthorizationSnapshotReader, GraphAuthorizationSnapshotReader>();
+builder.Services.AddScoped<IDelegatedScopeAvailabilityReader, DelegatedScopeAvailabilityReader>();
 builder.Services.AddSingleton<OverviewDataCache>();
 builder.Services.AddScoped<IOverviewDataReader, GraphOverviewDataReader>();
 builder.Services.AddScoped<IOverviewService, OverviewService>();
