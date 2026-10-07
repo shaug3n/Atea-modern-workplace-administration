@@ -55,4 +55,20 @@ describe('ActionMenu', () => {
     expect(item.tagName).toBe('BUTTON');
     expect(item.getAttribute('tabindex')).not.toBe('-1');
   });
+
+  it('names the trigger from ariaLabel, shows descriptions and separators, and keeps disabled items inert but described', () => {
+    const onSelect = vi.fn();
+    render(<ActionMenu label="Actions" ariaLabel="Actions for Ada" items={[
+      { label: 'Open details', onSelect },
+      { label: 'Disable user', onSelect, danger: true, separatorBefore: true, disabled: true, description: 'Requires permission: Disable users' },
+    ]} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Actions for Ada' }));
+    expect(screen.getByText('Requires permission: Disable users')).toBeTruthy();
+    expect(screen.getAllByRole('separator')).toHaveLength(1);
+    const disabled = screen.getByRole('menuitem', { name: 'Disable user' });
+    expect(disabled.getAttribute('aria-disabled')).toBe('true');
+    expect(disabled.getAttribute('aria-describedby')).toBeTruthy();
+    fireEvent.click(disabled);
+    expect(onSelect).not.toHaveBeenCalled();
+  });
 });

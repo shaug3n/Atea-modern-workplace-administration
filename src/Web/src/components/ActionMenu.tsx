@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useId, useRef, useState } from 'react';
 
 export type ActionMenuItem = {
   label: string;
@@ -6,9 +6,12 @@ export type ActionMenuItem = {
   busy?: boolean;
   disabled?: boolean;
   danger?: boolean;
+  description?: string;
+  separatorBefore?: boolean;
 };
 
-export function ActionMenu({ label, items, onOpenChange }: { label: string; items: ActionMenuItem[]; onOpenChange?: (open: boolean) => void }) {
+export function ActionMenu({ label, items, onOpenChange, ariaLabel }: { label: string; items: ActionMenuItem[]; onOpenChange?: (open: boolean) => void; ariaLabel?: string }) {
+  const idPrefix = useId();
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -33,9 +36,18 @@ export function ActionMenu({ label, items, onOpenChange }: { label: string; item
   }, [open]);
 
   return <div ref={rootRef} className="action-menu">
-    <button ref={triggerRef} type="button" className="button button--secondary" aria-haspopup="menu" aria-expanded={open} onClick={() => { const next = !open; setOpen(next); onOpenChange?.(next); }}>{label}</button>
-    {open && <div className="action-menu__popover" role="menu" aria-label={label}>
-      {items.map((item) => <button key={item.label} type="button" role="menuitem" aria-label={item.label} className={`button action-menu__item${item.danger ? ' button--danger' : ''}`} disabled={item.disabled || item.busy} onClick={() => { item.onSelect(); close(); }}>{item.busy ? `${item.label}…` : item.label}</button>)}
+    <button ref={triggerRef} type="button" className="button button--secondary" aria-label={ariaLabel} aria-haspopup="menu" aria-expanded={open} onClick={() => { const next = !open; setOpen(next); onOpenChange?.(next); }}>{label}</button>
+    {open && <div className="action-menu__popover" role="menu" aria-label={ariaLabel ?? label}>
+      {items.map((item, index) => {
+        const descriptionId = item.description ? `${idPrefix}-${index}` : undefined;
+        return <React.Fragment key={item.label}>
+          {item.separatorBefore && index > 0 && <div role="separator" className="action-menu__separator" />}
+          <button type="button" role="menuitem" aria-label={item.label} aria-describedby={descriptionId} aria-disabled={item.disabled ? true : undefined} className={`button action-menu__item${item.danger ? ' button--danger' : ''}`} disabled={item.busy} onClick={() => { if (item.disabled) return; item.onSelect(); close(); }}>
+            <span>{item.busy ? `${item.label}…` : item.label}</span>
+            {item.description && <small id={descriptionId} className="action-menu__description">{item.description}</small>}
+          </button>
+        </React.Fragment>;
+      })}
     </div>}
   </div>;
 }

@@ -1,5 +1,6 @@
 import React from 'react';
 import { Icon, type IconName } from './icons';
+import { TechnicalDetails } from './TechnicalDetails';
 
 export type DataStateKind = 'loading' | 'empty' | 'unavailable' | 'partial' | 'permission' | 'stale';
 
@@ -37,6 +38,7 @@ export function WorkspaceDataState({ kind, state, title, message, affected, acti
         {title && <strong className="workspace-data-state__title">{title}</strong>}
         <p>{message}</p>
         {affected && affected.length > 0 && <ul className="workspace-data-state__affected">{affected.map((item) => <li key={item}>{item}</li>)}</ul>}
+        {technical && technical.length > 0 && <TechnicalDetails items={technical} />}
         {(showRetry || action) && (
           <div className="workspace-data-state__actions">
             {showRetry && <button type="button" className="button button--secondary" onClick={onRetry} disabled={retrying}>{retrying ? 'Retrying…' : retryLabel ?? 'Retry'}</button>}
