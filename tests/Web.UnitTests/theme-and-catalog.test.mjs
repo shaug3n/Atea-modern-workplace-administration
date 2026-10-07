@@ -39,3 +39,14 @@ test('foundations and components layers load after theme and define shared token
   }
   assert.doesNotMatch(theme, /\.button-primary \{/);
 });
+
+test('table foundations replace the global anchor wrapping and define one pagination and chip rule', async () => {
+  const theme = await readFile('../../src/Web/src/styles/theme.css', 'utf8');
+  const components = await readFile('../../src/Web/src/styles/components.css', 'utf8');
+  assert.doesNotMatch(theme, /\.app-main code, \.app-main a, \.app-main td/);
+  assert.match(components, /\.numeric/);
+  assert.match(components, /position: sticky/);
+  const all = theme + components;
+  assert.equal((all.match(/\.pagination-controls \{/g) ?? []).length, 1);
+  assert.equal((all.match(/\.filter-chips \{/g) ?? []).length, 1);
+});

@@ -513,7 +513,6 @@ p {
 .workspace-page-header__actions { display: flex; align-items: center; flex-wrap: wrap; gap: var(--atea-space-2); }
 
 .app-main > *, .content-panel, .overview-page, .overview-metrics > *, .overview-card { min-width: 0; }
-.app-main code, .app-main a, .app-main td { overflow-wrap: anywhere; }
 
 .content-panel,
 .permission-panel,
@@ -711,12 +710,6 @@ p {
 }
 
 .users-page__actions,
-.pagination-controls {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--atea-space-3);
-}
-
 .users-page__actions [data-capability] {
   display: grid;
   gap: var(--atea-space-2);
@@ -922,13 +915,6 @@ p {
   font: inherit;
 }
 
-.filter-chips {
-  grid-column: 1 / -1;
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--atea-space-2);
-}
-
 .filter-chip {
   min-height: 2rem;
   padding: 0 var(--atea-space-3);
@@ -1068,11 +1054,6 @@ p {
 .audit-table tbody tr:last-child th,
 .audit-table tbody tr:last-child td {
   border-bottom: 0;
-}
-
-.table-action {
-  min-height: 2.25rem;
-  padding: 0 var(--atea-space-3);
 }
 
 .status-badge {
@@ -1717,12 +1698,6 @@ p {
   width: 1%;
   white-space: nowrap;
   text-align: right;
-}
-
-.table-action {
-  min-height: 2.25rem;
-  padding: 0 var(--atea-space-3);
-  font-size: var(--atea-text-s);
 }
 
 .table-action--danger {
@@ -2538,10 +2513,6 @@ p {
 }
 
 .users-filters__more,
-.filter-chips {
-  grid-column: 1 / -1;
-}
-
 .users-filters__more summary {
   width: fit-content;
   color: var(--uw-link);
@@ -2639,15 +2610,6 @@ p {
 
 .users-table__detail dd {
   margin: 0;
-}
-
-.pagination-controls {
-  flex-wrap: wrap;
-}
-
-.pagination-controls > span {
-  margin-right: auto;
-  font-weight: 600;
 }
 
 .user-status-strip {
