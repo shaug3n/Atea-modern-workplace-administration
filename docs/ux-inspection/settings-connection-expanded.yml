@@ -1,0 +1,216 @@
+- generic [ref=f46e4] [box=0,0,1425,4011]:
+  - link "Skip to main content" [ref=f46e5] [cursor=pointer] [box=8,-46,185,36]:
+    - /url: "#main-content"
+  - banner [ref=f46e6] [box=0,0,1425,79]:
+    - link "Atea Unified Workplace home" [ref=f46e7] [cursor=pointer] [box=32,27,273,25]:
+      - /url: /overview
+      - generic [ref=f46e8] [box=143,27,162,25]: Atea Unified Workplace
+    - generic "Current workspace and signed-in user" [ref=f46e9] [box=329,16,769,46]:
+      - generic [ref=f46e10] [box=495,16,83,46]:
+        - generic [ref=f46e11] [box=495,16,83,22]: Workspace
+        - strong [ref=f46e12] [box=495,41,83,17]: Haugentech
+      - generic [ref=f46e13] [box=594,26,328,26]:
+        - generic [ref=f46e14] [box=602,28,134,22]: Access snapshot fresh
+        - generic [ref=f46e15] [box=741,28,174,22]: Entra roles and Graph consent
+      - generic "Signed-in user" [ref=f46e16] [box=938,16,160,46]:
+        - generic [ref=f46e17] [box=938,16,160,22]: Signed in as
+        - strong [ref=f46e18] [box=938,41,106,17]: Sondre Haugen
+    - button "Notifications, 2 warnings" [ref=f46e175] [cursor=pointer] [box=1122,17,143,44]:
+      - text: Notifications
+      - generic [aria-hidden] [ref=f46e176] [box=1236,30,22,22]: "2"
+    - switch "Enable dark mode" [ref=f46e21] [cursor=pointer] [box=1289,17,80,44]: Light
+  - generic [ref=f46e22] [box=0,79,1425,3931]:
+    - navigation "Primary navigation" [ref=f46e24] [box=0,79,240,409]:
+      - list [ref=f46e26] [box=8,103,223,48]:
+        - listitem [ref=f46e27] [box=8,103,223,48]:
+          - link "Overview" [ref=f46e28] [cursor=pointer] [box=8,103,223,48]:
+            - /url: /overview
+      - generic [ref=f46e29] [box=8,159,223,137]:
+        - heading [level=2] [ref=f46e30] [box=8,159,223,44]:
+          - button "People" [expanded] [ref=f46e31] [cursor=pointer] [box=8,159,223,44]
+        - list [ref=f46e33] [box=8,205,223,91]:
+          - listitem [ref=f46e34] [box=8,205,223,45]:
+            - link "Users" [ref=f46e35] [cursor=pointer] [box=8,205,223,45]:
+              - /url: /users
+          - listitem [ref=f46e36] [box=8,252,223,45]:
+            - link "Licenses" [ref=f46e37] [cursor=pointer] [box=8,252,223,45]:
+              - /url: /licenses
+      - list [ref=f46e39] [box=8,304,223,48]:
+        - listitem [ref=f46e40] [box=8,304,223,48]:
+          - link "Devices" [ref=f46e41] [cursor=pointer] [box=8,304,223,48]:
+            - /url: /devices
+      - list [ref=f46e43] [box=8,360,223,48]:
+        - listitem [ref=f46e44] [box=8,360,223,48]:
+          - link "Activity" [ref=f46e45] [cursor=pointer] [box=8,360,223,48]:
+            - /url: /activity
+      - list [ref=f46e47] [box=8,416,223,48]:
+        - listitem [ref=f46e48] [box=8,416,223,48]:
+          - link "Workspace Settings" [ref=f46e49] [cursor=pointer] [box=8,416,223,48]:
+            - /url: /settings
+    - main [ref=f46e50] [box=240,79,1185,3931]:
+      - generic [ref=f46e51] [box=272,111,1121,3867]:
+        - generic [ref=f46e53] [box=297,136,596,88]:
+          - paragraph [ref=f46e54] [box=297,136,596,22]: Workspace administration
+          - heading "Workspace Settings" [level=1] [ref=f46e55] [box=297,158,596,38]
+          - paragraph [ref=f46e56] [box=297,196,596,28]: Manage the connection, workspace preferences, modules and member access.
+        - navigation "Settings sections" [ref=f46e57] [box=272,273,1121,54]:
+          - link "Connection" [ref=f46e58] [cursor=pointer] [box=272,282,106,36]:
+            - /url: "#connection"
+          - link "General" [ref=f46e59] [cursor=pointer] [box=386,282,77,36]:
+            - /url: "#general"
+          - link "Modules" [ref=f46e60] [cursor=pointer] [box=471,282,83,36]:
+            - /url: "#modules"
+          - link "Access" [ref=f46e61] [cursor=pointer] [box=562,282,74,36]:
+            - /url: "#access"
+        - region [ref=f46e63] [box=272,351,1121,1116]:
+          - heading "Connection" [level=2] [ref=f46e64] [box=297,376,1071,28]
+          - paragraph [ref=f46e65] [box=297,420,1071,56]: Connect this workspace to your Microsoft 365 tenant. Workspace access is ready independently; Microsoft 365 data appears after the connection is verified.
+          - region [ref=f46e66] [box=297,492,1071,226]:
+            - heading "Microsoft 365 connection" [level=2] [ref=f46e67] [box=322,517,1021,28]
+            - paragraph [ref=f46e68] [box=322,561,1021,28]:
+              - strong [ref=f46e69] [box=322,565,85,20]: Connected
+            - paragraph [ref=f46e70] [box=322,605,1021,28]: Connection is ready for supported operations.
+            - button "Check connection" [ref=f46e72] [cursor=pointer] [box=322,649,153,44]
+          - link "Continue to overview" [ref=f46e73] [cursor=pointer] [box=297,734,1071,28]:
+            - /url: /overview
+          - group [ref=f46e74] [box=297,778,1071,592]:
+            - generic "Delegated permissions and tenant consent" [active] [ref=f46e75] [cursor=pointer] [box=314,795,1037,28]
+            - paragraph [ref=f46e177] [box=314,823,1037,56]: "These are separate steps: Atea configures delegated scopes on the API app registration first; a customer Entra administrator then grants tenant consent. Tenant consent cannot add scopes that are missing from the app registration."
+            - list [ref=f46e178] [box=314,895,1037,246]:
+              - listitem [ref=f46e179] [box=354,895,997,29]:
+                - strong [ref=f46e180] [box=354,899,215,20]: "Users, groups and licenses:"
+                - code [ref=f46e181] [box=573,900,125,19]: User.Read.All
+                - text: ","
+                - code [ref=f46e182] [box=708,900,135,19]: Group.Read.All
+                - text: ","
+                - code [ref=f46e183] [box=851,900,173,19]: Directory.Read.All
+                - text: .
+              - listitem [ref=f46e184] [box=354,928,997,57]:
+                - strong [ref=f46e185] [box=354,932,67,20]: "Devices:"
+                - code [ref=f46e186] [box=426,933,376,19]: DeviceManagementManagedDevices.Read.All
+                - text: . Device actions require additional delegated write scopes and an active tenant role; an eligible but inactive PIM role must be activated first.
+              - listitem [ref=f46e187] [box=354,989,997,57]:
+                - strong [ref=f46e188] [box=354,993,152,20]: "BitLocker recovery:"
+                - code [ref=f46e189] [box=510,994,250,19]: BitlockerKey.ReadBasic.All
+                - text: reads key metadata;
+                - code [ref=f46e190] [box=922,994,202,19]: BitlockerKey.Read.All
+                - text: permits a deliberate key reveal.
+              - listitem [ref=f46e191] [box=354,1050,997,58]:
+                - strong [ref=f46e192] [box=354,1054,196,20]: "Windows LAPS recovery:"
+                - code [ref=f46e193] [box=555,1055,337,19]: DeviceLocalCredential.ReadBasic.All
+                - text: reads backup metadata;
+                - code [ref=f46e194] [box=354,1084,289,19]: DeviceLocalCredential.Read.All
+                - text: permits a deliberate password reveal.
+              - listitem [ref=f46e195] [box=354,1112,997,29]:
+                - strong [ref=f46e196] [box=354,1116,174,20]: "Exchange verification:"
+                - code [ref=f46e197] [box=533,1117,193,19]: MailboxSettings.Read
+                - text: ", in addition to the directory-read scopes above."
+            - paragraph [ref=f46e198] [box=314,1157,1037,112]: These four recovery scopes must first be added as Microsoft Graph delegated permissions to the API app registration by the Atea app owner. A customer tenant administrator must then grant tenant consent separately. Consent cannot add a scope missing from the registration. An eligible Entra PIM role may need activation; Graph makes the final access decision for the specific device and recovery record.
+            - paragraph [ref=f46e199] [box=314,1269,1037,84]: If a scope is absent from the API registration, ask the Atea app owner to add it before retrying consent. If the scope is present but not granted in this tenant, use the consent action above with an appropriately authorized tenant administrator. If the permission check reports PIM activation required, activate the eligible role in Entra PIM and retry.
+          - paragraph [ref=f46e76] [box=297,1386,1071,56]: A customer or Atea administrator with the required tenant permissions can complete the consent step. Your Entra roles continue to control which Microsoft 365 actions are available.
+        - region [ref=f46e78] [box=272,1491,1121,310]:
+          - generic [ref=f46e80] [box=322,1541,475,56]:
+            - heading "General" [level=2] [ref=f46e81] [box=322,1541,475,28]
+            - paragraph [ref=f46e82] [box=322,1569,475,28]: Update the workspace name and customer-facing preferences.
+          - paragraph [ref=f46e83] [box=297,1638,1071,62]: "Source: Workspace settings. Retrieved: 10/7/2026, 10:16:15 AM"
+          - generic [ref=f46e84] [box=297,1716,1071,44]:
+            - text: Workspace display name
+            - textbox "Workspace display name" [ref=f46e85] [box=485,1729,153,21]: Haugentech
+            - button "Save settings" [ref=f46e86] [cursor=pointer] [box=638,1716,117,44]
+        - region [ref=f46e88] [box=272,1825,1121,757]:
+          - generic [ref=f46e90] [box=297,1850,768,84]:
+            - heading "Modules" [level=2] [ref=f46e91] [box=297,1850,768,28]
+            - paragraph [ref=f46e92] [box=297,1878,768,56]: Enable services for this workspace. People only see modules that are enabled here and assigned to them.
+          - paragraph [ref=f46e93] [box=272,1983,1121,62]: "Source: Workspace module configuration. Retrieved: 10/7/2026, 10:16:15 AM"
+          - generic [ref=f46e94] [box=272,2069,1121,445]:
+            - generic [ref=f46e95] [box=272,2069,1121,105]:
+              - checkbox "Users" [checked] [ref=f46e96] [box=301,2097,13,13]
+              - generic [ref=f46e97] [box=325,2094,1043,55]:
+                - strong [ref=f46e98] [box=325,2094,1043,28]: Users
+                - generic [ref=f46e99] [box=325,2126,1043,23]: Directory users, lifecycle and identity details.
+            - generic [ref=f46e100] [box=272,2183,1121,105]:
+              - checkbox "Devices" [checked] [ref=f46e101] [box=301,2211,13,13]
+              - generic [ref=f46e102] [box=325,2208,1043,55]:
+                - strong [ref=f46e103] [box=325,2208,1043,28]: Devices
+                - generic [ref=f46e104] [box=325,2240,1043,23]: Managed device inventory and compliance.
+            - generic [ref=f46e105] [box=272,2296,1121,105]:
+              - checkbox "Licenses" [checked] [ref=f46e106] [box=301,2324,13,13]
+              - generic [ref=f46e107] [box=325,2321,1043,55]:
+                - strong [ref=f46e108] [box=325,2321,1043,28]: Licenses
+                - generic [ref=f46e109] [box=325,2353,1043,23]: License catalog and seat utilization.
+            - generic [ref=f46e110] [box=272,2409,1121,105]:
+              - checkbox "Exchange" [ref=f46e111] [box=301,2437,13,13]
+              - generic [ref=f46e112] [box=325,2434,1043,55]:
+                - strong [ref=f46e113] [box=325,2434,1043,28]: Exchange
+                - generic [ref=f46e114] [box=325,2466,1043,23]: Read-only mailbox directory and lookup details.
+          - button "Save modules" [ref=f46e116] [cursor=pointer] [box=272,2539,122,44]
+        - region [ref=f46e118] [box=272,2607,1121,1372]:
+          - generic [ref=f46e120] [box=322,2657,768,84]:
+            - heading "Access" [level=2] [ref=f46e121] [box=322,2657,768,28]
+            - paragraph [ref=f46e122] [box=322,2685,768,56]: Grant application access to people who already exist in your Microsoft Entra tenant. Microsoft 365 actions still follow each person’s Entra roles and PIM activation.
+          - paragraph [ref=f46e123] [box=297,2790,1071,62]: "Source: Workspace membership and invitations. Retrieved: 10/7/2026, 10:16:15 AM"
+          - paragraph [ref=f46e124] [box=297,2876,1071,28]: Invitation links are shown once. Share them through an approved channel; this application does not send email.
+          - region [ref=f46e125] [box=297,2928,1071,612]:
+            - heading "Invite an existing Entra user" [level=2] [ref=f46e126] [box=322,2953,1021,28]
+            - generic [ref=f46e127] [box=322,2997,1021,502]:
+              - generic [ref=f46e128] [box=322,2997,330,69]:
+                - text: Email address
+                - textbox "Email address" [ref=f46e129] [box=322,3022,330,44]
+              - generic [ref=f46e130] [box=668,2997,330,69]:
+                - text: Display name
+                - textbox "Display name" [ref=f46e131] [box=668,3022,330,44]
+              - generic [ref=f46e132] [box=1013,2997,330,69]:
+                - text: Workspace role
+                - combobox "Workspace role" [ref=f46e133] [box=1013,3022,330,44]:
+                  - option "Member" [selected] [box=0,0,0,0]
+                  - option "Customer administrator" [box=0,0,0,0]
+              - group "Module access" [ref=f46e134] [box=322,3082,1021,357]:
+                - generic [ref=f46e136] [box=331,3118,1003,75]:
+                  - checkbox "Users" [ref=f46e137] [box=335,3121,1003,44]
+                  - text: Users
+                - generic [ref=f46e138] [box=331,3197,1003,75]:
+                  - checkbox "Devices" [ref=f46e139] [box=335,3200,1003,44]
+                  - text: Devices
+                - generic [ref=f46e140] [box=331,3276,1003,75]:
+                  - checkbox "Licenses" [ref=f46e141] [box=335,3279,1003,44]
+                  - text: Licenses
+                - generic [ref=f46e142] [box=331,3355,1003,75]:
+                  - checkbox "Exchange" [disabled] [ref=f46e143] [box=335,3358,1003,44]
+                  - text: Exchange
+              - button "Create invitation" [ref=f46e144] [cursor=pointer] [box=322,3455,330,44]
+          - region [ref=f46e145] [box=297,3564,1071,244]:
+            - heading "Members (1)" [level=2] [ref=f46e146] [box=322,3589,1021,28]
+            - table [ref=f46e148] [box=323,3634,1019,148]:
+              - rowgroup [ref=f46e149] [box=323,3634,1019,37]:
+                - row [ref=f46e150] [box=323,3634,1019,37]:
+                  - columnheader "User" [ref=f46e151] [box=323,3634,421,37]
+                  - columnheader "Workspace role" [ref=f46e152] [box=744,3634,319,37]
+                  - columnheader "Module access" [ref=f46e153] [box=1063,3634,170,37]
+                  - columnheader "Actions" [ref=f46e154] [box=1233,3634,109,37]
+              - rowgroup [ref=f46e155] [box=323,3671,1019,111]:
+                - row [ref=f46e156] [box=323,3671,1019,111]:
+                  - rowheader "Sondre@haugentech.onmicrosoft.com" [ref=f46e157] [box=323,3671,421,111]
+                  - cell [ref=f46e158] [box=744,3671,319,111]:
+                    - generic [ref=f46e159] [box=760,3679,1,1]: Role for Sondre@haugentech.onmicrosoft.com
+                    - combobox "Role for Sondre@haugentech.onmicrosoft.com" [disabled] [ref=f46e160] [box=760,3679,287,44]:
+                      - option "Member" [box=0,0,0,0]
+                      - option "Customer administrator" [box=0,0,0,0]
+                      - option "Workspace owner" [selected] [box=0,0,0,0]
+                  - cell [ref=f46e161] [box=1063,3671,170,111]:
+                    - generic [ref=f46e162] [box=1079,3679,138,94]:
+                      - generic [ref=f46e163] [box=1079,3679,138,21]:
+                        - checkbox "Users for Sondre@haugentech.onmicrosoft.com" [disabled] [ref=f46e164] [box=1083,3683,13,13]
+                        - text: Users
+                      - generic [ref=f46e165] [box=1079,3704,138,21]:
+                        - checkbox "Devices for Sondre@haugentech.onmicrosoft.com" [disabled] [ref=f46e166] [box=1083,3708,13,13]
+                        - text: Devices
+                      - generic [ref=f46e167] [box=1079,3728,138,21]:
+                        - checkbox "Licenses for Sondre@haugentech.onmicrosoft.com" [disabled] [ref=f46e168] [box=1083,3732,13,13]
+                        - text: Licenses
+                      - generic [ref=f46e169] [box=1079,3753,138,21]:
+                        - checkbox "Exchange for Sondre@haugentech.onmicrosoft.com" [disabled] [ref=f46e170] [box=1083,3757,13,13]
+                        - text: Exchange
+                  - cell [ref=f46e171] [box=1233,3671,109,111]
+          - region [ref=f46e172] [box=297,3832,1071,122]:
+            - heading "Pending invitations (0)" [level=2] [ref=f46e173] [box=322,3857,1021,28]
+            - paragraph [ref=f46e174] [box=322,3901,1021,28]: There are no pending invitations.

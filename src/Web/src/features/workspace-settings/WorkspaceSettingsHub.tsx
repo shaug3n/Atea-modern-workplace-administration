@@ -1,4 +1,6 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
+import { WorkspacePageHeader } from '../../components/WorkspacePageHeader';
+import { DataFreshness } from '../../components/DataFreshness';
 import type { AppSession } from '../../components/TenantContextHeader';
 import { WorkspaceAccessPage } from '../workspace-access/WorkspaceAccessPage';
 import { OnboardingPage } from './OnboardingPage';
@@ -22,12 +24,16 @@ export function WorkspaceSettingsHub({ session }: { session: AppSession }) {
     ...(canManageMembers ? [{ id: 'access', label: 'Access' }] : []),
   ];
 
+  const [activeHash, setActiveHash] = useState(() => window.location.hash.slice(1));
+  const [loadedAt] = useState(() => new Date().toISOString());
+
   useEffect(() => {
     const focusSection = () => {
+      setActiveHash(window.location.hash.slice(1));
       const key = window.location.hash.slice(1) as keyof typeof headings;
       if (!sections.some(section => section.id === key)) return;
       const heading = document.getElementById(headings[key]);
-      heading?.focus();
+      heading?.focus({ preventScroll: false });
       heading?.scrollIntoView?.({ block: 'start' });
     };
     focusSection();
@@ -36,13 +42,17 @@ export function WorkspaceSettingsHub({ session }: { session: AppSession }) {
   }, [window.location.hash, canManageSettings, canManageModules, canManageMembers]);
 
   return <div className="workspace-settings-hub">
-    <header className="page-header"><div><p className="eyebrow">Workspace administration</p><h1>Workspace Settings</h1><p>Manage the connection, workspace preferences, modules and member access.</p></div></header>
+    <WorkspacePageHeader eyebrow="Workspace administration" title="Workspace Settings" description="Manage the connection, workspace preferences, modules and member access." meta={<DataFreshness fetchedAt={loadedAt} freshness="fresh" partialData={false} source="Workspace configuration" />} />
+    <div className="settings-layout">
     <nav className="settings-index" aria-label="Settings sections">
-      {sections.map(section => <a key={section.id} href={`#${section.id}`}>{section.label}</a>)}
+      {sections.map(section => <a key={section.id} href={`#${section.id}`} aria-current={activeHash === section.id ? 'true' : undefined}>{section.label}</a>)}
     </nav>
+    <div className="settings-sections">
     {canManageSettings && <div id="connection"><OnboardingPage embedded /></div>}
     {canManageSettings && <div id="general"><WorkspaceSettingsPage embedded /></div>}
     {canManageModules && <div id="modules"><WorkspaceModulesPage embedded /></div>}
     {canManageMembers && <div id="access"><WorkspaceAccessPage embedded isOwner={session.workspaceAccess?.isOwner === true} canManageModules={session.workspaceAccess?.canManageMemberModules === true} availableModules={session.workspace.moduleAccess ?? []} /></div>}
+    </div>
+    </div>
   </div>;
 }

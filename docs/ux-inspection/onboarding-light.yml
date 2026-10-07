@@ -1,0 +1,184 @@
+- generic [ref=f18e4] [box=0,-376,1425,3481]:
+  - link "Skip to main content" [ref=f18e5] [cursor=pointer] [box=8,-46,185,36]:
+    - /url: "#main-content"
+  - banner [ref=f18e6] [box=0,-376,1425,79]:
+    - link "Atea Unified Workplace home" [ref=f18e7] [cursor=pointer] [box=32,-349,273,25]:
+      - /url: /overview
+      - generic [ref=f18e8] [box=143,-349,162,25]: Atea Unified Workplace
+    - generic "Current workspace and signed-in user" [ref=f18e9] [box=329,-360,769,46]:
+      - generic [ref=f18e10] [box=495,-360,83,46]:
+        - generic [ref=f18e11] [box=495,-360,83,22]: Workspace
+        - strong [ref=f18e12] [box=495,-335,83,17]: Haugentech
+      - generic [ref=f18e13] [box=594,-350,328,26]:
+        - generic [ref=f18e14] [box=602,-348,134,22]: Access snapshot fresh
+        - generic [ref=f18e15] [box=741,-348,174,22]: Entra roles and Graph consent
+      - generic "Signed-in user" [ref=f18e16] [box=938,-360,160,46]:
+        - generic [ref=f18e17] [box=938,-360,160,22]: Signed in as
+        - strong [ref=f18e18] [box=938,-335,106,17]: Sondre Haugen
+    - button "Notifications, 2 warnings" [ref=f18e20] [cursor=pointer] [box=1122,-359,143,44]:
+      - text: Notifications
+      - generic [aria-hidden] [ref=f18e21] [box=1236,-346,22,22]: "2"
+    - switch "Enable dark mode" [ref=f18e22] [cursor=pointer] [box=1289,-359,80,44]: Light
+  - generic [ref=f18e23] [box=0,-297,1425,3401]:
+    - navigation "Primary navigation" [ref=f18e25] [box=0,-297,240,409]:
+      - list [ref=f18e27] [box=8,-273,223,48]:
+        - listitem [ref=f18e28] [box=8,-273,223,48]:
+          - link "Overview" [ref=f18e29] [cursor=pointer] [box=8,-273,223,48]:
+            - /url: /overview
+      - generic [ref=f18e30] [box=8,-217,223,137]:
+        - heading [level=2] [ref=f18e31] [box=8,-217,223,44]:
+          - button "People" [expanded] [ref=f18e32] [cursor=pointer] [box=8,-217,223,44]
+        - list [ref=f18e34] [box=8,-171,223,91]:
+          - listitem [ref=f18e35] [box=8,-171,223,45]:
+            - link "Users" [ref=f18e36] [cursor=pointer] [box=8,-171,223,45]:
+              - /url: /users
+          - listitem [ref=f18e37] [box=8,-124,223,45]:
+            - link "Licenses" [ref=f18e38] [cursor=pointer] [box=8,-124,223,45]:
+              - /url: /licenses
+      - list [ref=f18e40] [box=8,-72,223,48]:
+        - listitem [ref=f18e41] [box=8,-72,223,48]:
+          - link "Devices" [ref=f18e42] [cursor=pointer] [box=8,-72,223,48]:
+            - /url: /devices
+      - list [ref=f18e44] [box=8,-16,223,48]:
+        - listitem [ref=f18e45] [box=8,-16,223,48]:
+          - link "Activity" [ref=f18e46] [cursor=pointer] [box=8,-16,223,48]:
+            - /url: /activity
+      - list [ref=f18e48] [box=8,40,223,48]:
+        - listitem [ref=f18e49] [box=8,40,223,48]:
+          - link "Workspace Settings" [ref=f18e50] [cursor=pointer] [box=8,40,223,48]:
+            - /url: /settings
+    - main [ref=f18e51] [box=240,-297,1185,3401]:
+      - generic [ref=f18e52] [box=272,-265,1121,3337]:
+        - generic [ref=f18e54] [box=297,-240,596,88]:
+          - paragraph [ref=f18e55] [box=297,-240,596,22]: Workspace administration
+          - heading "Workspace Settings" [level=1] [ref=f18e56] [box=297,-218,596,38]
+          - paragraph [ref=f18e57] [box=297,-180,596,28]: Manage the connection, workspace preferences, modules and member access.
+        - navigation "Settings sections" [ref=f18e58] [box=272,-103,1121,54]:
+          - link "Connection" [ref=f18e59] [cursor=pointer] [box=272,-94,106,36]:
+            - /url: "#connection"
+          - link "General" [ref=f18e60] [cursor=pointer] [box=386,-94,77,36]:
+            - /url: "#general"
+          - link "Modules" [ref=f18e61] [cursor=pointer] [box=471,-94,83,36]:
+            - /url: "#modules"
+          - link "Access" [ref=f18e62] [cursor=pointer] [box=562,-94,74,36]:
+            - /url: "#access"
+        - region [ref=f18e64] [box=272,-25,1121,586]:
+          - heading "Connection" [active] [level=2] [ref=f18e65] [box=297,0,1071,28]
+          - paragraph [ref=f18e66] [box=297,44,1071,56]: Connect this workspace to your Microsoft 365 tenant. Workspace access is ready independently; Microsoft 365 data appears after the connection is verified.
+          - region [ref=f18e67] [box=297,116,1071,226]:
+            - heading "Microsoft 365 connection" [level=2] [ref=f18e68] [box=322,141,1021,28]
+            - paragraph [ref=f18e69] [box=322,185,1021,28]:
+              - strong [ref=f18e70] [box=322,189,200,20]: Connection check is stale
+            - paragraph [ref=f18e71] [box=322,229,1021,28]: Run a new connection check before using connected operations.
+            - button "Check connection" [ref=f18e73] [cursor=pointer] [box=322,273,153,44]
+          - link "Continue to overview" [ref=f18e74] [cursor=pointer] [box=297,358,1071,28]:
+            - /url: /overview
+          - group [ref=f18e75] [box=297,402,1071,62]:
+            - generic "Delegated permissions and tenant consent" [ref=f18e76] [cursor=pointer] [box=314,419,1037,28]
+          - paragraph [ref=f18e77] [box=297,480,1071,56]: A customer or Atea administrator with the required tenant permissions can complete the consent step. Your Entra roles continue to control which Microsoft 365 actions are available.
+        - region [ref=f18e79] [box=272,585,1121,310]:
+          - generic [ref=f18e81] [box=322,635,475,56]:
+            - heading "General" [level=2] [ref=f18e82] [box=322,635,475,28]
+            - paragraph [ref=f18e83] [box=322,663,475,28]: Update the workspace name and customer-facing preferences.
+          - paragraph [ref=f18e84] [box=297,732,1071,62]: "Source: Workspace settings. Retrieved: 10/7/2026, 10:11:37 AM"
+          - generic [ref=f18e85] [box=297,810,1071,44]:
+            - text: Workspace display name
+            - textbox "Workspace display name" [ref=f18e86] [box=485,823,153,21]: Haugentech
+            - button "Save settings" [ref=f18e87] [cursor=pointer] [box=638,810,117,44]
+        - region [ref=f18e89] [box=272,919,1121,757]:
+          - generic [ref=f18e91] [box=297,944,768,84]:
+            - heading "Modules" [level=2] [ref=f18e92] [box=297,944,768,28]
+            - paragraph [ref=f18e93] [box=297,972,768,56]: Enable services for this workspace. People only see modules that are enabled here and assigned to them.
+          - paragraph [ref=f18e94] [box=272,1077,1121,62]: "Source: Workspace module configuration. Retrieved: 10/7/2026, 10:11:37 AM"
+          - generic [ref=f18e95] [box=272,1163,1121,445]:
+            - generic [ref=f18e96] [box=272,1163,1121,105]:
+              - checkbox "Users" [checked] [ref=f18e97] [box=301,1191,13,13]
+              - generic [ref=f18e98] [box=325,1188,1043,55]:
+                - strong [ref=f18e99] [box=325,1188,1043,28]: Users
+                - generic [ref=f18e100] [box=325,1220,1043,23]: Directory users, lifecycle and identity details.
+            - generic [ref=f18e101] [box=272,1277,1121,105]:
+              - checkbox "Devices" [checked] [ref=f18e102] [box=301,1305,13,13]
+              - generic [ref=f18e103] [box=325,1302,1043,55]:
+                - strong [ref=f18e104] [box=325,1302,1043,28]: Devices
+                - generic [ref=f18e105] [box=325,1334,1043,23]: Managed device inventory and compliance.
+            - generic [ref=f18e106] [box=272,1390,1121,105]:
+              - checkbox "Licenses" [checked] [ref=f18e107] [box=301,1418,13,13]
+              - generic [ref=f18e108] [box=325,1415,1043,55]:
+                - strong [ref=f18e109] [box=325,1415,1043,28]: Licenses
+                - generic [ref=f18e110] [box=325,1447,1043,23]: License catalog and seat utilization.
+            - generic [ref=f18e111] [box=272,1503,1121,105]:
+              - checkbox "Exchange" [ref=f18e112] [box=301,1531,13,13]
+              - generic [ref=f18e113] [box=325,1528,1043,55]:
+                - strong [ref=f18e114] [box=325,1528,1043,28]: Exchange
+                - generic [ref=f18e115] [box=325,1560,1043,23]: Read-only mailbox directory and lookup details.
+          - button "Save modules" [ref=f18e117] [cursor=pointer] [box=272,1633,122,44]
+        - region [ref=f18e119] [box=272,1701,1121,1372]:
+          - generic [ref=f18e121] [box=322,1751,768,84]:
+            - heading "Access" [level=2] [ref=f18e122] [box=322,1751,768,28]
+            - paragraph [ref=f18e123] [box=322,1779,768,56]: Grant application access to people who already exist in your Microsoft Entra tenant. Microsoft 365 actions still follow each person’s Entra roles and PIM activation.
+          - paragraph [ref=f18e124] [box=297,1884,1071,62]: "Source: Workspace membership and invitations. Retrieved: 10/7/2026, 10:11:37 AM"
+          - paragraph [ref=f18e125] [box=297,1970,1071,28]: Invitation links are shown once. Share them through an approved channel; this application does not send email.
+          - region [ref=f18e126] [box=297,2022,1071,612]:
+            - heading "Invite an existing Entra user" [level=2] [ref=f18e127] [box=322,2047,1021,28]
+            - generic [ref=f18e128] [box=322,2091,1021,502]:
+              - generic [ref=f18e129] [box=322,2091,330,69]:
+                - text: Email address
+                - textbox "Email address" [ref=f18e130] [box=322,2116,330,44]
+              - generic [ref=f18e131] [box=668,2091,330,69]:
+                - text: Display name
+                - textbox "Display name" [ref=f18e132] [box=668,2116,330,44]
+              - generic [ref=f18e133] [box=1013,2091,330,69]:
+                - text: Workspace role
+                - combobox "Workspace role" [ref=f18e134] [box=1013,2116,330,44]:
+                  - option "Member" [selected] [box=0,0,0,0]
+                  - option "Customer administrator" [box=0,0,0,0]
+              - group "Module access" [ref=f18e135] [box=322,2176,1021,357]:
+                - generic [ref=f18e137] [box=331,2212,1003,75]:
+                  - checkbox "Users" [ref=f18e138] [box=335,2215,1003,44]
+                  - text: Users
+                - generic [ref=f18e139] [box=331,2291,1003,75]:
+                  - checkbox "Devices" [ref=f18e140] [box=335,2294,1003,44]
+                  - text: Devices
+                - generic [ref=f18e141] [box=331,2370,1003,75]:
+                  - checkbox "Licenses" [ref=f18e142] [box=335,2373,1003,44]
+                  - text: Licenses
+                - generic [ref=f18e143] [box=331,2449,1003,75]:
+                  - checkbox "Exchange" [disabled] [ref=f18e144] [box=335,2452,1003,44]
+                  - text: Exchange
+              - button "Create invitation" [ref=f18e145] [cursor=pointer] [box=322,2549,330,44]
+          - region [ref=f18e146] [box=297,2658,1071,244]:
+            - heading "Members (1)" [level=2] [ref=f18e147] [box=322,2683,1021,28]
+            - table [ref=f18e149] [box=323,2728,1019,148]:
+              - rowgroup [ref=f18e150] [box=323,2728,1019,37]:
+                - row [ref=f18e151] [box=323,2728,1019,37]:
+                  - columnheader "User" [ref=f18e152] [box=323,2728,421,37]
+                  - columnheader "Workspace role" [ref=f18e153] [box=744,2728,319,37]
+                  - columnheader "Module access" [ref=f18e154] [box=1063,2728,170,37]
+                  - columnheader "Actions" [ref=f18e155] [box=1233,2728,109,37]
+              - rowgroup [ref=f18e156] [box=323,2765,1019,111]:
+                - row [ref=f18e157] [box=323,2765,1019,111]:
+                  - rowheader "Sondre@haugentech.onmicrosoft.com" [ref=f18e158] [box=323,2765,421,111]
+                  - cell [ref=f18e159] [box=744,2765,319,111]:
+                    - generic [ref=f18e160] [box=760,2773,1,1]: Role for Sondre@haugentech.onmicrosoft.com
+                    - combobox "Role for Sondre@haugentech.onmicrosoft.com" [disabled] [ref=f18e161] [box=760,2773,287,44]:
+                      - option "Member" [box=0,0,0,0]
+                      - option "Customer administrator" [box=0,0,0,0]
+                      - option "Workspace owner" [selected] [box=0,0,0,0]
+                  - cell [ref=f18e162] [box=1063,2765,170,111]:
+                    - generic [ref=f18e163] [box=1079,2773,138,94]:
+                      - generic [ref=f18e164] [box=1079,2773,138,21]:
+                        - checkbox "Users for Sondre@haugentech.onmicrosoft.com" [disabled] [ref=f18e165] [box=1083,2777,13,13]
+                        - text: Users
+                      - generic [ref=f18e166] [box=1079,2798,138,21]:
+                        - checkbox "Devices for Sondre@haugentech.onmicrosoft.com" [disabled] [ref=f18e167] [box=1083,2802,13,13]
+                        - text: Devices
+                      - generic [ref=f18e168] [box=1079,2822,138,21]:
+                        - checkbox "Licenses for Sondre@haugentech.onmicrosoft.com" [disabled] [ref=f18e169] [box=1083,2826,13,13]
+                        - text: Licenses
+                      - generic [ref=f18e170] [box=1079,2847,138,21]:
+                        - checkbox "Exchange for Sondre@haugentech.onmicrosoft.com" [disabled] [ref=f18e171] [box=1083,2851,13,13]
+                        - text: Exchange
+                  - cell [ref=f18e172] [box=1233,2765,109,111]
+          - region [ref=f18e173] [box=297,2926,1071,122]:
+            - heading "Pending invitations (0)" [level=2] [ref=f18e174] [box=322,2951,1021,28]
+            - paragraph [ref=f18e175] [box=322,2995,1021,28]: There are no pending invitations.

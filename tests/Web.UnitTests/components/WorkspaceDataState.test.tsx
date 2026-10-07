@@ -20,4 +20,24 @@ describe('WorkspaceDataState', () => {
     expect(screen.getByRole('status').textContent).toContain('No records match.');
     expect(screen.queryByRole('alert')).toBeNull();
   });
+
+  it('lists affected parts for a partial state and exposes a single next step link', () => {
+    render(<WorkspaceDataState kind="partial" title="Some sections couldn't load" message="Showing what we could load." affected={['Roles and PIM', 'Associated devices']} />);
+    expect(screen.getByRole('status').textContent).toContain("Some sections couldn't load");
+    expect(screen.getAllByRole('listitem').map((item) => item.textContent)).toEqual(['Roles and PIM', 'Associated devices']);
+    cleanup();
+    render(<WorkspaceDataState kind="permission" message="Access needed." action={{ label: 'Open setup', href: '/settings#connection' }} />);
+    expect(screen.getByRole('status')).not.toBeNull();
+    expect(screen.getByRole('link', { name: 'Open setup' }).getAttribute('href')).toBe('/settings#connection');
+  });
+
+  it('disables retry while retrying, marks loading as busy and supports the compact variant', () => {
+    const { container } = render(<WorkspaceDataState kind="unavailable" message="Nope." onRetry={() => undefined} retrying compact />);
+    const button = screen.getByRole('button', { name: 'Retrying…' }) as HTMLButtonElement;
+    expect(button.disabled).toBe(true);
+    expect(container.querySelector('.workspace-data-state--compact')).not.toBeNull();
+    cleanup();
+    render(<WorkspaceDataState kind="loading" message="Loading…" />);
+    expect(screen.getByRole('status').getAttribute('aria-busy')).toBe('true');
+  });
 });

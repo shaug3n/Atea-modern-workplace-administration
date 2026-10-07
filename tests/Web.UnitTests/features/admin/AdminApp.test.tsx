@@ -40,7 +40,8 @@ describe('AdminApp', () => {
 
     render(<AdminApp />);
 
-    expect(await screen.findByRole('heading', { name: 'Atea platform administration' })).toBeTruthy();
+    expect(await screen.findByText('Atea platform administration')).toBeTruthy();
+    expect(screen.queryByRole('heading', { name: 'Atea platform administration' })).toBeNull();
     expect(screen.getByText('Admin User')).toBeTruthy();
   });
 

@@ -8,7 +8,7 @@ export type ResponsiveDataViewProps<T> = {
   renderCompact: (item: T) => ReactNode;
 };
 
-const compactQuery = '(max-width: 64rem)';
+const compactQuery = '(max-width: 56rem)';
 
 export function ResponsiveDataView<T>({ items, keyOf, label, renderTable, renderCompact }: ResponsiveDataViewProps<T>) {
   const [compact, setCompact] = useState(() => typeof window.matchMedia === 'function' && window.matchMedia(compactQuery).matches);

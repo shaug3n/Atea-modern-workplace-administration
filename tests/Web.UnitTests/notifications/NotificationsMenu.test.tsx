@@ -55,9 +55,20 @@ describe('NotificationsMenu', () => {
       return <NotificationsMenu issues={issues} onRefresh={refresh} />;
     }
     render(<WorkspaceNotificationsProvider session={session} capabilities={null} capabilitiesError={null} onRefresh={async () => {}}><ReportedMenu /></WorkspaceNotificationsProvider>);
-    fireEvent.click(await screen.findByRole('button', { name: /notifications, 1 warnings/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /notifications, 1 need attention/i }));
     expect(screen.getByText('Data temporarily unavailable')).toBeTruthy();
     expect(document.body.textContent).not.toContain('secret-token');
     expect(screen.queryByRole('link', { name: /secret-token/i })).toBeNull();
+  });
+
+  it('hides the badge at zero, shows the empty text and an access-check footer with refresh', () => {
+    const refresh = vi.fn();
+    const { container } = render(<NotificationsMenu issues={[]} onRefresh={refresh} access={{ label: 'up to date', checkedAt: new Date().toISOString() }} />);
+    expect(container.querySelector('.notifications-menu__count')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Notifications, 0 need attention' }));
+    expect(screen.getByText('No issues need your attention.')).toBeTruthy();
+    expect(screen.getByText(/Access check: up to date · checked/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh' }));
+    expect(refresh).toHaveBeenCalledOnce();
   });
 });

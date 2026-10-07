@@ -37,4 +37,12 @@ describe('WorkspaceListPage', () => {
     expect(await screen.findByText('Demo')).toBeTruthy();
     expect(onOpen).toHaveBeenCalledWith('w-1', expect.objectContaining({ invitationUrl: 'http://localhost/invitations/token' }));
   });
+
+  it('shows a truncated tenant id with the full id available to assistive technology', async () => {
+    api.listWorkspaces.mockResolvedValueOnce([{ id: 'w-1', tenantId: '11111111-2222-3333-4444-555555555555', displayName: 'Demo', connectionStatus: 'connected' }]);
+    render(<WorkspaceListPage onOpenWorkspace={vi.fn()} />);
+    expect(await screen.findByText('11111111…5555')).toBeTruthy();
+    expect(document.querySelector('.sr-only')?.textContent).toBe('11111111-2222-3333-4444-555555555555');
+    expect(screen.getByRole('button', { name: /Demo/ })).toBeTruthy();
+  });
 });

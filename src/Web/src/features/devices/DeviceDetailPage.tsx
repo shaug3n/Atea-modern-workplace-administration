@@ -1,9 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useApi } from '../../auth/useApi';
+import { messages } from '../../app/messages';
 import { ConfirmationDialog } from '../../components/ConfirmationDialog';
 import type { CapabilityDecision } from '../../capabilities/capabilityTypes';
 import type { ApiFetch } from '../users/userDetailApi';
 import { executeDeviceAction, fetchBitlockerMetadata, fetchDeviceDetail, fetchLapsMetadata, revealBitlocker, revealLaps, RecoveryFailure, type BitlockerMetadata, type DeviceAction, type LapsMetadata, type ManagedDevice, type RecoveryResponse } from './devicesApi';
+import { ActionGroup } from '../../components/ActionGroup';
+import { DataFreshness } from '../../components/DataFreshness';
+import { StatusBadge } from '../../components/StatusBadge';
+import { TechnicalDetails } from '../../components/TechnicalDetails';
+import { formatDateTime, formatRelative } from '../../format/dateTime';
+import { humanizeCapability } from '../../format/humanize';
 import { WorkspacePageHeader } from '../../components/WorkspacePageHeader';
 import { WorkspaceDataState } from '../../components/WorkspaceDataState';
 import { useWorkspaceIssueReporter } from '../../notifications/WorkspaceNotifications';
@@ -132,59 +139,90 @@ function DeviceDetailContent({ id, capabilities, onNavigate }: { id: string; cap
     finally { setActionBusy(false); }
   };
 
-  const back = () => { clearSecret(); if (onNavigate) onNavigate('/devices'); else window.location.assign('/devices'); };
+  const canManageSettings = capabilities.some(decision => decision.capability === 'workspace.settings.manage' && decision.state === 'allowed');
+  const blocked = (name: CapabilityDecision['capability']) => { const decision = recoveryDecision(name); return decision && decision.state !== 'allowed' ? decision : undefined; };
+  const sharedBlock = (() => {
+    const first = blocked('devices.bitlocker.metadata'); const second = blocked('devices.laps.metadata');
+    return first && second && first.state === second.state ? first : undefined;
+  })();
+  const goBack = (path: string) => { clearSecret(); if (onNavigate) onNavigate(path); else window.location.assign(path); };
+  const title = device ? (device.deviceName || 'Unnamed device') : 'Device details';
+  const complianceTone = device?.complianceState?.toLowerCase() === 'compliant' ? 'success' : device?.complianceState?.toLowerCase() === 'noncompliant' ? 'warning' : 'neutral';
+  const blockerProps = (name: CapabilityDecision['capability'], shared = false) => ({ decision: recoveryDecision(name), capability: name, canManageSettings, suppressed: shared });
+  const describedBy = (name: CapabilityDecision['capability'], shared = false) => shared ? 'recovery-shared-blocker' : blocked(name) ? `blocker-${name}` : undefined;
 
-  return <section className="device-full-page" aria-label="Device details">
-    <WorkspacePageHeader eyebrow="Device details" title={device?.deviceName || 'Device details'} actions={<button type="button" className="table-action" onClick={back}>← Back to devices</button>} />
+  return <div className="device-full-page">
+    <WorkspacePageHeader title={title} backLink={{ label: 'Back to Devices', href: '/devices', onNavigate: goBack }}
+      meta={device ? <><StatusBadge tone={complianceTone} label={device.complianceState ? humanizeCompliance(device.complianceState) : 'Compliance unknown'} /><DataFreshness freshness="fresh" partialData={false} fetchedAt={deviceFetchedAt} source="Microsoft Graph" /></> : undefined} />
     {busy && <WorkspaceDataState state="loading" message="Loading device details…" />}
     {detailError && <div className="permission-panel"><WorkspaceDataState state="unavailable" message="Device details are unavailable. Check Notifications for details." onRetry={() => setRefreshVersion(version => version + 1)} /></div>}
     {device && <>
-      <SourceStamp source="Microsoft Graph · Intune managedDevices" label="Device details" fetchedAt={deviceFetchedAt} />
       <div className="device-detail-layout">
-        <section className="content-panel"><h2>Overview</h2><dl className="detail-list"><Field label="Device ID" value={device.id} /><Field label="Operating system" value={[device.operatingSystem, device.osVersion].filter(Boolean).join(' ')} /><Field label="Owner type" value={device.managedDeviceOwnerType} /><Field label="Primary user ID" value={device.userId} /><Field label="Entra device ID" value={device.azureAdDeviceId} /></dl></section>
-        <section className="content-panel"><h2>Security and management</h2><dl className="detail-list"><Field label="Compliance" value={device.complianceState} /><Field label="Management state" value={device.managementState} /><Field label="Last sync" value={device.lastSyncDateTime ? new Date(device.lastSyncDateTime).toLocaleString() : null} /></dl></section>
-        <section className="content-panel"><h2>Hardware</h2><dl className="detail-list"><Field label="Manufacturer" value={device.manufacturer} /><Field label="Model" value={device.model} /><Field label="Serial number" value={device.serialNumber} /></dl></section>
+        <section className="content-panel"><h2>Overview</h2><dl className="detail-list"><Field label="Device name" value={device.deviceName || 'Unnamed device'} /><Field label="Operating system" value={[device.operatingSystem, device.osVersion].filter(Boolean).join(' ')} /><Field label="Ownership" value={device.managedDeviceOwnerType} />{device.userId && <><dt>Primary user</dt><dd><a href={`/users/${encodeURIComponent(device.userId)}`} onClick={(event) => { if (onNavigate) { event.preventDefault(); onNavigate(`/users/${encodeURIComponent(device.userId!)}`); } }}>Open user profile</a></dd></>}</dl></section>
+        <section className="content-panel"><h2>Security and management</h2><dl className="detail-list"><Field label="Compliance" value={device.complianceState ? humanizeCompliance(device.complianceState) : null} /><Field label="Management state" value={device.managementState} /><Field label="Last check-in" value={device.lastSyncDateTime ? formatDateTime(device.lastSyncDateTime) : null} /></dl></section>
+        <section className="content-panel"><h2>Hardware</h2><dl className="detail-list"><Field label="Manufacturer" value={device.manufacturer} /><Field label="Model" value={device.model} /></dl></section>
+        <section className="content-panel"><h2>Identifiers</h2><TechnicalDetails items={[{ label: 'Device ID', value: device.id, copy: true }, { label: 'Primary user ID', value: device.userId, copy: true }, { label: 'Entra device ID', value: device.azureAdDeviceId, copy: true }, { label: 'Serial number', value: device.serialNumber, copy: true }]} /></section>
       </div>
 
       <section className="content-panel device-recovery" aria-labelledby="device-recovery-title"><h2 id="device-recovery-title">Recovery data</h2><p>Load recovery records only when needed. Microsoft Graph checks your access to this device.</p>
+        {sharedBlock && <div id="recovery-shared-blocker"><WorkspaceDataState kind="permission" compact message={`Recovery data isn't available to you.${sharedBlock.state === 'temporarily_unavailable' ? ' Authorization checks are temporarily unavailable. Retry after the checks recover.' : ''}`} action={blockerLink(sharedBlock, canManageSettings)} /></div>}
         <div className="device-recovery__groups">
-          <section><h3>BitLocker</h3><SourceStamp source="Microsoft Graph · BitLocker recovery keys" label="BitLocker metadata" fetchedAt={bitlockerFetchedAt} /><button type="button" disabled={bitlockerBusy || !recoveryAllowed('devices.bitlocker.metadata')} onClick={() => void loadMetadata('bitlocker')}>Load BitLocker metadata</button>
-            <RecoveryGuidance decision={recoveryDecision('devices.bitlocker.metadata')} />
+          <section><h3>BitLocker</h3><RecoveryStamp label="BitLocker metadata" fetchedAt={bitlockerFetchedAt} /><button type="button" className="button button--secondary" aria-describedby={describedBy('devices.bitlocker.metadata', Boolean(sharedBlock))} disabled={bitlockerBusy || !recoveryAllowed('devices.bitlocker.metadata')} onClick={() => void loadMetadata('bitlocker')}>Load BitLocker metadata</button>
+            <RecoveryGuidance {...blockerProps('devices.bitlocker.metadata', Boolean(sharedBlock))} />
             {bitlockerBusy && <p role="status">Loading BitLocker metadata…</p>}
-            {bitlocker && (bitlocker.length === 0 ? <p>No BitLocker recovery record found.</p> : <ul>{bitlocker.map(key => <li key={key.id}><span>Key ID: {key.id}</span>{key.volumeType && <span> · Volume: {key.volumeType}</span>}{key.createdDateTime && <span> · Backed up: {new Date(key.createdDateTime).toLocaleString()}</span>} <button type="button" disabled={!reason.trim() || revealBusy || !recoveryAllowed('devices.bitlocker.reveal')} onClick={() => void reveal('bitlocker', key.id)}>Reveal BitLocker key {key.id}</button></li>)}</ul>)}
+            {bitlocker && (bitlocker.length === 0 ? <p>No BitLocker recovery record found.</p> : <ul>{bitlocker.map(key => <li key={key.id}><span>Key ID: {key.id}</span>{key.volumeType && <span> · Volume: {key.volumeType}</span>}{key.createdDateTime && <span> · Backed up: {formatDateTime(key.createdDateTime)}</span>} <button type="button" className="button button--secondary" aria-describedby={describedBy('devices.bitlocker.reveal')} disabled={!reason.trim() || revealBusy || !recoveryAllowed('devices.bitlocker.reveal')} onClick={() => void reveal('bitlocker', key.id)}>Reveal BitLocker key {key.id}</button></li>)}</ul>)}
             {bitlockerError && <p role="alert">{recoveryMessage(bitlockerError)}{correlationDetails(bitlockerError)}</p>}
-            <RecoveryGuidance decision={recoveryDecision('devices.bitlocker.reveal')} />
+            <RecoveryGuidance {...blockerProps('devices.bitlocker.reveal')} />
           </section>
-          <section><h3>Windows LAPS</h3><SourceStamp source="Microsoft Graph · Windows LAPS local credentials" label="Windows LAPS metadata" fetchedAt={lapsFetchedAt} /><button type="button" disabled={lapsBusy || !recoveryAllowed('devices.laps.metadata')} onClick={() => void loadMetadata('laps')}>Load Windows LAPS metadata</button>
-            <RecoveryGuidance decision={recoveryDecision('devices.laps.metadata')} />
+          <section><h3>Windows LAPS</h3><RecoveryStamp label="Windows LAPS metadata" fetchedAt={lapsFetchedAt} /><button type="button" className="button button--secondary" aria-describedby={describedBy('devices.laps.metadata', Boolean(sharedBlock))} disabled={lapsBusy || !recoveryAllowed('devices.laps.metadata')} onClick={() => void loadMetadata('laps')}>Load Windows LAPS metadata</button>
+            <RecoveryGuidance {...blockerProps('devices.laps.metadata', Boolean(sharedBlock))} />
             {lapsBusy && <p role="status">Loading Windows LAPS metadata…</p>}
-            {laps && <><p>Windows LAPS metadata loaded</p><dl className="detail-list"><Field label="Device name" value={laps.deviceName} /><Field label="Last backup" value={laps.lastBackupDateTime ? new Date(laps.lastBackupDateTime).toLocaleString() : null} /><Field label="Next refresh" value={laps.refreshDateTime ? new Date(laps.refreshDateTime).toLocaleString() : null} /></dl><button type="button" disabled={!reason.trim() || revealBusy || !recoveryAllowed('devices.laps.reveal')} onClick={() => void reveal('laps')}>Reveal Windows LAPS password</button></>}
+            {laps && <><p>Windows LAPS metadata loaded</p><dl className="detail-list"><Field label="Device name" value={laps.deviceName} /><Field label="Last backup" value={laps.lastBackupDateTime ? formatDateTime(laps.lastBackupDateTime) : null} /><Field label="Next refresh" value={laps.refreshDateTime ? formatDateTime(laps.refreshDateTime) : null} /></dl><button type="button" className="button button--secondary" aria-describedby={describedBy('devices.laps.reveal')} disabled={!reason.trim() || revealBusy || !recoveryAllowed('devices.laps.reveal')} onClick={() => void reveal('laps')}>Reveal Windows LAPS password</button></>}
             {lapsError && <p role="alert">{recoveryMessage(lapsError)}{correlationDetails(lapsError)}</p>}
-            <RecoveryGuidance decision={recoveryDecision('devices.laps.reveal')} />
+            <RecoveryGuidance {...blockerProps('devices.laps.reveal')} />
           </section>
         </div>
-        <label htmlFor="recovery-reason">Reason for recovery access</label><input id="recovery-reason" value={reason} maxLength={500} onChange={event => setReason(event.target.value)} placeholder="Incident or support case" />
+        <div className="device-recovery__reason"><label htmlFor="recovery-reason">Reason for recovery access</label><input id="recovery-reason" value={reason} maxLength={500} aria-describedby="recovery-reason-hint" onChange={event => setReason(event.target.value)} placeholder="Incident or support case" /><p id="recovery-reason-hint" className="field-hint">Required before revealing a key or password. It is saved in the audit record.</p></div>
         {revealError && <p role="alert">{recoveryMessage(revealError)}{correlationDetails(revealError)}</p>}
-        {secret && <div className="device-recovery__secret" role="status"><strong>{secret.type === 'laps' ? `Windows LAPS password${secret.accountName ? ` for ${secret.accountName}` : ''}` : 'BitLocker recovery key'}</strong><code>{secret.value}</code><p>Clears automatically after 60 seconds.</p><button type="button" onClick={clearSecret}>Close secret</button></div>}
+        {secret && <div className="device-recovery__secret" role="status"><strong>{secret.type === 'laps' ? `Windows LAPS password${secret.accountName ? ` for ${secret.accountName}` : ''}` : 'BitLocker recovery key'}</strong><code>{secret.value}</code><p>Clears automatically after 60 seconds.</p><button type="button" className="button button--secondary" onClick={clearSecret}>Close secret</button></div>}
       </section>
 
-      {canManage && <section className="content-panel"><h2>Remote actions</h2><div className="device-detail-panel__actions">{(['sync', 'remote-lock', 'restart', 'retire', 'wipe'] as DeviceAction[]).map(action => <button key={action} type="button" className={action === 'retire' || action === 'wipe' ? 'button button--danger' : 'button button--secondary'} onClick={() => setActionTarget(action)}>{actionLabel(action)}</button>)}</div>{actionStatus && <p role="status">{actionStatus}</p>}{actionError && <p role="alert">Device action failed. Retry or check permissions.</p>}</section>}
-      {actionTarget && <ConfirmationDialog title={actionLabel(actionTarget)} target={device.deviceName || device.id} proposedChange={`${actionLabel(actionTarget)} this managed device.`} requiredCapability="devices.privileged.manage" destructivePhrase={actionTarget === 'sync' ? null : actionTarget === 'remote-lock' ? 'REMOTE LOCK' : actionTarget.toUpperCase()} busy={actionBusy} onConfirm={() => void runAction()} onCancel={() => { if (!actionBusy) setActionTarget(null); }} />}
+      {canManage && <>
+        <ActionGroup title="Device actions" description="These requests are sent to the device through Intune.">
+          <div className="device-actions">{(['sync', 'restart', 'remote-lock'] as DeviceAction[]).map(action => <div key={action} className="device-actions__item"><button type="button" className="button button--secondary" onClick={() => setActionTarget(action)}>{actionLabel(action)}</button><span>{actionDescription[action]}</span></div>)}</div>
+        </ActionGroup>
+        {actionStatus && <p role="status">{actionStatus}</p>}{actionError && <p role="alert">Device action failed. Retry or check permissions.</p>}
+        <ActionGroup tone="danger" title="Danger zone">
+          <div className="device-actions">{(['retire', 'wipe'] as DeviceAction[]).map(action => <div key={action} className="device-actions__item"><button type="button" className="button button--danger" onClick={() => setActionTarget(action)}>{actionLabel(action)}</button><span>{actionDescription[action]}</span></div>)}</div>
+        </ActionGroup>
+      </>}
+      {actionTarget && <ConfirmationDialog title={actionLabel(actionTarget)} target={title} proposedChange={`${actionLabel(actionTarget)} this managed device.`} requiredCapability="devices.privileged.manage" confirmLabel={messages.deviceActionConfirm[actionTarget].label} consequence={messages.deviceActionConfirm[actionTarget].consequence} tone={messages.deviceActionConfirm[actionTarget].tone as 'default' | 'danger'} destructivePhrase={actionTarget === 'sync' ? null : actionTarget === 'remote-lock' ? 'REMOTE LOCK' : actionTarget.toUpperCase()} busy={actionBusy} onConfirm={() => void runAction()} onCancel={() => { if (!actionBusy) setActionTarget(null); }} />}
     </>}
-  </section>;
+  </div>;
+}
+
+const actionDescription: Record<DeviceAction, string> = {
+  sync: 'Ask the device to check in with Intune now.',
+  restart: 'Restarts the device. Unsaved work may be lost.',
+  'remote-lock': 'Locks the screen until the user enters their passcode.',
+  retire: 'Removes company data and management. This cannot be undone.',
+  wipe: 'Erases everything and resets the device. This cannot be undone.'
+};
+function humanizeCompliance(state: string) { const lower = state.toLowerCase(); return lower === 'compliant' ? 'Compliant' : lower === 'noncompliant' ? 'Noncompliant' : lower === 'ingraceperiod' ? 'In grace period' : lower === 'unknown' ? 'Unknown' : 'Needs review'; }
+function blockerLink(decision: CapabilityDecision, canManageSettings: boolean) {
+  return decision.state === 'consent_required' && canManageSettings ? { label: 'Open setup', href: '/settings#connection' } : { label: 'Open PIM guidance', href: '/identity' };
+}
+function RecoveryStamp({ label, fetchedAt }: { label: string; fetchedAt: string | null }) {
+  return <p className="data-freshness">{fetchedAt ? `${label} retrieved ${formatRelative(fetchedAt)}` : 'Not loaded yet.'}</p>;
 }
 
 function Field({ label, value }: { label: string; value?: string | null }) { return value ? <><dt>{label}</dt><dd>{value}</dd></> : null; }
-function SourceStamp({ source, label, fetchedAt }: { source: string; label: string; fetchedAt: string | null }) {
-  return <p className="data-freshness">Source: {source}. {fetchedAt ? `${label} retrieved: ${new Date(fetchedAt).toLocaleString()}` : 'Not loaded yet.'}</p>;
-}
-function RecoveryGuidance({ decision }: { decision?: CapabilityDecision }) {
-  if (!decision) return null;
+function RecoveryGuidance({ decision, capability, canManageSettings, suppressed }: { decision?: CapabilityDecision; capability: string; canManageSettings: boolean; suppressed?: boolean }) {
+  if (!decision || suppressed) return null;
   if (decision.state === 'allowed') return decision.nextStep ? <p><a href={decision.nextStep.href || '/identity'}>{decision.nextStep.label}</a></p> : null;
-  if (decision.state === 'consent_required') return <p>Recovery access requires a delegated Graph scope: {decision.missingScopes?.join(' or ') || 'ask your tenant administrator to review Setup'}. <a href="/settings/setup">Open Setup</a> for registration and consent guidance.</p>;
-  if (decision.state === 'temporarily_unavailable') return <p>Authorization checks are temporarily unavailable. Retry after the checks recover.</p>;
-  if (decision.state.startsWith('pim_')) return <p>Activate your eligible Entra role in PIM and retry. <a href="/identity">Open PIM guidance</a>.</p>;
-  return <p>Your Microsoft account cannot access this recovery operation.</p>;
+  if (decision.state === 'temporarily_unavailable') return <p id={`blocker-${capability}`}>Authorization checks are temporarily unavailable. Retry after the checks recover.</p>;
+  const link = blockerLink(decision, canManageSettings);
+  return <p id={`blocker-${capability}`}>{humanizeCapability(capability)} isn't available to you. <a href={link.href}>{link.label}</a></p>;
 }
 function deviceIdFromPath() { try { return decodeURIComponent(window.location.pathname.slice('/devices/'.length)); } catch { return ''; } }
 function actionLabel(action: DeviceAction) { return ({ sync: 'Sync device', 'remote-lock': 'Remote lock', restart: 'Restart device', retire: 'Retire device', wipe: 'Wipe device' } as const)[action]; }

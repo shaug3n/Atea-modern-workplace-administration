@@ -1,0 +1,134 @@
+- generic [ref=f11e4] [box=0,0,1425,1571]:
+  - link "Skip to main content" [ref=f11e5] [cursor=pointer] [box=8,-46,185,36]:
+    - /url: "#main-content"
+  - banner [ref=f11e6] [box=0,0,1425,79]:
+    - link "Atea Unified Workplace home" [ref=f11e7] [cursor=pointer] [box=32,27,273,25]:
+      - /url: /overview
+      - generic [ref=f11e8] [box=143,27,162,25]: Atea Unified Workplace
+    - generic "Current workspace and signed-in user" [ref=f11e9] [box=329,16,769,46]:
+      - generic [ref=f11e10] [box=495,16,83,46]:
+        - generic [ref=f11e11] [box=495,16,83,22]: Workspace
+        - strong [ref=f11e12] [box=495,41,83,17]: Haugentech
+      - generic [ref=f11e13] [box=594,26,328,26]:
+        - generic [ref=f11e14] [box=602,28,134,22]: Access snapshot fresh
+        - generic [ref=f11e15] [box=741,28,174,22]: Entra roles and Graph consent
+      - generic "Signed-in user" [ref=f11e16] [box=938,16,160,46]:
+        - generic [ref=f11e17] [box=938,16,160,22]: Signed in as
+        - strong [ref=f11e18] [box=938,41,106,17]: Sondre Haugen
+    - button "Notifications, 2 warnings" [ref=f11e20] [cursor=pointer] [box=1122,17,143,44]:
+      - text: Notifications
+      - generic [aria-hidden] [ref=f11e21] [box=1236,30,22,22]: "2"
+    - switch "Enable dark mode" [ref=f11e22] [cursor=pointer] [box=1289,17,80,44]: Light
+  - generic [ref=f11e23] [box=0,79,1425,1492]:
+    - navigation "Primary navigation" [ref=f11e25] [box=0,79,240,409]:
+      - list [ref=f11e27] [box=8,103,223,48]:
+        - listitem [ref=f11e28] [box=8,103,223,48]:
+          - link "Overview" [ref=f11e29] [cursor=pointer] [box=8,103,223,48]:
+            - /url: /overview
+      - generic [ref=f11e30] [box=8,159,223,137]:
+        - heading [level=2] [ref=f11e31] [box=8,159,223,44]:
+          - button "People" [expanded] [ref=f11e32] [cursor=pointer] [box=8,159,223,44]
+        - list [ref=f11e34] [box=8,205,223,91]:
+          - listitem [ref=f11e35] [box=8,205,223,45]:
+            - link "Users" [ref=f11e36] [cursor=pointer] [box=8,205,223,45]:
+              - /url: /users
+          - listitem [ref=f11e37] [box=8,252,223,45]:
+            - link "Licenses" [ref=f11e38] [cursor=pointer] [box=8,252,223,45]:
+              - /url: /licenses
+      - list [ref=f11e40] [box=8,304,223,48]:
+        - listitem [ref=f11e41] [box=8,304,223,48]:
+          - link "Devices" [ref=f11e42] [cursor=pointer] [box=8,304,223,48]:
+            - /url: /devices
+      - list [ref=f11e44] [box=8,360,223,48]:
+        - listitem [ref=f11e45] [box=8,360,223,48]:
+          - link "Activity" [ref=f11e46] [cursor=pointer] [box=8,360,223,48]:
+            - /url: /activity
+      - list [ref=f11e48] [box=8,416,223,48]:
+        - listitem [ref=f11e49] [box=8,416,223,48]:
+          - link "Workspace Settings" [ref=f11e50] [cursor=pointer] [box=8,416,223,48]:
+            - /url: /settings
+    - main [ref=f11e51] [box=240,79,1185,1492]:
+      - navigation "Breadcrumbs" [ref=f11e118] [box=272,111,1121,21]:
+        - list [ref=f11e119] [box=272,111,1121,21]:
+          - listitem [ref=f11e120] [box=272,111,45,21]: Devices
+          - listitem [ref=f11e121] [box=321,111,264,21]: /9c2934a8-e536-4846-9ba8-07b08013000b
+      - region "Device details" [ref=f11e122] [box=272,148,1121,1391]:
+        - generic [ref=f11e123] [box=272,148,1121,64]:
+          - generic [ref=f11e124] [box=272,148,260,64]:
+            - paragraph [ref=f11e125] [box=272,148,260,22]: Device details
+            - heading "WIN-2D5FV8238CF" [level=1] [ref=f11e126] [box=272,174,260,38]
+          - button "← Back to devices" [ref=f11e128] [cursor=pointer] [box=1269,148,124,36]
+        - paragraph [ref=f11e129] [box=272,260,1121,62]: "Source: Microsoft Graph · Intune managedDevices. Device details retrieved: 10/7/2026, 10:09:52 AM"
+        - generic [ref=f11e130] [box=272,346,1121,423]:
+          - generic [ref=f11e131] [box=272,346,363,423]:
+            - heading "Overview" [level=2] [ref=f11e132] [box=297,371,313,28]
+            - generic [ref=f11e133] [box=297,415,313,329]:
+              - term [ref=f11e134] [box=297,415,313,21]: Device ID
+              - definition [ref=f11e135] [box=297,436,313,56]: 9c2934a8-e536-4846-9ba8-07b08013000b
+              - term [ref=f11e136] [box=297,492,313,21]: Operating system
+              - definition [ref=f11e137] [box=297,513,313,28]: Windows 10.0.26200.9457
+              - term [ref=f11e138] [box=297,541,313,21]: Owner type
+              - definition [ref=f11e139] [box=297,562,313,28]: company
+              - term [ref=f11e140] [box=297,590,313,21]: Primary user ID
+              - definition [ref=f11e141] [box=297,611,313,56]: b207fc39-ce9b-42a9-8d06-a66e78126537
+              - term [ref=f11e142] [box=297,667,313,21]: Entra device ID
+              - definition [ref=f11e143] [box=297,688,313,56]: c5b89d88-9a00-4280-b5db-a437030b1bfc
+          - generic [ref=f11e144] [box=651,346,363,423]:
+            - heading "Security and management" [level=2] [ref=f11e145] [box=676,371,313,119]
+            - generic [ref=f11e146] [box=676,506,313,238]:
+              - term [ref=f11e147] [box=676,506,313,36]: Compliance
+              - definition [ref=f11e148] [box=676,543,313,43]: compliant
+              - term [ref=f11e149] [box=676,586,313,36]: Management state
+              - definition [ref=f11e150] [box=676,622,313,43]: managed
+              - term [ref=f11e151] [box=676,665,313,36]: Last sync
+              - definition [ref=f11e152] [box=676,701,313,43]: 9/28/2026, 4:23:27 PM
+          - generic [ref=f11e153] [box=1030,346,363,423]:
+            - heading "Hardware" [level=2] [ref=f11e154] [box=1055,371,313,144]
+            - generic [ref=f11e155] [box=1055,531,313,214]:
+              - term [ref=f11e156] [box=1055,531,313,50]: Manufacturer
+              - definition [ref=f11e157] [box=1055,581,313,57]: QEMU
+              - term [ref=f11e158] [box=1055,638,313,50]: Model
+              - definition [ref=f11e159] [box=1055,688,313,57]: QEMU Virtual Machine
+        - region [ref=f11e160] [box=272,793,1121,584]:
+          - heading "Recovery data" [level=2] [ref=f11e161] [box=297,818,1071,28]
+          - paragraph [ref=f11e162] [box=297,854,1071,28]: Load recovery records only when needed. Microsoft Graph checks your access to this device.
+          - generic [ref=f11e163] [box=297,890,1071,397]:
+            - generic [ref=f11e164] [box=297,890,528,397]:
+              - heading "BitLocker" [level=3] [ref=f11e165] [box=314,907,494,33]
+              - paragraph [ref=f11e166] [box=314,940,494,90]: "Source: Microsoft Graph · BitLocker recovery keys. Not loaded yet."
+              - button "Load BitLocker metadata" [disabled] [ref=f11e167] [box=314,1030,205,44]
+              - paragraph [ref=f11e168] [box=314,1074,494,84]:
+                - text: "Recovery access requires a delegated Graph scope: BitlockerKey.ReadBasic.All or BitlockerKey.Read.All."
+                - link "Open Setup" [ref=f11e169] [cursor=pointer] [box=705,1106,89,20]:
+                  - /url: /settings/setup
+                - text: for registration and consent guidance.
+              - paragraph [ref=f11e170] [box=314,1158,494,84]:
+                - text: "Recovery access requires a delegated Graph scope: BitlockerKey.Read.All."
+                - link "Open Setup" [ref=f11e171] [cursor=pointer] [box=481,1190,89,20]:
+                  - /url: /settings/setup
+                - text: for registration and consent guidance.
+            - generic [ref=f11e172] [box=841,890,528,397]:
+              - heading "Windows LAPS" [level=3] [ref=f11e173] [box=858,907,494,33]
+              - paragraph [ref=f11e174] [box=858,940,494,90]: "Source: Microsoft Graph · Windows LAPS local credentials. Not loaded yet."
+              - button "Load Windows LAPS metadata" [disabled] [ref=f11e175] [box=858,1030,249,44]
+              - paragraph [ref=f11e176] [box=858,1074,494,112]:
+                - text: "Recovery access requires a delegated Graph scope: DeviceLocalCredential.ReadBasic.All or DeviceLocalCredential.Read.All."
+                - link "Open Setup" [ref=f11e177] [cursor=pointer] [box=1101,1134,89,20]:
+                  - /url: /settings/setup
+                - text: for registration and consent guidance.
+              - paragraph [ref=f11e178] [box=858,1186,494,84]:
+                - text: "Recovery access requires a delegated Graph scope: DeviceLocalCredential.Read.All."
+                - link "Open Setup" [ref=f11e179] [cursor=pointer] [box=1101,1218,89,20]:
+                  - /url: /settings/setup
+                - text: for registration and consent guidance.
+          - generic [ref=f11e180] [box=297,1295,1071,28]: Reason for recovery access
+          - textbox "Reason for recovery access" [ref=f11e181] [box=297,1331,576,21]:
+            - /placeholder: Incident or support case
+        - generic [ref=f11e182] [box=272,1401,1121,138]:
+          - heading "Remote actions" [level=2] [ref=f11e183] [box=297,1426,1071,28]
+          - generic [ref=f11e184] [box=297,1470,1071,44]:
+            - button "Sync device" [ref=f11e185] [cursor=pointer] [box=297,1470,108,44]
+            - button "Remote lock" [ref=f11e186] [cursor=pointer] [box=413,1470,109,44]
+            - button "Restart device" [ref=f11e187] [cursor=pointer] [box=529,1470,125,44]
+            - button "Retire device" [ref=f11e188] [cursor=pointer] [box=662,1470,114,44]
+            - button "Wipe device" [ref=f11e189] [cursor=pointer] [box=784,1470,109,44]

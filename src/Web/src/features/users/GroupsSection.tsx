@@ -7,18 +7,27 @@ export function GroupsSection({ section, canManage, onAdd, onRemove }: { section
   return (
     <section className="detail-section" aria-labelledby="groups-section-title">
       <SectionHeader id="groups-section-title" title={messages.userGroupsSection} access={section.access} />
-      {canManage && <button type="button" onClick={onAdd}>Add group</button>}
+      {canManage && <button type="button" className="button button--secondary button--sm" onClick={onAdd}>Add group</button>}
       {section.items.length === 0 ? <p>{section.access.error?.message ?? messages.userSectionNoData}</p> : (
         <ul className="record-list">
           {section.items.map((group) => (
             <li key={group.id}>
-              <strong>{group.displayName || group.id}</strong>
-              <span>{group.mailNickname || (group.securityEnabled ? 'Security group' : 'Group')}</span>
-              {canManage && <button type="button" onClick={() => onRemove?.(group)}>Remove group</button>}
+              <div className="record-list__main">
+                <strong>{group.displayName || group.id}</strong>
+                {meta(group) && <span className="record-list__meta">{meta(group)}</span>}
+              </div>
+              {canManage && <button type="button" className="button button--tertiary button--sm button--danger-text" aria-label={`Remove group ${group.displayName || group.id}`} onClick={() => onRemove?.(group)}>Remove</button>}
             </li>
           ))}
         </ul>
       )}
     </section>
   );
+}
+
+function meta(group: GroupMembership) {
+  const name = (group.displayName ?? '').trim().toLowerCase();
+  const nickname = (group.mailNickname ?? '').trim();
+  if (nickname && nickname.toLowerCase() !== name) return nickname;
+  return group.securityEnabled ? 'Security group' : 'Group';
 }

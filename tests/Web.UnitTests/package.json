@@ -1,1 +1,1 @@
-{"name":"atea-unified-workplace-web-unit-tests","private":true,"scripts":{"test":"node --test --test-reporter=tap smoke.test.mjs theme-and-catalog.test.mjs"},"devDependencies":{}}
+{"name":"atea-unified-workplace-web-unit-tests","private":true,"scripts":{"test":"node --test --test-reporter=tap smoke.test.mjs theme-and-catalog.test.mjs contrast.test.mjs favicon.test.mjs content-rules.test.mjs"},"devDependencies":{}}

@@ -37,11 +37,12 @@ describe('UserMutationDialogs', () => {
         proposedChange="Disable sign-in for this user."
         requiredCapability="users.disable"
         destructivePhrase="DISABLE"
+        confirmLabel="Disable user"
         onConfirm={onConfirm}
       />,
     );
 
-    const confirm = screen.getByRole('button', { name: 'Confirm action' }) as HTMLButtonElement;
+    const confirm = screen.getByRole('button', { name: 'Disable user' }) as HTMLButtonElement;
     expect(confirm.disabled).toBe(true);
     fireEvent.click(screen.getByLabelText('I reviewed the target, change and required capability.'));
     expect(confirm.disabled).toBe(true);
@@ -56,11 +57,11 @@ describe('UserMutationDialogs', () => {
     trigger.textContent = 'Open';
     document.body.appendChild(trigger);
     trigger.focus();
-    const { unmount } = render(<ConfirmationDialog title="Confirm" target="Ada" proposedChange="Change" requiredCapability="users.edit" onConfirm={vi.fn()} onCancel={vi.fn()} />);
+    const { unmount } = render(<ConfirmationDialog title="Confirm" target="Ada" proposedChange="Change" requiredCapability="users.edit" confirmLabel="Save" onConfirm={vi.fn()} onCancel={vi.fn()} />);
 
     const dialog = screen.getByRole('dialog');
     const cancel = screen.getByRole('button', { name: 'Cancel' });
-    const confirm = screen.getByRole('button', { name: 'Confirm action' });
+    const confirm = screen.getByRole('button', { name: 'Save' });
     const reviewed = screen.getByLabelText('I reviewed the target, change and required capability.');
     reviewed.focus();
     fireEvent.keyDown(dialog, { key: 'Tab', shiftKey: true });
@@ -90,7 +91,7 @@ describe('UserMutationDialogs', () => {
 
     expect(screen.getByRole('alert').textContent).toContain('synchronized from an on-premises directory');
     fireEvent.click(screen.getByLabelText('I reviewed the target, change and required capability.'));
-    expect((screen.getByRole('button', { name: 'Confirm action' }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole('button', { name: 'Save changes' }) as HTMLButtonElement).disabled).toBe(true);
   });
 
   it('uses feature-specific labels for data freshness', () => {
@@ -127,7 +128,7 @@ describe('UserMutationDialogs', () => {
     fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Ada Lovelace' } });
     fireEvent.change(screen.getByLabelText('User principal name'), { target: { value: 'ada@example.com' } });
     fireEvent.click(screen.getByLabelText('I reviewed the target, change and required capability.'));
-    fireEvent.click(screen.getByRole('button', { name: 'Confirm action' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Create user' }));
 
     await waitFor(() => expect(apiMock).toHaveBeenCalledTimes(1));
     const [path, init] = apiMock.mock.calls[0];
@@ -161,7 +162,7 @@ describe('UserMutationDialogs', () => {
 
     render(<PasswordResetDialog user={user} onClose={vi.fn()} />);
     fireEvent.click(screen.getByLabelText('I reviewed the target, change and required capability.'));
-    fireEvent.click(screen.getByRole('button', { name: 'Confirm action' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Reset password' }));
 
     await waitFor(() => expect(apiMock).toHaveBeenCalledTimes(1));
     const [path, init] = apiMock.mock.calls[0];
@@ -169,7 +170,7 @@ describe('UserMutationDialogs', () => {
     expect(init.headers['Idempotency-Key']).toBeTruthy();
     expect(await screen.findByText('Temp-Reset-12345!')).toBeTruthy();
     expect(screen.getByText('The user must change this password at next sign-in.')).toBeTruthy();
-    expect(screen.queryByRole('button', { name: 'Confirm action' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Reset password' })).toBeNull();
   });
 
   it('shows a recoverable error when password reset fails', async () => {
@@ -182,7 +183,7 @@ describe('UserMutationDialogs', () => {
 
     render(<PasswordResetDialog user={user} onClose={vi.fn()} />);
     fireEvent.click(screen.getByLabelText('I reviewed the target, change and required capability.'));
-    fireEvent.click(screen.getByRole('button', { name: 'Confirm action' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Reset password' }));
 
     expect((await screen.findByRole('alert')).textContent).toContain('Microsoft Graph consent is required before this action can be completed.');
     expect(screen.getByRole('dialog')).toBeTruthy();

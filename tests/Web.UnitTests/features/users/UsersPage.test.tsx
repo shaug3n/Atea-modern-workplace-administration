@@ -35,6 +35,11 @@ const allowedCapabilities: CapabilityDecision[] = [
   decision('users.disable', 'allowed'),
 ];
 
+async function openDisable(name: string) {
+  fireEvent.click(await screen.findByRole('button', { name: `Actions for ${name}` }));
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Disable user' }));
+}
+
 describe('UsersPage', () => {
   afterEach(() => {
     cleanup();
@@ -65,8 +70,8 @@ describe('UsersPage', () => {
       error: { category: 'temporarily_unavailable', message: 'raw Graph diagnostic' },
     })} />);
     expect(await screen.findByRole('table')).toBeTruthy();
-    expect(screen.getByRole('alert').textContent).toContain('Partial results');
-    expect(screen.getByRole('alert').textContent).toContain('verified');
+    expect(screen.getByText('Partly loaded')).toBeTruthy();
+    expect(screen.getByText(/verified/).textContent).toContain('Partial results');
     expect(screen.getByRole('table').textContent).toContain('Ada Lovelace');
     expect(screen.queryByText('raw Graph diagnostic')).toBeNull();
     expect(issueReporter.report).toHaveBeenCalledWith(expect.objectContaining({ key: 'users:read', kind: 'service' }));
@@ -77,14 +82,14 @@ describe('UsersPage', () => {
     const next = new Promise<UsersDirectoryResponse>(resolve => { resolveNext = resolve; });
     const loader = vi.fn().mockResolvedValueOnce(usersResponse).mockImplementationOnce(() => next);
     render(<UsersPage capabilities={allowedCapabilities} loadUsers={loader} />);
-    fireEvent.click(await screen.findByRole('button', { name: 'More details for Ada Lovelace' }));
+    await screen.findByRole('link', { name: 'Ada Lovelace' });
     fireEvent.change(screen.getByRole('searchbox', { name: 'Search users' }), { target: { value: 'Grace' } });
-    expect(screen.queryByRole('button', { name: 'Disable Ada Lovelace' })).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Open Ada Lovelace' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Actions for Ada Lovelace' })).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Ada Lovelace' })).toBeNull();
     expect(screen.getByText('Loading users…')).toBeTruthy();
     await waitFor(() => expect(loader).toHaveBeenCalledTimes(2));
     resolveNext({ ...usersResponse, items: [usersResponse.items[1]] });
-    expect(await screen.findByRole('button', { name: 'Open Grace Hopper' })).toBeTruthy();
+    expect(await screen.findByRole('link', { name: 'Grace Hopper' })).toBeTruthy();
     expect(screen.queryByText('Ada Lovelace')).toBeNull();
   });
 
@@ -93,17 +98,17 @@ describe('UsersPage', () => {
     const next = new Promise<UsersDirectoryResponse>(resolve => { resolveNext = resolve; });
     const loader = vi.fn().mockResolvedValueOnce(usersResponse).mockImplementationOnce(() => next);
     render(<UsersPage capabilities={allowedCapabilities} loadUsers={loader} />);
-    await screen.findByRole('button', { name: 'Disable Ada Lovelace' });
+    await screen.findByRole('button', { name: 'Actions for Ada Lovelace' });
     fireEvent.click(screen.getByRole('button', { name: 'Refresh' }));
-    expect(screen.queryByRole('button', { name: 'Disable Ada Lovelace' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Actions for Ada Lovelace' })).toBeNull();
     expect(screen.getByText('Loading users…')).toBeTruthy();
     resolveNext(usersResponse);
-    expect(await screen.findByRole('button', { name: 'Disable Ada Lovelace' })).toBeTruthy();
+    expect(await screen.findByRole('button', { name: 'Actions for Ada Lovelace' })).toBeTruthy();
   });
 
   it('closes a pending disable review when filters change', async () => {
     render(<UsersPage capabilities={allowedCapabilities} loadUsers={async () => usersResponse} />);
-    fireEvent.click(await screen.findByRole('button', { name: 'Disable Ada Lovelace' }));
+    await openDisable('Ada Lovelace');
     expect(screen.getByRole('dialog', { name: 'Disable user' })).toBeTruthy();
     fireEvent.change(screen.getByRole('searchbox', { name: 'Search users' }), { target: { value: 'Grace' } });
     expect(screen.queryByRole('dialog', { name: 'Disable user' })).toBeNull();
@@ -188,11 +193,11 @@ describe('UsersPage', () => {
 
     render(<UsersPage capabilities={allowedCapabilities} loadUsers={loadUsers} />);
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Disable Ada Lovelace' }));
+    await openDisable('Ada Lovelace');
     expect(screen.getByRole('dialog', { name: 'Disable user' })).toBeTruthy();
     expect(screen.getByText('Disable sign-in for this user.')).toBeTruthy();
 
-    const confirm = screen.getByRole('button', { name: 'Confirm action' }) as HTMLButtonElement;
+    const confirm = screen.getByRole('button', { name: 'Disable user' }) as HTMLButtonElement;
     expect(confirm.disabled).toBe(true);
     fireEvent.click(screen.getByLabelText('I reviewed the target, change and required capability.'));
     expect(confirm.disabled).toBe(true);
@@ -225,36 +230,37 @@ describe('UsersPage', () => {
       />,
     );
 
-    const disableButton = await screen.findByRole('button', { name: 'Disable Ada Lovelace' }) as HTMLButtonElement;
-    expect(disableButton.disabled).toBe(true);
-    fireEvent.click(disableButton);
+    fireEvent.click(await screen.findByRole('button', { name: 'Actions for Ada Lovelace' }));
+    const disableItem = screen.getByRole('menuitem', { name: 'Disable user' });
+    expect(disableItem.getAttribute('aria-disabled')).toBe('true');
+    expect(disableItem.textContent).toContain('Requires permission: Disable users');
+    fireEvent.click(disableItem);
 
     expect(screen.queryByRole('dialog', { name: 'Disable user' })).toBeNull();
     expect(apiMock).not.toHaveBeenCalled();
-    expect(screen.getAllByText('This action is read-only for your current Entra role.')).toHaveLength(2);
   });
 
   it('resets disable confirmation when the target user changes', async () => {
     render(<UsersPage capabilities={allowedCapabilities} loadUsers={async () => usersResponse} />);
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Disable Ada Lovelace' }));
+    await openDisable('Ada Lovelace');
     fireEvent.click(screen.getByLabelText('I reviewed the target, change and required capability.'));
     fireEvent.change(screen.getByLabelText('Type DISABLE to confirm'), { target: { value: 'DISABLE' } });
-    expect((screen.getByRole('button', { name: 'Confirm action' }) as HTMLButtonElement).disabled).toBe(false);
+    expect((screen.getByRole('button', { name: 'Disable user' }) as HTMLButtonElement).disabled).toBe(false);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Disable Grace Hopper' }));
+    await openDisable('Grace Hopper');
 
     expect(within(screen.getByRole('dialog', { name: 'Disable user' })).getByText('Grace Hopper')).toBeTruthy();
     expect((screen.getByLabelText('I reviewed the target, change and required capability.') as HTMLInputElement).checked).toBe(false);
     expect((screen.getByLabelText('Type DISABLE to confirm') as HTMLInputElement).value).toBe('');
-    expect((screen.getByRole('button', { name: 'Confirm action' }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole('button', { name: 'Disable user' }) as HTMLButtonElement).disabled).toBe(true);
   });
 
   it('closes disable confirmation with permission guidance when disable capability is revoked before submit', async () => {
     const loadUsers = vi.fn(async (_filters: UserFiltersState, _continuationToken: string | null) => usersResponse);
     const { rerender } = render(<UsersPage capabilities={allowedCapabilities} loadUsers={loadUsers} />);
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Disable Ada Lovelace' }));
+    await openDisable('Ada Lovelace');
     fireEvent.click(screen.getByLabelText('I reviewed the target, change and required capability.'));
     fireEvent.change(screen.getByLabelText('Type DISABLE to confirm'), { target: { value: 'DISABLE' } });
 
@@ -264,7 +270,7 @@ describe('UsersPage', () => {
       decision('users.update', 'allowed'),
       decision('users.disable', 'read_only'),
     ]} loadUsers={loadUsers} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Confirm action' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Disable user' }));
 
     expect(screen.queryByRole('dialog', { name: 'Disable user' })).toBeNull();
     expect(screen.getByRole('alert').textContent).toContain('cannot disable this user');
@@ -281,10 +287,10 @@ describe('UsersPage', () => {
 
     render(<UsersPage capabilities={allowedCapabilities} loadUsers={async () => usersResponse} />);
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Disable Ada Lovelace' }));
+    await openDisable('Ada Lovelace');
     fireEvent.click(screen.getByLabelText('I reviewed the target, change and required capability.'));
     fireEvent.change(screen.getByLabelText('Type DISABLE to confirm'), { target: { value: 'DISABLE' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Confirm action' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Disable user' }));
 
     expect((await screen.findByRole('alert')).textContent).toContain('idempotency key');
     expect(screen.getByRole('dialog', { name: 'Disable user' })).toBeTruthy();

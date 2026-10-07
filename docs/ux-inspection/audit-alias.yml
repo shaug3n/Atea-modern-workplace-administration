@@ -1,0 +1,102 @@
+- generic [ref=f47e4]:
+  - link "Skip to main content" [ref=f47e5] [cursor=pointer]:
+    - /url: "#main-content"
+  - banner [ref=f47e6]:
+    - link "Atea Unified Workplace home" [ref=f47e7] [cursor=pointer]:
+      - /url: /overview
+      - generic [ref=f47e8]: Atea Unified Workplace
+    - generic "Current workspace and signed-in user" [ref=f47e9]:
+      - generic [ref=f47e10]:
+        - generic [ref=f47e11]: Workspace
+        - strong [ref=f47e12]: Haugentech
+      - generic [ref=f47e13]:
+        - generic [ref=f47e14]: Access snapshot fresh
+        - generic [ref=f47e15]: Entra roles and Graph consent
+      - generic "Signed-in user" [ref=f47e16]:
+        - generic [ref=f47e17]: Signed in as
+        - strong [ref=f47e18]: Sondre Haugen
+    - button "Notifications, 2 warnings" [ref=f47e20] [cursor=pointer]:
+      - text: Notifications
+      - generic [aria-hidden] [ref=f47e21]: "2"
+    - switch "Enable dark mode" [ref=f47e22] [cursor=pointer]: Light
+  - generic [ref=f47e23]:
+    - navigation "Primary navigation" [ref=f47e25]:
+      - list [ref=f47e27]:
+        - listitem [ref=f47e28]:
+          - link "Overview" [ref=f47e29] [cursor=pointer]:
+            - /url: /overview
+      - generic [ref=f47e30]:
+        - heading [level=2] [ref=f47e31]:
+          - button "People" [expanded] [ref=f47e32] [cursor=pointer]
+        - list [ref=f47e34]:
+          - listitem [ref=f47e35]:
+            - link "Users" [ref=f47e36] [cursor=pointer]:
+              - /url: /users
+          - listitem [ref=f47e37]:
+            - link "Licenses" [ref=f47e38] [cursor=pointer]:
+              - /url: /licenses
+      - list [ref=f47e40]:
+        - listitem [ref=f47e41]:
+          - link "Devices" [ref=f47e42] [cursor=pointer]:
+            - /url: /devices
+      - list [ref=f47e44]:
+        - listitem [ref=f47e45]:
+          - link "Activity" [ref=f47e46] [cursor=pointer]:
+            - /url: /activity
+      - list [ref=f47e48]:
+        - listitem [ref=f47e49]:
+          - link "Workspace Settings" [ref=f47e50] [cursor=pointer]:
+            - /url: /settings
+    - main [ref=f47e51]:
+      - region "Audit activity page" [ref=f47e52]:
+        - generic [ref=f47e54]:
+          - paragraph [ref=f47e55]: Workspace audit
+          - heading "Audit activity" [level=1] [ref=f47e56]
+          - paragraph [ref=f47e57]: Review platform actor intent, result and correlation references for this workspace.
+        - generic [ref=f47e58]:
+          - generic [ref=f47e59]:
+            - text: Actor object ID
+            - textbox "Actor object ID" [ref=f47e60]:
+              - /placeholder: Entra object ID
+          - generic [ref=f47e61]:
+            - text: Action
+            - textbox "Action" [ref=f47e62]:
+              - /placeholder: users.update
+          - generic [ref=f47e63]:
+            - text: Outcome
+            - combobox "Outcome" [ref=f47e64]:
+              - option "Any outcome" [selected]
+              - option "succeeded"
+              - option "denied"
+              - option "failed"
+        - status [ref=f47e65]:
+          - generic [ref=f47e66]: Audit data is fresh
+          - generic [ref=f47e67]: "Fetched: 10/7/2026, 10:18:14 AM"
+          - generic [ref=f47e68]: Microsoft 365 audit logs remain authoritative for directory changes. This stream records platform actor intent, result and correlation references.
+        - region "Audit activity" [ref=f47e69]:
+          - table "Workspace audit activity" [ref=f47e71]:
+            - rowgroup [ref=f47e72]:
+              - row [ref=f47e73]:
+                - columnheader "Time" [ref=f47e74]
+                - columnheader "Action" [ref=f47e75]
+                - columnheader "Target" [ref=f47e76]
+                - columnheader "Outcome" [ref=f47e77]
+                - columnheader "Correlation" [ref=f47e78]
+                - columnheader "Safe metadata" [ref=f47e79]
+            - rowgroup [ref=f47e80]:
+              - row [ref=f47e81]:
+                - cell "9/27/2026, 2:37:09 PM" [ref=f47e82]
+                - cell "workspace.invitation.redeemed" [ref=f47e83]
+                - cell "55b106ce-ab31-44bb-aaad-71a19896afd1" [ref=f47e84]
+                - cell "success" [ref=f47e85]
+                - cell "No correlation recorded" [ref=f47e86]
+                - cell [ref=f47e87]:
+                  - code [ref=f47e88]: "{\"role\":\"workspace_owner\",\"resource\":\"invitation\"}"
+              - row [ref=f47e89]:
+                - cell "9/27/2026, 1:51:57 PM" [ref=f47e90]
+                - cell "workspace.onboarded" [ref=f47e91]
+                - cell "75b648cc-b004-4402-bd36-a7069e224b66" [ref=f47e92]
+                - cell "success" [ref=f47e93]
+                - cell "2da0829f0bb64544b30ecd30e6e2a822" [ref=f47e94]
+                - cell [ref=f47e95]:
+                  - code [ref=f47e96]: "{}"

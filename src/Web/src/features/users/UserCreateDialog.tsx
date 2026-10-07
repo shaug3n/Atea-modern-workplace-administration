@@ -50,6 +50,7 @@ export function UserCreateDialog({ onCompleted }: { onCompleted?: (result: UserC
         target={displayName || userPrincipalName || messages.usersUnnamedUser}
         proposedChange={messages.userCreateProposedChange}
         requiredCapability="users.create"
+        confirmLabel={messages.confirmCreateUser}
         busy={pending}
         onConfirm={submit}
       />

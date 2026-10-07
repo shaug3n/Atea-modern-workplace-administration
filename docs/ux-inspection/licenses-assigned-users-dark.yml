@@ -1,0 +1,100 @@
+- generic [ref=f10e4] [box=0,0,1425,932]:
+  - link "Skip to main content" [ref=f10e5] [cursor=pointer] [box=8,-46,185,36]:
+    - /url: "#main-content"
+  - banner [ref=f10e6] [box=0,0,1425,79]:
+    - link "Atea Unified Workplace home" [ref=f10e7] [cursor=pointer] [box=32,27,273,25]:
+      - /url: /overview
+      - generic [ref=f10e8] [box=143,27,162,25]: Atea Unified Workplace
+    - generic "Current workspace and signed-in user" [ref=f10e9] [box=329,16,769,46]:
+      - generic [ref=f10e10] [box=495,16,83,46]:
+        - generic [ref=f10e11] [box=495,16,83,22]: Workspace
+        - strong [ref=f10e12] [box=495,41,83,17]: Haugentech
+      - generic [ref=f10e13] [box=594,26,328,26]:
+        - generic [ref=f10e14] [box=602,28,134,22]: Access snapshot fresh
+        - generic [ref=f10e15] [box=741,28,174,22]: Entra roles and Graph consent
+      - generic "Signed-in user" [ref=f10e16] [box=938,16,160,46]:
+        - generic [ref=f10e17] [box=938,16,160,22]: Signed in as
+        - strong [ref=f10e18] [box=938,41,106,17]: Sondre Haugen
+    - button "Notifications, 2 warnings" [ref=f10e57] [cursor=pointer] [box=1122,17,143,44]:
+      - text: Notifications
+      - generic [aria-hidden] [ref=f10e58] [box=1236,30,22,22]: "2"
+    - switch "Disable dark mode" [checked] [ref=f10e21] [cursor=pointer] [box=1289,17,80,44]: Dark
+  - generic [ref=f10e22] [box=0,79,1425,853]:
+    - navigation "Primary navigation" [ref=f10e24] [box=0,79,240,409]:
+      - list [ref=f10e26] [box=8,103,223,48]:
+        - listitem [ref=f10e27] [box=8,103,223,48]:
+          - link "Overview" [ref=f10e28] [cursor=pointer] [box=8,103,223,48]:
+            - /url: /overview
+      - generic [ref=f10e29] [box=8,159,223,137]:
+        - heading [level=2] [ref=f10e30] [box=8,159,223,44]:
+          - button "People" [expanded] [ref=f10e31] [cursor=pointer] [box=8,159,223,44]
+        - list [ref=f10e33] [box=8,205,223,91]:
+          - listitem [ref=f10e34] [box=8,205,223,45]:
+            - link "Users" [ref=f10e35] [cursor=pointer] [box=8,205,223,45]:
+              - /url: /users
+          - listitem [ref=f10e36] [box=8,252,223,45]:
+            - link "Licenses" [ref=f10e37] [cursor=pointer] [box=8,252,223,45]:
+              - /url: /licenses
+      - list [ref=f10e39] [box=8,304,223,48]:
+        - listitem [ref=f10e40] [box=8,304,223,48]:
+          - link "Devices" [ref=f10e41] [cursor=pointer] [box=8,304,223,48]:
+            - /url: /devices
+      - list [ref=f10e43] [box=8,360,223,48]:
+        - listitem [ref=f10e44] [box=8,360,223,48]:
+          - link "Activity" [ref=f10e45] [cursor=pointer] [box=8,360,223,48]:
+            - /url: /activity
+      - list [ref=f10e47] [box=8,416,223,48]:
+        - listitem [ref=f10e48] [box=8,416,223,48]:
+          - link "Workspace Settings" [ref=f10e49] [cursor=pointer] [box=8,416,223,48]:
+            - /url: /settings
+    - main [ref=f10e50] [box=240,79,1185,853]:
+      - region "License inventory" [ref=f10e59] [box=272,111,1121,789]:
+        - generic [ref=f10e61] [box=297,136,441,96]:
+          - paragraph [ref=f10e62] [box=297,136,441,22]: Licenses
+          - heading "License inventory" [level=1] [ref=f10e63] [box=297,162,441,38]
+          - paragraph [ref=f10e64] [box=297,204,441,28]: Review purchased seats, assignments, and license rosters.
+        - paragraph [ref=f10e65] [box=297,280,1071,28]: "Source: Microsoft Graph subscribed SKUs. Retrieved 10/7/2026, 10:08:51 AM."
+        - tablist "License view" [ref=f10e66] [box=297,332,1071,45]:
+          - tab "Inventory" [ref=f10e67] [cursor=pointer] [box=297,332,85,44]
+          - tab "Assigned users" [active] [selected] [ref=f10e68] [cursor=pointer] [box=386,332,133,44]
+        - tabpanel "Assigned users" [ref=f10e124] [box=297,401,1071,474]:
+          - heading "EMSPREMIUM" [level=2] [ref=f10e125] [box=297,401,1071,28]
+          - paragraph [ref=f10e126] [box=297,429,1071,21]: Product name unavailable
+          - paragraph [ref=f10e127] [box=297,450,1071,21]: "EMSPREMIUM · SKU ID: b05e124f-c7cc-45a0-a6aa-8cf78c946968"
+          - generic [ref=f10e128] [box=297,487,1071,94]:
+            - generic [ref=f10e129] [box=297,487,352,94]:
+              - term [ref=f10e130] [box=314,504,318,21]: Purchased
+              - definition [ref=f10e131] [box=314,529,318,35]: "25"
+            - generic [ref=f10e132] [box=657,487,352,94]:
+              - term [ref=f10e133] [box=674,504,318,21]: Assigned
+              - definition [ref=f10e134] [box=674,529,318,35]: "3"
+            - generic [ref=f10e135] [box=1016,487,352,94]:
+              - term [ref=f10e136] [box=1033,504,318,21]: Available
+              - definition [ref=f10e137] [box=1033,529,318,35]: "22"
+          - button "Export assignees CSV" [ref=f10e138] [cursor=pointer] [box=297,597,184,44]
+          - paragraph [ref=f10e139] [box=297,641,1071,28]: "Source: Microsoft Graph users assigned to this SKU. Retrieved 10/7/2026, 10:09:12 AM."
+          - table [ref=f10e141] [box=298,670,1069,160]:
+            - rowgroup [ref=f10e142] [box=298,670,1069,37]:
+              - row [ref=f10e143] [box=298,670,1069,37]:
+                - columnheader "User" [ref=f10e144] [box=298,670,373,37]
+                - columnheader "User principal name" [ref=f10e145] [box=671,670,696,37]
+            - rowgroup [ref=f10e146] [box=298,708,1069,123]:
+              - row [ref=f10e147] [box=298,708,1069,41]:
+                - rowheader [ref=f10e148] [box=298,708,373,41]:
+                  - link "Sondre Haugen" [ref=f10e149] [cursor=pointer] [box=314,719,106,17]:
+                    - /url: /users/b207fc39-ce9b-42a9-8d06-a66e78126537
+                - cell "Sondre@haugentech.onmicrosoft.com" [ref=f10e150] [box=671,708,696,41]
+              - row [ref=f10e151] [box=298,749,1069,41]:
+                - rowheader [ref=f10e152] [box=298,749,373,41]:
+                  - link "lab-intuneadmin1" [ref=f10e153] [cursor=pointer] [box=314,760,119,17]:
+                    - /url: /users/1c3a464c-a833-4973-83e9-c38434908c29
+                - cell "Lab-intuneadmin1@haugentech.no" [ref=f10e154] [box=671,749,696,41]
+              - row [ref=f10e155] [box=298,790,1069,41]:
+                - rowheader [ref=f10e156] [box=298,790,373,41]:
+                  - link "lab-intuneadmin2" [ref=f10e157] [cursor=pointer] [box=314,801,122,17]:
+                    - /url: /users/e378dd44-3b3d-43f3-994d-0e7595d6011a
+                - cell "lab-intuneadmin2@haugentech.no" [ref=f10e158] [box=671,790,696,41]
+          - navigation "Assignee pages" [ref=f10e159] [box=297,831,1071,44]:
+            - generic [ref=f10e160] [box=297,854,37,21]: Page 1
+            - button "Previous page" [disabled] [ref=f10e161] [box=766,831,97,44]
+            - button "Next page" [disabled] [ref=f10e162] [box=1295,831,73,44]

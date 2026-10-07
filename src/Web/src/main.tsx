@@ -1,6 +1,8 @@
 import { lazy, StrictMode, Suspense } from 'react';
 import { createRoot } from 'react-dom/client';
 import './styles/theme.css';
+import './styles/foundations.css';
+import './styles/components.css';
 import { isInvitationPath } from './app/routes';
 
 const AdminApp = lazy(async () => {

@@ -24,11 +24,15 @@ export function IdentitySection({ user, access }: { user: UserDetails; access: S
   );
 }
 
+export const SectionRetryContext = React.createContext<(() => void) | undefined>(undefined);
+
 export function SectionHeader({ id, title, access }: { id: string; title: string; access: SectionAccessState }) {
+  const retry = React.useContext(SectionRetryContext);
+  const healthy = access.freshness === 'fresh' && !access.partialData && !access.error;
   return (
     <div className="detail-section__header">
       <h2 id={id}>{title}</h2>
-      <DataFreshness fetchedAt={access.fetchedAt} freshness={access.freshness} partialData={access.partialData} message={access.error?.message} />
+      {!healthy && <DataFreshness fetchedAt={access.fetchedAt} freshness={access.freshness} partialData={access.partialData} message={access.error?.message} onRefresh={retry} />}
     </div>
   );
 }

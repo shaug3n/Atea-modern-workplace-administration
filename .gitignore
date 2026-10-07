@@ -8,3 +8,4 @@ dist/
 *.tsbuildinfo
 src/Web/vite.config.js
 src/Web/vite.config.d.ts
+.playwright-mcp/

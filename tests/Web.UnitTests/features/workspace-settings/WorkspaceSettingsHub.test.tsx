@@ -39,6 +39,26 @@ describe('Workspace Settings hub', () => {
     expect(api).toHaveBeenCalledWith('/api/workspaces/current/access');
   });
 
+  it('indexes sections, marks the hash section current, focuses it and shows one freshness line', async () => {
+    api.mockImplementation(async (path: string) => {
+      if (path.endsWith('/modules')) return Response.json({ enabledModules: ['users'] });
+      if (path.endsWith('/access')) return Response.json({ memberships: [], invitations: [] });
+      if (path.endsWith('/settings')) return Response.json({ displayName: 'Contoso', enabledModules: ['users'], defaultColumns: [], defaultFilters: {}, supportInstructions: '', defaultTheme: 'light', access: { state: 'allowed' } });
+      if (path.endsWith('/connection-health')) return Response.json({ status: 'connected', lastVerifiedAt: null });
+      return new Response(null, { status: 404 });
+    });
+    renderAt('/settings#modules');
+    const nav = await screen.findByRole('navigation', { name: 'Settings sections' });
+    expect(Array.from(nav.querySelectorAll('a')).map(link => link.textContent)).toEqual(['Connection', 'General', 'Modules', 'Access']);
+    expect(nav.querySelector('a[href="#modules"]')?.getAttribute('aria-current')).toBe('true');
+    window.location.hash = '#access';
+    window.dispatchEvent(new HashChangeEvent('hashchange'));
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('heading', { level: 2, name: 'Access' })));
+    expect(nav.querySelector('a[href="#access"]')?.getAttribute('aria-current')).toBe('true');
+    expect(nav.querySelector('a[href="#modules"]')?.getAttribute('aria-current')).toBeNull();
+    expect(document.body.textContent).not.toContain('Retrieved');
+  });
+
   it('keeps General and Access available when Modules fails', async () => {
     api.mockImplementation(async (path: string) => {
       if (path.endsWith('/modules')) return new Response(null, { status: 503 });
@@ -48,7 +68,7 @@ describe('Workspace Settings hub', () => {
     });
     renderAt('/settings');
     expect(await screen.findByText('Workspace modules are unavailable.')).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Save settings' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Save changes' })).toBeTruthy();
     expect(screen.getByText('No workspace members have been added yet.')).toBeTruthy();
   });
 
@@ -65,7 +85,7 @@ describe('Workspace Settings hub', () => {
 
   it('denies a member without any settings permissions', async () => {
     renderAt('/settings', { ...owner, workspaceAccess: { role: 'member', canManageMembers: false, canManageSettings: false, canManageModules: false } });
-    expect(await screen.findByRole('heading', { name: 'Workspace access is managed by an administrator' })).toBeTruthy();
+    expect(await screen.findByText(/You don't have access to/)).toBeTruthy();
     expect(screen.queryByRole('heading', { name: 'Connection' })).toBeNull();
     expect(api).not.toHaveBeenCalled();
   });

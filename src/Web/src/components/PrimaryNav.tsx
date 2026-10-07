@@ -2,8 +2,11 @@ import React, { useState } from 'react';
 import type { CapabilitySnapshot } from '../capabilities/capabilityTypes';
 import { messages } from '../app/messages';
 import type { AppSession } from './TenantContextHeader';
+import { Icon, type IconName } from './icons';
 
 type NavItem = { href: string; label: string };
+
+const navIcons: Record<string, IconName> = { '/overview': 'overview', '/users': 'users', '/licenses': 'licenses', '/devices': 'devices', '/services/exchange': 'mail', '/activity': 'activity', '/settings': 'settings' };
 type NavGroup = { key: string; label?: string; items: NavItem[]; disclosure?: boolean };
 
 const isRouteActive = (path: string, href: string) => path === href || path.startsWith(`${href}/`);
@@ -39,7 +42,7 @@ export function PrimaryNav({ capabilities, session = { user: {}, workspace: { id
                 if (!onNavigate) return;
                 event.preventDefault();
                 onNavigate(item.href);
-              }}>{item.label}</a>
+              }}><Icon name={navIcons[item.href] ?? 'chevron'} size={18} /><span>{item.label}</span></a>
             </li>
           ))}</ul>
         </div>;

@@ -49,6 +49,7 @@ export function LicenseAssignmentDialog({ userId, skuId, target, mode, assignedS
       target={effectiveTarget}
       proposedChange={mode === 'assign' ? messages.userLicenseAssignProposedChange : messages.userLicenseRemoveProposedChange}
       requiredCapability="licenses.assign"
+      confirmLabel={mode === 'assign' ? messages.confirmAssignLicense : messages.confirmRemoveLicense}
       busy={pending}
       onConfirm={submit}
       onCancel={onCancel}

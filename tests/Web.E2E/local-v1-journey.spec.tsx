@@ -159,7 +159,7 @@ describe('customer overview route', () => {
     const loadSession = async () => ({ user: { displayName: 'Customer member' }, workspace: { id: 'workspace-1', name: 'Local customer' }, workspaceAccess: { role: 'member', canManageMembers: false, canManageSettings: false } });
     render(<App loadSession={loadSession} loadCapabilities={async () => ({ evaluatedAt: '2026-09-21T12:00:00Z', sourceState: 'unknown', capabilities: [] })} />);
 
-    expect(await screen.findByRole('heading', { name: /workspace access is managed by an administrator/i })).toBeTruthy();
+    expect(await screen.findByText(/You don't have access to/)).toBeTruthy();
   });
 
   it('uses the fixture API boundary for user actions and associated-device navigation', async () => {
@@ -190,7 +190,7 @@ describe('customer overview route', () => {
 
     expect(await screen.findByRole('heading', { name: 'Ada Lovelace' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Reset password' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Actions' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'More actions' })).toBeTruthy();
     expect(await screen.findByRole('link', { name: 'Open device WIN-TEST-01' })).toBeTruthy();
     expect(screen.getByRole('link', { name: 'Open device WIN-TEST-01' }).getAttribute('href')).toBe('/devices?device=device-1');
     expect(requests.every((path) => path.startsWith('/api/'))).toBe(true);

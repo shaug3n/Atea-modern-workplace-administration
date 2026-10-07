@@ -46,6 +46,7 @@ export function PasswordResetDialog({ user, onClose }: { user: UserDetails; onCl
         target={user.displayName || user.userPrincipalName || user.id}
         proposedChange={messages.userResetPasswordProposedChange}
         requiredCapability="users.reset_password"
+        confirmLabel={messages.confirmResetPassword}
         busy={pending}
         onConfirm={submit}
         onCancel={onClose}

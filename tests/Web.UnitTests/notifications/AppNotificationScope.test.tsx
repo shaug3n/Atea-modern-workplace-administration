@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import React from 'react';
 import { afterEach, expect, it, vi } from 'vitest';
 import { App } from '../../../src/Web/src/app/App';
@@ -28,9 +28,9 @@ afterEach(() => { cleanup(); probe.shouldReport = true; window.history.pushState
 it('drops the prior account issue when a new session has the same workspace and display name', async () => {
   window.history.pushState(null, '', '/overview');
   const { rerender } = render(<App loadCapabilities={loadCapabilities} loadSession={async () => firstSession} loadConnectionHealth={loadHealth} />);
-  await screen.findByRole('button', { name: /notifications, 1 warnings/i });
+  await screen.findByRole('button', { name: /notifications, 1 need attention/i });
   probe.shouldReport = false;
   rerender(<App loadCapabilities={loadCapabilities} loadSession={async () => secondSession} loadConnectionHealth={loadHealth} />);
   await screen.findByRole('link', { name: 'Workspace Settings' });
-  await waitFor(() => expect(screen.getByRole('button', { name: /notifications, 0 warnings/i })).toBeTruthy());
+  await waitFor(() => expect(screen.getByRole('button', { name: /notifications, 0 need attention/i })).toBeTruthy());
 });

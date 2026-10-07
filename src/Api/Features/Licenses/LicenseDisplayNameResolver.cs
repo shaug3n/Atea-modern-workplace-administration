@@ -1,7 +1,7 @@
 namespace Atea.UnifiedWorkplace.Api.Features.Licenses;
 
 /// <summary>
-/// Version 2026-09-25. Product names are checked against Microsoft's licensing
+/// Version 2026-10-07. Product names are checked against Microsoft's licensing
 /// service-plan reference: https://learn.microsoft.com/en-us/entra/identity/users/licensing-service-plan-reference
 /// Update this list only after checking the part number and product name there.
 /// Unknown part numbers deliberately have no inferred product name.
@@ -16,6 +16,11 @@ public static class LicenseDisplayNameResolver
         ["ENTERPRISEPREMIUM"] = "Office 365 E5",
         ["ENTERPRISEPACK"] = "Office 365 E3",
         ["VISIOCLIENT"] = "Visio Plan 2",
+        ["EMSPREMIUM"] = "Enterprise Mobility + Security E5",
+        ["EMS"] = "Enterprise Mobility + Security E3",
+        ["AAD_PREMIUM"] = "Microsoft Entra ID P1",
+        ["AAD_PREMIUM_P2"] = "Microsoft Entra ID P2",
+        ["SPB"] = "Microsoft 365 Business Premium",
     };
 
     public static string? Resolve(string partNumber) => Names.TryGetValue(partNumber, out var name) ? name : null;

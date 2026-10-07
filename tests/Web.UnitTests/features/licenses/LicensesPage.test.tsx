@@ -25,8 +25,39 @@ describe('LicensesPage', () => {
     const code = 'LONG_UNKNOWN_PRODUCT_CODE_WITH_MANY_SEGMENTS_2026';
     render(<LicensesPage loadLicenses={async () => ({ items: [{ skuId: 'opaque-sku', partNumber: code, displayName: code, purchased: 1, assigned: 0, available: 1 }], total: 1, page: 1, pageSize: 25, fetchedAt: '2026-09-21T10:00:00Z', freshness: 'live', partialData: false, access: { state: 'allowed' } })} />);
     const row = (await screen.findAllByText(code))[0].closest('tr');
-    expect(row?.textContent).toContain('Product name unavailable');
+    expect(row?.textContent).toContain('Unrecognised product');
+    expect(row?.textContent).not.toContain('Product name unavailable');
     expect(row?.textContent).toContain('opaque-sku');
+  });
+
+  it('renders null display names as the part number, with numeric cells, usage meter and no retrieved line', async () => {
+    const part = 'SOME_VERY_LONG_UNKNOWN_PART_NUMBER_FOR_TESTING_12345';
+    render(<LicensesPage loadLicenses={async () => ({ items: [{ skuId: '11111111-2222-3333-4444-555555555555', partNumber: part, displayName: null as unknown as string, purchased: 10, assigned: 8, available: 2 }], total: 1, page: 1, pageSize: 25, fetchedAt: '2026-09-21T10:00:00Z', freshness: 'live', partialData: false, access: { state: 'allowed' } })} />);
+    const row = (await screen.findAllByText(part))[0].closest('tr')!;
+    expect(row.textContent).toContain('Unrecognised product');
+    expect(row.textContent).not.toContain('Product name unavailable');
+    expect(row.querySelectorAll('td.numeric')).toHaveLength(3);
+    expect(screen.getByText('8 of 10 (80%)')).toBeTruthy();
+    const meter = row.querySelector('meter')!;
+    expect(meter.getAttribute('value')).toBe('8');
+    expect(meter.getAttribute('max')).toBe('10');
+    expect(document.querySelector('[aria-label="License inventory"]')).toBeNull();
+    expect(document.body.textContent).not.toContain('Retrieved');
+    expect(row.querySelector('details')?.textContent).toContain('11111111-2222-3333-4444-555555555555');
+  });
+
+  it('lets users pick the license on the assigned-users tab', async () => {
+    const loadAssignees = vi.fn(async (): Promise<UsersDirectoryResponse> => ({ items: [], total: 0, fetchedAt: '2026-09-21T10:00:00Z', freshness: 'live', partialData: false, access: { state: 'allowed' } } as unknown as UsersDirectoryResponse));
+    render(<LicensesPage loadAssignees={loadAssignees} loadLicenses={async () => ({ items: [
+      { skuId: 'sku-a', partNumber: 'A', displayName: 'Alpha plan', purchased: 5, assigned: 1, available: 4 },
+      { skuId: 'sku-b', partNumber: 'B', displayName: 'Beta plan', purchased: 5, assigned: 1, available: 4 },
+    ], total: 2, page: 1, pageSize: 25, fetchedAt: '2026-09-21T10:00:00Z', freshness: 'live', partialData: false, access: { state: 'allowed' } })} />);
+    fireEvent.click(await screen.findByRole('tab', { name: 'Assigned users' }));
+    const select = await screen.findByRole('combobox', { name: 'License' }) as HTMLSelectElement;
+    expect(Array.from(select.options).map(option => option.text)).toEqual(['Alpha plan', 'Beta plan']);
+    fireEvent.change(select, { target: { value: 'sku-b' } });
+    await waitFor(() => expect(loadAssignees).toHaveBeenLastCalledWith('sku-b', null));
+    expect(await screen.findByRole('heading', { name: 'Users assigned Beta plan' })).toBeTruthy();
   });
 
   it('uses the compact result view with counts and roster action at narrow widths', async () => {
@@ -148,7 +179,7 @@ describe('LicensesPage', () => {
     await screen.findByRole('link', { name: 'Ada' });
     fireEvent.click(screen.getByRole('button', { name: 'Next page' }));
     expect(screen.queryByRole('link', { name: 'Ada' })).toBeNull();
-    expect(screen.getByRole('status').textContent).toContain('Loading assigned users');
+    expect(screen.getByText(/Loading assigned users/)).toBeTruthy();
     expect((screen.getByRole('button', { name: 'Next page' }) as HTMLButtonElement).disabled).toBe(true);
     expect((screen.getByRole('button', { name: 'Previous page' }) as HTMLButtonElement).disabled).toBe(true);
     fireEvent.click(screen.getByRole('button', { name: 'Next page' }));

@@ -1,6 +1,8 @@
 import React from 'react';
 import type { ReactNode } from 'react';
 import { type Capability, type CapabilityDecision } from '../capabilities/capabilityTypes';
+import { PimGuidancePage } from '../features/identity/PimGuidancePage';
+import { NotFoundPage } from '../components/NotFoundPage';
 import { OverviewPage, type ConnectionHealthLoader, type OverviewLoader } from '../features/overview/OverviewPage';
 import { AuditActivityPage } from '../features/audit/AuditActivityPage';
 import { LicensesPage } from '../features/licenses/LicensesPage';
@@ -25,28 +27,18 @@ export type AppRoute = {
   capability?: Capability;
   module?: 'users' | 'devices' | 'licenses' | 'exchange';
   workspaceAccess?: 'members' | 'settings' | 'modules' | 'any';
-  render: (options?: { loadConnectionHealth?: ConnectionHealthLoader; loadOverview?: OverviewLoader; capabilities?: CapabilityDecision[]; navigate?: (path: string) => void; session?: AppSession; authorizationUnavailable?: boolean; onAuthorizationRetry?: () => Promise<void> }) => ReactNode;
+  render: (options?: { loadConnectionHealth?: ConnectionHealthLoader; loadOverview?: OverviewLoader; capabilities?: CapabilityDecision[]; navigate?: (path: string) => void; session?: AppSession; authorizationUnavailable?: boolean; onAuthorizationRetry?: () => Promise<void>; onRefreshAccess?: () => Promise<void> }) => ReactNode;
 };
 
 export function isInvitationPath(pathname: string) {
   return /^\/invitations\/[^/]+$/.test(pathname);
 }
 
-function WorkInProgressPage({ title, description }: { title: string; description: string }) {
-  return (
-    <section className="content-panel" aria-labelledby="page-title">
-      <p className="eyebrow">{messages.shellPreviewLabel}</p>
-      <h1 id="page-title">{title}</h1>
-      <p>{description}</p>
-    </section>
-  );
-}
-
 export const appRoutes: AppRoute[] = [
   { path: '/consent-callback', label: messages.connectionTitle, render: () => <ConsentCallbackPage /> },
   { path: '/onboarding/consent/callback', label: messages.connectionTitle, render: () => <ConsentCallbackPage /> },
   { path: '/onboarding', label: messages.navOnboarding, render: (options) => <OnboardingPage onNavigate={options?.navigate} /> },
-  { path: '/identity', label: 'PIM guidance', render: () => <section className="content-panel"><h1>PIM guidance</h1><p>Check your eligible Entra roles and activate the required role in Microsoft Entra. An activation may require approval or MFA. Return here and refresh access after Microsoft confirms it.</p><a href="https://entra.microsoft.com/#view/Microsoft_Azure_PIMCommon/ActivationMenuBlade" target="_blank" rel="noreferrer">Open Microsoft Entra PIM</a></section> },
+  { path: '/identity', label: 'PIM guidance', render: (options) => <PimGuidancePage onRefreshAccess={options?.onRefreshAccess} /> },
   { path: '/settings', label: 'Workspace Settings', workspaceAccess: 'any', render: (options) => options?.session ? <WorkspaceSettingsHub session={options.session} /> : null },
   { path: '/settings/setup', label: 'Setup', workspaceAccess: 'settings', render: (options) => <OnboardingPage onNavigate={options?.navigate} /> },
   { path: '/settings/general', label: 'General', workspaceAccess: 'settings', render: () => <WorkspaceSettingsPage /> },
@@ -55,7 +47,7 @@ export const appRoutes: AppRoute[] = [
   {
     path: '/overview',
     label: messages.navOverview,
-    render: (options) => <OverviewPage loadOverview={options?.loadOverview} session={options?.session} />,
+    render: (options) => <OverviewPage loadOverview={options?.loadOverview} session={options?.session} onNavigate={options?.navigate} />,
   },
   {
     path: '/users',
@@ -70,7 +62,7 @@ export const appRoutes: AppRoute[] = [
     pageTitle: messages.userDetailTitle,
     module: 'users',
     capability: 'users.view',
-    render: (options) => <UserDetailPage capabilities={options?.capabilities} modules={effectiveAssignedModules(options?.session)} />,
+    render: (options) => <UserDetailPage onNavigate={options?.navigate} capabilities={options?.capabilities} modules={effectiveAssignedModules(options?.session)} />,
   },
   {
     path: '/licenses',
@@ -135,7 +127,7 @@ export function matchRoute(pathname: string): AppRoute {
   return appRoutes.find((route) => route.path === normalizedPath || matchesParameterizedRoute(route.path, normalizedPath)) ?? {
     path: normalizedPath,
     label: messages.notFoundTitle,
-    render: () => <WorkInProgressPage title={messages.notFoundTitle} description={messages.notFoundDescription} />,
+    render: (options) => <NotFoundPage path={normalizedPath} onNavigate={options?.navigate} />,
   };
 }
 

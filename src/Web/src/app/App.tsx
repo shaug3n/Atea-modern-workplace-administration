@@ -1,3 +1,4 @@
+import { ModuleUnavailable } from '../components/ModuleUnavailable';
 import React, { useCallback, useEffect, useState } from 'react';
 import { useApi } from '../auth/useApi';
 import { useAuth } from '../auth/AuthProvider';
@@ -129,9 +130,9 @@ function LoadedWorkspaceExperience({ path, navigate, capabilities, capabilitiesL
   const unavailableSnapshot = capabilities ?? { workspaceId: session.workspace.id, evaluatedAt: new Date().toISOString(), sourceState: 'unavailable', capabilities: [] } satisfies CapabilitySnapshot;
   let routeContent: React.ReactNode;
   if (!hasWorkspaceAccess) {
-    routeContent = <section className="permission-panel" role="status"><h1>{messages.workspaceAccessDeniedTitle}</h1><p>{messages.workspaceAccessDeniedBody}</p></section>;
+    routeContent = <ModuleUnavailable kind="no-access" moduleName={route.label} canManageModules={canManageModules} onNavigate={navigate} message={messages.workspaceAccessDeniedBody} />;
   } else if (!hasModuleAccess) {
-    routeContent = <section className="permission-panel" role="status"><h1>{messages.moduleDisabledTitle}</h1><p>{messages.moduleDisabledBody}</p></section>;
+    routeContent = <ModuleUnavailable kind={route.module && session.workspace.enabledModules && !session.workspace.enabledModules.includes(route.module) ? 'module-off' : 'no-access'} moduleName={route.label} canManageModules={canManageModules} onNavigate={navigate} />;
   } else if (isDeviceSetupAdmin && !hasAssignedModuleAccess) {
     routeContent = <DevicesPage moduleAssigned={false} moduleEnabled={session.workspace.enabledModules?.includes('devices') ?? true} />;
   } else if (route.capability && capabilitiesLoading) {
@@ -142,7 +143,7 @@ function LoadedWorkspaceExperience({ path, navigate, capabilities, capabilitiesL
     const decision = capabilityDecisionFor(route, unavailableSnapshot.capabilities);
     routeContent = decision && decision.state !== 'allowed' && decision.state !== 'read_only'
       ? <GraphRouteState route={route} state="unavailable" onRetry={refreshCapabilities} reportCause={decision.state === 'hidden' || decision.state === 'disabled' ? 'access' : undefined} session={session} navigate={navigate} loadConnectionHealth={loadConnectionHealth} />
-      : route.render({ loadConnectionHealth, capabilities: unavailableSnapshot.capabilities, navigate, session });
+      : route.render({ loadConnectionHealth, capabilities: unavailableSnapshot.capabilities, navigate, session, onRefreshAccess: refreshCapabilities });
   }
 
   return <WorkspaceNotificationsProvider key={`${session.workspace.id}:${sessionRevision}`} session={session} sessionScope={sessionRevision} capabilities={capabilities} capabilitiesError={capabilitiesError} onRefresh={refreshCapabilities} loadConnectionHealth={loadConnectionHealth}><AppShell capabilities={capabilities} currentPath={path.split('#')[0]} session={session} onNavigate={navigate}>{routeContent}</AppShell></WorkspaceNotificationsProvider>;

@@ -71,7 +71,7 @@ describe('customer workspace redesign', () => {
   it('gates a disabled module on a direct URL', async () => {
     window.history.replaceState({}, '', '/services/exchange');
     render(<App loadSession={async () => session} loadCapabilities={async () => ({ evaluatedAt: '2026-09-25T00:00:00Z', capabilities: [] })} />);
-    expect(await screen.findByRole('heading', { name: 'Module disabled' })).toBeTruthy();
+    expect(await screen.findByText(/is turned off for this workspace/)).toBeTruthy();
   });
 
   it('sends selected module keys when creating an invitation', async () => {
@@ -141,8 +141,8 @@ describe('customer workspace redesign', () => {
     render(<WorkspaceModulesPage />);
     await screen.findByRole('heading', { name: 'Modules' });
     fireEvent.click(screen.getByLabelText('Exchange'));
-    fireEvent.click(screen.getByRole('button', { name: 'Save modules' }));
-    expect((await screen.findByRole('status')).textContent).toContain('Modules saved');
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+    expect((await screen.findByRole('status')).textContent).toContain('Saved');
   });
 
   it('labels Exchange directory records as unverified and shows row-level unavailable state', async () => {

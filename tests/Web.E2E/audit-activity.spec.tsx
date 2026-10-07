@@ -51,7 +51,7 @@ describe('audit activity browser boundary', () => {
 
     render(<AuditActivityPage />);
 
-    await waitFor(() => expect(document.body.textContent).toContain('users.update'));
+    await waitFor(() => expect(document.body.textContent).toContain('Updated user'));
     expect(document.body.textContent).toContain('safe-correlation-456');
     expect(document.body.textContent).toContain('[REDACTED]');
     expect(requests).toEqual(['/api/audit/events?pageSize=25']);

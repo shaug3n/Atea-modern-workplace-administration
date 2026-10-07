@@ -1,9 +1,11 @@
-import { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { ConnectionStatusCard } from '../../components/ConnectionStatusCard';
 import { messages, type ConnectionState } from '../../messages/en';
 import { useApi } from '../../auth/useApi';
 import type { AppSession } from '../../components/TenantContextHeader';
 import { WorkspacePageHeader } from '../../components/WorkspacePageHeader';
+import { DataFreshness } from '../../components/DataFreshness';
+import { MetricCard } from '../../components/MetricCard';
 import { WorkspaceDataState } from '../../components/WorkspaceDataState';
 import { useWorkspaceIssueReporter } from '../../notifications/WorkspaceNotifications';
 
@@ -14,23 +16,23 @@ export type ConnectionHealthActions = { check: ConnectionHealthLoader; startCons
 export type OverviewData = { freshness: string; fetchedAt: string; totalUsers: number; licenseCoverage: { assigned: number; available: number; percentage: number }; permissionHealth: { state: string; allowedCount: number; totalCount: number }; pimAttention: { requiresAttention: boolean; count: number }; partialData: boolean; access: { state: string } };
 export type OverviewLoader = () => Promise<OverviewData>;
 
-export function OverviewPage({ loadConnectionHealth, actions, loadOverview, session }: { loadConnectionHealth?: ConnectionHealthLoader; actions?: ConnectionHealthActions; loadOverview?: OverviewLoader; session?: AppSession }) {
-  if (loadOverview) return <LoadedOverviewMetrics loadOverview={loadOverview} session={session} />;
+export function OverviewPage({ loadConnectionHealth, actions, loadOverview, session, onNavigate }: { loadConnectionHealth?: ConnectionHealthLoader; actions?: ConnectionHealthActions; loadOverview?: OverviewLoader; session?: AppSession; onNavigate?: (path: string) => void }) {
+  if (loadOverview) return <LoadedOverviewMetrics loadOverview={loadOverview} session={session} onNavigate={onNavigate} />;
   if (loadConnectionHealth) return <LoadedConnectionHealth loadConnectionHealth={loadConnectionHealth} actions={actions} />;
-  return <AuthenticatedOverview session={session} />;
+  return <AuthenticatedOverview session={session} onNavigate={onNavigate} />;
 }
 
-function AuthenticatedOverview({ session }: { session?: AppSession }) {
+function AuthenticatedOverview({ session, onNavigate }: { session?: AppSession; onNavigate?: (path: string) => void }) {
   const api = useApi();
   const loadOverview = useCallback(async () => {
     const response = await api('/api/overview');
     if (!response.ok) throw new Error('overview request failed');
     return await response.json() as OverviewData;
   }, [api]);
-  return <LoadedOverviewMetrics loadOverview={loadOverview} session={session} />;
+  return <LoadedOverviewMetrics loadOverview={loadOverview} session={session} onNavigate={onNavigate} />;
 }
 
-function LoadedOverviewMetrics({ loadOverview, session }: { loadOverview: OverviewLoader; session?: AppSession }) {
+function LoadedOverviewMetrics({ loadOverview, session, onNavigate }: { loadOverview: OverviewLoader; session?: AppSession; onNavigate?: (path: string) => void }) {
   const issueReporter = useWorkspaceIssueReporter();
   const [overview, setOverview] = useState<OverviewData | null>(null);
   const [failed, setFailed] = useState(false);
@@ -48,17 +50,33 @@ function LoadedOverviewMetrics({ loadOverview, session }: { loadOverview: Overvi
   const permissionGuidance = overview.access.state === 'hidden' || overview.access.state === 'consent_required' || overview.access.state.startsWith('pim_');
   const unavailableSummaryMessage = permissionGuidance ? 'Entra permission needed' : 'Summary data temporarily unavailable.';
   const validCount = (value: number) => Number.isSafeInteger(value) && value >= 0;
-  const attention = [
-    ...(usersVisible && overview.pimAttention.requiresAttention ? [messages.overviewPimAttention] : []),
-    ...(usersVisible && overview.permissionHealth.state === 'incomplete' && validCount(overview.permissionHealth.allowedCount) && validCount(overview.permissionHealth.totalCount) && overview.permissionHealth.allowedCount <= overview.permissionHealth.totalCount ? [`Workspace permissions need attention (${overview.permissionHealth.allowedCount} of ${overview.permissionHealth.totalCount} available).`] : []),
-    ...(overview.partialData ? ['Some summary data is unavailable.'] : []),
+  const canManageSettings = Boolean(session?.workspaceAccess?.canManageSettings);
+  const permissionsPartial = usersVisible && overview.permissionHealth.state === 'incomplete' && validCount(overview.permissionHealth.allowedCount) && validCount(overview.permissionHealth.totalCount) && overview.permissionHealth.allowedCount <= overview.permissionHealth.totalCount;
+  type Attention = { key: string; text: string; action: { label: string; href?: string; onClick?: () => void } | null };
+  const attention: Attention[] = [
+    ...(usersVisible && overview.pimAttention.requiresAttention ? [{ key: 'pim', text: messages.overviewPimAttention, action: { label: 'Open PIM guidance', href: '/identity' } }] : []),
+    ...(permissionsPartial ? [{ key: 'consent', text: `Workspace permissions need attention (${overview.permissionHealth.allowedCount} of ${overview.permissionHealth.totalCount} available).`, action: canManageSettings ? { label: 'Open setup', href: '/settings#connection' } : null }] : []),
+    ...(overview.partialData ? [{ key: 'partial', text: 'Some summary data is unavailable.', action: { label: 'Retry', onClick: () => setRetry(value => value + 1) } }] : []),
   ];
-  return <div className="overview-page"><WorkspacePageHeader eyebrow={messages.overviewEyebrow} title={messages.overviewTitle} /><section className="content-panel"><p>{messages.overviewFreshness}: {overview.freshness}. Retrieved {new Date(overview.fetchedAt).toLocaleString()}.</p>{overview.partialData && <p className="workspace-partial-notice" role="status">Partial summary data. Check Notifications for details.</p>}<div className="overview-metrics">
-    {usersVisible && <article className="overview-metric"><span className="overview-metric__label">Users</span><strong>{summaryAvailable && validCount(overview.totalUsers) ? overview.totalUsers : 'Unavailable'}</strong>{!summaryAvailable && <small>{unavailableSummaryMessage}</small>}</article>}
-    {devicesVisible && <article className="overview-metric"><span className="overview-metric__label">Devices</span><strong>Unavailable</strong><small>No verified tenant total</small></article>}
-    {licensesVisible && <article className="overview-metric"><span className="overview-metric__label">{messages.overviewLicenseCoverage}</span><strong>{summaryAvailable && validCount(overview.licenseCoverage.percentage) && overview.licenseCoverage.percentage <= 100 ? `${overview.licenseCoverage.percentage}%` : 'Unavailable'}</strong>{!summaryAvailable && <small>{unavailableSummaryMessage}</small>}</article>}
-    {usersVisible && <article className="overview-metric"><span className="overview-metric__label">{messages.overviewPermissionHealth}</span><strong>{summaryAvailable && ['healthy', 'incomplete'].includes(overview.permissionHealth.state) && validCount(overview.permissionHealth.allowedCount) && validCount(overview.permissionHealth.totalCount) && overview.permissionHealth.allowedCount <= overview.permissionHealth.totalCount ? `${overview.permissionHealth.allowedCount}/${overview.permissionHealth.totalCount}` : 'Unavailable'}</strong></article>}
-  </div>{!modules.length && <p>You do not currently have an operational module assigned. Ask a workspace administrator to grant access.</p>}</section><section className="overview-card overview-card--attention" aria-labelledby="overview-attention-title"><h2 id="overview-attention-title">Needs attention</h2>{attention.length ? <ul>{attention.map(item => <li key={item}>{item}</li>)}</ul> : <p>No issues need attention right now.</p>}</section></div>;
+  const go = (href: string) => (event: React.MouseEvent) => { if (onNavigate) { event.preventDefault(); onNavigate(href); } };
+  const licenseValue = summaryAvailable && validCount(overview.licenseCoverage.assigned) && validCount(overview.licenseCoverage.available) ? `${overview.licenseCoverage.assigned} of ${overview.licenseCoverage.assigned + overview.licenseCoverage.available}` : null;
+  const permissionValue = summaryAvailable && ['healthy', 'incomplete'].includes(overview.permissionHealth.state) && (validCount(overview.permissionHealth.allowedCount) && validCount(overview.permissionHealth.totalCount) && overview.permissionHealth.allowedCount <= overview.permissionHealth.totalCount) ? `${overview.permissionHealth.allowedCount}/${overview.permissionHealth.totalCount}` : null;
+  return <div className="overview-page">
+    <WorkspacePageHeader eyebrow={messages.overviewEyebrow} title={messages.overviewTitle} meta={<DataFreshness fetchedAt={overview.fetchedAt} freshness={overview.freshness === 'unavailable' ? 'unavailable' : overview.freshness === 'stale' ? 'stale' : 'fresh'} partialData={overview.partialData} source="Microsoft Graph" onRefresh={() => setRetry(value => value + 1)} />} />
+    <section className="content-panel" aria-label="Summary">
+      <div className="metric-grid">
+        {usersVisible && <MetricCard label="Users" value={summaryAvailable && validCount(overview.totalUsers) ? overview.totalUsers : null} unavailableReason={unavailableSummaryMessage} href="/users" onNavigate={onNavigate} linkLabel="users" />}
+        {licensesVisible && <MetricCard label="Licenses" value={licenseValue} detail={licenseValue ? 'assigned' : undefined} unavailableReason={unavailableSummaryMessage} href="/licenses" onNavigate={onNavigate} linkLabel="licenses" />}
+        {devicesVisible && <MetricCard label="Managed devices" detail="View compliance and remote actions" href="/devices" onNavigate={onNavigate} linkLabel="devices" />}
+        {usersVisible && <MetricCard label={messages.overviewPermissionHealth} value={permissionValue} unavailableReason={unavailableSummaryMessage} />}
+      </div>
+      {!modules.length && <p>You do not currently have an operational module assigned. Ask a workspace administrator to grant access.</p>}
+    </section>
+    <section className="overview-card overview-card--attention" aria-labelledby="overview-attention-title">
+      <h2 id="overview-attention-title">Needs attention</h2>
+      {attention.length ? <ul className="record-list">{attention.map(item => <li key={item.key}><span className="record-list__main">{item.text}</span>{item.action && (item.action.href ? <a className="button button--secondary" href={item.action.href} onClick={go(item.action.href)}>{item.action.label}</a> : <button type="button" className="button button--secondary" onClick={item.action.onClick}>{item.action.label}</button>)}</li>)}</ul> : <WorkspaceDataState kind="empty" compact title="Nothing needs your attention." message="No issues need attention right now." />}
+    </section>
+  </div>;
 }
 
 function LoadedConnectionHealth({ loadConnectionHealth, actions }: { loadConnectionHealth: ConnectionHealthLoader; actions?: ConnectionHealthActions }) {

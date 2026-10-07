@@ -58,4 +58,9 @@ describe('UserFilters', () => {
     expect(screen.getByText('Tenant role: Global Reader')).toBeTruthy();
     expect(screen.getByText('License: ENTERPRISEPACK')).toBeTruthy();
   });
+
+  it('shows the count of active advanced filters in the summary', () => {
+    render(<UserFilters filters={{ search: '', accountStatus: '', tenantRole: 'Global Reader', license: 'ENTERPRISEPACK', userType: '' }} onChange={vi.fn()} />);
+    expect(screen.getByText('More filters (2)')).toBeTruthy();
+  });
 });

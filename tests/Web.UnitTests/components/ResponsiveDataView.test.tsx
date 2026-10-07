@@ -19,4 +19,12 @@ describe('ResponsiveDataView', () => {
     expect(screen.getByRole('listitem').textContent).toContain('Ada');
     expect(screen.getByRole('button', { name: 'Open Ada' })).toBeTruthy();
   });
+
+  it('switches to the compact list at 56rem and keeps the wide region focusable', () => {
+    const matchMedia = vi.fn(() => ({ matches: false, addEventListener: () => {}, removeEventListener: () => {} }));
+    vi.stubGlobal('matchMedia', matchMedia);
+    render(<ResponsiveDataView items={[{ id: 'one' }]} keyOf={item => item.id} label="People" renderTable={() => <table />} renderCompact={() => <span />} />);
+    expect(matchMedia).toHaveBeenCalledWith('(max-width: 56rem)');
+    expect(screen.getByRole('region', { name: 'People' }).getAttribute('tabindex')).toBe('0');
+  });
 });

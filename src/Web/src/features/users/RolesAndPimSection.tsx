@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { messages } from '../../app/messages';
 import { PimActivationDialog } from '../pim/PimActivationDialog';
 import type { DirectoryRoleAssignment, PimEligibility, UserDetailSection } from './userDetailApi';
+import { StatusBadge } from '../../components/StatusBadge';
+import { humanizeAssignmentState } from '../../format/humanize';
 import { SectionHeader } from './IdentitySection';
 
 export function RolesAndPimSection({ roles, pim }: { roles: UserDetailSection<DirectoryRoleAssignment>; pim: UserDetailSection<PimEligibility> }) {
@@ -17,7 +19,7 @@ export function RolesAndPimSection({ roles, pim }: { roles: UserDetailSection<Di
               {roles.items.map((role) => (
                 <li key={role.id}>
                   <strong>{role.displayName || role.roleTemplateId}</strong>
-                  <span>{role.assignmentState}</span>
+                  <StatusBadge {...humanizeAssignmentState(role.assignmentState)} />
                 </li>
               ))}
             </ul>
@@ -30,7 +32,7 @@ export function RolesAndPimSection({ roles, pim }: { roles: UserDetailSection<Di
               {pim.items.map((eligibility) => (
                 <li key={eligibility.id}>
                   <strong>{eligibility.displayName || eligibility.roleTemplateId}</strong>
-                  <span>{eligibility.status}</span>
+                  <StatusBadge {...humanizeAssignmentState(eligibility.status)} />
                   <span>{messages.userRequiredCapability}: {eligibility.requiredCapability}</span>
                   <Requirement enabled={eligibility.requiresApproval} label={messages.userPimApprovalRequired} />
                   <Requirement enabled={eligibility.requiresMfa} label={messages.userPimMfaRequired} />

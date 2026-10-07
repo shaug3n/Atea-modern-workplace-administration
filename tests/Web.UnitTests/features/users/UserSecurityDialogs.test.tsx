@@ -10,7 +10,7 @@ vi.mock('../../../../src/Web/src/auth/useApi', () => ({ useApi: () => apiMock })
 
 function confirmDialog() {
   fireEvent.click(screen.getByLabelText('I reviewed the target, change and required capability.'));
-  fireEvent.click(screen.getByRole('button', { name: 'Confirm action' }));
+  fireEvent.click(within(screen.getByRole('dialog')).getAllByRole('button').at(-1)!);
 }
 
 describe('user security dialogs', () => {

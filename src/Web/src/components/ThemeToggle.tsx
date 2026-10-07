@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useMemo, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { useApi } from '../auth/useApi';
 import { messages } from '../app/messages';
+import { Icon } from './icons';
 
 export type ThemeMode = 'light' | 'dark';
 
@@ -51,10 +52,9 @@ export function ThemeProvider({ children, preferenceStore = createMemoryThemePre
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
 }
 
-export function ThemeToggle() {
+export function ThemeToggle({ variant = 'icon' }: { variant?: 'icon' | 'row' }) {
   const { theme, setTheme } = useTheme();
   const darkMode = theme === 'dark';
-  const label = darkMode ? messages.disableDarkMode : messages.enableDarkMode;
   const toggle = () => setTheme(darkMode ? 'light' : 'dark');
   const onKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
     if (event.key === 'Enter' || event.key === ' ') {
@@ -64,8 +64,19 @@ export function ThemeToggle() {
   };
 
   return (
-    <button className="theme-toggle" type="button" role="switch" aria-checked={darkMode} aria-label={label} onClick={toggle} onKeyDown={onKeyDown}>
-      <span aria-hidden="true">{darkMode ? 'Dark' : 'Light'}</span>
+    <button
+      className={`button button--icon theme-toggle${variant === 'row' ? ' theme-toggle--row' : ''}`}
+      type="button"
+      role="switch"
+      aria-checked={darkMode}
+      aria-label={messages.darkModeLabel}
+      title={`${messages.darkModeLabel}: ${darkMode ? 'on' : 'off'}`}
+      onClick={toggle}
+      onKeyDown={onKeyDown}
+    >
+      <Icon name={darkMode ? 'moon' : 'sun'} size={18} />
+      {variant === 'row' && <span className="theme-toggle__text">{messages.darkModeLabel}</span>}
+      <span className="theme-toggle__track" aria-hidden="true"><span className="theme-toggle__thumb" /></span>
     </button>
   );
 }

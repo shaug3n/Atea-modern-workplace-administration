@@ -28,3 +28,25 @@ test('theme defines semantic action and spacious detail card classes', async () 
   assert.match(css, /\.page-action-bar/);
   assert.match(css, /\.detail-card/);
 });
+
+test('foundations and components layers load after theme and define shared tokens', async () => {
+  const main = await readFile('../../src/Web/src/main.tsx', 'utf8');
+  const foundations = await readFile('../../src/Web/src/styles/foundations.css', 'utf8');
+  const theme = await readFile('../../src/Web/src/styles/theme.css', 'utf8');
+  assert.match(main, /theme\.css[\s\S]*foundations\.css[\s\S]*components\.css/);
+  for (const needle of ['--uw-gap-lg', '--uw-status-danger-fg', '--uw-focus-ring', '--uw-header-height: 4rem', '.button--danger-solid', '.checkbox-field']) {
+    assert.ok(foundations.includes(needle), `foundations.css should contain ${needle}`);
+  }
+  assert.doesNotMatch(theme, /\.button-primary \{/);
+});
+
+test('table foundations replace the global anchor wrapping and define one pagination and chip rule', async () => {
+  const theme = await readFile('../../src/Web/src/styles/theme.css', 'utf8');
+  const components = await readFile('../../src/Web/src/styles/components.css', 'utf8');
+  assert.doesNotMatch(theme, /\.app-main code, \.app-main a, \.app-main td/);
+  assert.match(components, /\.numeric/);
+  assert.match(components, /position: sticky/);
+  const all = theme + components;
+  assert.equal((all.match(/\.pagination-controls \{/g) ?? []).length, 1);
+  assert.equal((all.match(/\.filter-chips \{/g) ?? []).length, 1);
+});

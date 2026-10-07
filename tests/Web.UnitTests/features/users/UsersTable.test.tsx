@@ -15,126 +15,83 @@ function decision(capability: CapabilityDecision['capability'], state: Capabilit
 describe('UsersTable', () => {
   afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
-  it('gives compact readers the user identifier and open action without a mutation control', () => {
+  const allCaps = [decision('users.update', 'allowed'), decision('users.disable', 'allowed'), decision('users.create', 'allowed')];
+
+  it('gives compact readers the full identifier and a name link without a mutation control', () => {
     vi.stubGlobal('matchMedia', () => ({ matches: true, addEventListener: () => {}, removeEventListener: () => {} }));
     render(<UsersTable users={[{ ...users[0], userPrincipalName: 'a'.repeat(90) + '@example.com' }]} capabilities={[decision('users.update', 'hidden'), decision('users.disable', 'hidden')]} />);
     const compact = screen.getByRole('list', { name: 'Users' });
     expect(compact.textContent).toContain('a'.repeat(90) + '@example.com');
-    expect(compact.querySelector('button[aria-label="Open Ada Lovelace"]')).toBeTruthy();
-    expect(compact.querySelector('button[aria-label="Disable Ada Lovelace"]')).toBeNull();
+    expect(screen.getByRole('link', { name: 'Ada Lovelace' }).getAttribute('href')).toBe('/users/user-1');
+    expect(screen.queryByRole('button', { name: /Actions for/ })).toBeNull();
     vi.unstubAllGlobals();
   });
 
-  it('omits compact mutation controls for a read-only disable capability', () => {
-    vi.stubGlobal('matchMedia', () => ({ matches: true, addEventListener: () => {}, removeEventListener: () => {} }));
-    render(<UsersTable users={users} capabilities={[decision('users.update', 'read_only'), decision('users.disable', 'read_only')]} />);
-    const compact = screen.getByRole('list', { name: 'Users' });
-    expect(compact.textContent).toContain('Ada Lovelace');
-    expect(compact.textContent).toContain('Enabled');
-    expect(screen.getByRole('button', { name: 'Open Ada Lovelace' })).toBeTruthy();
-    expect(screen.queryByRole('button', { name: 'Disable Ada Lovelace' })).toBeNull();
-    vi.unstubAllGlobals();
-  });
-
-  it('keeps primary columns compact and reveals mail and type on demand', () => {
-    render(<UsersTable users={users} capabilities={[decision('users.update', 'allowed')]} />);
-    expect(screen.queryByRole('columnheader', { name: 'Mail' })).toBeNull();
-    expect(screen.queryByRole('columnheader', { name: 'User type' })).toBeNull();
-    const expand = screen.getByRole('button', { name: 'More details for Ada Lovelace' });
-    expect(expand.getAttribute('aria-expanded')).toBe('false');
-    fireEvent.click(expand);
-    expect(expand.getAttribute('aria-expanded')).toBe('true');
-    expect(screen.getByText('Mail')).toBeTruthy();
+  it('has no separate Open or More details buttons and shows type as a column', () => {
+    render(<UsersTable users={users} capabilities={allCaps} />);
+    expect(screen.queryByRole('button', { name: 'Open Ada Lovelace' })).toBeNull();
+    expect(screen.queryByRole('button', { name: /More details for/ })).toBeNull();
+    expect(screen.getByRole('columnheader', { name: 'User type' })).toBeTruthy();
     expect(screen.getByText('Member')).toBeTruthy();
   });
 
   it('hides the account status column when the related capability is hidden', () => {
-    render(
-      <UsersTable
-        users={users}
-        capabilities={[
-          decision('users.update', 'hidden'),
-          decision('users.disable', 'hidden'),
-          decision('users.create', 'hidden'),
-        ]}
-      />
-    );
-
+    render(<UsersTable users={users} capabilities={[decision('users.update', 'hidden'), decision('users.disable', 'hidden'), decision('users.create', 'hidden')]} />);
     expect(screen.queryByRole('columnheader', { name: 'Account status' })).toBeNull();
     expect(screen.queryByText('Enabled')).toBeNull();
   });
 
-  it('keeps mutation controls visible but unavailable when capability is read only', () => {
-    render(
-      <UsersTable
-        users={users}
-        capabilities={[
-          decision('users.update', 'read_only'),
-          decision('users.disable', 'read_only'),
-          decision('users.create', 'hidden'),
-        ]}
-      />
-    );
-
+  it('keeps the disable item visible but aria-disabled with the permission when read only', () => {
+    render(<UsersTable users={users} capabilities={[decision('users.update', 'read_only'), decision('users.disable', 'read_only'), decision('users.create', 'hidden')]} />);
     expect(screen.getByRole('columnheader', { name: 'Account status' })).toBeTruthy();
     expect(screen.getByText('Enabled')).toBeTruthy();
-    const disableButton = screen.getByRole('button', { name: 'Disable Ada Lovelace' }) as HTMLButtonElement;
-    expect(disableButton.disabled).toBe(true);
-    expect(screen.getByRole('status').textContent).toContain('read-only');
+    fireEvent.click(screen.getByRole('button', { name: 'Actions for Ada Lovelace' }));
+    const item = screen.getByRole('menuitem', { name: 'Disable user' });
+    expect(item.getAttribute('aria-disabled')).toBe('true');
+    expect(item.textContent).toContain('Requires permission: Disable users');
   });
 
-  it('navigates to the user detail route when a row is opened', () => {
+  it('navigates to the user detail route when the name link is used', () => {
     const onNavigate = vi.fn();
-    render(
-      <UsersTable
-        users={users}
-        capabilities={[
-          decision('users.update', 'allowed'),
-          decision('users.disable', 'allowed'),
-          decision('users.create', 'allowed'),
-        ]}
-        onNavigate={onNavigate}
-      />
-    );
-
-    fireEvent.click(screen.getByRole('button', { name: 'Open Ada Lovelace' }));
-
+    render(<UsersTable users={users} capabilities={allCaps} onNavigate={onNavigate} />);
+    fireEvent.click(screen.getByRole('link', { name: 'Ada Lovelace' }));
     expect(onNavigate).toHaveBeenCalledWith('/users/user-1');
   });
 
-  it('keeps the visible disable action inert unless a caller wires the flow', () => {
-    render(
-      <UsersTable
-        users={users}
-        capabilities={[
-          decision('users.update', 'allowed'),
-          decision('users.disable', 'allowed'),
-          decision('users.create', 'allowed'),
-        ]}
-      />
-    );
+  it('lists Open details first and a danger Disable user after a separator', () => {
+    const onNavigate = vi.fn();
+    render(<UsersTable users={users} capabilities={allCaps} onNavigate={onNavigate} onDisable={() => {}} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Actions for Ada Lovelace' }));
+    const items = screen.getAllByRole('menuitem');
+    expect(items.map(item => item.getAttribute('aria-label'))).toEqual(['Open details', 'Disable user']);
+    expect(items[1].className).toContain('button--danger');
+    expect(document.querySelector('[role="separator"]')).toBeTruthy();
+    fireEvent.click(items[0]);
+    expect(onNavigate).toHaveBeenCalledWith('/users/user-1');
+  });
 
-    const disableButton = screen.getByRole('button', { name: 'Disable Ada Lovelace' }) as HTMLButtonElement;
-    expect(disableButton.disabled).toBe(true);
-    expect(disableButton.title).toContain('Open user details');
+  it('keeps the disable item inert unless a caller wires the flow', () => {
+    render(<UsersTable users={users} capabilities={allCaps} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Actions for Ada Lovelace' }));
+    const item = screen.getByRole('menuitem', { name: 'Disable user' });
+    expect(item.getAttribute('aria-disabled')).toBe('true');
+    expect(item.textContent).toContain('Open user details');
   });
 
   it('calls the supplied disable handler when the table flow is wired', () => {
     const onDisable = vi.fn();
-    render(
-      <UsersTable
-        users={users}
-        capabilities={[
-          decision('users.update', 'allowed'),
-          decision('users.disable', 'allowed'),
-          decision('users.create', 'allowed'),
-        ]}
-        onDisable={onDisable}
-      />
-    );
-
-    fireEvent.click(screen.getByRole('button', { name: 'Disable Ada Lovelace' }));
-
+    render(<UsersTable users={users} capabilities={allCaps} onDisable={onDisable} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Actions for Ada Lovelace' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Disable user' }));
     expect(onDisable).toHaveBeenCalledWith(users[0]);
+  });
+
+  it('keeps a 60-character UPN in the DOM with the full value as title and falls back to the UPN then Unnamed user', () => {
+    const upn = 'a'.repeat(48) + '@example.com';
+    render(<UsersTable users={[{ ...users[0], displayName: 'Ada', userPrincipalName: upn }, { ...users[0], id: 'u2', displayName: '', userPrincipalName: 'only@example.com', mail: '' }, { ...users[0], id: 'u3', displayName: '', userPrincipalName: '', mail: '' }]} capabilities={allCaps} />);
+    expect(upn.length).toBe(60);
+    expect(document.querySelector(`[title="${upn}"]`)).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'only@example.com' })).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Unnamed user' })).toBeTruthy();
   });
 });
