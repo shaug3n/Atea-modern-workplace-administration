@@ -1,0 +1,75 @@
+- generic [ref=f21e4] [box=0,0,375,1829]:
+  - link "Skip to main content" [ref=f21e5] [cursor=pointer] [box=8,-46,185,36]:
+    - /url: "#main-content"
+  - banner [ref=f21e6] [box=0,0,375,393]:
+    - link "Atea Unified Workplace home" [ref=f21e7] [cursor=pointer] [box=16,16,239,49]:
+      - /url: /overview
+      - generic [ref=f21e8] [box=127,16,128,49]: Atea Unified Workplace
+    - generic "Current workspace and signed-in user" [ref=f21e9] [box=16,89,343,151]:
+      - generic [ref=f21e10] [box=16,89,83,46]:
+        - generic [ref=f21e11] [box=16,89,83,22]: Workspace
+        - strong [ref=f21e12] [box=16,114,83,17]: Haugentech
+      - generic [ref=f21e13] [box=16,151,328,26]:
+        - generic [ref=f21e14] [box=24,153,134,22]: Access snapshot fresh
+        - generic [ref=f21e15] [box=162,153,174,22]: Entra roles and Graph consent
+      - generic "Signed-in user" [ref=f21e16] [box=16,193,160,46]:
+        - generic [ref=f21e17] [box=16,193,160,22]: Signed in as
+        - strong [ref=f21e18] [box=16,218,106,17]: Sondre Haugen
+    - button "Notifications, 2 warnings" [ref=f21e20] [cursor=pointer] [box=16,264,143,44]:
+      - text: Notifications
+      - generic [aria-hidden] [ref=f21e21] [box=129,276,22,22]: "2"
+    - switch "Enable dark mode" [ref=f21e22] [cursor=pointer] [box=279,264,80,44]: Light
+    - button "Close menu" [expanded] [active] [ref=f21e51] [cursor=pointer] [box=16,332,105,44]
+  - generic [ref=f21e24] [box=0,393,375,1436]:
+    - navigation "Primary navigation" [ref=f21e53] [box=0,393,375,346]:
+      - list [ref=f21e55] [box=16,401,343,48]:
+        - listitem [ref=f21e56] [box=16,401,343,48]:
+          - link "Overview" [ref=f21e57] [cursor=pointer] [box=16,401,343,48]:
+            - /url: /overview
+      - generic [ref=f21e58] [box=16,449,343,137]:
+        - heading [level=2] [ref=f21e59] [box=16,449,343,44]:
+          - button "People" [expanded] [ref=f21e60] [cursor=pointer] [box=16,449,343,44]
+        - list [ref=f21e62] [box=16,495,343,91]:
+          - listitem [ref=f21e63] [box=16,495,343,45]:
+            - link "Users" [ref=f21e64] [cursor=pointer] [box=16,495,343,45]:
+              - /url: /users
+          - listitem [ref=f21e65] [box=16,541,343,45]:
+            - link "Licenses" [ref=f21e66] [cursor=pointer] [box=16,541,343,45]:
+              - /url: /licenses
+      - list [ref=f21e68] [box=16,586,343,48]:
+        - listitem [ref=f21e69] [box=16,586,343,48]:
+          - link "Devices" [ref=f21e70] [cursor=pointer] [box=16,586,343,48]:
+            - /url: /devices
+      - list [ref=f21e72] [box=16,634,343,48]:
+        - listitem [ref=f21e73] [box=16,634,343,48]:
+          - link "Activity" [ref=f21e74] [cursor=pointer] [box=16,634,343,48]:
+            - /url: /activity
+      - list [ref=f21e76] [box=16,682,343,48]:
+        - listitem [ref=f21e77] [box=16,682,343,48]:
+          - link "Workspace Settings" [ref=f21e78] [cursor=pointer] [box=16,682,343,48]:
+            - /url: /settings
+    - main [ref=f21e25] [box=0,739,375,1090]:
+      - generic [ref=f21e26] [box=16,755,343,1058]:
+        - generic [ref=f21e28] [box=16,755,122,64]:
+          - paragraph [ref=f21e29] [box=16,755,122,22]: Operational overview
+          - heading "Overview" [level=1] [ref=f21e30] [box=16,781,122,38]
+        - generic [ref=f21e31] [box=16,867,343,746]:
+          - paragraph [ref=f21e32] [box=41,892,293,56]: "Data freshness: live. Retrieved 10/7/2026, 10:12:18 AM."
+          - generic [ref=f21e33] [box=41,964,293,624]:
+            - article [ref=f21e34] [box=41,964,293,144]:
+              - generic [ref=f21e35] [box=66,989,243,21]: Users
+              - strong [ref=f21e36] [box=66,1055,243,28]: "8"
+            - article [ref=f21e37] [box=41,1124,293,144]:
+              - generic [ref=f21e38] [box=66,1149,243,21]: Devices
+              - strong [ref=f21e39] [box=66,1181,243,28]: Unavailable
+              - generic [ref=f21e40] [box=66,1220,243,23]: No verified tenant total
+            - article [ref=f21e41] [box=41,1284,293,144]:
+              - generic [ref=f21e42] [box=66,1309,243,21]: License coverage
+              - strong [ref=f21e43] [box=66,1375,243,28]: 88%
+            - article [ref=f21e44] [box=41,1444,293,144]:
+              - generic [ref=f21e45] [box=66,1469,243,21]: Permission health
+              - strong [ref=f21e46] [box=66,1535,243,28]: 19/24
+        - region [ref=f21e47] [box=16,1637,343,176]:
+          - heading "Needs attention" [level=2] [ref=f21e48] [box=43,1664,291,28]
+          - list [ref=f21e49] [box=43,1716,291,56]:
+            - listitem [ref=f21e50] [box=83,1716,251,56]: Workspace permissions need attention (19 of 24 available).

@@ -1,0 +1,52 @@
+- generic [ref=f10e4] [box=0,0,1425,907]:
+  - link "Skip to main content" [ref=f10e5] [cursor=pointer] [box=8,-46,185,36]:
+    - /url: "#main-content"
+  - banner [ref=f10e6] [box=0,0,1425,79]:
+    - link "Atea Unified Workplace home" [ref=f10e7] [cursor=pointer] [box=32,27,273,25]:
+      - /url: /overview
+      - generic [ref=f10e8] [box=143,27,162,25]: Atea Unified Workplace
+    - generic "Current workspace and signed-in user" [ref=f10e9] [box=329,16,800,46]:
+      - generic [ref=f10e10] [box=489,16,83,46]:
+        - generic [ref=f10e11] [box=489,16,83,22]: Workspace
+        - strong [ref=f10e12] [box=489,41,83,17]: Haugentech
+      - generic [ref=f10e13] [box=588,26,365,26]:
+        - generic [ref=f10e14] [box=596,28,171,22]: Access snapshot unavailable
+        - generic [ref=f10e15] [box=771,28,174,22]: Entra roles and Graph consent
+      - generic "Signed-in user" [ref=f10e16] [box=969,16,160,46]:
+        - generic [ref=f10e17] [box=969,16,160,22]: Signed in as
+        - strong [ref=f10e18] [box=969,41,106,17]: Sondre Haugen
+    - button "Notifications, 0 warnings" [ref=f10e20] [cursor=pointer] [box=1153,17,112,44]: Notifications
+    - switch "Disable dark mode" [checked] [ref=f10e21] [cursor=pointer] [box=1289,17,80,44]: Dark
+  - generic [ref=f10e22] [box=0,79,1425,828]:
+    - navigation "Primary navigation" [ref=f10e24] [box=0,79,240,409]:
+      - list [ref=f10e26] [box=8,103,223,48]:
+        - listitem [ref=f10e27] [box=8,103,223,48]:
+          - link "Overview" [ref=f10e28] [cursor=pointer] [box=8,103,223,48]:
+            - /url: /overview
+      - generic [ref=f10e29] [box=8,159,223,137]:
+        - heading [level=2] [ref=f10e30] [box=8,159,223,44]:
+          - button "People" [expanded] [ref=f10e31] [cursor=pointer] [box=8,159,223,44]
+        - list [ref=f10e33] [box=8,205,223,91]:
+          - listitem [ref=f10e34] [box=8,205,223,45]:
+            - link "Users" [ref=f10e35] [cursor=pointer] [box=8,205,223,45]:
+              - /url: /users
+          - listitem [ref=f10e36] [box=8,252,223,45]:
+            - link "Licenses" [ref=f10e37] [cursor=pointer] [box=8,252,223,45]:
+              - /url: /licenses
+      - list [ref=f10e39] [box=8,304,223,48]:
+        - listitem [ref=f10e40] [box=8,304,223,48]:
+          - link "Devices" [ref=f10e41] [cursor=pointer] [box=8,304,223,48]:
+            - /url: /devices
+      - list [ref=f10e43] [box=8,360,223,48]:
+        - listitem [ref=f10e44] [box=8,360,223,48]:
+          - link "Activity" [ref=f10e45] [cursor=pointer] [box=8,360,223,48]:
+            - /url: /activity
+      - list [ref=f10e47] [box=8,416,223,48]:
+        - listitem [ref=f10e48] [box=8,416,223,48]:
+          - link "Workspace Settings" [ref=f10e49] [cursor=pointer] [box=8,416,223,48]:
+            - /url: /settings
+    - main [ref=f10e50] [box=240,79,1185,828]:
+      - generic [ref=f10e51] [box=272,111,1121,190]:
+        - heading "Licenses" [level=1] [ref=f10e54] [box=297,136,114,38]
+        - status [ref=f10e55] [box=297,214,1071,62]:
+          - paragraph [ref=f10e56] [box=314,231,1037,28]: Checking access…

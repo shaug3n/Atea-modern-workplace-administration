@@ -1,0 +1,47 @@
+- generic [ref=f21e4] [box=0,0,390,1483]:
+  - link "Skip to main content" [ref=f21e5] [cursor=pointer] [box=8,-46,185,36]:
+    - /url: "#main-content"
+  - banner [ref=f21e6] [box=0,0,390,393]:
+    - link "Atea Unified Workplace home" [ref=f21e7] [cursor=pointer] [box=16,16,254,49]:
+      - /url: /overview
+      - generic [ref=f21e8] [box=127,16,143,49]: Atea Unified Workplace
+    - generic "Current workspace and signed-in user" [ref=f21e9] [box=16,89,358,151]:
+      - generic [ref=f21e10] [box=16,89,83,46]:
+        - generic [ref=f21e11] [box=16,89,83,22]: Workspace
+        - strong [ref=f21e12] [box=16,114,83,17]: Haugentech
+      - generic [ref=f21e13] [box=16,151,328,26]:
+        - generic [ref=f21e14] [box=24,153,134,22]: Access snapshot fresh
+        - generic [ref=f21e15] [box=162,153,174,22]: Entra roles and Graph consent
+      - generic "Signed-in user" [ref=f21e16] [box=16,193,160,46]:
+        - generic [ref=f21e17] [box=16,193,160,22]: Signed in as
+        - strong [ref=f21e18] [box=16,218,106,17]: Sondre Haugen
+    - button "Notifications, 2 warnings" [ref=f21e20] [cursor=pointer] [box=16,264,143,44]:
+      - text: Notifications
+      - generic [aria-hidden] [ref=f21e21] [box=129,276,22,22]: "2"
+    - switch "Enable dark mode" [ref=f21e22] [cursor=pointer] [box=294,264,80,44]: Light
+    - button "Menu" [ref=f21e23] [cursor=pointer] [box=16,332,58,44]
+  - main [ref=f21e25] [box=0,393,390,1090]:
+    - generic [ref=f21e26] [box=16,409,358,1058]:
+      - generic [ref=f21e28] [box=16,409,122,64]:
+        - paragraph [ref=f21e29] [box=16,409,122,22]: Operational overview
+        - heading "Overview" [level=1] [ref=f21e30] [box=16,435,122,38]
+      - generic [ref=f21e31] [box=16,521,358,746]:
+        - paragraph [ref=f21e32] [box=41,546,308,56]: "Data freshness: live. Retrieved 10/7/2026, 10:12:18 AM."
+        - generic [ref=f21e33] [box=41,618,308,624]:
+          - article [ref=f21e34] [box=41,618,308,144]:
+            - generic [ref=f21e35] [box=66,643,258,21]: Users
+            - strong [ref=f21e36] [box=66,709,258,28]: "8"
+          - article [ref=f21e37] [box=41,778,308,144]:
+            - generic [ref=f21e38] [box=66,803,258,21]: Devices
+            - strong [ref=f21e39] [box=66,835,258,28]: Unavailable
+            - generic [ref=f21e40] [box=66,874,258,23]: No verified tenant total
+          - article [ref=f21e41] [box=41,938,308,144]:
+            - generic [ref=f21e42] [box=66,963,258,21]: License coverage
+            - strong [ref=f21e43] [box=66,1029,258,28]: 88%
+          - article [ref=f21e44] [box=41,1098,308,144]:
+            - generic [ref=f21e45] [box=66,1123,258,21]: Permission health
+            - strong [ref=f21e46] [box=66,1189,258,28]: 19/24
+      - region [ref=f21e47] [box=16,1291,358,176]:
+        - heading "Needs attention" [level=2] [ref=f21e48] [box=43,1318,306,28]
+        - list [ref=f21e49] [box=43,1370,306,56]:
+          - listitem [ref=f21e50] [box=83,1370,266,56]: Workspace permissions need attention (19 of 24 available).

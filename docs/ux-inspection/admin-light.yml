@@ -1,0 +1,23 @@
+- generic [ref=f43e4] [box=0,0,1280,720]:
+  - banner [ref=f43e5] [box=0,0,1280,77]:
+    - link "Atea platform administration home" [ref=f43e6] [cursor=pointer] [box=32,26,272,25]:
+      - /url: /admin
+      - img "Atea" [ref=f43e7] [box=32,26,95,24]
+      - generic [ref=f43e8] [box=143,26,160,25]: Platform administration
+    - generic [ref=f43e9] [box=942,16,306,44]:
+      - generic [ref=f43e10] [box=942,24,117,28]: Sondre Haugen
+      - switch "Enable dark mode" [ref=f43e11] [cursor=pointer] [box=1075,16,80,44]: Light
+      - button "Sign out" [ref=f43e12] [cursor=pointer] [box=1171,16,77,44]
+  - main [ref=f43e13] [box=128,77,1024,436]:
+    - heading "Atea platform administration" [level=1] [ref=f43e14] [box=160,125,960,38]
+    - generic [ref=f43e15] [box=160,163,960,302]:
+      - generic [ref=f43e16] [box=160,163,960,88]:
+        - generic [ref=f43e17] [box=160,163,517,88]:
+          - paragraph [ref=f43e18] [box=160,163,517,22]: Platform administration
+          - heading "Workspaces" [level=1] [ref=f43e19] [box=160,185,517,38]
+          - paragraph [ref=f43e20] [box=160,223,517,28]: Onboard the customer workspace and its first administrator together.
+        - button "Create workspace" [ref=f43e21] [cursor=pointer] [box=966,163,154,44]
+      - 'button "Haugentech Tenant ID: 888cc0ed-eeca-48c5-b20f-9ed2b8db055b Status: connected" [ref=f43e23] [cursor=pointer] [box=160,299,960,166]':
+        - strong [ref=f43e24] [box=185,324,910,28]: Haugentech
+        - generic [ref=f43e25] [box=185,368,910,28]: "Tenant ID: 888cc0ed-eeca-48c5-b20f-9ed2b8db055b"
+        - generic [ref=f43e26] [box=185,412,910,28]: "Status: connected"

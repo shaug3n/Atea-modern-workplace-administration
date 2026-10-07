@@ -1,0 +1,74 @@
+- generic [ref=f8e4] [box=0,0,1185,795]:
+  - link "Skip to main content" [ref=f8e5] [cursor=pointer] [box=8,-46,185,36]:
+    - /url: "#main-content"
+  - banner [ref=f8e6] [box=0,0,1185,81]:
+    - link "Atea Unified Workplace home" [ref=f8e7] [cursor=pointer] [box=32,28,273,25]:
+      - /url: /overview
+      - generic [ref=f8e8] [box=143,28,162,25]: Atea Unified Workplace
+    - generic "Current workspace and signed-in user" [ref=f8e9] [box=329,16,529,48]:
+      - generic [ref=f8e10] [box=329,17,83,46]:
+        - generic [ref=f8e11] [box=329,17,83,22]: Workspace
+        - strong [ref=f8e12] [box=329,42,83,17]: Haugentech
+      - generic [ref=f8e13] [box=428,16,254,48]:
+        - generic [ref=f8e14] [box=436,18,102,44]: Access snapshot fresh
+        - generic [ref=f8e15] [box=543,18,132,44]: Entra roles and Graph consent
+      - generic "Signed-in user" [ref=f8e16] [box=698,17,160,46]:
+        - generic [ref=f8e17] [box=698,17,160,22]: Signed in as
+        - strong [ref=f8e18] [box=698,42,106,17]: Sondre Haugen
+    - button "Notifications, 2 warnings" [ref=f8e20] [cursor=pointer] [box=882,18,143,44]:
+      - text: Notifications
+      - generic [aria-hidden] [ref=f8e21] [box=996,30,22,22]: "2"
+    - switch "Enable dark mode" [ref=f8e22] [cursor=pointer] [box=1049,18,80,44]: Light
+  - generic [ref=f8e23] [box=0,81,1185,714]:
+    - navigation "Primary navigation" [ref=f8e25] [box=0,81,240,409]:
+      - list [ref=f8e27] [box=8,105,223,48]:
+        - listitem [ref=f8e28] [box=8,105,223,48]:
+          - link "Overview" [ref=f8e29] [cursor=pointer] [box=8,105,223,48]:
+            - /url: /overview
+      - generic [ref=f8e30] [box=8,161,223,137]:
+        - heading [level=2] [ref=f8e31] [box=8,161,223,44]:
+          - button "People" [expanded] [ref=f8e32] [cursor=pointer] [box=8,161,223,44]
+        - list [ref=f8e34] [box=8,207,223,91]:
+          - listitem [ref=f8e35] [box=8,207,223,45]:
+            - link "Users" [ref=f8e36] [cursor=pointer] [box=8,207,223,45]:
+              - /url: /users
+          - listitem [ref=f8e37] [box=8,253,223,45]:
+            - link "Licenses" [ref=f8e38] [cursor=pointer] [box=8,253,223,45]:
+              - /url: /licenses
+      - list [ref=f8e40] [box=8,306,223,48]:
+        - listitem [ref=f8e41] [box=8,306,223,48]:
+          - link "Devices" [ref=f8e42] [cursor=pointer] [box=8,306,223,48]:
+            - /url: /devices
+      - list [ref=f8e44] [box=8,362,223,48]:
+        - listitem [ref=f8e45] [box=8,362,223,48]:
+          - link "Activity" [ref=f8e46] [cursor=pointer] [box=8,362,223,48]:
+            - /url: /activity
+      - list [ref=f8e48] [box=8,418,223,48]:
+        - listitem [ref=f8e49] [box=8,418,223,48]:
+          - link "Workspace Settings" [ref=f8e50] [cursor=pointer] [box=8,418,223,48]:
+            - /url: /settings
+    - main [ref=f8e51] [box=240,81,945,714]:
+      - generic [ref=f8e52] [box=272,113,881,524]:
+        - generic [ref=f8e54] [box=272,113,122,64]:
+          - paragraph [ref=f8e55] [box=272,113,122,22]: Operational overview
+          - heading "Overview" [level=1] [ref=f8e56] [box=272,139,122,38]
+        - generic [ref=f8e57] [box=272,225,881,240]:
+          - paragraph [ref=f8e58] [box=297,250,831,28]: "Data freshness: cached. Retrieved 10/7/2026, 10:06:23 AM."
+          - generic [ref=f8e59] [box=297,294,831,146]:
+            - article [ref=f8e60] [box=297,294,196,146]:
+              - generic [ref=f8e61] [box=322,319,146,21]: Users
+              - strong [ref=f8e62] [box=322,379,146,36]: "8"
+            - article [ref=f8e63] [box=509,294,196,146]:
+              - generic [ref=f8e64] [box=534,319,193,21]: Devices
+              - strong [ref=f8e65] [box=534,348,193,36]: Unavailable
+              - generic [ref=f8e66] [box=534,392,193,23]: No verified tenant total
+            - article [ref=f8e67] [box=721,294,196,146]:
+              - generic [ref=f8e68] [box=746,319,146,21]: License coverage
+              - strong [ref=f8e69] [box=746,379,146,36]: 88%
+            - article [ref=f8e70] [box=932,294,196,146]:
+              - generic [ref=f8e71] [box=957,319,146,21]: Permission health
+              - strong [ref=f8e72] [box=957,379,146,36]: 19/24
+        - region [ref=f8e73] [box=272,489,881,148]:
+          - heading "Needs attention" [level=2] [ref=f8e74] [box=299,516,829,28]
+          - list [ref=f8e75] [box=299,568,829,28]:
+            - listitem [ref=f8e76] [box=339,568,789,28]: Workspace permissions need attention (19 of 24 available).

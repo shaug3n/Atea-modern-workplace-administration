@@ -1,0 +1,183 @@
+- generic [ref=f9e4] [box=0,0,1425,1372]:
+  - link "Skip to main content" [ref=f9e5] [cursor=pointer] [box=8,-46,185,36]:
+    - /url: "#main-content"
+  - banner [ref=f9e6] [box=0,0,1425,79]:
+    - link "Atea Unified Workplace home" [ref=f9e7] [cursor=pointer] [box=32,27,273,25]:
+      - /url: /overview
+      - generic [ref=f9e8] [box=143,27,162,25]: Atea Unified Workplace
+    - generic "Current workspace and signed-in user" [ref=f9e9] [box=329,16,769,46]:
+      - generic [ref=f9e10] [box=495,16,83,46]:
+        - generic [ref=f9e11] [box=495,16,83,22]: Workspace
+        - strong [ref=f9e12] [box=495,41,83,17]: Haugentech
+      - generic [ref=f9e13] [box=594,26,328,26]:
+        - generic [ref=f9e14] [box=602,28,134,22]: Access snapshot fresh
+        - generic [ref=f9e15] [box=741,28,174,22]: Entra roles and Graph consent
+      - generic "Signed-in user" [ref=f9e16] [box=938,16,160,46]:
+        - generic [ref=f9e17] [box=938,16,160,22]: Signed in as
+        - strong [ref=f9e18] [box=938,41,106,17]: Sondre Haugen
+    - button "Notifications, 2 warnings" [ref=f9e20] [cursor=pointer] [box=1122,17,143,44]:
+      - text: Notifications
+      - generic [aria-hidden] [ref=f9e21] [box=1236,30,22,22]: "2"
+    - switch "Disable dark mode" [checked] [ref=f9e22] [cursor=pointer] [box=1289,17,80,44]: Dark
+  - generic [ref=f9e23] [box=0,79,1425,1293]:
+    - navigation "Primary navigation" [ref=f9e25] [box=0,79,240,409]:
+      - list [ref=f9e27] [box=8,103,223,48]:
+        - listitem [ref=f9e28] [box=8,103,223,48]:
+          - link "Overview" [ref=f9e29] [cursor=pointer] [box=8,103,223,48]:
+            - /url: /overview
+      - generic [ref=f9e30] [box=8,159,223,137]:
+        - heading [level=2] [ref=f9e31] [box=8,159,223,44]:
+          - button "People" [expanded] [ref=f9e32] [cursor=pointer] [box=8,159,223,44]
+        - list [ref=f9e34] [box=8,205,223,91]:
+          - listitem [ref=f9e35] [box=8,205,223,45]:
+            - link "Users" [ref=f9e36] [cursor=pointer] [box=8,205,223,45]:
+              - /url: /users
+          - listitem [ref=f9e37] [box=8,252,223,45]:
+            - link "Licenses" [ref=f9e38] [cursor=pointer] [box=8,252,223,45]:
+              - /url: /licenses
+      - list [ref=f9e40] [box=8,304,223,48]:
+        - listitem [ref=f9e41] [box=8,304,223,48]:
+          - link "Devices" [ref=f9e42] [cursor=pointer] [box=8,304,223,48]:
+            - /url: /devices
+      - list [ref=f9e44] [box=8,360,223,48]:
+        - listitem [ref=f9e45] [box=8,360,223,48]:
+          - link "Activity" [ref=f9e46] [cursor=pointer] [box=8,360,223,48]:
+            - /url: /activity
+      - list [ref=f9e48] [box=8,416,223,48]:
+        - listitem [ref=f9e49] [box=8,416,223,48]:
+          - link "Workspace Settings" [ref=f9e50] [cursor=pointer] [box=8,416,223,48]:
+            - /url: /settings
+    - main [ref=f9e51] [box=240,79,1185,1293]:
+      - region "Users" [ref=f9e52] [box=272,111,1121,1229]:
+        - generic [ref=f9e53] [box=272,111,1121,96]:
+          - generic [ref=f9e54] [box=272,111,501,96]:
+            - paragraph [ref=f9e55] [box=272,111,501,22]: Directory
+            - heading "Users" [level=1] [ref=f9e56] [box=272,137,501,38]
+            - paragraph [ref=f9e57] [box=272,179,501,28]: Search and review Microsoft 365 users from the connected tenant.
+          - generic [ref=f9e59] [box=1039,111,354,44]:
+            - button "Create user" [ref=f9e60] [cursor=pointer] [box=1039,111,103,44]
+            - button "Refresh" [ref=f9e61] [cursor=pointer] [box=1150,111,74,44]
+            - button "Export filtered CSV" [ref=f9e62] [cursor=pointer] [box=1232,111,161,44]
+        - search [ref=f9e63] [box=272,255,1121,132]:
+          - generic [ref=f9e64] [box=289,272,536,69]:
+            - generic [ref=f9e65] [box=289,272,536,21]: Search users
+            - searchbox "Search users" [ref=f9e66] [box=289,297,536,44]
+          - generic [ref=f9e67] [box=833,272,268,69]:
+            - generic [ref=f9e68] [box=833,272,268,21]: Account status
+            - combobox "Account status" [ref=f9e69] [box=833,297,268,44]:
+              - option "Any" [selected] [box=0,0,0,0]
+              - option "Enabled" [box=0,0,0,0]
+              - option "Disabled" [box=0,0,0,0]
+          - generic [ref=f9e70] [box=1108,272,268,69]:
+            - generic [ref=f9e71] [box=1108,272,268,21]: User type
+            - combobox "User type" [ref=f9e72] [box=1108,297,268,44]:
+              - option "Any" [selected] [box=0,0,0,0]
+              - option "Member" [box=0,0,0,0]
+              - option "Guest" [box=0,0,0,0]
+          - group [ref=f9e73] [box=289,349,1087,21]:
+            - generic "More filters" [ref=f9e74] [cursor=pointer] [box=289,349,79,21]
+        - status [ref=f9e75] [box=272,427,1121,94]:
+          - generic [ref=f9e76] [box=289,444,1087,28]: Directory data is fresh
+          - generic [ref=f9e77] [box=289,476,1087,28]: "Fetched: 10/7/2026, 10:07:28 AM"
+        - region "Users" [ref=f9e78] [box=272,545,1121,727]:
+          - table [ref=f9e80] [box=273,546,1119,725]:
+            - rowgroup [ref=f9e81] [box=273,546,1119,37]:
+              - row [ref=f9e82] [box=273,546,1119,37]:
+                - columnheader "Name" [ref=f9e83] [box=273,546,224,37]
+                - columnheader "User principal name" [ref=f9e84] [box=497,546,224,37]
+                - columnheader "Account status" [ref=f9e85] [box=721,546,224,37]
+                - columnheader "Open" [ref=f9e86] [box=944,546,224,37]
+                - columnheader "Actions" [ref=f9e87] [box=1168,546,224,37]
+            - rowgroup [ref=f9e88] [box=273,584,1119,688]:
+              - row [ref=f9e89] [box=273,584,1119,89]:
+                - rowheader [ref=f9e90] [box=273,584,224,89]:
+                  - generic [ref=f9e91] [box=289,592,192,36]:
+                    - strong [ref=f9e92] [box=289,598,77,24]: codex-test
+                    - button "More details for codex-test" [ref=f9e93] [cursor=pointer] [box=433,592,48,36]: More
+                - cell "codex-test@haugentech.onmicrosoft.com" [ref=f9e94] [box=497,584,224,89]
+                - cell "Enabled" [ref=f9e95] [box=721,584,224,89]
+                - cell [ref=f9e96] [box=944,584,224,89]:
+                  - button "Open codex-test" [ref=f9e97] [cursor=pointer] [box=960,592,49,36]: Open
+                - cell [ref=f9e98] [box=1168,584,224,89]:
+                  - button "Disable codex-test" [ref=f9e99] [cursor=pointer] [box=1184,592,61,36]: Disable
+              - row [ref=f9e100] [box=273,673,1119,89]:
+                - rowheader [ref=f9e101] [box=273,673,224,89]:
+                  - generic [ref=f9e102] [box=289,681,192,36]:
+                    - strong [ref=f9e103] [box=289,687,118,24]: lab-globalreader
+                    - button "More details for lab-globalreader" [ref=f9e104] [cursor=pointer] [box=433,681,48,36]: More
+                - cell "lab-globalreader@haugentech.onmicrosoft.com" [ref=f9e105] [box=497,673,224,89]
+                - cell "Enabled" [ref=f9e106] [box=721,673,224,89]
+                - cell [ref=f9e107] [box=944,673,224,89]:
+                  - button "Open lab-globalreader" [ref=f9e108] [cursor=pointer] [box=960,681,49,36]: Open
+                - cell [ref=f9e109] [box=1168,673,224,89]:
+                  - button "Disable lab-globalreader" [ref=f9e110] [cursor=pointer] [box=1184,681,61,36]: Disable
+              - row [ref=f9e111] [box=273,762,1119,89]:
+                - rowheader [ref=f9e112] [box=273,762,224,89]:
+                  - generic [ref=f9e113] [box=289,770,192,36]:
+                    - strong [ref=f9e114] [box=289,776,123,24]: lab-intuneadmin1
+                    - button "More details for lab-intuneadmin1" [ref=f9e115] [cursor=pointer] [box=433,770,48,36]: More
+                - cell "Lab-intuneadmin1@haugentech.no" [ref=f9e116] [box=497,762,224,89]
+                - cell "Enabled" [ref=f9e117] [box=721,762,224,89]
+                - cell [ref=f9e118] [box=944,762,224,89]:
+                  - button "Open lab-intuneadmin1" [ref=f9e119] [cursor=pointer] [box=960,770,49,36]: Open
+                - cell [ref=f9e120] [box=1168,762,224,89]:
+                  - button "Disable lab-intuneadmin1" [ref=f9e121] [cursor=pointer] [box=1184,770,61,36]: Disable
+              - row [ref=f9e122] [box=273,851,1119,89]:
+                - rowheader [ref=f9e123] [box=273,851,224,89]:
+                  - generic [ref=f9e124] [box=289,859,192,36]:
+                    - strong [ref=f9e125] [box=289,865,127,24]: lab-intuneadmin2
+                    - button "More details for lab-intuneadmin2" [ref=f9e126] [cursor=pointer] [box=433,859,48,36]: More
+                - cell "lab-intuneadmin2@haugentech.no" [ref=f9e127] [box=497,851,224,89]
+                - cell "Enabled" [ref=f9e128] [box=721,851,224,89]
+                - cell [ref=f9e129] [box=944,851,224,89]:
+                  - button "Open lab-intuneadmin2" [ref=f9e130] [cursor=pointer] [box=960,859,49,36]: Open
+                - cell [ref=f9e131] [box=1168,851,224,89]:
+                  - button "Disable lab-intuneadmin2" [ref=f9e132] [cursor=pointer] [box=1184,859,61,36]: Disable
+              - row [ref=f9e133] [box=273,940,1119,89]:
+                - rowheader [ref=f9e134] [box=273,940,224,89]:
+                  - generic [ref=f9e135] [box=289,948,192,36]:
+                    - strong [ref=f9e136] [box=289,954,121,24]: lab Pim-approver
+                    - button "More details for lab Pim-approver" [ref=f9e137] [cursor=pointer] [box=433,948,48,36]: More
+                - cell "lab-pim-approver@haugentech.onmicrosoft.com" [ref=f9e138] [box=497,940,224,89]
+                - cell "Enabled" [ref=f9e139] [box=721,940,224,89]
+                - cell [ref=f9e140] [box=944,940,224,89]:
+                  - button "Open lab Pim-approver" [ref=f9e141] [cursor=pointer] [box=960,948,49,36]: Open
+                - cell [ref=f9e142] [box=1168,940,224,89]:
+                  - button "Disable lab Pim-approver" [ref=f9e143] [cursor=pointer] [box=1184,948,61,36]: Disable
+              - row [ref=f9e144] [box=273,1029,1119,89]:
+                - rowheader [ref=f9e145] [box=273,1029,224,89]:
+                  - generic [ref=f9e146] [box=289,1037,192,36]:
+                    - strong [ref=f9e147] [box=289,1043,93,24]: lab-pim-user
+                    - button "More details for lab-pim-user" [ref=f9e148] [cursor=pointer] [box=433,1037,48,36]: More
+                - cell "lab-pim-user@haugentech.onmicrosoft.com" [ref=f9e149] [box=497,1029,224,89]
+                - cell "Enabled" [ref=f9e150] [box=721,1029,224,89]
+                - cell [ref=f9e151] [box=944,1029,224,89]:
+                  - button "Open lab-pim-user" [ref=f9e152] [cursor=pointer] [box=960,1037,49,36]: Open
+                - cell [ref=f9e153] [box=1168,1029,224,89]:
+                  - button "Disable lab-pim-user" [ref=f9e154] [cursor=pointer] [box=1184,1037,61,36]: Disable
+              - row [ref=f9e155] [box=273,1118,1119,89]:
+                - rowheader [ref=f9e156] [box=273,1118,224,89]:
+                  - generic [ref=f9e157] [box=289,1126,192,36]:
+                    - strong [ref=f9e158] [box=289,1132,104,24]: lab-useradmin
+                    - button "More details for lab-useradmin" [ref=f9e159] [cursor=pointer] [box=433,1126,48,36]: More
+                - cell "lab-useradmin@haugentech.onmicrosoft.com" [ref=f9e160] [box=497,1118,224,89]
+                - cell "Enabled" [ref=f9e161] [box=721,1118,224,89]
+                - cell [ref=f9e162] [box=944,1118,224,89]:
+                  - button "Open lab-useradmin" [ref=f9e163] [cursor=pointer] [box=960,1126,49,36]: Open
+                - cell [ref=f9e164] [box=1168,1118,224,89]:
+                  - button "Disable lab-useradmin" [ref=f9e165] [cursor=pointer] [box=1184,1126,61,36]: Disable
+              - row [ref=f9e166] [box=273,1207,1119,65]:
+                - rowheader [ref=f9e167] [box=273,1207,224,65]:
+                  - generic [ref=f9e168] [box=289,1215,192,36]:
+                    - strong [ref=f9e169] [box=289,1221,108,24]: Sondre Haugen
+                    - button "More details for Sondre Haugen" [ref=f9e170] [cursor=pointer] [box=433,1215,48,36]: More
+                - cell "Sondre@haugentech.onmicrosoft.com" [ref=f9e171] [box=497,1207,224,65]
+                - cell "Enabled" [ref=f9e172] [box=721,1207,224,65]
+                - cell [ref=f9e173] [box=944,1207,224,65]:
+                  - button "Open Sondre Haugen" [ref=f9e174] [cursor=pointer] [box=960,1215,49,36]: Open
+                - cell [ref=f9e175] [box=1168,1207,224,65]:
+                  - button "Disable Sondre Haugen" [ref=f9e176] [cursor=pointer] [box=1184,1215,61,36]: Disable
+        - navigation "Users pagination" [ref=f9e177] [box=272,1296,1121,44]:
+          - status [ref=f9e178] [box=272,1296,49,44]: Page 1
+          - button "Previous page" [disabled] [ref=f9e179] [box=1169,1296,123,44]
+          - button "Next page" [disabled] [ref=f9e180] [box=1300,1296,93,44]
