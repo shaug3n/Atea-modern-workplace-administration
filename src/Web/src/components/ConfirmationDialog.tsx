@@ -20,7 +20,7 @@ export type ConfirmationDialogProps = {
   children?: React.ReactNode;
   embedded?: boolean;
   showTitle?: boolean;
-  confirmLabel?: string;
+  confirmLabel: string;
   consequence?: string;
   tone?: 'default' | 'danger';
 };
@@ -40,7 +40,7 @@ export function ConfirmationDialog({
   children,
   embedded = false,
   showTitle = true,
-  confirmLabel = messages.userMutationConfirm,
+  confirmLabel,
   consequence,
   tone = 'default',
 }: ConfirmationDialogProps) {

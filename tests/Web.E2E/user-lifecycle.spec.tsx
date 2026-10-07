@@ -45,7 +45,7 @@ describe('user lifecycle browser boundary', () => {
     fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Ada Lovelace' } });
     fireEvent.change(screen.getByLabelText('User principal name'), { target: { value: 'ada@example.com' } });
     fireEvent.click(screen.getByLabelText('I reviewed the target, change and required capability.'));
-    fireEvent.click(screen.getByRole('button', { name: 'Confirm action' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Create user' }));
 
     await waitFor(() => expect(apiMock).toHaveBeenCalledTimes(1));
     expect(apiMock.mock.calls[0][0]).toBe('/api/users');
@@ -64,7 +64,7 @@ describe('user lifecycle browser boundary', () => {
     render(<UsersPage capabilities={capabilities} loadUsers={loadUsers} />);
 
     fireEvent.click(await screen.findByRole('button', { name: 'Disable Ada Lovelace' }));
-    const confirm = screen.getByRole('button', { name: 'Confirm action' }) as HTMLButtonElement;
+    const confirm = screen.getByRole('button', { name: 'Disable user' }) as HTMLButtonElement;
     fireEvent.change(screen.getByLabelText('Type DISABLE to confirm'), { target: { value: 'DISABLE' } });
     expect(confirm.disabled).toBe(true);
     expect(apiMock).not.toHaveBeenCalled();

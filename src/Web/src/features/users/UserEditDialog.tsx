@@ -43,6 +43,7 @@ export function UserEditDialog({ user, onCompleted, onCancel }: { user: UserDeta
       target={user.displayName || user.userPrincipalName || user.id}
       proposedChange={messages.userEditProposedChange}
       requiredCapability="users.update"
+      confirmLabel={messages.confirmEditUser}
       sourceLimitation={sourceLimitation}
       busy={pending}
       onConfirm={submit}

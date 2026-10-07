@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import React from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { UserDetailPage } from '../../../../src/Web/src/features/users/UserDetailPage';
@@ -203,7 +203,7 @@ describe('UserDetailPage', () => {
     render(<UserDetailPage userId="user-1" loadUserDetail={loadUserDetail} capabilities={[{ capability: 'users.update', state: 'allowed', reasonCode: 'active_role' }, { capability: 'users.disable', state: 'hidden', reasonCode: 'not_returned' }]} />);
     fireEvent.click(await screen.findByRole('button', { name: 'Edit user' }));
     fireEvent.click(screen.getByLabelText('I reviewed the target, change and required capability.'));
-    fireEvent.click(screen.getByRole('button', { name: 'Confirm action' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
 
     await waitFor(() => expect(apiMock).toHaveBeenCalledWith('/api/users/user-1', expect.objectContaining({ method: 'PATCH' })));
     await waitFor(() => expect(loadUserDetail).toHaveBeenCalledTimes(2));
@@ -216,7 +216,7 @@ describe('UserDetailPage', () => {
     render(<UserDetailPage userId="user-1" loadUserDetail={loadUserDetail} capabilities={[{ capability: 'users.update', state: 'hidden', reasonCode: 'not_returned' }, { capability: 'users.disable', state: 'allowed', reasonCode: 'active_role' }]} />);
     fireEvent.click(await screen.findByRole('button', { name: 'Reactivate user' }));
     fireEvent.click(screen.getByLabelText('I reviewed the target, change and required capability.'));
-    fireEvent.click(screen.getByRole('button', { name: 'Confirm action' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Enable user' }));
 
     await waitFor(() => expect(apiMock).toHaveBeenCalledWith('/api/users/user-1/reactivate', expect.objectContaining({ method: 'POST' })));
     await waitFor(() => expect(loadUserDetail).toHaveBeenCalledTimes(2));
@@ -233,7 +233,7 @@ describe('UserDetailPage', () => {
     render(<UserDetailPage userId="user-1" loadUserDetail={async () => ({ ...detail, user: { ...detail.user, isReadOnly: false, sourceOfAuthorityReason: null } })} capabilities={[{ capability: 'users.reset_password', state: 'allowed', reasonCode: 'active_role' }]} />);
     fireEvent.click(await screen.findByRole('button', { name: 'Reset password' }));
     fireEvent.click(screen.getByLabelText('I reviewed the target, change and required capability.'));
-    fireEvent.click(screen.getByRole('button', { name: 'Confirm action' }));
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Reset password' }));
 
     await waitFor(() => expect(apiMock).toHaveBeenCalledWith('/api/users/user-1/reset-password', expect.objectContaining({ method: 'POST' })));
     expect(await screen.findByText('Temp-Password-12345!')).toBeTruthy();
@@ -326,7 +326,7 @@ describe('UserDetailPage', () => {
     fireEvent.click(await screen.findByRole('button', { name: /add group/i }));
     fireEvent.change(await screen.findByRole('combobox', { name: /group/i }), { target: { value: 'group-2' } });
     fireEvent.click(screen.getByLabelText('I reviewed the target, change and required capability.'));
-    fireEvent.click(screen.getByRole('button', { name: 'Confirm action' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add to group' }));
 
     await waitFor(() => expect(apiMock).toHaveBeenCalledWith('/api/users/user-1/groups/group-2', expect.objectContaining({ method: 'POST' })));
     await waitFor(() => expect(loadUserDetail).toHaveBeenCalledTimes(2));
@@ -346,7 +346,7 @@ describe('UserDetailPage', () => {
     expect(screen.queryByRole('option', { name: 'Already assigned' })).toBeNull();
     fireEvent.change(screen.getByRole('combobox', { name: /group/i }), { target: { value: 'group-2' } });
     fireEvent.click(screen.getByLabelText('I reviewed the target, change and required capability.'));
-    fireEvent.click(screen.getByRole('button', { name: 'Confirm action' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add to group' }));
     await waitFor(() => expect(apiMock).toHaveBeenCalledWith('/api/users/user-1/groups/group-2', expect.objectContaining({ method: 'POST' })));
     await waitFor(() => expect(loadUserDetail).toHaveBeenCalledTimes(2));
   });
@@ -362,7 +362,7 @@ describe('UserDetailPage', () => {
     fireEvent.click(await screen.findByRole('button', { name: /add group/i }));
     fireEvent.change(await screen.findByRole('combobox', { name: /group/i }), { target: { value: 'group-2' } });
     fireEvent.click(screen.getByLabelText('I reviewed the target, change and required capability.'));
-    fireEvent.click(screen.getByRole('button', { name: 'Confirm action' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add to group' }));
 
     expect((await screen.findByRole('alert')).textContent).toMatch(/selected group is no longer available/i);
     expect(loadUserDetail).toHaveBeenCalledTimes(1);
@@ -398,7 +398,7 @@ describe('UserDetailPage', () => {
     expect(await screen.findByRole('option', { name: 'Microsoft 365 E5' })).toBeTruthy();
     fireEvent.change(screen.getByRole('combobox', { name: 'License' }), { target: { value: 'sku-2' } });
     fireEvent.click(screen.getByLabelText('I reviewed the target, change and required capability.'));
-    fireEvent.click(screen.getByRole('button', { name: 'Confirm action' }));
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Assign license' }));
     await waitFor(() => expect(apiMock).toHaveBeenCalledWith('/api/users/user-1/licenses/sku-2', expect.objectContaining({ method: 'POST' })));
     await waitFor(() => expect(loadUserDetail).toHaveBeenCalledTimes(2));
   });

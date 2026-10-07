@@ -49,6 +49,7 @@ export function GroupMembershipDialog({ userId, groupId, target, mode, assignedG
       target={effectiveTarget}
       proposedChange={mode === 'add' ? messages.userGroupAddProposedChange : messages.userGroupRemoveProposedChange}
       requiredCapability="groups.manage_members"
+      confirmLabel={mode === 'add' ? messages.confirmAddToGroup : messages.confirmRemoveFromGroup}
       busy={pending}
       onConfirm={submit}
       onCancel={onCancel}

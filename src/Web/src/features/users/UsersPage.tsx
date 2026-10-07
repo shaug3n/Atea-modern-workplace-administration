@@ -244,6 +244,9 @@ export function UsersPage({ capabilities, onNavigate, loadUsers, authorizationUn
           proposedChange={messages.userDisableProposedChange}
           requiredCapability="users.disable"
           destructivePhrase="DISABLE"
+          confirmLabel={messages.confirmDisableUser}
+          consequence={messages.confirmDisableUserConsequence(disableTargetName)}
+          tone="danger"
           busy={disablePending}
           onConfirm={submitDisable}
           onCancel={cancelDisable}

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useApi } from '../../auth/useApi';
+import { messages } from '../../app/messages';
 import { ConfirmationDialog } from '../../components/ConfirmationDialog';
 import type { CapabilityDecision } from '../../capabilities/capabilityTypes';
 import type { ApiFetch } from '../users/userDetailApi';
@@ -169,7 +170,7 @@ function DeviceDetailContent({ id, capabilities, onNavigate }: { id: string; cap
       </section>
 
       {canManage && <section className="content-panel"><h2>Remote actions</h2><div className="device-detail-panel__actions">{(['sync', 'remote-lock', 'restart', 'retire', 'wipe'] as DeviceAction[]).map(action => <button key={action} type="button" className={action === 'retire' || action === 'wipe' ? 'button button--danger' : 'button button--secondary'} onClick={() => setActionTarget(action)}>{actionLabel(action)}</button>)}</div>{actionStatus && <p role="status">{actionStatus}</p>}{actionError && <p role="alert">Device action failed. Retry or check permissions.</p>}</section>}
-      {actionTarget && <ConfirmationDialog title={actionLabel(actionTarget)} target={device.deviceName || device.id} proposedChange={`${actionLabel(actionTarget)} this managed device.`} requiredCapability="devices.privileged.manage" destructivePhrase={actionTarget === 'sync' ? null : actionTarget === 'remote-lock' ? 'REMOTE LOCK' : actionTarget.toUpperCase()} busy={actionBusy} onConfirm={() => void runAction()} onCancel={() => { if (!actionBusy) setActionTarget(null); }} />}
+      {actionTarget && <ConfirmationDialog title={actionLabel(actionTarget)} target={device.deviceName || device.id} proposedChange={`${actionLabel(actionTarget)} this managed device.`} requiredCapability="devices.privileged.manage" confirmLabel={messages.deviceActionConfirm[actionTarget].label} consequence={messages.deviceActionConfirm[actionTarget].consequence} tone={messages.deviceActionConfirm[actionTarget].tone as 'default' | 'danger'} destructivePhrase={actionTarget === 'sync' ? null : actionTarget === 'remote-lock' ? 'REMOTE LOCK' : actionTarget.toUpperCase()} busy={actionBusy} onConfirm={() => void runAction()} onCancel={() => { if (!actionBusy) setActionTarget(null); }} />}
     </>}
   </section>;
 }

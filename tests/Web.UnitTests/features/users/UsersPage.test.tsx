@@ -192,7 +192,7 @@ describe('UsersPage', () => {
     expect(screen.getByRole('dialog', { name: 'Disable user' })).toBeTruthy();
     expect(screen.getByText('Disable sign-in for this user.')).toBeTruthy();
 
-    const confirm = screen.getByRole('button', { name: 'Confirm action' }) as HTMLButtonElement;
+    const confirm = screen.getByRole('button', { name: 'Disable user' }) as HTMLButtonElement;
     expect(confirm.disabled).toBe(true);
     fireEvent.click(screen.getByLabelText('I reviewed the target, change and required capability.'));
     expect(confirm.disabled).toBe(true);
@@ -240,14 +240,14 @@ describe('UsersPage', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Disable Ada Lovelace' }));
     fireEvent.click(screen.getByLabelText('I reviewed the target, change and required capability.'));
     fireEvent.change(screen.getByLabelText('Type DISABLE to confirm'), { target: { value: 'DISABLE' } });
-    expect((screen.getByRole('button', { name: 'Confirm action' }) as HTMLButtonElement).disabled).toBe(false);
+    expect((screen.getByRole('button', { name: 'Disable user' }) as HTMLButtonElement).disabled).toBe(false);
 
     fireEvent.click(screen.getByRole('button', { name: 'Disable Grace Hopper' }));
 
     expect(within(screen.getByRole('dialog', { name: 'Disable user' })).getByText('Grace Hopper')).toBeTruthy();
     expect((screen.getByLabelText('I reviewed the target, change and required capability.') as HTMLInputElement).checked).toBe(false);
     expect((screen.getByLabelText('Type DISABLE to confirm') as HTMLInputElement).value).toBe('');
-    expect((screen.getByRole('button', { name: 'Confirm action' }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole('button', { name: 'Disable user' }) as HTMLButtonElement).disabled).toBe(true);
   });
 
   it('closes disable confirmation with permission guidance when disable capability is revoked before submit', async () => {
@@ -264,7 +264,7 @@ describe('UsersPage', () => {
       decision('users.update', 'allowed'),
       decision('users.disable', 'read_only'),
     ]} loadUsers={loadUsers} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Confirm action' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Disable user' }));
 
     expect(screen.queryByRole('dialog', { name: 'Disable user' })).toBeNull();
     expect(screen.getByRole('alert').textContent).toContain('cannot disable this user');
@@ -284,7 +284,7 @@ describe('UsersPage', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Disable Ada Lovelace' }));
     fireEvent.click(screen.getByLabelText('I reviewed the target, change and required capability.'));
     fireEvent.change(screen.getByLabelText('Type DISABLE to confirm'), { target: { value: 'DISABLE' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Confirm action' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Disable user' }));
 
     expect((await screen.findByRole('alert')).textContent).toContain('idempotency key');
     expect(screen.getByRole('dialog', { name: 'Disable user' })).toBeTruthy();

@@ -1,5 +1,5 @@
 import React from 'react';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { DevicesPage } from '../../../../src/Web/src/features/devices/DevicesPage';
 import { executeDeviceAction, type DeviceAction } from '../../../../src/Web/src/features/devices/devicesApi';
@@ -321,10 +321,10 @@ describe('DevicesPage', () => {
     }
     expect(screen.getByRole('dialog', { name: new RegExp(label.split(' ')[0]) })).toBeTruthy();
     expect(screen.getByLabelText(/type .* to confirm/i)).toBeTruthy();
-    expect((screen.getByRole('button', { name: 'Confirm action' }) as HTMLButtonElement).disabled).toBe(true);
+    expect((within(document.querySelector<HTMLElement>('.mutation-dialog')!).getByRole('button', { name: label === 'Remote lock' ? 'Lock device' : label }) as HTMLButtonElement).disabled).toBe(true);
     fireEvent.change(screen.getByLabelText(/type .* to confirm/i), { target: { value: phrase } });
     fireEvent.click(screen.getByLabelText(/I reviewed the target/i));
-    expect((screen.getByRole('button', { name: 'Confirm action' }) as HTMLButtonElement).disabled).toBe(false);
+    expect((within(document.querySelector<HTMLElement>('.mutation-dialog')!).getByRole('button', { name: label === 'Remote lock' ? 'Lock device' : label }) as HTMLButtonElement).disabled).toBe(false);
   });
 
   it('requires review but no phrase for Sync and submits only the selected typed action', async () => {
@@ -334,9 +334,9 @@ describe('DevicesPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Actions for WIN-TEST-01' }));
     fireEvent.click(screen.getByRole('menuitem', { name: 'Sync device' }));
     expect(screen.queryByLabelText(/type .* to confirm/i)).toBeNull();
-    expect((screen.getByRole('button', { name: 'Confirm action' }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole('button', { name: 'Sync device' }) as HTMLButtonElement).disabled).toBe(true);
     fireEvent.click(screen.getByLabelText(/I reviewed the target/i));
-    fireEvent.click(screen.getByRole('button', { name: 'Confirm action' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Sync device' }));
     await waitFor(() => expect(apiMock).toHaveBeenCalledWith('/api/devices/device-1/actions/sync', expect.objectContaining({ method: 'POST' })));
     expect(apiMock.mock.calls.some(([url]) => String(url).includes('/restart'))).toBe(false);
   });
@@ -349,7 +349,7 @@ describe('DevicesPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Actions for WIN-TEST-01' }));
     fireEvent.click(screen.getByRole('menuitem', { name: 'Sync device' }));
     fireEvent.click(screen.getByLabelText(/I reviewed the target/i));
-    const confirm = screen.getByRole('button', { name: 'Confirm action' });
+    const confirm = screen.getByRole('button', { name: 'Sync device' });
     fireEvent.click(confirm);
     fireEvent.click(confirm);
     fireEvent.keyDown(document, { key: 'Escape' });
@@ -366,10 +366,10 @@ describe('DevicesPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Actions for WIN-TEST-01' }));
     fireEvent.click(screen.getByRole('menuitem', { name: 'Sync device' }));
     fireEvent.click(screen.getByLabelText(/I reviewed the target/i));
-    fireEvent.click(screen.getByRole('button', { name: 'Confirm action' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Sync device' }));
     expect((await screen.findByRole('alert')).textContent).toMatch(/could not be submitted/i);
     expect(screen.getByRole('alert').textContent).not.toContain('raw transport detail');
-    expect((screen.getByRole('button', { name: 'Confirm action' }) as HTMLButtonElement).disabled).toBe(false);
+    expect((screen.getByRole('button', { name: 'Sync device' }) as HTMLButtonElement).disabled).toBe(false);
   });
 
   it('keeps wrong-case and partial-whitespace phrases disabled', async () => {
@@ -380,7 +380,7 @@ describe('DevicesPage', () => {
     const phraseInput = screen.getByLabelText(/type .* to confirm/i);
     fireEvent.change(phraseInput, { target: { value: ' wipe ' } });
     fireEvent.click(screen.getByLabelText(/I reviewed the target/i));
-    expect((screen.getByRole('button', { name: 'Confirm action' }) as HTMLButtonElement).disabled).toBe(true);
+    expect((within(document.querySelector<HTMLElement>('.mutation-dialog')!).getByRole('button', { name: 'Wipe device' }) as HTMLButtonElement).disabled).toBe(true);
   });
 
   it('labels the destructive confirmation with the exact action phrase and omits phrase input for Sync', async () => {

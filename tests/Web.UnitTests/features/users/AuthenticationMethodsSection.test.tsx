@@ -41,7 +41,7 @@ describe('AuthenticationMethodsSection', () => {
     expect(screen.getByRole('dialog', { name: 'Reset MFA methods' })).toBeTruthy();
     fireEvent.change(screen.getByLabelText('Type DISABLE to confirm'), { target: { value: 'RESET MFA' } });
     fireEvent.click(screen.getByLabelText('I reviewed the target, change and required capability.'));
-    fireEvent.click(screen.getByRole('button', { name: 'Confirm action' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Reset MFA' }));
 
     await waitFor(() => expect(apiMock).toHaveBeenCalledWith('/api/users/user-1/authentication-methods/reset-mfa', expect.objectContaining({ method: 'POST' })));
   });
@@ -63,7 +63,7 @@ describe('AuthenticationMethodsSection', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: 'Grant Temporary Access Pass' }));
     fireEvent.click(screen.getByLabelText('I reviewed the target, change and required capability.'));
-    fireEvent.click(screen.getByRole('button', { name: 'Confirm action' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Issue Temporary Access Pass' }));
 
     expect(await screen.findByText('fixture-tap-value')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Close' }));
