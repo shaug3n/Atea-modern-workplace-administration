@@ -165,7 +165,7 @@ git commit -m "feat: provision workspaces by tenant domain"
 - Produces: `WorkspaceCreateInput = { tenantId: string; tenantDomain?: never } | { tenantId?: never; tenantDomain: string }`, combined with `displayName`, `adminUpn`, and optional `adminDisplayName`.
 - Produces: `adminApi.onboardWorkspace(input: WorkspaceCreateInput & { displayName: string; adminUpn: string; adminDisplayName?: string }): Promise<WorkspaceOnboardingResult>`.
 
-- [ ] **Step 1: Write failing form tests.**
+- [x] **Step 1: Write failing form tests.**
 
 ```tsx
 it('submits a tenant domain as tenantDomain, not tenantId', async () => {
@@ -178,22 +178,22 @@ it('keeps a GUID in tenantId', async () => {
 });
 ```
 
-- [ ] **Step 2: Run the focused Vitest test.**
+- [x] **Step 2: Run the focused Vitest test.**
 
 Run: `npm run test:behavior --prefix src/Web -- --run WorkspaceCreateForm`
 Expected: FAIL because the current form rejects domains and labels the field `Tenant ID`.
 
-- [ ] **Step 3: Update the form and API client.**
+- [x] **Step 3: Update the form and API client.**
 
 Use the exact label **“Tenant domain or ID”**. Classify only a GUID-shaped value into `tenantId`; submit any other nonempty value as `tenantDomain` for server validation. Keep display-name and first-admin validation and do not infer a tenant from the email.
 
-- [ ] **Step 4: Run form and onboarding browser tests.**
+- [x] **Step 4: Run form and onboarding browser tests.**
 
 Run: `npm run test:behavior --prefix src/Web -- --run WorkspaceCreateForm`
 Run: `npm test --prefix tests/Web.E2E -- admin-onboarding`
 Expected: PASS; the GUID fixture sends the legacy JSON shape and the domain fixture sends only `tenantDomain`.
 
-- [ ] **Step 5: Commit.**
+- [x] **Step 5: Commit.**
 
 ```bash
 git add src/Web/src/features/admin/WorkspaceCreateForm.tsx src/Web/src/features/admin/adminApi.ts tests/Web.UnitTests/features/admin/WorkspaceCreateForm.test.tsx tests/Web.E2E/admin-onboarding.spec.tsx

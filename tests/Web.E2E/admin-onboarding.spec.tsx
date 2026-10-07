@@ -69,7 +69,7 @@ describe('local Atea admin onboarding flow', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Sign in' }));
 
     fireEvent.click(await screen.findByRole('button', { name: 'Create workspace' }));
-    fireEvent.change(screen.getByLabelText('Tenant ID'), { target: { value: customerTenantId } });
+    fireEvent.change(screen.getByLabelText('Tenant domain or ID'), { target: { value: customerTenantId } });
     fireEvent.change(screen.getByLabelText('Workspace name'), { target: { value: workspace.displayName } });
     fireEvent.change(screen.getByLabelText('First admin sign-in address'), { target: { value: 'customer.admin@example.test' } });
     fireEvent.change(screen.getByLabelText('First admin display name'), { target: { value: 'Customer Admin' } });
