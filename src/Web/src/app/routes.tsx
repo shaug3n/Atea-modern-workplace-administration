@@ -55,7 +55,7 @@ export const appRoutes: AppRoute[] = [
   {
     path: '/overview',
     label: messages.navOverview,
-    render: (options) => <OverviewPage loadOverview={options?.loadOverview} session={options?.session} />,
+    render: (options) => <OverviewPage loadOverview={options?.loadOverview} session={options?.session} onNavigate={options?.navigate} />,
   },
   {
     path: '/users',

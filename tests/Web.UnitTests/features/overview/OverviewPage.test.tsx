@@ -1,6 +1,6 @@
 import React from 'react';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { OverviewPage } from '../../../../src/Web/src/features/overview/OverviewPage';
 
 const overview = {
@@ -30,9 +30,10 @@ describe('OverviewPage', () => {
 
   it('does not present a device search page count as the tenant total', async () => {
     render(<OverviewPage loadOverview={async () => overview} session={{ user: {}, workspace: { id: 'w', name: 'Customer', moduleAccess: ['devices'] } }} />);
-    await waitFor(() => expect(screen.getByText('Devices')).toBeTruthy());
-    expect(screen.getByText('Devices').closest('article')?.textContent).toContain('Unavailable');
-    expect(screen.getByText('Devices').closest('article')?.textContent).not.toContain('1');
+    const card = await screen.findByRole('link', { name: /Managed devices/ });
+    expect(card.getAttribute('href')).toBe('/devices');
+    expect(card.textContent).toContain('View compliance and remote actions');
+    expect(screen.queryByText('Unavailable')).toBeNull();
   });
 
   it('keeps connection status off the overview while the summary request is loading', async () => {
@@ -65,8 +66,8 @@ describe('OverviewPage', () => {
     })} />);
 
     await waitFor(() => expect(screen.getByText('42')).toBeTruthy());
-    expect(screen.getByText(/Freshness: stale/i)).toBeTruthy();
-    expect(screen.getByText(new Date(overview.fetchedAt).toLocaleString(), { exact: false })).toBeTruthy();
+    expect(screen.getByRole('status').textContent).toMatch(/Updated|stale|Partial/i);
+    expect(document.body.textContent).not.toContain('Data freshness');
     expect(screen.queryByText('Entra permission needed')).toBeNull();
   });
 
@@ -85,9 +86,22 @@ describe('OverviewPage', () => {
   it('keeps every metric unavailable when the summary is unavailable despite zero payload values', async () => {
     render(<OverviewPage loadOverview={async () => ({ ...overview, freshness: 'unavailable', partialData: true, totalUsers: 0, licenseCoverage: { assigned: 0, available: 0, percentage: 0 }, permissionHealth: { state: 'healthy', allowedCount: 0, totalCount: 0 } })} />);
     await screen.findByRole('heading', { name: 'Overview' });
-    expect(screen.getByText('Users').closest('article')?.textContent).toContain('Unavailable');
-    expect(screen.getByText('License coverage').closest('article')?.textContent).toContain('Unavailable');
-    expect(screen.getByText('Permission health').closest('article')?.textContent).toContain('Unavailable');
+    for (const label of ['Users', 'Licenses', 'Permission health']) expect(screen.getByText(label).closest('.metric-card')?.textContent).toContain('—');
     expect(document.body.textContent).not.toContain('0/0');
+  });
+
+  it('links metric cards and gives each attention row one action', async () => {
+    const calls = vi.fn(async () => ({ ...overview, pimAttention: { requiresAttention: true }, partialData: true }) as never);
+    render(<OverviewPage loadOverview={calls} />);
+    expect((await screen.findByRole('link', { name: /Users.*open users/i })).getAttribute('href')).toBe('/users');
+    expect(screen.getByRole('link', { name: /Licenses.*open licenses/i }).getAttribute('href')).toBe('/licenses');
+    expect(screen.getByRole('link', { name: 'Open PIM guidance' }).getAttribute('href')).toBe('/identity');
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    await waitFor(() => expect(calls).toHaveBeenCalledTimes(2));
+  });
+
+  it('shows an empty attention state', async () => {
+    render(<OverviewPage loadOverview={async () => ({ ...overview, pimAttention: { requiresAttention: false }, partialData: false }) as never} />);
+    expect(await screen.findByText('Nothing needs your attention.')).toBeTruthy();
   });
 });

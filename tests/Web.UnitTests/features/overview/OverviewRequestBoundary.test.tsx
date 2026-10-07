@@ -27,7 +27,7 @@ it('requests overview without querying connection health or a device search page
 
   render(<OverviewPage session={{ user: {}, workspace: { id: 'w', name: 'Customer', moduleAccess: ['users', 'devices', 'licenses'] } }} />);
 
-  await waitFor(() => expect(screen.getByText('No verified tenant total')).toBeTruthy());
+  await waitFor(() => expect(screen.getByText('View compliance and remote actions')).toBeTruthy());
   expect(requested).toContain('/api/overview');
   expect(requested).not.toContain('/api/workspaces/current/connection-health');
   expect(requested).not.toContain('/api/devices?pageSize=1');
