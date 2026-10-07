@@ -215,7 +215,7 @@ git commit -m "feat(web): accept tenant domains in onboarding"
 - Consumes: current `IInvitationRepository.RedeemAsync(string nonceHash, Guid tenantId, Guid tenantObjectId, string? email, string displayName, CancellationToken)` and the current hash-primary-key `ConsentChallenges` model.
 - Produces: a restricted-delete `ConsentChallenge.InvitationId -> PlatformInvitation.Id` FK and index `(InvitationId, ExpiresAt)`; preserve the unique `StateHash` primary key.
 
-- [ ] **Step 1: Write failing PostgreSQL migration and repository tests.**
+- [x] **Step 1: Write failing PostgreSQL migration and repository tests.**
 
 ```csharp
 [Fact] public async Task Migration_defaults_old_challenges_and_keeps_new_bindings_nullable()
@@ -232,20 +232,20 @@ git commit -m "feat(web): accept tenant domains in onboarding"
 
 Migrate a database to `20260926000100_AddPlatformWorkspaceGrants`, insert legacy records, then migrate to the new migration and assert old rows are retained with the default/null values.
 
-- [ ] **Step 2: Run the migration tests.**
+- [x] **Step 2: Run the migration tests.**
 
 Run: `dotnet test tests/Api.IntegrationTests/Api.IntegrationTests.csproj --filter FullyQualifiedName~ConsentFirstOnboardingMigrationTests`
 Expected: FAIL because the new columns, FK, and migration do not exist.
 
-- [ ] **Step 3: Add the additive migration and model mapping.**
+- [x] **Step 3: Add the additive migration and model mapping.**
 
 Add nullable `InvitationId` with `DeleteBehavior.Restrict`, `Purpose` with default `"workspace"`, index invitation plus expiry, and nullable redeemer object ID. Update the model snapshot without changing existing invitation/challenge keys.
 
-- [ ] **Step 4: Persist redeemer identity in the existing atomic redemption transaction.**
+- [x] **Step 4: Persist redeemer identity in the existing atomic redemption transaction.**
 
 In `WorkspaceOnboardingRepository.RedeemAsync`, set `RedeemedByTenantObjectId` in the same transaction as `RedeemedAt` and membership. Change connection state to `consent_required` only when the workspace is `awaiting_invitation`; a later invitation must not reset a recorded connection.
 
-- [ ] **Step 5: Run the persistence tests and commit.**
+- [x] **Step 5: Run the persistence tests and commit.**
 
 Run: `dotnet test tests/Api.IntegrationTests/Api.IntegrationTests.csproj --filter FullyQualifiedName~ConsentFirstOnboardingMigrationTests`
 Expected: PASS against PostgreSQL; prior rows survive and redeemer identity is committed atomically.

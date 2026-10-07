@@ -113,6 +113,15 @@ namespace Atea.UnifiedWorkplace.Api.Infrastructure.Persistence.Migrations
                     b.Property<DateTimeOffset>("ExpiresAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<Guid?>("InvitationId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Purpose")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasDefaultValue("workspace")
+                        .HasColumnType("character varying(32)");
+
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uuid");
 
@@ -120,6 +129,8 @@ namespace Atea.UnifiedWorkplace.Api.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid");
 
                     b.HasKey("StateHash");
+
+                    b.HasIndex("InvitationId", "ExpiresAt");
 
                     b.HasIndex("WorkspaceId", "TenantId", "ExpiresAt");
 
@@ -228,6 +239,9 @@ namespace Atea.UnifiedWorkplace.Api.Infrastructure.Persistence.Migrations
 
                     b.Property<DateTimeOffset?>("RedeemedAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("RedeemedByTenantObjectId")
+                        .HasColumnType("uuid");
 
                     b.Property<DateTimeOffset?>("RevokedAt")
                         .HasColumnType("timestamp with time zone");
@@ -445,11 +459,18 @@ namespace Atea.UnifiedWorkplace.Api.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("Atea.UnifiedWorkplace.Api.Infrastructure.Persistence.Entities.ConsentChallenge", b =>
                 {
+                    b.HasOne("Atea.UnifiedWorkplace.Api.Infrastructure.Persistence.Entities.PlatformInvitation", "Invitation")
+                        .WithMany()
+                        .HasForeignKey("InvitationId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("Atea.UnifiedWorkplace.Api.Infrastructure.Persistence.Entities.Workspace", "Workspace")
                         .WithMany()
                         .HasForeignKey("WorkspaceId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+
+                    b.Navigation("Invitation");
 
                     b.Navigation("Workspace");
                 });

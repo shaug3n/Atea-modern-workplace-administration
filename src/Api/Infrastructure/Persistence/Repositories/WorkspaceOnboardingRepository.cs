@@ -91,6 +91,7 @@ public sealed class WorkspaceOnboardingRepository(WorkplaceDbContext db) : IOnbo
         if (claimed != 1) return null;
 
         var invitation = await db.PlatformInvitations.Include(x => x.Workspace).SingleAsync(x => x.NonceHash == nonceHash, cancellationToken);
+        invitation.RedeemedByTenantObjectId = tenantObjectId;
         await db.PlatformInvitations
             .Where(x => x.WorkspaceId == invitation.WorkspaceId
                 && x.Id != invitation.Id
@@ -118,7 +119,8 @@ public sealed class WorkspaceOnboardingRepository(WorkplaceDbContext db) : IOnbo
             Outcome = "success", Timestamp = now,
             SafeMetadataJson = JsonSerializer.Serialize(new { resource = "invitation", role = invitation.Role })
         });
-        invitation.Workspace.ConnectionStatus = Atea.UnifiedWorkplace.Api.Features.Workspaces.ConnectionState.ConsentRequired;
+        if (invitation.Workspace.ConnectionStatus == Atea.UnifiedWorkplace.Api.Features.Workspaces.ConnectionState.AwaitingInvitation)
+            invitation.Workspace.ConnectionStatus = Atea.UnifiedWorkplace.Api.Features.Workspaces.ConnectionState.ConsentRequired;
         invitation.Workspace.UpdatedAt = now;
         await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);

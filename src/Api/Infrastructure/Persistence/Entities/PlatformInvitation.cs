@@ -12,6 +12,7 @@ public sealed class PlatformInvitation
     public string NonceHash { get; set; } = string.Empty;
     public DateTimeOffset ExpiresAt { get; set; }
     public DateTimeOffset? RedeemedAt { get; set; }
+    public Guid? RedeemedByTenantObjectId { get; set; }
     public DateTimeOffset? RevokedAt { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
     public Workspace Workspace { get; set; } = null!;
