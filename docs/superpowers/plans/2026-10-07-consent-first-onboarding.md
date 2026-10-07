@@ -541,7 +541,7 @@ git commit -m "feat: verify delegated permission coverage"
 - Produces: JSON manifest with Graph application ID `00000003-0000-0000-c000-000000000000`, one Graph `requiredResourceAccess` block, permission type `"Scope"`, and distinct ordinal-sorted scope names from `GraphScopeCatalog.CapabilityEvaluationScopes`.
 - Consumes: every operation-specific Graph scope group in `GraphScopeCatalog`; no environment tenant/client IDs, secrets, or tokens.
 
-- [ ] **Step 1: Write the failing manifest parity test.**
+- [x] **Step 1: Write the failing manifest parity test.**
 
 ```csharp
 [Fact] public void Manifest_matches_catalog_with_only_graph_delegated_scopes()
@@ -552,21 +552,21 @@ git commit -m "feat: verify delegated permission coverage"
 }
 ```
 
-- [ ] **Step 2: Run the test.**
+- [x] **Step 2: Run the test.**
 
 Run: `dotnet test tests/Api.UnitTests/Api.UnitTests.csproj --filter FullyQualifiedName~DelegatedPermissionManifestTests`
 Expected: FAIL because the manifest does not exist.
 
-- [ ] **Step 3: Add the catalog-derived manifest and test.**
+- [x] **Step 3: Add the catalog-derived manifest and test.**
 
 Keep permission names distinct and sorted; assert every scope in the operation-specific groups is covered by the manifest and the manifest has no application-permission entries or environment identifiers.
 
-- [ ] **Step 4: Run the manifest test.**
+- [x] **Step 4: Run the manifest test.**
 
 Run: `dotnet test tests/Api.UnitTests/Api.UnitTests.csproj --filter FullyQualifiedName~DelegatedPermissionManifestTests`
 Expected: PASS; changing the catalog without reviewing/updating the manifest fails CI.
 
-- [ ] **Step 5: Commit.**
+- [x] **Step 5: Commit.**
 
 ```bash
 git add infra/entra/delegated-permissions.json tests/Api.UnitTests/Graph/DelegatedPermissionManifestTests.cs
