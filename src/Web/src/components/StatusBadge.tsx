@@ -1,6 +1,6 @@
 import React from 'react';
 
-export type StatusTone = 'success' | 'warning' | 'danger' | 'info';
+export type StatusTone = 'success' | 'warning' | 'danger' | 'info' | 'neutral';
 
 export function StatusBadge({ tone = 'info', label, detail }: { tone?: StatusTone; label: string; detail?: string }) {
   return (
