@@ -27,7 +27,7 @@ const response: AuditEventsResponse = {
   fetchedAt: '2026-09-21T08:31:00Z',
   freshness: 'fresh',
   partialData: false,
-  authoritativeSourceNotice: 'Microsoft 365 audit logs remain authoritative.',
+  authoritativeSourceNotice: 'use Microsoft 365 audit logs.',
   nextContinuationToken: null,
 };
 
@@ -37,11 +37,11 @@ describe('AuditActivityPage', () => {
   it('renders workspace audit events with safe correlation references', async () => {
     render(<AuditActivityPage loadAuditEvents={async () => response} />);
 
-    await waitFor(() => expect(screen.getByRole('heading', { name: 'Audit activity' })).toBeTruthy());
-    expect(screen.getByText('users.disable')).toBeTruthy();
-    expect(screen.getByText('ada@example.com')).toBeTruthy();
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Platform activity' })).toBeTruthy());
+    expect(screen.getByText('Disabled user')).toBeTruthy();
+    expect(screen.getAllByText('ada@example.com').length).toBeGreaterThan(0);
     expect(document.body.textContent).toContain('safe-correlation-123');
-    expect(document.body.textContent).toContain('Microsoft 365 audit logs remain authoritative');
+    expect(document.body.textContent).toContain('use Microsoft 365 audit logs');
     expect(document.body.textContent).not.toContain('access_token');
   });
 
@@ -55,7 +55,7 @@ describe('AuditActivityPage', () => {
 
     expect(screen.getByRole('status').textContent).toContain('Loading audit activity');
     await waitFor(() => expect(screen.getByText('No audit activity is available for this workspace yet.')).toBeTruthy());
-    expect(screen.getByRole('alert').textContent).toContain('Audit data may be stale');
+    expect(screen.getByText('May be out of date')).toBeTruthy();
 
     cleanup();
     render(<AuditActivityPage loadAuditEvents={async () => { throw new Error('raw Graph payload with access_token'); }} />);
@@ -75,7 +75,7 @@ describe('AuditActivityPage', () => {
 
     await waitFor(() => expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy());
     screen.getByRole('button', { name: 'Retry' }).click();
-    await waitFor(() => expect(screen.getByText('users.disable')).toBeTruthy());
+    await waitFor(() => expect(screen.getByText('Disabled user')).toBeTruthy());
     expect(attempts).toBe(2);
   });
 
@@ -85,7 +85,7 @@ describe('AuditActivityPage', () => {
       ? new Promise<AuditEventsResponse>(resolve => { finishPage = resolve; })
       : { ...response, nextContinuationToken: 'page-2' };
     render(<AuditActivityPage loadAuditEvents={loadAuditEvents} />);
-    await waitFor(() => expect(screen.getByText('users.disable')).toBeTruthy());
+    await waitFor(() => expect(screen.getByText('Disabled user')).toBeTruthy());
     screen.getByRole('button', { name: 'Load next page' }).click();
     await waitFor(() => expect(screen.getByText('Loading audit activity…')).toBeTruthy());
     expect(screen.queryByText(/Fetched:/)).toBeNull();
@@ -99,7 +99,7 @@ describe('AuditActivityPage', () => {
     render(<AuditActivityPage loadAuditEvents={async () => ({ ...response, partialData: true, items: [{ ...response.items[0], graphRequestId: longReference }] })} />);
     const list = await screen.findByRole('list', { name: 'Audit activity' });
     expect(list.textContent).toContain(longReference);
-    expect(list.querySelector('code')?.className).toContain('audit-reference');
+    expect(list.querySelector('details')?.textContent).toContain(longReference);
     expect(screen.getByText(/partial results/i)).toBeTruthy();
     expect(document.querySelector('.audit-filters')?.compareDocumentPosition(list) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
@@ -108,8 +108,31 @@ describe('AuditActivityPage', () => {
     vi.stubGlobal('matchMedia', () => ({ matches: true, addEventListener: () => {}, removeEventListener: () => {} }));
     render(<AuditActivityPage loadAuditEvents={async () => ({ ...response, items: [{ ...response.items[0], failureCategory: 'role_required' }] })} />);
     const record = (await screen.findByRole('list', { name: 'Audit activity' })).querySelector('li')!;
-    fireEvent.click(screen.getByText('Details for users.disable'));
+    fireEvent.click(screen.getByText('Details'));
     expect(record.textContent).toContain('role_required');
     expect(record.textContent).toContain('{"reason":"reviewed"}');
+  });
+
+  it('keeps technical ids and JSON out of the visible row until Details is expanded', async () => {
+    render(<AuditActivityPage loadAuditEvents={async () => response} />);
+    const row = (await screen.findByText('Disabled user')).closest('tr')!;
+    const visible = Array.from(row.querySelectorAll('td')).filter(cell => !cell.querySelector('details')).map(cell => cell.textContent).join(' ');
+    expect(visible).not.toContain('safe-correlation-123');
+    expect(visible).not.toContain('actor-1');
+    expect(visible).not.toMatch(/[{}]/);
+    const details = row.querySelector('details')!;
+    expect(details.textContent).toContain('safe-correlation-123');
+    expect(details.textContent).toContain('{"reason":"reviewed"}');
+  });
+
+  it('humanizes unknown actions and uses a Person filter and info note', async () => {
+    render(<AuditActivityPage loadAuditEvents={async () => ({ ...response, items: [{ ...response.items[0], action: 'foo.bar_baz', targetId: '11111111-2222-3333-4444-555555555555', targetType: 'group' }] })} />);
+    expect(await screen.findByText('Foo bar baz')).toBeTruthy();
+    expect(screen.queryByText('foo.bar_baz')).toBeNull();
+    expect(screen.getByText('Unnamed group')).toBeTruthy();
+    expect(screen.getByLabelText('Person')).toBeTruthy();
+    expect(screen.queryByLabelText('Actor object ID')).toBeNull();
+    expect(screen.getByText(/Shows actions taken in Atea Unified Workplace/)).toBeTruthy();
+    expect(document.querySelector('td .status-badge, td [class*="status-badge"]')?.textContent).toContain('Succeeded');
   });
 });

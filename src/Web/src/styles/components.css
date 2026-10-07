@@ -880,3 +880,6 @@ td.numeric {
 .license-usage meter { width: 100%; height: 0.5rem; }
 .license-usage--high { color: var(--uw-warning-text, inherit); }
 .license-select { display: grid; gap: var(--atea-space-2); max-width: 24rem; }
+
+/* Platform activity */
+.audit-note { margin: 0; padding: var(--atea-space-3) var(--atea-space-4); border-left: 3px solid var(--uw-info, var(--uw-border)); background: var(--uw-surface-muted, transparent); color: var(--uw-muted); font-size: var(--atea-text-s); }
