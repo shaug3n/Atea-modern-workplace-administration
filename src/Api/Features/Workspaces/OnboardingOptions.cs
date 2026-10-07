@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Hosting;
+using System.Net;
 
 namespace Atea.UnifiedWorkplace.Api.Features.Workspaces;
 
@@ -16,9 +17,15 @@ public sealed class OnboardingOptions
         get
         {
             if (string.IsNullOrWhiteSpace(CustomerClientId) ||
+                !Guid.TryParse(CustomerClientId, out var customerClientId) ||
+                customerClientId == Guid.Empty ||
                 string.IsNullOrWhiteSpace(ApiApplicationIdUri) ||
                 string.IsNullOrWhiteSpace(ConsentSigningKey) ||
-                !Uri.TryCreate(ApiApplicationIdUri, UriKind.Absolute, out _) ||
+                !Uri.TryCreate(ApiApplicationIdUri, UriKind.Absolute, out var apiUri) ||
+                apiUri is null ||
+                apiUri.UserInfo.Length != 0 ||
+                apiUri.Query.Length != 0 ||
+                apiUri.Fragment.Length != 0 ||
                 !Uri.TryCreate(PublicBaseUrl, UriKind.Absolute, out var publicUri) ||
                 !Uri.TryCreate(ConsentRedirectUri, UriKind.Absolute, out var redirectUri) ||
                 publicUri is null ||
@@ -29,6 +36,7 @@ public sealed class OnboardingOptions
                 publicUri.Fragment.Length != 0 ||
                 redirectUri.Query.Length != 0 ||
                 redirectUri.Fragment.Length != 0 ||
+                publicUri.AbsolutePath != "/" ||
                 !string.Equals(publicUri.GetLeftPart(UriPartial.Authority), redirectUri.GetLeftPart(UriPartial.Authority), StringComparison.OrdinalIgnoreCase) ||
                 !string.Equals(redirectUri.AbsolutePath, "/onboarding/consent/callback", StringComparison.Ordinal))
             {
@@ -48,6 +56,13 @@ public sealed class OnboardingOptions
 
     public Uri Validate(IHostEnvironment environment)
     {
+        if (!string.IsNullOrWhiteSpace(TrustedProxyAddresses) &&
+            TrustedProxyAddresses.Split(',', StringSplitOptions.TrimEntries)
+                .Any(value => value.Length == 0 || !IPAddress.TryParse(value, out _)))
+        {
+            throw new InvalidOperationException("Onboarding:TrustedProxyAddresses must contain only explicit IP addresses.");
+        }
+
         if (string.IsNullOrWhiteSpace(PublicBaseUrl) ||
             string.Equals(PublicBaseUrl.TrimEnd('/'), "https://workplace.example", StringComparison.OrdinalIgnoreCase) ||
             !Uri.TryCreate(PublicBaseUrl, UriKind.Absolute, out var publicUri) ||
@@ -60,22 +75,36 @@ public sealed class OnboardingOptions
             throw new InvalidOperationException("Onboarding:PublicBaseUrl must be a configured absolute HTTP(S) URL.");
         }
 
-        if (publicUri.Scheme == Uri.UriSchemeHttp && !environment.IsDevelopment())
+        if (publicUri.Scheme == Uri.UriSchemeHttp &&
+            (!environment.IsDevelopment() || !publicUri.IsLoopback))
         {
-            throw new InvalidOperationException("Onboarding:PublicBaseUrl must use HTTPS outside Development.");
+            throw new InvalidOperationException("Onboarding:PublicBaseUrl must use HTTPS outside localhost Development.");
         }
 
         var consentConfigured = !string.IsNullOrWhiteSpace(ConsentRedirectUri) || !string.IsNullOrWhiteSpace(ConsentSigningKey);
+        Uri? redirectUri = null;
         if (consentConfigured && string.IsNullOrWhiteSpace(ConsentRedirectUri))
         {
             throw new InvalidOperationException("Onboarding:ConsentRedirectUri is required when consent is configured.");
         }
 
         if (consentConfigured &&
-            (!Uri.TryCreate(ConsentRedirectUri, UriKind.Absolute, out var redirectUri) || redirectUri is null ||
-             (redirectUri.Scheme != Uri.UriSchemeHttp && redirectUri.Scheme != Uri.UriSchemeHttps)))
+            (!Uri.TryCreate(ConsentRedirectUri, UriKind.Absolute, out redirectUri) || redirectUri is null ||
+             (redirectUri.Scheme != Uri.UriSchemeHttp && redirectUri.Scheme != Uri.UriSchemeHttps) ||
+             redirectUri.UserInfo.Length != 0 ||
+             redirectUri.Query.Length != 0 ||
+             redirectUri.Fragment.Length != 0 ||
+             publicUri.AbsolutePath != "/" ||
+             redirectUri.AbsolutePath != "/onboarding/consent/callback" ||
+             !string.Equals(publicUri.GetLeftPart(UriPartial.Authority), redirectUri.GetLeftPart(UriPartial.Authority), StringComparison.OrdinalIgnoreCase)))
         {
-            throw new InvalidOperationException("Onboarding:ConsentRedirectUri must be an absolute HTTP(S) URL.");
+            throw new InvalidOperationException("Onboarding:ConsentRedirectUri must be the exact public-origin consent callback.");
+        }
+
+        if (consentConfigured && redirectUri!.Scheme == Uri.UriSchemeHttp &&
+            (!environment.IsDevelopment() || !redirectUri.IsLoopback))
+        {
+            throw new InvalidOperationException("Onboarding:ConsentRedirectUri must use HTTPS outside localhost Development.");
         }
 
         if (consentConfigured && string.IsNullOrWhiteSpace(ConsentSigningKey))
@@ -99,6 +128,23 @@ public sealed class OnboardingOptions
         }
 
         return publicUri;
+    }
+
+    public IReadOnlyList<IPAddress> GetTrustedProxyAddresses()
+    {
+        if (string.IsNullOrWhiteSpace(TrustedProxyAddresses))
+        {
+            return [];
+        }
+
+        var values = TrustedProxyAddresses.Split(',', StringSplitOptions.TrimEntries);
+        if (values.Length == 0 || values.Any(value => value.Length == 0) ||
+            values.Any(value => !IPAddress.TryParse(value, out _)))
+        {
+            return [];
+        }
+
+        return values.Select(value => IPAddress.Parse(value)).Distinct().ToArray();
     }
 
     private static bool IsHttpsOrLocalhost(Uri uri) =>

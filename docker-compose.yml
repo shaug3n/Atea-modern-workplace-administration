@@ -15,6 +15,9 @@ services:
       AteaAdmin__LocalDevelopment__ObjectId: ${AteaAdmin__LocalDevelopment__ObjectId:-00000000-0000-0000-0000-000000000001}
       AteaAdmin__LocalDevelopment__DisplayName: ${AteaAdmin__LocalDevelopment__DisplayName:-Local Atea Administrator}
       AteaAdmin__LocalDevelopment__AllowAllWorkspaces: ${AteaAdmin__LocalDevelopment__AllowAllWorkspaces:-true}
+      Onboarding__CustomerClientId: ${VITE_ENTRA_CLIENT_ID:-}
+      Onboarding__ApiApplicationIdUri: ${AzureAd__Audience:-api://00000000-0000-0000-0000-000000000000}
+      Onboarding__TrustedProxyAddresses: ${Onboarding__TrustedProxyAddresses:-}
       Onboarding__PublicBaseUrl: ${Onboarding__PublicBaseUrl:-http://localhost:5173}
       Onboarding__ConsentRedirectUri: ${Onboarding__ConsentRedirectUri:-http://localhost:5173/onboarding/consent/callback}
       Onboarding__ConsentSigningKey: ${Onboarding__ConsentSigningKey:-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=}
@@ -31,7 +34,7 @@ services:
       args:
         VITE_ENTRA_CLIENT_ID: ${VITE_ENTRA_CLIENT_ID:-}
         VITE_ENTRA_API_SCOPE: ${VITE_ENTRA_API_SCOPE:-}
-        VITE_ENTRA_AUTHORITY: ${VITE_ENTRA_AUTHORITY:-}
+        VITE_ENTRA_AUTHORITY: ${VITE_ENTRA_AUTHORITY:-https://login.microsoftonline.com/organizations}
         VITE_ENTRA_REDIRECT_URI: ${VITE_ENTRA_REDIRECT_URI:-}
         VITE_ADMIN_AUTH_MODE: ${VITE_ADMIN_AUTH_MODE:-local}
         VITE_PLATFORM_ADMIN_CLIENT_ID: ${VITE_PLATFORM_ADMIN_CLIENT_ID:-}
@@ -42,7 +45,7 @@ services:
     environment:
       VITE_API_PROXY_TARGET: http://api:8080
       VITE_ENTRA_CLIENT_ID: ${VITE_ENTRA_CLIENT_ID:-}
-      VITE_ENTRA_AUTHORITY: ${VITE_ENTRA_AUTHORITY:-}
+      VITE_ENTRA_AUTHORITY: ${VITE_ENTRA_AUTHORITY:-https://login.microsoftonline.com/organizations}
       VITE_ENTRA_API_SCOPE: ${VITE_ENTRA_API_SCOPE:-}
       VITE_ENTRA_REDIRECT_URI: ${VITE_ENTRA_REDIRECT_URI:-}
       VITE_ADMIN_AUTH_MODE: ${VITE_ADMIN_AUTH_MODE:-local}

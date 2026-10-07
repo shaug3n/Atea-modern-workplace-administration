@@ -186,6 +186,8 @@ jobs:
       AZURE_MIGRATION_JOB_NAME: ${{ vars.AZURE_MIGRATION_JOB_NAME }}
       AZURE_APP_PUBLIC_URL: ${{ vars.AZURE_APP_PUBLIC_URL }}
       AZURE_SMOKE_TEST_SOURCE_CIDR: ${{ vars.AZURE_SMOKE_TEST_SOURCE_CIDR }}
+      CUSTOMER_SPA_CLIENT_ID: ${{ vars.CUSTOMER_SPA_CLIENT_ID }}
+      TRUSTED_PROXY_ADDRESSES: ${{ vars.ONBOARDING_TRUSTED_PROXY_ADDRESSES || '' }}
       PLATFORM_HOME_TENANT_ID: ${{ vars.PLATFORM_HOME_TENANT_ID }}
       PLATFORM_ADMIN_OBJECT_IDS_JSON: ${{ vars.PLATFORM_ADMIN_OBJECT_IDS_JSON }}
     outputs:
@@ -258,6 +260,7 @@ jobs:
             containerAppName="$AZURE_CONTAINER_APP_NAME" registryLoginServer="$registry" imageRepository="$IMAGE_REPOSITORY" imageTag="$IMAGE_TAG" \
             workloadIdentityResourceId="$identity_id" workloadIdentityClientId="$identity_client" keyVaultUri="$key_vault" \
             logAnalyticsWorkspaceResourceId="$logs_id" entraApiClientId="$ENTRA_API_CLIENT_ID" entraApiAudience="$ENTRA_API_AUDIENCE" \
+            customerSpaClientId="$CUSTOMER_SPA_CLIENT_ID" trustedProxyAddresses="$TRUSTED_PROXY_ADDRESSES" \
             consentRedirectUri="$AZURE_APP_PUBLIC_URL/onboarding/consent/callback" customerRedirectUri="$AZURE_APP_PUBLIC_URL/auth/callback" \
             platformAdminRedirectUri="$AZURE_APP_PUBLIC_URL/admin/auth/callback" platformHomeTenantId="$PLATFORM_HOME_TENANT_ID" \
             platformAdminObjectIds="$PLATFORM_ADMIN_OBJECT_IDS_JSON" dataProtectionBlobUri="$key_blob" dataProtectionKeyIdentifier="$key_id" \
@@ -267,6 +270,7 @@ jobs:
             containerAppName="$AZURE_CONTAINER_APP_NAME" registryLoginServer="$registry" imageRepository="$IMAGE_REPOSITORY" imageTag="$IMAGE_TAG" \
             workloadIdentityResourceId="$identity_id" workloadIdentityClientId="$identity_client" keyVaultUri="$key_vault" \
             logAnalyticsWorkspaceResourceId="$logs_id" entraApiClientId="$ENTRA_API_CLIENT_ID" entraApiAudience="$ENTRA_API_AUDIENCE" \
+            customerSpaClientId="$CUSTOMER_SPA_CLIENT_ID" trustedProxyAddresses="$TRUSTED_PROXY_ADDRESSES" \
             consentRedirectUri="$AZURE_APP_PUBLIC_URL/onboarding/consent/callback" customerRedirectUri="$AZURE_APP_PUBLIC_URL/auth/callback" \
             platformAdminRedirectUri="$AZURE_APP_PUBLIC_URL/admin/auth/callback" platformHomeTenantId="$PLATFORM_HOME_TENANT_ID" \
             platformAdminObjectIds="$PLATFORM_ADMIN_OBJECT_IDS_JSON" dataProtectionBlobUri="$key_blob" dataProtectionKeyIdentifier="$key_id" \

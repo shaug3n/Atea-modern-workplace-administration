@@ -39,6 +39,12 @@ param entraClientId string
 @description('Separate Entra API audience selected for this environment.')
 param entraAudience string
 
+@description('Customer SPA client ID linked to this API registration.')
+param customerSpaClientId string
+
+@description('Explicit ingress proxy IP addresses trusted for forwarded client IPs.')
+param trustedProxyAddresses string = ''
+
 @description('Exact API consent callback URI selected for this environment.')
 param consentRedirectUri string
 
@@ -264,6 +270,18 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
             {
               name: 'Onboarding__PublicBaseUrl'
               value: publicBaseUrl
+            }
+            {
+              name: 'Onboarding__CustomerClientId'
+              value: customerSpaClientId
+            }
+            {
+              name: 'Onboarding__ApiApplicationIdUri'
+              value: entraAudience
+            }
+            {
+              name: 'Onboarding__TrustedProxyAddresses'
+              value: trustedProxyAddresses
             }
             {
               name: 'Onboarding__ConsentRedirectUri'

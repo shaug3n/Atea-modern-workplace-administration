@@ -26,7 +26,6 @@ using Atea.UnifiedWorkplace.Api.Infrastructure.Configuration;
 using Microsoft.Extensions.Options;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.RateLimiting;
-using System.Net;
 using System.Threading.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -46,14 +45,18 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
     options.KnownIPNetworks.Clear();
     options.KnownProxies.Clear();
     options.ForwardLimit = 1;
-    var configuredProxies = builder.Configuration["Onboarding:TrustedProxyAddresses"] ?? string.Empty;
-    foreach (var value in configuredProxies.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+    var onboardingProxyOptions = new OnboardingOptions
     {
-        if (IPAddress.TryParse(value, out var proxyAddress))
-        {
-            options.KnownProxies.Add(proxyAddress);
-            options.ForwardedHeaders = ForwardedHeaders.XForwardedFor;
-        }
+        TrustedProxyAddresses = builder.Configuration["Onboarding:TrustedProxyAddresses"] ?? string.Empty
+    };
+    var configuredProxies = onboardingProxyOptions.GetTrustedProxyAddresses();
+    foreach (var proxyAddress in configuredProxies)
+    {
+        options.KnownProxies.Add(proxyAddress);
+    }
+    if (configuredProxies.Count > 0)
+    {
+        options.ForwardedHeaders = ForwardedHeaders.XForwardedFor;
     }
 });
 builder.Services.AddRateLimiter(options =>
