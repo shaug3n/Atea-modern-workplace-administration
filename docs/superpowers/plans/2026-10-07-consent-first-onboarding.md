@@ -266,7 +266,7 @@ git commit -m "feat: persist invitation consent bindings"
 - Produces: `CreateInvitation(Guid workspaceId, Guid tenantId, Guid invitationId, DateTimeOffset invitationExpiresAt) -> ConsentChallenge` and `TryReadInvitation(string challenge, Guid expectedWorkspaceId, Guid expectedTenantId, Guid expectedInvitationId, out ConsentChallengePayload payload) -> bool`.
 - Produces: verified invitation payload fields `Purpose`, `CorrelationId`, `WorkspaceId`, `TenantId`, `InvitationId`, `ExpiresAt`; HMAC validation precedes field use/database access.
 
-- [ ] **Step 1: Add failing challenge-format tests.**
+- [x] **Step 1: Add failing challenge-format tests.**
 
 ```csharp
 [Fact] public void Invitation_challenge_expires_at_twenty_minutes_or_invitation_expiry()
@@ -283,21 +283,21 @@ git commit -m "feat: persist invitation consent bindings"
 
 Also assert tampered signature, unsupported purpose/version, malformed timestamp, oversized challenge, expired challenge, and wrong workspace/tenant/invitation are rejected with no repository call.
 
-- [ ] **Step 2: Run the unit tests.**
+- [x] **Step 2: Run the unit tests.**
 
 Run: `dotnet test tests/Api.UnitTests/Api.UnitTests.csproj --filter FullyQualifiedName~ConsentChallengeTests`
 Expected: FAIL because invitation-purpose creation and parsing are missing.
 
-- [ ] **Step 3: Implement invitation challenge creation/parsing in `ConsentChallengeService`.**
+- [x] **Step 3: Implement invitation challenge creation/parsing in `ConsentChallengeService`.**
 
 Retain the legacy five-field payload and ten-minute expiry. Sign the versioned invitation fields with the existing HMAC-SHA256 key, use fixed-time signature comparison, strict parsing, and no raw nonce/email/claims. Clamp invitation expiry to `min(now + 20 minutes, invitation.ExpiresAt)` and keep state persistence hash-only.
 
-- [ ] **Step 4: Run consent challenge tests.**
+- [x] **Step 4: Run consent challenge tests.**
 
 Run: `dotnet test tests/Api.UnitTests/Api.UnitTests.csproj --filter FullyQualifiedName~ConsentChallengeTests`
 Expected: PASS for both state formats, including tamper, expiry, size and cross-binding cases.
 
-- [ ] **Step 5: Commit.**
+- [x] **Step 5: Commit.**
 
 ```bash
 git add src/Api/Features/Workspaces/ConsentChallengeService.cs tests/Api.UnitTests/Workspaces/ConsentChallengeTests.cs
