@@ -46,8 +46,9 @@ function AuthenticatedContent({ children }: { children: ReactNode }) {
   const [error, setError] = useState<string | null>(null);
   const account = accounts[0] ?? null;
   const value = useMemo(() => createAuthActions(instance, account, setError), [account, instance]);
+  const isPublicInvitationRoute = /^\/invitations\/[^/]+$/.test(window.location.pathname);
 
-  if (!isAuthenticated) {
+  if (!isAuthenticated && !isPublicInvitationRoute) {
     const signInInProgress = inProgress !== InteractionStatus.None;
     return <main role="main"><h1>{messages.authSignInTitle}</h1><button type="button" disabled={signInInProgress} onClick={() => value.signIn().catch(() => { console.error('MSAL sign-in failed'); setError(messages.authSignInError); })}>{inProgress === InteractionStatus.Startup ? messages.authPreparing : messages.authSignIn}</button>{error && <p role="alert">{error}</p>}</main>;
   }

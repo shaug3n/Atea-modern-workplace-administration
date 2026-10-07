@@ -12,6 +12,7 @@ import { useWorkspaceIssueReporter } from '../notifications/WorkspaceNotificatio
 import type { CapabilitySnapshot } from '../capabilities/capabilityTypes';
 import { useCapabilities, type CapabilityLoader } from '../capabilities/useCapabilities';
 import { InvitationRedemptionPage } from '../features/invitations/InvitationRedemptionPage';
+import { InvitationLandingPage } from '../features/invitations/InvitationLandingPage';
 import { DevicesPage } from '../features/devices/DevicesPage';
 import type { ConnectionHealthLoader } from '../features/overview/OverviewPage';
 import { messages } from './messages';
@@ -20,6 +21,9 @@ import { WorkspaceNotificationsProvider } from '../notifications/WorkspaceNotifi
 export type SessionLoader = () => Promise<AppSession>;
 
 export function App({ loadCapabilities, loadSession, loadConnectionHealth, themePreferenceStore, signInAction }: { loadCapabilities?: CapabilityLoader; loadSession?: SessionLoader; loadConnectionHealth?: ConnectionHealthLoader; themePreferenceStore?: ThemePreferenceStore; signInAction?: () => Promise<void> }) {
+  if (isInvitationPath(window.location.pathname)) {
+    return <InvitationLandingPage nonce={window.location.pathname.slice('/invitations/'.length)} />;
+  }
   if (loadCapabilities && loadSession) {
     return <ThemeProvider preferenceStore={themePreferenceStore}><AppExperience loadCapabilities={loadCapabilities} loadSession={loadSession} loadConnectionHealth={loadConnectionHealth} signInAction={signInAction} /></ThemeProvider>;
   }

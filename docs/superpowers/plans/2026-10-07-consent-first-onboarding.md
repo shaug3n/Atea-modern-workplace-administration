@@ -684,7 +684,7 @@ git commit -m "feat(infra): configure consent-first Entra apps"
 - Produces: `fetchInvitationPreview(nonce)`, `startInvitationConsent(nonce)`, and `resumeInvitationConsent(nonce, state, tenant?, errorCode?)` using same-origin JSON fetch without a bearer token.
 - Produces: `InvitationLandingPage({ nonce }: { nonce: string })`; no workspace/session/capability API calls before consent or sign-in.
 
-- [ ] **Step 1: Add failing landing/pending-flow tests.**
+- [x] **Step 1: Add failing landing/pending-flow tests.**
 
 ```tsx
 it('renders anonymous preview and never asks MSAL for a token', async () => {
@@ -710,28 +710,28 @@ expect(screen.getByRole('button', { name: 'Connect your Microsoft 365 tenant' })
 
 The expanded permission detail must show this exact catalog set: `User.Read`, `User.Read.All`, `Group.Read.All`, `Directory.Read.All`, `User.Create`, `User.ReadWrite.All`, `User.EnableDisableAccount.All`, `User-PasswordProfile.ReadWrite.All`, `User.RevokeSessions.All`, `GroupMember.ReadWrite.All`, `LicenseAssignment.ReadWrite.All`, `RoleManagement.Read.Directory`, `RoleManagement.ReadWrite.Directory`, `DeviceManagementManagedDevices.Read.All`, `DeviceManagementManagedDevices.ReadWrite.All`, `DeviceManagementManagedDevices.PrivilegedOperations.All`, `BitlockerKey.ReadBasic.All`, `BitlockerKey.Read.All`, `DeviceLocalCredential.ReadBasic.All`, `DeviceLocalCredential.Read.All`, `UserAuthenticationMethod.Read.All`, `UserAuthenticationMethod.ReadWrite.All`, and `MailboxSettings.Read`. A member preview presents normal sign-in/redemption rather than anonymous consent. Missing/expired preview returns **“Your invitation is no longer available. Ask Atea for a new invitation.”**
 
-- [ ] **Step 2: Run the focused Vitest tests.**
+- [x] **Step 2: Run the focused Vitest tests.**
 
 Run: `npm run test:behavior --prefix src/Web -- --run InvitationLandingPage`
 Run: `npm run test:behavior --prefix src/Web -- --run pendingFlow`
 Expected: FAIL because invitation preview/start and tab transaction helpers do not exist.
 
-- [ ] **Step 3: Implement the tab-scoped pending transaction helper.**
+- [x] **Step 3: Implement the tab-scoped pending transaction helper.**
 
 Persist nonce, expected challenge, expiry, flow kind and pending step before redirect. Compare callbacks to the exact stored challenge, enforce expiry, clear on completion/terminal failure, never move transaction data to local storage, URL parameters, telemetry, or another origin.
 
-- [ ] **Step 4: Implement the anonymous landing route and copy.**
+- [x] **Step 4: Implement the anonymous landing route and copy.**
 
 Render the single neutral setup panel with expandable exact scope details, status/error announcements, focus movement to asynchronous result headings, narrow-screen reflow, existing Atea logo/Inter/themes, and no third-party resources. Use the primary action text **“Connect your Microsoft 365 tenant”**. Do not reveal invitee identity, internal role/module assignments, tenant ID, or health diagnostics anonymously.
 
-- [ ] **Step 5: Run invitation UI tests and build.**
+- [x] **Step 5: Run invitation UI tests and build.**
 
 Run: `npm run test:behavior --prefix src/Web -- --run InvitationLandingPage`
 Run: `npm run test:behavior --prefix src/Web -- --run pendingFlow`
 Run: `npm run build --prefix src/Web`
 Expected: PASS; anonymous preview/start use no API token and tab state is written before navigation.
 
-- [ ] **Step 6: Commit.**
+- [x] **Step 6: Commit.**
 
 ```bash
 git add src/Web/src/features/invitations/InvitationLandingPage.tsx src/Web/src/features/invitations/pendingFlow.ts src/Web/src/features/invitations/invitationApi.ts src/Web/src/features/invitations/InvitationRedemptionPage.tsx src/Web/src/app/App.tsx src/Web/src/auth/AuthProvider.tsx src/Web/src/main.tsx src/Web/src/messages/en.ts tests/Web.UnitTests/features/invitations/InvitationLandingPage.test.tsx tests/Web.UnitTests/features/invitations/pendingFlow.test.ts

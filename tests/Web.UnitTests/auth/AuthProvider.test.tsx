@@ -37,7 +37,10 @@ function Harness() {
 }
 
 describe('AuthProvider behavior', () => {
-  afterEach(cleanup);
+  afterEach(() => {
+    cleanup();
+    window.history.replaceState(null, '', '/');
+  });
 
   beforeEach(() => {
     auth.authenticated = true;
@@ -71,6 +74,17 @@ describe('AuthProvider behavior', () => {
     render(<AuthProvider instance={auth.instance as never}><Harness /></AuthProvider>);
     expect((screen.getByRole('button', { name: 'Preparing sign-in…' }) as HTMLButtonElement).disabled).toBe(true);
     expect(auth.instance.loginRedirect).not.toHaveBeenCalled();
+  });
+
+  it('renders invitation routes anonymously without entering the sign-in guard', () => {
+    auth.authenticated = false;
+    window.history.replaceState(null, '', `/invitations/${'A'.repeat(43)}`);
+
+    render(<AuthProvider instance={auth.instance as never}><p>public invitation surface</p></AuthProvider>);
+
+    expect(screen.getByText('public invitation surface')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Sign in' })).toBeNull();
+    expect(auth.instance.acquireTokenSilent).not.toHaveBeenCalled();
   });
 
   it('does not begin a second sign-in while MSAL handles a redirect', () => {
