@@ -1271,17 +1271,6 @@ p {
   letter-spacing: 0.04em;
 }
 
-.button-primary {
-  border-color: var(--uw-primary);
-  background: var(--uw-primary);
-  color: var(--uw-on-primary);
-}
-
-.button-primary:hover {
-  border-color: var(--uw-primary-hover);
-  background: var(--uw-primary-hover);
-}
-
 .modal-backdrop {
   position: fixed;
   inset: 0;

@@ -1,0 +1,189 @@
+:root {
+  --uw-header-height: 4rem;
+  --uw-gap-2xs: var(--atea-space-1);
+  --uw-gap-xs: var(--atea-space-2);
+  --uw-gap-sm: var(--atea-space-3);
+  --uw-gap-md: var(--atea-space-4);
+  --uw-gap-lg: var(--atea-space-6);
+  --uw-gap-xl: var(--atea-space-8);
+  --uw-font-page-title: 1.75rem;
+  --uw-font-section-title: 1.125rem;
+  --uw-font-body: 0.9375rem;
+  --uw-font-meta: 0.8125rem;
+  --uw-font-metric: 2rem;
+  --uw-radius-sm: 4px;
+  --uw-radius-md: 8px;
+  --uw-radius-lg: 12px;
+  --uw-elevation-0: none;
+  --uw-elevation-1: 0 1px 2px rgb(31 35 37 / 12%);
+  --uw-elevation-2: 0 4px 12px rgb(31 35 37 / 16%);
+  --uw-elevation-3: 0 12px 32px rgb(31 35 37 / 24%);
+  --uw-status-success-fg: #14532d;
+  --uw-status-success-bg: #dcfce7;
+  --uw-status-success-border: #16a34a;
+  --uw-status-warning-fg: #78350f;
+  --uw-status-warning-bg: #fef3c7;
+  --uw-status-warning-border: #b45309;
+  --uw-status-danger-fg: #991b1b;
+  --uw-status-danger-bg: #fee2e2;
+  --uw-status-danger-border: #dc2626;
+  --uw-status-info-fg: #1e3a8a;
+  --uw-status-info-bg: #dbeafe;
+  --uw-status-info-border: #2563eb;
+  --uw-status-neutral-fg: var(--uw-muted);
+  --uw-status-neutral-bg: var(--uw-surface-subtle);
+  --uw-status-neutral-border: var(--uw-border-strong);
+  --uw-focus-ring: 0 0 0 2px var(--uw-focus-gap), 0 0 0 4px var(--uw-focus);
+}
+
+:root[data-theme='dark'] {
+  --uw-elevation-1: 0 1px 2px rgb(0 0 0 / 50%), 0 0 0 1px var(--uw-border);
+  --uw-elevation-2: 0 4px 12px rgb(0 0 0 / 60%), 0 0 0 1px var(--uw-border);
+  --uw-elevation-3: 0 12px 32px rgb(0 0 0 / 70%), 0 0 0 1px var(--uw-border);
+  --uw-status-success-fg: #86efac;
+  --uw-status-success-bg: #14291d;
+  --uw-status-success-border: #22c55e;
+  --uw-status-warning-fg: #fcd34d;
+  --uw-status-warning-bg: #2a2110;
+  --uw-status-warning-border: #f59e0b;
+  --uw-status-danger-fg: #fca5a5;
+  --uw-status-danger-bg: #2d1517;
+  --uw-status-danger-border: #ef4444;
+  --uw-status-info-fg: #93c5fd;
+  --uw-status-info-bg: #14213d;
+  --uw-status-info-border: #3b82f6;
+}
+
+html {
+  scroll-padding-top: var(--uw-header-height);
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+summary:focus-visible,
+[tabindex]:not([tabindex='-1']):focus-visible {
+  outline: none;
+  box-shadow: var(--uw-focus-ring);
+}
+
+summary {
+  outline: none;
+}
+
+input[type='checkbox'],
+input[type='radio'] {
+  width: auto;
+}
+
+.checkbox-field {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--uw-gap-sm);
+}
+
+.checkbox-field input {
+  margin-top: 0.25rem;
+  flex: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms;
+    animation-iteration-count: 1;
+    transition-duration: 0.01ms;
+    scroll-behavior: auto;
+  }
+}
+
+/* Button hierarchy: primary, secondary, tertiary, danger, icon. A bare button looks secondary. */
+button,
+.button--secondary {
+  min-height: 2.5rem;
+  padding: 0 var(--uw-gap-md);
+  border: 1px solid var(--uw-border-strong);
+  border-radius: var(--uw-radius-md);
+  background: var(--uw-surface);
+  color: var(--uw-heading);
+}
+
+button:hover,
+.button--secondary:hover {
+  border-color: var(--uw-primary);
+}
+
+.button--primary {
+  border-color: var(--uw-primary);
+  background: var(--uw-primary);
+  color: var(--uw-on-primary);
+}
+
+.button--primary:hover {
+  border-color: var(--uw-primary-hover);
+  background: var(--uw-primary-hover);
+}
+
+.button--tertiary,
+.button--quiet,
+.table-action {
+  border-color: transparent;
+  background: transparent;
+  color: var(--uw-link);
+}
+
+.button--tertiary:hover,
+.button--quiet:hover,
+.table-action:hover {
+  border-color: transparent;
+  color: var(--uw-link-hover);
+  text-decoration: underline;
+}
+
+.button--danger {
+  border-color: var(--uw-status-danger-border);
+  background: var(--uw-surface);
+  color: var(--uw-status-danger-fg);
+}
+
+.button--danger:hover {
+  border-color: var(--uw-status-danger-fg);
+  background: var(--uw-status-danger-bg);
+}
+
+.button--danger-solid,
+.button--danger-solid:hover {
+  border-color: var(--uw-status-danger-border);
+  background: var(--uw-status-danger-fg);
+  color: var(--uw-surface);
+}
+
+.button--icon {
+  display: inline-grid;
+  width: 2.5rem;
+  min-height: 2.5rem;
+  padding: 0;
+  place-items: center;
+  border-color: transparent;
+  background: transparent;
+  color: var(--uw-heading);
+}
+
+.button--sm,
+.table-action {
+  min-height: 2rem;
+  padding: 0 var(--uw-gap-sm);
+}
+
+.button--primary:disabled,
+.button--secondary:disabled,
+.button--danger:disabled,
+.button--danger-solid:disabled,
+button:disabled {
+  border-color: var(--uw-border-strong);
+  background: var(--uw-surface-subtle);
+  color: var(--uw-muted);
+}
