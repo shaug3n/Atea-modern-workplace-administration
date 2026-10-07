@@ -2,6 +2,10 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { messages } from '../../app/messages';
 import { useApi } from '../../auth/useApi';
 import { DataFreshness } from '../../components/DataFreshness';
+import { MetricCard } from '../../components/MetricCard';
+import { StatusBadge } from '../../components/StatusBadge';
+import { TechnicalDetails } from '../../components/TechnicalDetails';
+import { formatDateTime, formatRelative } from '../../format/dateTime';
 import { ConfirmationDialog } from '../../components/ConfirmationDialog';
 import { executeDeviceAction, fetchDevices, type DeviceAction, type DeviceFilters, type DevicesResponse, type ManagedDevice } from './devicesApi';
 import type { ApiFetch } from '../users/userDetailApi';
@@ -155,20 +159,19 @@ export function DevicesPage({ loadDevices, capabilities = [], moduleAssigned = t
 
   return (
     <section className="devices-page" aria-label="Devices">
-      <WorkspacePageHeader eyebrow={messages.devicesEyebrow} title={messages.devicesTitle} description={messages.devicesIntro} actions={<div className="page-header__actions">
-          <button type="button" onClick={() => setRefreshVersion((version) => version + 1)} disabled={loading}>{messages.usersRefreshAction}</button>
-          <button type="button" onClick={() => void exportDevices()} disabled={exportPending}>Export filtered CSV</button>
+      <WorkspacePageHeader eyebrow={messages.devicesEyebrow} title={messages.devicesTitle} description={messages.devicesIntro} meta={!currentFailed && currentResult ? <DataFreshness fetchedAt={currentResult.fetchedAt} freshness={currentResult.freshness === 'live' ? 'fresh' : currentResult.freshness === 'stale' ? 'stale' : 'unavailable'} partialData={currentResult.partialData} message={currentResult.error ? 'Some device data could not be loaded.' : undefined} source="Microsoft Graph" /> : undefined} actions={<div className="page-header__actions">
+          <button type="button" className="button button--secondary" onClick={() => setRefreshVersion((version) => version + 1)} disabled={loading}>{messages.usersRefreshAction}</button>
+          <button type="button" className="button button--secondary" onClick={() => void exportDevices()} disabled={exportPending}>Export filtered CSV</button>
         </div>} />
 
       {exportMessage && <p role="status">{exportMessage}</p>}
       {exportError && <p role="alert">{exportError}</p>}
 
-      {!currentFailed && currentResult && <DataFreshness fetchedAt={currentResult.fetchedAt} freshness={currentResult.freshness === 'live' ? 'fresh' : currentResult.freshness === 'stale' ? 'stale' : 'unavailable'} partialData={currentResult.partialData} message={currentResult.error ? 'Some device data could not be loaded.' : undefined} />}
       {!currentFailed && currentResult && !currentResult.error && <div className="device-summary-grid" aria-label="Device summary">
-        <SummaryCard label="Managed devices" value={String(currentResult.total)} detail="In the current result" />
-        <SummaryCard label="Compliant" value={String(summary?.compliant ?? 0)} detail="Ready for work" />
-        <SummaryCard label="Noncompliant" value={String(summary?.noncompliant ?? 0)} detail="Needs attention" />
-        <SummaryCard label="Last check-in" value={summary?.lastCheckIn ?? messages.devicesNotSynced} detail="Most recent device signal" />
+        <MetricCard label="Managed devices" value={currentResult.total} detail="In the current result" />
+        <MetricCard label="Compliant" value={summary?.compliant ?? 0} detail="Ready for work" />
+        <MetricCard label="Noncompliant" value={summary?.noncompliant ?? 0} detail="Needs attention" />
+        <MetricCard label="Last check-in" value={summary?.lastCheckInRelative ?? messages.devicesNotSynced} valueTitle={summary?.lastCheckInAbsolute ?? undefined} detail="Most recent device signal" />
       </div>}
 
       <div className="devices-filters" aria-label="Device filters">
@@ -196,24 +199,25 @@ export function DevicesPage({ loadDevices, capabilities = [], moduleAssigned = t
   );
 }
 
-function SummaryCard({ label, value, detail }: { label: string; value: string; detail: string }) {
-  return <article className="summary-card"><span className="summary-card__label">{label}</span><strong>{value}</strong><span className="summary-card__detail">{detail}</span></article>;
-}
-
 function DevicesTable({ devices, canManage, onOpenDetails, onAction }: { devices: ManagedDevice[]; canManage: boolean; onOpenDetails: (device: ManagedDevice, trigger: HTMLElement) => void; onAction: (device: ManagedDevice, action: DeviceAction) => void }) {
+  const nameLink = (device: ManagedDevice) => <a className="cell-primary-link" href={`/devices/${encodeURIComponent(device.id)}`} onClick={(event) => { event.preventDefault(); onOpenDetails(device, event.currentTarget); }}>{deviceName(device)}</a>;
+  const platform = (device: ManagedDevice) => [device.operatingSystem, device.model].filter(Boolean).join(' · ');
+  const menu = (device: ManagedDevice) => !canManage ? null : <ActionMenu label="Actions" ariaLabel={`${messages.devicesActionsFor} ${deviceName(device)}`} items={actionItems(device, onAction)} />;
   return (
     <ResponsiveDataView items={devices} keyOf={device => device.id} label="Devices" renderCompact={device => <>
-      <strong>{device.deviceName || messages.devicesUnknown}</strong>
-      <dl className="responsive-data-view__details"><div><dt>{messages.devicesDeviceIdLabel}</dt><dd>{device.id}</dd></div><div><dt>{messages.devicesPlatformColumn}</dt><dd>{[device.operatingSystem, device.osVersion].filter(Boolean).join(' ') || messages.devicesUnknown}</dd></div><div><dt>{messages.devicesComplianceColumn}</dt><dd>{device.complianceState || messages.devicesUnknown}</dd></div><div><dt>{messages.devicesOwnerColumn}</dt><dd>{device.managedDeviceOwnerType || messages.devicesUnknown}</dd></div><div><dt>{messages.devicesLastSyncColumn}</dt><dd>{device.lastSyncDateTime ? new Date(device.lastSyncDateTime).toLocaleString() : messages.devicesNotSynced}</dd></div><div><dt>{messages.devicesHardwareColumn}</dt><dd>{[device.manufacturer, device.model, device.serialNumber].filter(Boolean).join(' ') || messages.devicesUnknown}</dd></div></dl>
-      <div className="responsive-data-view__actions"><button type="button" className="table-action" aria-label={`${messages.devicesOpenDetails} for ${device.deviceName || device.id}`} onClick={event => onOpenDetails(device, event.currentTarget)}>{messages.devicesOpenDetails}</button>{canManage && <ActionMenu label={`${messages.devicesActionsFor} ${device.deviceName || device.id}`} items={actionItems(device, onAction)} />}</div>
+      <strong>{nameLink(device)}</strong>
+      <dl className="responsive-data-view__details"><div><dt>{messages.devicesPlatformColumn}</dt><dd>{[device.operatingSystem, device.osVersion].filter(Boolean).join(' ') || messages.devicesUnknown}</dd></div><div><dt>{messages.devicesComplianceColumn}</dt><dd><StatusBadge tone={complianceTone(device.complianceState)} label={device.complianceState || messages.devicesUnknown} /></dd></div><div><dt>{messages.devicesOwnerColumn}</dt><dd>{device.managedDeviceOwnerType || messages.devicesUnknown}</dd></div><div><dt>{messages.devicesLastSyncColumn}</dt><dd title={device.lastSyncDateTime ? formatDateTime(device.lastSyncDateTime) : undefined}>{device.lastSyncDateTime ? formatRelative(device.lastSyncDateTime) : messages.devicesNotSynced}</dd></div><div><dt>{messages.devicesHardwareColumn}</dt><dd>{[device.manufacturer, device.model].filter(Boolean).join(' ') || messages.devicesUnknown}</dd></div></dl>
+      <TechnicalDetails items={[{ label: messages.devicesDeviceIdLabel, value: device.id, copy: true }, { label: messages.devicesSerialNumberLabel, value: device.serialNumber, copy: true }]} />
+      <div className="responsive-data-view__actions">{menu(device)}</div>
     </>} renderTable={rows => <div className="users-table-wrap">
       <table className="users-table" aria-label={messages.devicesTableLabel}>
-        <thead><tr><th scope="col">{messages.devicesNameColumn}</th><th scope="col">{messages.devicesPlatformColumn}</th><th scope="col">{messages.devicesComplianceColumn}</th><th scope="col">{messages.devicesActionsColumn}</th></tr></thead>
+        <thead><tr><th scope="col">{messages.devicesNameColumn}</th><th scope="col">{messages.devicesPlatformColumn}</th><th scope="col">{messages.devicesComplianceColumn}</th><th scope="col">{messages.devicesLastSyncColumn}</th><th scope="col"><span className="sr-only">{messages.devicesActionsColumn}</span></th></tr></thead>
         <tbody>{rows.map((device) => <tr key={device.id}>
-          <td data-label={messages.devicesNameColumn}><strong>{device.deviceName || messages.devicesUnknown}</strong><small>{device.id}</small></td>
+          <td data-label={messages.devicesNameColumn}>{nameLink(device)}{platform(device) && <small className="cell-secondary">{platform(device)}</small>}</td>
           <td data-label={messages.devicesPlatformColumn}>{device.operatingSystem || messages.devicesUnknown}<small>{device.osVersion || ''}</small></td>
-          <td data-label={messages.devicesComplianceColumn}><span className="status-badge" data-tone={tone(device.complianceState)}>{device.complianceState || messages.devicesUnknown}</span></td>
-          <td data-label={messages.devicesActionsColumn} className="detail-table__actions"><button type="button" className="table-action" aria-label={`${messages.devicesOpenDetails} for ${device.deviceName || device.id}`} onClick={(event) => onOpenDetails(device, event.currentTarget)}>{messages.devicesOpenDetails}</button>{canManage && <ActionMenu label={`${messages.devicesActionsFor} ${device.deviceName || device.id}`} items={actionItems(device, onAction)} />}</td>
+          <td data-label={messages.devicesComplianceColumn}><StatusBadge tone={complianceTone(device.complianceState)} label={device.complianceState || messages.devicesUnknown} /></td>
+          <td data-label={messages.devicesLastSyncColumn} title={device.lastSyncDateTime ? formatDateTime(device.lastSyncDateTime) : undefined}>{device.lastSyncDateTime ? formatRelative(device.lastSyncDateTime) : messages.devicesNotSynced}</td>
+          <td data-label={messages.devicesActionsColumn} className="detail-table__actions">{menu(device)}</td>
         </tr>)}</tbody>
       </table>
     </div>} />
@@ -221,10 +225,14 @@ function DevicesTable({ devices, canManage, onOpenDetails, onAction }: { devices
 }
 
 function actionItems(device: ManagedDevice, onAction: (device: ManagedDevice, action: DeviceAction) => void) {
+  const open = { label: messages.devicesOpenDetails, onSelect: () => document.querySelector<HTMLAnchorElement>(`a.cell-primary-link[href="/devices/${encodeURIComponent(device.id)}"]`)?.click() };
   return [
+    open,
     { label: messages.devicesSyncAction, onSelect: () => onAction(device, 'sync') },
     { label: messages.devicesRemoteLockAction, onSelect: () => onAction(device, 'remote-lock') },
     { label: messages.devicesRestartAction, onSelect: () => onAction(device, 'restart') },
+    { label: messages.devicesRetireAction, danger: true, separatorBefore: true, description: 'Removes company data. Cannot be undone.', onSelect: () => onAction(device, 'retire') },
+    { label: messages.devicesWipeAction, danger: true, description: 'Erases all data. Cannot be undone.', onSelect: () => onAction(device, 'wipe') },
   ];
 }
 
@@ -254,11 +262,13 @@ function summarize(devices: ManagedDevice[]) {
   const noncompliant = devices.filter(device => device.complianceState?.toLowerCase() === 'noncompliant').length;
   const checkIns = devices.map(device => device.lastSyncDateTime).filter((value): value is string => Boolean(value)).sort();
   const latest = checkIns.length > 0 ? checkIns[checkIns.length - 1] : undefined;
-  return { compliant, noncompliant, lastCheckIn: latest ? new Date(latest).toLocaleString() : null };
+  return { compliant, noncompliant, lastCheckInRelative: latest ? formatRelative(latest) : null, lastCheckInAbsolute: latest ? formatDateTime(latest) : null };
 }
 
-function tone(value?: string | null) {
+function complianceTone(value?: string | null) {
   if (value?.toLowerCase() === 'compliant') return 'success';
-  if (value?.toLowerCase() === 'noncompliant') return 'danger';
-  return 'warning';
+  if (value?.toLowerCase() === 'noncompliant') return 'warning';
+  return 'neutral';
 }
+
+function deviceName(device: ManagedDevice) { return device.deviceName || 'Unnamed device'; }

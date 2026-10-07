@@ -9,15 +9,16 @@ export type MetricCardProps = {
   linkLabel?: string;
   unavailableReason?: string;
   action?: { label: string; href: string };
+  valueTitle?: string;
 };
 
-export function MetricCard({ label, value, detail, href, onNavigate, linkLabel, unavailableReason, action }: MetricCardProps) {
+export function MetricCard({ label, value, detail, href, onNavigate, linkLabel, unavailableReason, action, valueTitle }: MetricCardProps) {
   const hasValue = value !== null && value !== undefined && value !== '';
   const body = (
     <>
       <span className="metric-card__label">{label}</span>
       {hasValue
-        ? <strong className="metric-card__value">{value}</strong>
+        ? <strong className="metric-card__value" title={valueTitle}>{value}</strong>
         : <span className="metric-card__empty" aria-hidden={href ? 'true' : undefined}>—</span>}
       {detail && <span className="metric-card__detail">{detail}</span>}
       {!hasValue && unavailableReason && <span className="metric-card__detail">{unavailableReason}</span>}

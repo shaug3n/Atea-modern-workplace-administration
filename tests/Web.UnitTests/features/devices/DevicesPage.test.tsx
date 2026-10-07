@@ -47,8 +47,8 @@ describe('DevicesPage', () => {
     let resolveNext: ((value: typeof devices) => void) | undefined;
     const loader = vi.fn().mockResolvedValueOnce(devices).mockImplementation(() => new Promise(resolve => { resolveNext = resolve; }));
     render(<DevicesPage capabilities={[{ capability: 'devices.view', state: 'allowed', reasonCode: 'active_role' }, { capability: 'devices.privileged.manage', state: 'allowed', reasonCode: 'active_role' }]} loadDevices={loader} />);
-    await screen.findByRole('button', { name: 'Open details for WIN-TEST-01' });
-    fireEvent.click(screen.getByRole('button', { name: 'Open details for WIN-TEST-01' }));
+    await screen.findByRole('link', { name: 'WIN-TEST-01' });
+    fireEvent.click(screen.getByRole('link', { name: 'WIN-TEST-01' }));
     fireEvent.change(screen.getByLabelText('Search devices'), { target: { value: 'new' } });
     expect(screen.queryByRole('button', { name: 'Open details for WIN-TEST-01' })).toBeNull();
     expect(screen.queryByRole('dialog', { name: 'WIN-TEST-01' })).toBeNull();
@@ -58,7 +58,7 @@ describe('DevicesPage', () => {
   it('does not revive a prior result when filters return to the same values before a fresh response', async () => {
     const loader = vi.fn().mockResolvedValueOnce(devices).mockImplementation(() => new Promise(() => {}));
     render(<DevicesPage capabilities={[{ capability: 'devices.view', state: 'allowed', reasonCode: 'active_role' }]} loadDevices={loader} />);
-    await screen.findByRole('button', { name: 'Open details for WIN-TEST-01' });
+    await screen.findByRole('link', { name: 'WIN-TEST-01' });
     const search = screen.getByLabelText('Search devices');
     fireEvent.change(search, { target: { value: 'other' } });
     fireEvent.change(search, { target: { value: '' } });
@@ -72,7 +72,7 @@ describe('DevicesPage', () => {
     const compact = await screen.findByRole('list', { name: 'Devices' });
     expect(compact.textContent).toContain(longId);
     expect(compact.textContent).toContain('Compliance');
-    expect(compact.querySelector('button[aria-label="Open details for WIN-TEST-01"]')).toBeTruthy();
+    expect(compact.querySelector('a[href^="/devices/"]')).toBeTruthy();
     expect(compact.querySelector('[role="menu"]')).toBeNull();
   });
 
@@ -112,7 +112,7 @@ describe('DevicesPage', () => {
     expect(screen.getAllByText('Noncompliant').length).toBeGreaterThan(0);
     expect(screen.queryByRole('button', { name: 'Sync' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Remote lock' })).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'Open details for LAPTOP-01' }));
+    fireEvent.click(screen.getByRole('link', { name: 'LAPTOP-01' }));
     expect(screen.getByRole('dialog').textContent).toContain('LAPTOP-01');
     expect(screen.getByText('Management state')).toBeTruthy();
   });
@@ -183,7 +183,7 @@ describe('DevicesPage', () => {
     expect(loader).not.toHaveBeenCalled();
   });
 
-  it('keeps only routine device actions in the row menu and destructive actions in the detail danger zone', async () => {
+  it('lists routine actions first and destructive actions after a separator in the row menu', async () => {
     render(<DevicesPage
       capabilities={[
         { capability: 'devices.view', state: 'allowed', reasonCode: 'active_role' },
@@ -198,12 +198,15 @@ describe('DevicesPage', () => {
     expect(screen.getByRole('menuitem', { name: 'Sync device' })).toBeTruthy();
     expect(screen.getByRole('menuitem', { name: 'Remote lock' })).toBeTruthy();
     expect(screen.getByRole('menuitem', { name: 'Restart device' })).toBeTruthy();
-    expect(screen.queryByRole('menuitem', { name: 'Retire device' })).toBeNull();
-    expect(screen.queryByRole('menuitem', { name: 'Wipe device' })).toBeNull();
+    expect(screen.getByRole('menuitem', { name: /Open details/ })).toBeTruthy();
+    const items = screen.getAllByRole('menuitem').map(item => item.textContent ?? '');
+    expect(items.findIndex(text => text.startsWith('Retire device'))).toBeGreaterThan(items.findIndex(text => text.startsWith('Restart device')));
+    expect(screen.getByRole('menuitem', { name: /Wipe device/ })).toBeTruthy();
+    expect(document.querySelector('.action-menu__separator, [role="separator"]')).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Sync' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Remote lock' })).toBeNull();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Open details for WIN-TEST-01' }));
+    fireEvent.click(screen.getByRole('link', { name: 'WIN-TEST-01' }));
     expect(screen.getByRole('button', { name: 'Retire device' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Wipe device' })).toBeTruthy();
   });
@@ -237,7 +240,7 @@ describe('DevicesPage', () => {
     await screen.findByText('WIN-TEST-01');
     expect(screen.getByText(/delegated Microsoft Graph consent is required/i)).toBeTruthy();
     expect(screen.queryByRole('button', { name: /Actions for WIN-TEST-01/i })).toBeNull();
-    expect(screen.getByRole('button', { name: /Open details for WIN-TEST-01/i })).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'WIN-TEST-01' })).toBeTruthy();
   });
 
   it('groups device details into Overview, Security and Danger zone', async () => {
@@ -250,7 +253,7 @@ describe('DevicesPage', () => {
     />);
 
     await screen.findByText('WIN-TEST-01');
-    fireEvent.click(screen.getByRole('button', { name: 'Open details for WIN-TEST-01' }));
+    fireEvent.click(screen.getByRole('link', { name: 'WIN-TEST-01' }));
     expect(screen.getByRole('heading', { name: 'Overview' })).toBeTruthy();
     expect(screen.getByRole('heading', { name: 'Security' })).toBeTruthy();
     expect(screen.getByRole('heading', { name: 'Danger zone' })).toBeTruthy();
@@ -261,7 +264,7 @@ describe('DevicesPage', () => {
     render(<DevicesPage capabilities={[{ capability: 'devices.view', state: 'allowed', reasonCode: 'active_role' }, { capability: 'devices.privileged.manage', state: 'allowed', reasonCode: 'active_role' }]} loadDevices={async () => multiRowDevices} />);
 
     await screen.findByText('WIN-TEST-02');
-    expect(screen.getAllByRole('button', { name: /Open details for/ })).toHaveLength(2);
+    expect(screen.getAllByRole('link', { name: /WIN-TEST-/ })).toHaveLength(2);
     expect(screen.getAllByRole('button', { name: /Actions for/ })).toHaveLength(2);
   });
 
@@ -278,7 +281,7 @@ describe('DevicesPage', () => {
   it('closes the details panel on Escape', async () => {
     render(<DevicesPage capabilities={[{ capability: 'devices.view', state: 'allowed', reasonCode: 'active_role' }]} loadDevices={loadDevices} />);
     await screen.findByText('WIN-TEST-01');
-    fireEvent.click(screen.getByRole('button', { name: 'Open details for WIN-TEST-01' }));
+    fireEvent.click(screen.getByRole('link', { name: 'WIN-TEST-01' }));
     fireEvent.keyDown(document, { key: 'Escape' });
     expect(screen.queryByRole('dialog')).toBeNull();
   });
@@ -286,7 +289,7 @@ describe('DevicesPage', () => {
   it('focuses and contains the device detail panel, then restores the row trigger', async () => {
     render(<DevicesPage capabilities={[{ capability: 'devices.view', state: 'allowed', reasonCode: 'active_role' }]} loadDevices={loadDevices} />);
     await screen.findByText('WIN-TEST-01');
-    const trigger = screen.getByRole('button', { name: 'Open details for WIN-TEST-01' });
+    const trigger = screen.getByRole('link', { name: 'WIN-TEST-01' });
     fireEvent.click(trigger);
     const panel = screen.getByRole('dialog', { name: 'WIN-TEST-01' });
     const close = screen.getByRole('button', { name: 'Close device details' });
@@ -313,7 +316,7 @@ describe('DevicesPage', () => {
 
     await screen.findByText('WIN-TEST-01');
     if (label === 'Retire device' || label === 'Wipe device') {
-      fireEvent.click(screen.getByRole('button', { name: 'Open details for WIN-TEST-01' }));
+      fireEvent.click(screen.getByRole('link', { name: 'WIN-TEST-01' }));
       fireEvent.click(screen.getByRole('button', { name: label }));
     } else {
       fireEvent.click(screen.getByRole('button', { name: 'Actions for WIN-TEST-01' }));
@@ -375,7 +378,7 @@ describe('DevicesPage', () => {
   it('keeps wrong-case and partial-whitespace phrases disabled', async () => {
     render(<DevicesPage capabilities={[{ capability: 'devices.view', state: 'allowed', reasonCode: 'active_role' }, { capability: 'devices.privileged.manage', state: 'allowed', reasonCode: 'active_role' }]} loadDevices={loadDevices} />);
     await screen.findByText('WIN-TEST-01');
-    fireEvent.click(screen.getByRole('button', { name: 'Open details for WIN-TEST-01' }));
+    fireEvent.click(screen.getByRole('link', { name: 'WIN-TEST-01' }));
     fireEvent.click(screen.getByRole('button', { name: 'Wipe device' }));
     const phraseInput = screen.getByLabelText(/type .* to confirm/i);
     fireEvent.change(phraseInput, { target: { value: ' wipe ' } });
@@ -386,7 +389,7 @@ describe('DevicesPage', () => {
   it('labels the destructive confirmation with the exact action phrase and omits phrase input for Sync', async () => {
     render(<DevicesPage capabilities={[{ capability: 'devices.view', state: 'allowed', reasonCode: 'active_role' }, { capability: 'devices.privileged.manage', state: 'allowed', reasonCode: 'active_role' }]} loadDevices={loadDevices} />);
     await screen.findByText('WIN-TEST-01');
-    fireEvent.click(screen.getByRole('button', { name: 'Open details for WIN-TEST-01' }));
+    fireEvent.click(screen.getByRole('link', { name: 'WIN-TEST-01' }));
     fireEvent.click(screen.getByRole('button', { name: 'Wipe device' }));
     expect(screen.getByLabelText('Type WIPE to confirm')).toBeTruthy();
     expect(screen.getByText('Type WIPE to confirm')).toBeTruthy();
@@ -408,5 +411,15 @@ describe('DevicesPage', () => {
     await executeDeviceAction(api as unknown as ApiFetch, 'device/1', action as DeviceAction);
     expect(api).toHaveBeenCalledWith(expectedUrl, expect.objectContaining({ method: 'POST', headers: expect.objectContaining({ 'Idempotency-Key': expect.any(String) }) }));
     expect((api.mock.calls[0][1] as RequestInit).headers && String((api.mock.calls[0][1] as RequestInit).headers && ((api.mock.calls[0][1] as RequestInit).headers as Record<string, string>)['Idempotency-Key']).length).toBeGreaterThan(0);
+  });
+
+  it('keeps ids out of rows, shows relative check-in with absolute title, and falls back to Unnamed device', async () => {
+    const id = '3f2b8c1e-1111-2222-3333-444455556666';
+    render(<DevicesPage capabilities={[{ capability: 'devices.view', state: 'allowed', reasonCode: 'active_role' }]} loadDevices={async () => ({ ...devices, items: [{ ...devices.items[0], id, deviceName: '', complianceState: 'noncompliant', lastSyncDateTime: new Date(Date.now() - 3 * 3600_000).toISOString() }] })} />);
+    const link = await screen.findByRole('link', { name: 'Unnamed device' });
+    const row = link.closest('tr')!;
+    expect(row.textContent).not.toContain(id);
+    expect(row.querySelector('.status-badge')!.textContent).toContain('noncompliant');
+    expect(row.querySelector('td[title]')!.textContent).toMatch(/ago|hour/);
   });
 });
