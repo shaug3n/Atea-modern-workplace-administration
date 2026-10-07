@@ -159,7 +159,7 @@ describe('customer overview route', () => {
     const loadSession = async () => ({ user: { displayName: 'Customer member' }, workspace: { id: 'workspace-1', name: 'Local customer' }, workspaceAccess: { role: 'member', canManageMembers: false, canManageSettings: false } });
     render(<App loadSession={loadSession} loadCapabilities={async () => ({ evaluatedAt: '2026-09-21T12:00:00Z', sourceState: 'unknown', capabilities: [] })} />);
 
-    expect(await screen.findByRole('heading', { name: /workspace access is managed by an administrator/i })).toBeTruthy();
+    expect(await screen.findByText(/You don't have access to/)).toBeTruthy();
   });
 
   it('uses the fixture API boundary for user actions and associated-device navigation', async () => {

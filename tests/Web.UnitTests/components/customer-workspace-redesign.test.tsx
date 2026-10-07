@@ -71,7 +71,7 @@ describe('customer workspace redesign', () => {
   it('gates a disabled module on a direct URL', async () => {
     window.history.replaceState({}, '', '/services/exchange');
     render(<App loadSession={async () => session} loadCapabilities={async () => ({ evaluatedAt: '2026-09-25T00:00:00Z', capabilities: [] })} />);
-    expect(await screen.findByRole('heading', { name: 'Module disabled' })).toBeTruthy();
+    expect(await screen.findByText(/is turned off for this workspace/)).toBeTruthy();
   });
 
   it('sends selected module keys when creating an invitation', async () => {

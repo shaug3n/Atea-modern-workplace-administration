@@ -65,7 +65,7 @@ describe('Workspace Settings hub', () => {
 
   it('denies a member without any settings permissions', async () => {
     renderAt('/settings', { ...owner, workspaceAccess: { role: 'member', canManageMembers: false, canManageSettings: false, canManageModules: false } });
-    expect(await screen.findByRole('heading', { name: 'Workspace access is managed by an administrator' })).toBeTruthy();
+    expect(await screen.findByText(/You don't have access to/)).toBeTruthy();
     expect(screen.queryByRole('heading', { name: 'Connection' })).toBeNull();
     expect(api).not.toHaveBeenCalled();
   });

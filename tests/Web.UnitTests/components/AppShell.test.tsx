@@ -62,7 +62,7 @@ describe('AppShell', () => {
     render(<App loadCapabilities={async () => hiddenWorkspaceSettings} loadSession={async () => session} />);
 
     await waitFor(() => expect(window.location.pathname).toBe('/settings'));
-    expect(screen.getByRole('heading', { name: 'Workspace access is managed by an administrator' })).toBeTruthy();
+    expect(screen.getByText(/You don't have access to/)).toBeTruthy();
   });
 
   it('closes mobile navigation on Escape and shows the current settings breadcrumb', () => {
@@ -104,8 +104,8 @@ describe('AppShell', () => {
   it('blocks a direct Exchange URL when the workspace module is not assigned', async () => {
     window.history.pushState(null, '', '/services/exchange');
     render(<App loadCapabilities={async () => allowedCapabilities} loadSession={async () => session} />);
-    await waitFor(() => expect(screen.getByRole('heading', { name: 'Module disabled' })).toBeTruthy());
-    expect(screen.queryByRole('heading', { name: 'Exchange' })).toBeNull();
+    await waitFor(() => expect(screen.getByText(/is turned off for this workspace/)).toBeTruthy());
+    expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
     expect(screen.queryByRole('link', { name: 'Exchange' })).toBeNull();
   });
 
@@ -146,8 +146,8 @@ describe('AppShell', () => {
   it('keeps Activity filters and the unavailable region without requesting audit records when access is unknown', async () => {
     window.history.pushState(null, '', '/activity');
     render(<App loadCapabilities={async () => { throw new Error('Graph unavailable'); }} loadSession={async () => session} />);
-    expect(await screen.findByRole('heading', { name: 'Audit activity' })).toBeTruthy();
-    expect(screen.getByRole('textbox', { name: 'Actor object ID' })).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: 'Platform activity' })).toBeTruthy();
+    expect(screen.getByRole('textbox', { name: 'Person' })).toBeTruthy();
     expect(screen.getByText(/Data cannot be shown right now/)).toBeTruthy();
     expect(apiMock).not.toHaveBeenCalledWith(expect.stringContaining('/api/audit/events'));
   });

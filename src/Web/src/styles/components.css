@@ -883,3 +883,7 @@ td.numeric {
 
 /* Platform activity */
 .audit-note { margin: 0; padding: var(--atea-space-3) var(--atea-space-4); border-left: 3px solid var(--uw-info, var(--uw-border)); background: var(--uw-surface-muted, transparent); color: var(--uw-muted); font-size: var(--atea-text-s); }
+
+/* Module unavailable */
+.module-unavailable { display: grid; gap: var(--atea-space-5); max-width: 48rem; }
+.module-unavailable__actions { display: flex; flex-wrap: wrap; gap: var(--atea-space-3); }

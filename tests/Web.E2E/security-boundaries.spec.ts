@@ -100,7 +100,7 @@ describe('browser security boundaries', () => {
       loadSession: async () => session,
     }));
 
-    await waitFor(() => expect(screen.getByRole('heading', { name: 'Workspace access is managed by an administrator' })).toBeTruthy());
+    await waitFor(() => expect(screen.getByText(/You don't have access to/)).toBeTruthy());
     expect(screen.getByText('A customer workspace administrator can grant you application access. Your Microsoft 365 permissions are still determined by your Entra roles.')).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Save settings' })).toBeNull();
     expect(apiMock).not.toHaveBeenCalled();
