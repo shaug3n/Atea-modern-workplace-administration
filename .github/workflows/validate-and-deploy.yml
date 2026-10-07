@@ -19,7 +19,7 @@ on:
   workflow_dispatch:
     inputs:
       confirm_test_tenant:
-        description: 'Confirm this deployment targets the disposable test tenant and contains no customer data'
+        description: 'Manual runs only: confirm this deployment targets the disposable test tenant and contains no customer data'
         required: true
         type: boolean
         default: false
@@ -71,10 +71,11 @@ jobs:
         run: |
           docker compose config --quiet
           docker compose build
-      - name: Ensure deploy dispatch has registered public app settings
-        if: github.event_name == 'workflow_dispatch'
+      - name: Ensure deploy has registered public app settings
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
         env:
           DEPLOY_CONFIRMATION: ${{ inputs.confirm_test_tenant }}
+          EVENT_NAME: ${{ github.event_name }}
           PUBLIC_URL: ${{ vars.AZURE_APP_PUBLIC_URL }}
           PLATFORM_TENANT: ${{ vars.PLATFORM_HOME_TENANT_ID }}
           API_CLIENT_ID: ${{ vars.ENTRA_API_CLIENT_ID }}
@@ -85,7 +86,7 @@ jobs:
           ADMIN_SCOPE: ${{ vars.PLATFORM_ADMIN_SCOPE }}
           SMOKE_TEST_SOURCE_CIDR: ${{ vars.AZURE_SMOKE_TEST_SOURCE_CIDR }}
         run: |
-          test "$DEPLOY_CONFIRMATION" = true
+          if test "$EVENT_NAME" = workflow_dispatch; then test "$DEPLOY_CONFIRMATION" = true; fi
           for value in "$PUBLIC_URL" "$PLATFORM_TENANT" "$API_CLIENT_ID" "$API_AUDIENCE" "$CUSTOMER_SPA_ID" "$CUSTOMER_SCOPE" "$ADMIN_SPA_ID" "$ADMIN_SCOPE" "$SMOKE_TEST_SOURCE_CIDR"; do
             test -n "$value" || { echo 'Required public Entra or host variable is missing.'; exit 1; }
           done
@@ -166,7 +167,7 @@ jobs:
         run: python3 infra/tests/validate_compiled_application.py /tmp/atea-application.json
 
   deploy-candidate:
-    if: github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
     needs: [build-test, dependency-security, validate-infra]
     runs-on: ubuntu-latest
     environment: test
@@ -349,7 +350,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
   promote:
-    if: github.event_name == 'workflow_dispatch'
+    if: github.ref == 'refs/heads/master' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     needs: deploy-candidate
     runs-on: ubuntu-latest
     environment: test-promotion
@@ -467,7 +468,9 @@ jobs:
               lines.push(`🧪 **Candidate:** https://${deploy.outputs.candidate_fqdn} (revision \`${deploy.outputs.candidate_revision}\`)`);
             }
             if (deploy?.result === 'skipped') {
-              lines.push('_No deployment for this trigger; run the workflow manually to deploy._');
+              lines.push('_No deployment for this run (for example a fork PR); deployment requires a same-repository branch._');
+            } else if (context.eventName === 'pull_request' && needs.promote?.result === 'skipped') {
+              lines.push('_Candidate only: promotion to production happens from master after merge._');
             }
             const body = lines.join('\n');
 
