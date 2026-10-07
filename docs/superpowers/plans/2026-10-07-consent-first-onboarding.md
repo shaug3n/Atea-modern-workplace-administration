@@ -318,7 +318,7 @@ git commit -m "feat: add versioned invitation consent challenges"
 - Produces API contracts: preview `{ workspaceName, expiresAt, flow, permissionScopes }`; start `{ authorizationUrl, scopes, challenge, correlationId, expiresAt }`; resume `{ valid, status, tenantId?, correlationId }`.
 - Consumes: the versioned challenge methods from Task 5, `GraphScopeCatalog.CapabilityEvaluationScopes`, and validated `OnboardingOptions.CustomerClientId`, `ApiApplicationIdUri`, and exact `ConsentRedirectUri`.
 
-- [ ] **Step 1: Write failing service and endpoint tests.**
+- [x] **Step 1: Write failing service and endpoint tests.**
 
 ```csharp
 [Fact] public async Task Preview_returns_only_the_safe_consent_first_shape()
@@ -336,27 +336,27 @@ git commit -m "feat: add versioned invitation consent challenges"
 
 Cover member invitations (`flow == "sign_in"` and consent start `409 invitation_consent_not_available`), customer-admin/workspace-owner eligibility, identical `404 invitation_unavailable` for malformed/unknown/expired/revoked/redeemed nonces, safe `503` persistence/configuration failure, and resume `ready_to_sign_in` without consuming the challenge. Assert no raw invitee email, tenant/workspace/invitation IDs, module assignment or diagnostics in anonymous responses.
 
-- [ ] **Step 2: Run the focused API tests.**
+- [x] **Step 2: Run the focused API tests.**
 
 Run: `dotnet test tests/Api.UnitTests/Api.UnitTests.csproj --filter FullyQualifiedName~InvitationConsentServiceTests`
 Run: `dotnet test tests/Api.IntegrationTests/Api.IntegrationTests.csproj --filter FullyQualifiedName~InvitationConsentEndpointTests`
 Expected: FAIL because no anonymous preview/start/resume route or service exists.
 
-- [ ] **Step 3: Implement invitation read, preview, start and resume boundaries.**
+- [x] **Step 3: Implement invitation read, preview, start and resume boundaries.**
 
 Hash the 43-character nonce before repository access. Persist only `SHA-256(state)` and server bindings. Build the tenant-specific admin-consent URL with the customer SPA client ID and `scope={ApiApplicationIdUri}/.default`; never use Graph `.default` for this new SPA-targeted flow. `ResumeAsync` validates signed payload, state hash, invitation/workspace/tenant binding, expiry and lifecycle without consuming state or changing onboarding status.
 
-- [ ] **Step 4: Map only these routes as anonymous and apply the onboarding request protections.**
+- [x] **Step 4: Map only these routes as anonymous and apply the onboarding request protections.**
 
 Add explicit `.AllowAnonymous()` to `GET /api/invitations/{nonce}/preview` and POST start/resume only; retain `.RequireAuthorization()` on redemption, workspace, and platform routes. Apply 20/minute/IP common and 5/minute/IP start policies, a 200/minute/instance cap, no queue, and `429` with `Retry-After`. Trust forwarded client IPs only from configured proxy addresses; never use arbitrary `X-Forwarded-For`. Require JSON and same-origin `Origin` for POSTs, reject wildcard CORS, cap callback body at 8 KiB and state at 4 KiB, and reject invalid nonce length before hashing. Add `Cache-Control: no-store` and `Referrer-Policy: no-referrer` on invitation API and public landing/callback responses; ensure application logs, audits and errors omit raw invitation paths, callback query strings, state and consent URLs.
 
-- [ ] **Step 5: Run focused API tests.**
+- [x] **Step 5: Run focused API tests.**
 
 Run: `dotnet test tests/Api.UnitTests/Api.UnitTests.csproj --filter FullyQualifiedName~InvitationConsentServiceTests`
 Run: `dotnet test tests/Api.IntegrationTests/Api.IntegrationTests.csproj --filter FullyQualifiedName~InvitationConsentEndpointTests`
 Expected: PASS; tests verify anonymous access is limited to the three explicit endpoints, `Origin` rejection, no-store headers, 20/5/200 limits, trusted-proxy behavior and `Retry-After`.
 
-- [ ] **Step 6: Commit.**
+- [x] **Step 6: Commit.**
 
 ```bash
 git add src/Api/Features/Workspaces/InvitationConsentService.cs src/Api/Features/Workspaces/InvitationContracts.cs src/Api/Features/Workspaces/InvitationService.cs src/Api/Features/Workspaces/WorkspaceEndpoints.cs src/Api/Features/Workspaces/OnboardingOptions.cs src/Api/Program.cs src/Api/Infrastructure/Persistence/Repositories/IWorkspaceRepository.cs src/Api/Infrastructure/Persistence/Repositories/WorkspaceOnboardingRepository.cs tests/Api.UnitTests/Workspaces/InvitationConsentServiceTests.cs tests/Api.IntegrationTests/Workspaces/InvitationConsentEndpointTests.cs

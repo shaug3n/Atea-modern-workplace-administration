@@ -27,3 +27,19 @@ public interface IInvitationRepository
     Task<PlatformInvitation> CreateAsync(PlatformInvitation invitation, AuditEvent auditEvent, CancellationToken cancellationToken = default) => CreateAsync(invitation, cancellationToken);
     Task<InvitationRedemption?> RedeemAsync(string nonceHash, Guid tenantId, Guid tenantObjectId, string? email, string displayName, CancellationToken cancellationToken = default);
 }
+
+public sealed record InvitationLookup(
+    Guid InvitationId,
+    Guid WorkspaceId,
+    string WorkspaceName,
+    Guid TenantId,
+    string Role,
+    DateTimeOffset ExpiresAt,
+    bool IsRedeemed,
+    bool IsRevoked,
+    Guid? RedeemedByTenantObjectId = null);
+
+public interface IInvitationReadRepository
+{
+    Task<InvitationLookup?> FindByNonceHashAsync(string nonceHash, CancellationToken cancellationToken = default);
+}

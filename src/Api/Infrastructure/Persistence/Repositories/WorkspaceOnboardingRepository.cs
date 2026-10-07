@@ -5,7 +5,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Atea.UnifiedWorkplace.Api.Infrastructure.Persistence.Repositories;
 
-public sealed class WorkspaceOnboardingRepository(WorkplaceDbContext db) : IOnboardingRepository, IInvitationRepository, IConsentChallengeRepository
+public sealed class WorkspaceOnboardingRepository(WorkplaceDbContext db) : IOnboardingRepository, IInvitationRepository, IInvitationReadRepository, IConsentChallengeRepository
 {
     public async Task CreateAsync(Guid workspaceId, Guid tenantId, string stateHash, string correlationId, DateTimeOffset expiresAt, CancellationToken cancellationToken = default)
     {
@@ -19,6 +19,80 @@ public sealed class WorkspaceOnboardingRepository(WorkplaceDbContext db) : IOnbo
             .Where(x => x.StateHash == stateHash && x.WorkspaceId == workspaceId && x.TenantId == tenantId && x.ConsumedAt == null && x.ExpiresAt > now)
             .ExecuteUpdateAsync(updates => updates.SetProperty(x => x.ConsumedAt, now), cancellationToken);
         return consumed == 1;
+    }
+
+    public async Task CreateInvitationAsync(InvitationConsentChallengeRecord challenge, CancellationToken cancellationToken = default)
+    {
+        db.ConsentChallenges.Add(new ConsentChallenge
+        {
+            StateHash = challenge.StateHash,
+            WorkspaceId = challenge.WorkspaceId,
+            TenantId = challenge.TenantId,
+            InvitationId = challenge.InvitationId,
+            Purpose = challenge.Purpose,
+            CorrelationId = challenge.CorrelationId,
+            ExpiresAt = challenge.ExpiresAt
+        });
+        await db.SaveChangesAsync(cancellationToken);
+    }
+
+    public async Task<InvitationConsentChallengeRecord?> FindInvitationAsync(string stateHash, CancellationToken cancellationToken = default)
+    {
+        return await db.ConsentChallenges.AsNoTracking()
+            .Where(x => x.StateHash == stateHash)
+            .Select(x => new InvitationConsentChallengeRecord(
+                x.StateHash,
+                x.WorkspaceId,
+                x.TenantId,
+                x.InvitationId ?? Guid.Empty,
+                x.Purpose,
+                x.CorrelationId,
+                x.ExpiresAt,
+                x.ConsumedAt))
+            .SingleOrDefaultAsync(cancellationToken);
+    }
+
+    public async Task<bool> TryConsumeInvitationAsync(
+        string stateHash,
+        Guid invitationId,
+        Guid workspaceId,
+        Guid tenantId,
+        Guid redeemerObjectId,
+        DateTimeOffset now,
+        CancellationToken cancellationToken = default)
+    {
+        return await db.ConsentChallenges
+            .Where(x => x.StateHash == stateHash &&
+                x.InvitationId == invitationId &&
+                x.WorkspaceId == workspaceId &&
+                x.TenantId == tenantId &&
+                x.Purpose == "invitation" &&
+                x.ConsumedAt == null &&
+                x.ExpiresAt > now &&
+                x.Invitation != null &&
+                x.Invitation.RedeemedByTenantObjectId == redeemerObjectId &&
+                x.Invitation.RedeemedAt != null &&
+                x.Invitation.RevokedAt == null &&
+                x.Invitation.ExpiresAt > now &&
+                x.Invitation.Workspace.TenantId == tenantId)
+            .ExecuteUpdateAsync(updates => updates.SetProperty(x => x.ConsumedAt, now), cancellationToken) == 1;
+    }
+
+    public async Task<InvitationLookup?> FindByNonceHashAsync(string nonceHash, CancellationToken cancellationToken = default)
+    {
+        return await db.PlatformInvitations.AsNoTracking()
+            .Where(x => x.NonceHash == nonceHash)
+            .Select(x => new InvitationLookup(
+                x.Id,
+                x.WorkspaceId,
+                x.Workspace.DisplayName,
+                x.Workspace.TenantId,
+                x.Role,
+                x.ExpiresAt,
+                x.RedeemedAt != null,
+                x.RevokedAt != null,
+                x.RedeemedByTenantObjectId))
+            .SingleOrDefaultAsync(cancellationToken);
     }
     public async Task<ConnectionSnapshot?> GetConnectionAsync(Guid workspaceId, CancellationToken cancellationToken = default)
     {

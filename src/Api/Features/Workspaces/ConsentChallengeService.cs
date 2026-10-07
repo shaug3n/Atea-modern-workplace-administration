@@ -99,6 +99,20 @@ public sealed class ConsentChallengeService
         Guid expectedInvitationId,
         out ConsentChallengePayload payload)
     {
+        if (!TryReadInvitation(challenge, out payload) ||
+            payload.WorkspaceId != expectedWorkspaceId ||
+            payload.TenantId != expectedTenantId ||
+            payload.InvitationId != expectedInvitationId)
+        {
+            payload = default!;
+            return false;
+        }
+
+        return true;
+    }
+
+    public bool TryReadInvitation(string challenge, out ConsentChallengePayload payload)
+    {
         payload = default!;
         if (!TryVerifySignature(challenge, out var payloadBytes) ||
             !TryDecodePayload(payloadBytes, out var decodedPayload))
@@ -112,11 +126,11 @@ public sealed class ConsentChallengeService
             fields[1] != "invitation" ||
             !Guid.TryParseExact(fields[2], "N", out var correlationGuid) ||
             !Guid.TryParseExact(fields[3], "N", out var workspaceId) ||
-            workspaceId != expectedWorkspaceId ||
+            workspaceId == Guid.Empty ||
             !Guid.TryParseExact(fields[4], "N", out var tenantId) ||
-            tenantId != expectedTenantId ||
+            tenantId == Guid.Empty ||
             !Guid.TryParseExact(fields[5], "N", out var invitationId) ||
-            invitationId != expectedInvitationId ||
+            invitationId == Guid.Empty ||
             !TryParseExpiration(fields[6], out var expiration) ||
             expiration <= DateTimeOffset.UtcNow ||
             !TryFromBase64Url(fields[7], out var randomBytes) ||

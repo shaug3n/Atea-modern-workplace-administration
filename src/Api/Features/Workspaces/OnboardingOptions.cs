@@ -7,6 +7,44 @@ public sealed class OnboardingOptions
     public string PublicBaseUrl { get; set; } = string.Empty;
     public string ConsentRedirectUri { get; set; } = string.Empty;
     public string ConsentSigningKey { get; set; } = string.Empty;
+    public string CustomerClientId { get; set; } = string.Empty;
+    public string ApiApplicationIdUri { get; set; } = string.Empty;
+    public string TrustedProxyAddresses { get; set; } = string.Empty;
+
+    public bool IsInvitationConsentConfigured
+    {
+        get
+        {
+            if (string.IsNullOrWhiteSpace(CustomerClientId) ||
+                string.IsNullOrWhiteSpace(ApiApplicationIdUri) ||
+                string.IsNullOrWhiteSpace(ConsentSigningKey) ||
+                !Uri.TryCreate(ApiApplicationIdUri, UriKind.Absolute, out _) ||
+                !Uri.TryCreate(PublicBaseUrl, UriKind.Absolute, out var publicUri) ||
+                !Uri.TryCreate(ConsentRedirectUri, UriKind.Absolute, out var redirectUri) ||
+                publicUri is null ||
+                redirectUri is null ||
+                publicUri.UserInfo.Length != 0 ||
+                redirectUri.UserInfo.Length != 0 ||
+                publicUri.Query.Length != 0 ||
+                publicUri.Fragment.Length != 0 ||
+                redirectUri.Query.Length != 0 ||
+                redirectUri.Fragment.Length != 0 ||
+                !string.Equals(publicUri.GetLeftPart(UriPartial.Authority), redirectUri.GetLeftPart(UriPartial.Authority), StringComparison.OrdinalIgnoreCase) ||
+                !string.Equals(redirectUri.AbsolutePath, "/onboarding/consent/callback", StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            if ((!IsHttpsOrLocalhost(publicUri) || !IsHttpsOrLocalhost(redirectUri)) ||
+                !TryReadSigningKey(ConsentSigningKey, out var key) ||
+                key.Length < 32)
+            {
+                return false;
+            }
+
+            return true;
+        }
+    }
 
     public Uri Validate(IHostEnvironment environment)
     {
@@ -15,6 +53,8 @@ public sealed class OnboardingOptions
             !Uri.TryCreate(PublicBaseUrl, UriKind.Absolute, out var publicUri) ||
             publicUri is null ||
             publicUri.UserInfo.Length > 0 ||
+            publicUri.Query.Length > 0 ||
+            publicUri.Fragment.Length > 0 ||
             (publicUri.Scheme != Uri.UriSchemeHttp && publicUri.Scheme != Uri.UriSchemeHttps))
         {
             throw new InvalidOperationException("Onboarding:PublicBaseUrl must be a configured absolute HTTP(S) URL.");
@@ -59,5 +99,23 @@ public sealed class OnboardingOptions
         }
 
         return publicUri;
+    }
+
+    private static bool IsHttpsOrLocalhost(Uri uri) =>
+        uri.Scheme == Uri.UriSchemeHttps ||
+        (uri.Scheme == Uri.UriSchemeHttp && uri.IsLoopback);
+
+    private static bool TryReadSigningKey(string value, out byte[] key)
+    {
+        try
+        {
+            key = Convert.FromBase64String(value);
+            return true;
+        }
+        catch (FormatException)
+        {
+            key = [];
+            return false;
+        }
     }
 }

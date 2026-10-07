@@ -7,6 +7,8 @@ using System.Security.Claims;
 
 namespace Atea.UnifiedWorkplace.Api.Features.Workspaces;
 
+public sealed record OnboardingRateLimitMarker;
+
 public static class WorkspaceEndpoints
 {
     public static IEndpointRouteBuilder MapWorkspaceEndpoints(this IEndpointRouteBuilder endpoints)
@@ -28,7 +30,84 @@ public static class WorkspaceEndpoints
         endpoints.MapPost("/api/workspaces/current/consent/start", StartConsentAsync).RequireAuthorization();
         endpoints.MapPost("/api/workspaces/current/consent/complete", CompleteConsentAsync).RequireAuthorization();
         endpoints.MapPost("/api/invitations/{nonce}/redeem", RedeemInvitationAsync).RequireAuthorization();
+        var anonymousInvitations = endpoints.MapGroup("/api/invitations");
+        anonymousInvitations.MapGet("/{nonce}/preview", PreviewInvitationAsync)
+            .AllowAnonymous()
+            .WithMetadata(new OnboardingRateLimitMarker())
+            .RequireRateLimiting("OnboardingCommon");
+        anonymousInvitations.MapPost("/{nonce}/consent/start", StartInvitationConsentAsync)
+            .AllowAnonymous()
+            .WithMetadata(new OnboardingRateLimitMarker())
+            .RequireRateLimiting("OnboardingConsentStart");
+        anonymousInvitations.MapPost("/{nonce}/consent/resume", ResumeInvitationConsentAsync)
+            .AllowAnonymous()
+            .WithMetadata(new OnboardingRateLimitMarker())
+            .RequireRateLimiting("OnboardingCommon");
         return endpoints;
+    }
+
+    private static async Task<IResult> PreviewInvitationAsync(
+        string nonce,
+        IInvitationConsentService invitations,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var result = await invitations.PreviewAsync(nonce, cancellationToken);
+            return result is null
+                ? Results.NotFound(new { error = "invitation_unavailable" })
+                : Results.Ok(result);
+        }
+        catch (InvitationConsentUnavailableException)
+        {
+            return Results.Json(new { error = "invitation_service_unavailable" }, statusCode: StatusCodes.Status503ServiceUnavailable);
+        }
+    }
+
+    private static async Task<IResult> StartInvitationConsentAsync(
+        string nonce,
+        InvitationConsentStartRequest request,
+        IInvitationConsentService invitations,
+        CancellationToken cancellationToken)
+    {
+        _ = request;
+        try
+        {
+            var result = await invitations.StartAsync(nonce, cancellationToken);
+            return Results.Ok(new InvitationConsentStartResponse(result.AuthorizationUrl, result.Scopes, result.Challenge, result.CorrelationId, result.ExpiresAt));
+        }
+        catch (InvitationConsentNotFoundException)
+        {
+            return Results.NotFound(new { error = "invitation_unavailable" });
+        }
+        catch (InvitationConsentConflictException)
+        {
+            return Results.Conflict(new { error = "invitation_consent_not_available" });
+        }
+        catch (InvitationConsentUnavailableException)
+        {
+            return Results.Json(new { error = "invitation_service_unavailable" }, statusCode: StatusCodes.Status503ServiceUnavailable);
+        }
+    }
+
+    private static async Task<IResult> ResumeInvitationConsentAsync(
+        string nonce,
+        InvitationConsentResumeRequest request,
+        IInvitationConsentService invitations,
+        CancellationToken cancellationToken)
+    {
+        if (request.State is null || request.State.Length > 4096)
+            return Results.Ok(new InvitationConsentResumeResponse(false, "invalid_callback", null, string.Empty));
+
+        try
+        {
+            var result = await invitations.ResumeAsync(nonce, request.State, request.Tenant, request.ErrorCode, cancellationToken);
+            return Results.Ok(new InvitationConsentResumeResponse(result.Valid, result.Status, result.TenantId, result.CorrelationId));
+        }
+        catch (InvitationConsentUnavailableException)
+        {
+            return Results.Json(new { error = "invitation_service_unavailable" }, statusCode: StatusCodes.Status503ServiceUnavailable);
+        }
     }
 
     private static IResult GetPlatformSessionAsync(HttpContext httpContext, IPlatformAuthorization authorization)

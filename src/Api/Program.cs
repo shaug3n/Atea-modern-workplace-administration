@@ -24,8 +24,13 @@ using Atea.UnifiedWorkplace.Api.Features.Exports;
 using Atea.UnifiedWorkplace.Api.Infrastructure.Http;
 using Atea.UnifiedWorkplace.Api.Infrastructure.Configuration;
 using Microsoft.Extensions.Options;
+using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.AspNetCore.RateLimiting;
+using System.Net;
+using System.Threading.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
+builder.Logging.AddFilter("Microsoft.AspNetCore.Hosting.Diagnostics", LogLevel.Warning);
 builder.Services.AddHostedService<HostedConfigurationValidationService>();
 builder.Services.AddOptions<OnboardingOptions>()
     .Bind(builder.Configuration.GetSection("Onboarding"))
@@ -35,6 +40,67 @@ builder.Services.AddOptions<OnboardingOptions>()
         return true;
     }, "Onboarding configuration is invalid.")
     .ValidateOnStart();
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.None;
+    options.KnownIPNetworks.Clear();
+    options.KnownProxies.Clear();
+    options.ForwardLimit = 1;
+    var configuredProxies = builder.Configuration["Onboarding:TrustedProxyAddresses"] ?? string.Empty;
+    foreach (var value in configuredProxies.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+    {
+        if (IPAddress.TryParse(value, out var proxyAddress))
+        {
+            options.KnownProxies.Add(proxyAddress);
+            options.ForwardedHeaders = ForwardedHeaders.XForwardedFor;
+        }
+    }
+});
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.OnRejected = async (rejected, cancellationToken) =>
+    {
+        if (rejected.Lease.TryGetMetadata(MetadataName.RetryAfter, out var retryAfter))
+        {
+            rejected.HttpContext.Response.Headers["Retry-After"] =
+                Math.Max(1, (int)Math.Ceiling(retryAfter.TotalSeconds)).ToString(System.Globalization.CultureInfo.InvariantCulture);
+        }
+        await rejected.HttpContext.Response.WriteAsJsonAsync(new { error = "rate_limit_exceeded" }, cancellationToken);
+    };
+    options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context =>
+        context.GetEndpoint()?.Metadata.GetMetadata<OnboardingRateLimitMarker>() is null
+            ? RateLimitPartition.GetNoLimiter("not-onboarding")
+            : RateLimitPartition.GetFixedWindowLimiter(
+                "instance",
+                _ => new FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = 200,
+                    Window = TimeSpan.FromMinutes(1),
+                    QueueLimit = 0,
+                    AutoReplenishment = true
+                }));
+    options.AddPolicy("OnboardingCommon", context =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 20,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0,
+                AutoReplenishment = true
+            }));
+    options.AddPolicy("OnboardingConsentStart", context =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 5,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0,
+                AutoReplenishment = true
+            }));
+});
 builder.Services.AddDbContext<WorkplaceDbContext>(options => options.UseNpgsql(builder.Configuration.GetConnectionString("WorkplaceDb")));
 builder.Services.AddPlatformAuthorization(builder.Configuration, builder.Environment);
 builder.Services.AddScoped<IWorkspaceProvisioningRepository, WorkspaceProvisioningRepository>();
@@ -47,6 +113,7 @@ builder.Services.AddScoped<WorkspaceOnboardingRepository>();
 builder.Services.AddScoped<IWorkspaceAccessRepository, WorkspaceAccessRepository>();
 builder.Services.AddScoped<IOnboardingRepository>(services => services.GetRequiredService<WorkspaceOnboardingRepository>());
 builder.Services.AddScoped<IInvitationRepository>(services => services.GetRequiredService<WorkspaceOnboardingRepository>());
+builder.Services.AddScoped<IInvitationReadRepository>(services => services.GetRequiredService<WorkspaceOnboardingRepository>());
 builder.Services.AddScoped<IConsentChallengeRepository>(services => services.GetRequiredService<WorkspaceOnboardingRepository>());
 builder.Services.AddScoped<IOnboardingService, OnboardingService>();
 builder.Services.AddSingleton<ConsentChallengeService>(services => new ConsentChallengeService(
@@ -55,6 +122,15 @@ builder.Services.AddScoped<InvitationService>(services =>
 {
     var options = services.GetRequiredService<IOptions<OnboardingOptions>>().Value;
     return new InvitationService(services.GetRequiredService<IInvitationRepository>(), new Uri(options.PublicBaseUrl, UriKind.Absolute));
+});
+builder.Services.AddScoped<IInvitationConsentService>(services =>
+{
+    var options = services.GetRequiredService<IOptions<OnboardingOptions>>().Value;
+    return new InvitationConsentService(
+        services.GetRequiredService<IInvitationReadRepository>(),
+        services.GetRequiredService<IConsentChallengeRepository>(),
+        services.GetRequiredService<ConsentChallengeService>(),
+        options);
 });
 builder.Services.AddScoped<IDelegatedConnectionProbe, DelegatedGraphConnectionProbe>();
 builder.Services.AddScoped<IConnectionHealthReader, ConnectionHealthReader>();
@@ -133,6 +209,8 @@ if (args.Length == 1 && string.Equals(args[0], "--migrate", StringComparison.Ord
 }
 else
 {
+app.UseForwardedHeaders();
+app.UseMiddleware<InvitationRequestSecurityMiddleware>();
 if (app.Environment.IsDevelopment() && !string.IsNullOrWhiteSpace(builder.Configuration.GetConnectionString("WorkplaceDb")))
 {
     await using var scope = app.Services.CreateAsyncScope();
@@ -143,11 +221,13 @@ app.UseStaticFiles();
 app.MapGet("/health", () => Results.Json(new { status = "ok" })).AllowAnonymous();
 app.MapGet("/health/ready", (WorkplaceDbContext database, CancellationToken cancellationToken) =>
     HealthEndpoints.CheckDatabaseReadinessAsync(database.Database.CanConnectAsync, cancellationToken)).AllowAnonymous();
+app.UseRouting();
 app.UseMiddleware<CorrelationMiddleware>();
 app.UseMiddleware<ApiProblemDetailsMiddleware>();
 app.UseAuthentication();
 app.UseWorkspaceContext();
 app.UseAuthorization();
+app.UseRateLimiter();
 app.MapGet("/api/ping", () => Results.Ok(new { status = "ok" }));
 app.MapAdminAuthEndpoints();
 app.MapGet("/api/session", async (IWorkspaceContextAccessor accessor, IWorkspaceSettingsService settingsService, CancellationToken cancellationToken) =>
