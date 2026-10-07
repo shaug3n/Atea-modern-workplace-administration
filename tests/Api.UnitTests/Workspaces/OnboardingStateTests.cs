@@ -16,6 +16,25 @@ public sealed class OnboardingStateTests
     [InlineData(ConnectionState.TemporarilyUnavailable, ConnectionState.ConsentRequired)]
     [InlineData(ConnectionState.ConsentRevoked, ConnectionState.ConsentRequired)]
     [InlineData(ConnectionState.ConnectionFailed, ConnectionState.ConsentRequired)]
+    [InlineData(ConnectionState.ConsentRequired, ConnectionState.PermissionIncomplete)]
+    [InlineData(ConnectionState.ConsentRequired, ConnectionState.TemporarilyUnavailable)]
+    [InlineData(ConnectionState.ConsentRequired, ConnectionState.ConsentRevoked)]
+    [InlineData(ConnectionState.ConsentRequired, ConnectionState.ConnectionFailed)]
+    [InlineData(ConnectionState.PermissionIncomplete, ConnectionState.Connected)]
+    [InlineData(ConnectionState.PermissionIncomplete, ConnectionState.TemporarilyUnavailable)]
+    [InlineData(ConnectionState.PermissionIncomplete, ConnectionState.ConsentRevoked)]
+    [InlineData(ConnectionState.PermissionIncomplete, ConnectionState.ConnectionFailed)]
+    [InlineData(ConnectionState.TemporarilyUnavailable, ConnectionState.Connected)]
+    [InlineData(ConnectionState.TemporarilyUnavailable, ConnectionState.PermissionIncomplete)]
+    [InlineData(ConnectionState.TemporarilyUnavailable, ConnectionState.ConsentRevoked)]
+    [InlineData(ConnectionState.TemporarilyUnavailable, ConnectionState.ConnectionFailed)]
+    [InlineData(ConnectionState.ConsentRevoked, ConnectionState.PermissionIncomplete)]
+    [InlineData(ConnectionState.ConsentRevoked, ConnectionState.TemporarilyUnavailable)]
+    [InlineData(ConnectionState.ConsentRevoked, ConnectionState.ConnectionFailed)]
+    [InlineData(ConnectionState.ConnectionFailed, ConnectionState.Connected)]
+    [InlineData(ConnectionState.ConnectionFailed, ConnectionState.PermissionIncomplete)]
+    [InlineData(ConnectionState.ConnectionFailed, ConnectionState.TemporarilyUnavailable)]
+    [InlineData(ConnectionState.ConnectionFailed, ConnectionState.ConsentRevoked)]
     public void Allows_documented_transition(string from, string to)
     {
         OnboardingStateMachine.CanTransition(from, to).Should().BeTrue();
@@ -23,9 +42,11 @@ public sealed class OnboardingStateTests
 
     [Theory]
     [InlineData(ConnectionState.AwaitingInvitation, ConnectionState.Connected)]
-    [InlineData(ConnectionState.ConsentRequired, ConnectionState.PermissionIncomplete)]
     [InlineData(ConnectionState.Connected, ConnectionState.AwaitingInvitation)]
-    [InlineData(ConnectionState.ConsentRevoked, ConnectionState.Connected)]
+    [InlineData(ConnectionState.AwaitingInvitation, ConnectionState.PermissionIncomplete)]
+    [InlineData(ConnectionState.AwaitingInvitation, ConnectionState.TemporarilyUnavailable)]
+    [InlineData(ConnectionState.AwaitingInvitation, ConnectionState.ConsentRevoked)]
+    [InlineData(ConnectionState.AwaitingInvitation, ConnectionState.ConnectionFailed)]
     public void Rejects_undocumented_transition(string from, string to)
     {
         OnboardingStateMachine.CanTransition(from, to).Should().BeFalse();

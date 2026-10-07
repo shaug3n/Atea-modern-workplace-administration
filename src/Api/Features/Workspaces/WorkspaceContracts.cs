@@ -13,8 +13,21 @@ public sealed record WorkspaceEnabledModulesRequest(IReadOnlyCollection<string>?
 public sealed record WorkspaceOwnershipTransferRequest(Guid NewOwnerMembershipId);
 public sealed record ConsentStartResponse(string AuthorizationUrl, IReadOnlyCollection<string> Scopes, string Challenge, string CorrelationId);
 public sealed record ConsentCompletionRequest(string State, Guid Tenant, string? ErrorCode = null);
-public sealed record ConsentCompletionResponse(bool Valid, string Status, string CorrelationId);
-public sealed record ConnectionHealthDto(Guid WorkspaceId, string Status, DateTimeOffset? LastVerifiedAt, IReadOnlyCollection<string> Scopes, string? Problem, string CorrelationId);
+public sealed record ConsentCompletionResponse(
+    bool Valid,
+    string Status,
+    string CorrelationId,
+    ConnectionHealthDto? Health = null,
+    PermissionCoverage? PermissionCoverage = null);
+public sealed record ConnectionHealthDto(
+    Guid WorkspaceId,
+    string Status,
+    DateTimeOffset? LastVerifiedAt,
+    IReadOnlyCollection<string> Scopes,
+    string? Problem,
+    string CorrelationId,
+    PermissionCoverage? PermissionCoverage = null);
+public sealed record ConnectionHealthCheckRequest(bool IncludePermissionCoverage = false);
 public sealed record WorkspaceMembershipDto(Guid Id, Guid TenantObjectId, string Email, string PlatformRole, bool IsAteaOperator);
 public sealed record InvitationSummaryDto(Guid Id, string Email, string DisplayName, DateTimeOffset ExpiresAt, DateTimeOffset? RedeemedAt, string Role = "customer_admin", DateTimeOffset? RevokedAt = null);
 public sealed record WorkspaceAccessMembershipDto(Guid Id, Guid TenantObjectId, string Email, string PlatformRole, DateTimeOffset CreatedAt, IReadOnlyCollection<string> ModuleKeys);

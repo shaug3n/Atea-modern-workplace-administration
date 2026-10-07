@@ -487,7 +487,7 @@ git commit -m "refactor: extract delegated scope availability probes"
 - Produces: `ConnectionHealthCheckRequest(bool IncludePermissionCoverage = false)`.
 - Preserves: default baseline-only `POST /api/workspaces/current/connection-health/check`; optional `{ "includePermissionCoverage": true }` invokes the comprehensive verifier.
 
-- [ ] **Step 1: Add failing verifier and transition tests.**
+- [x] **Step 1: Add failing verifier and transition tests.**
 
 ```csharp
 [Fact] public async Task Definite_missing_and_unknown_scopes_remain_distinct()
@@ -504,26 +504,26 @@ git commit -m "refactor: extract delegated scope availability probes"
 
 Cover all post-redemption states transitioning to `consent_required`, `connected`, `permission_incomplete`, `temporarily_unavailable`, `consent_revoked`, and `connection_failed`; assert `awaiting_invitation -> connected` remains false. Assert all catalog scopes available yields `connected`, unknown-only probes yield `temporarily_unavailable`, baseline failure preserves its category, and `LastVerifiedAt` is set only after an observed check.
 
-- [ ] **Step 2: Run the focused API tests.**
+- [x] **Step 2: Run the focused API tests.**
 
 Run: `dotnet test tests/Api.UnitTests/Api.UnitTests.csproj --filter "FullyQualifiedName~ConnectionVerificationServiceTests|FullyQualifiedName~OnboardingStateTests"`
 Expected: FAIL because the verifier and comprehensive transition results are missing.
 
-- [ ] **Step 3: Implement `IWorkspaceConnectionVerifier.VerifyAsync`.**
+- [x] **Step 3: Implement `IWorkspaceConnectionVerifier.VerifyAsync`.**
 
 Use `IConnectionHealthReader` for baseline `/me`; for comprehensive mode probe every `GraphScopeCatalog.CapabilityEvaluationScopes` value uncached, with a 30-second total bound, concurrency four, cancellation and disposal. Missing scopes force `permission_incomplete` even if other probes are unknown; unknown-only coverage is `temporarily_unavailable`. Persist safe status, available scope names, failure category and observed verification time only.
 
-- [ ] **Step 4: Extend invitation completion and connection-check endpoints.**
+- [x] **Step 4: Extend invitation completion and connection-check endpoints.**
 
 After Task 7 has atomically consumed a valid authenticated invitation state, run comprehensive verification exactly once and return the existing `valid/status/correlationId` plus invitation-only `health` and `permissionCoverage`. Keep legacy completion fields/status and its separate baseline check. Invalid state runs no Graph call. Extend the health-check endpoint with `includePermissionCoverage`; baseline-only remains default.
 
-- [ ] **Step 5: Run focused API tests.**
+- [x] **Step 5: Run focused API tests.**
 
 Run: `dotnet test tests/Api.UnitTests/Api.UnitTests.csproj --filter "FullyQualifiedName~ConnectionVerificationServiceTests|FullyQualifiedName~OnboardingStateTests"`
 Run: `dotnet test tests/Api.IntegrationTests/Api.IntegrationTests.csproj --filter "FullyQualifiedName~ConsentCallbackEndpointTests|FullyQualifiedName~OnboardingEndpointTests"`
 Expected: PASS; legacy response/status assertions remain valid and invitation coverage is truthful.
 
-- [ ] **Step 6: Commit.**
+- [x] **Step 6: Commit.**
 
 ```bash
 git add src/Api/Features/Workspaces/ConnectionVerificationService.cs src/Api/Features/Workspaces/OnboardingService.cs src/Api/Features/Workspaces/WorkspaceContracts.cs src/Api/Features/Workspaces/WorkspaceEndpoints.cs src/Api/Infrastructure/Graph/IConnectionHealthReader.cs src/Api/Infrastructure/Graph/ConnectionHealthReader.cs tests/Api.UnitTests/Workspaces/OnboardingStateTests.cs tests/Api.UnitTests/Workspaces/ConnectionVerificationServiceTests.cs tests/Api.IntegrationTests/Workspaces/ConsentCallbackEndpointTests.cs

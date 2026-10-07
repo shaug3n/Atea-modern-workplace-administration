@@ -116,6 +116,7 @@ builder.Services.AddScoped<IInvitationRepository>(services => services.GetRequir
 builder.Services.AddScoped<IInvitationReadRepository>(services => services.GetRequiredService<WorkspaceOnboardingRepository>());
 builder.Services.AddScoped<IConsentChallengeRepository>(services => services.GetRequiredService<WorkspaceOnboardingRepository>());
 builder.Services.AddScoped<IOnboardingService, OnboardingService>();
+builder.Services.AddScoped<IWorkspaceConnectionVerifier, ConnectionVerificationService>();
 builder.Services.AddSingleton<ConsentChallengeService>(services => new ConsentChallengeService(
     services.GetRequiredService<IOptions<OnboardingOptions>>().Value.ConsentSigningKey));
 builder.Services.AddScoped<InvitationService>(services =>

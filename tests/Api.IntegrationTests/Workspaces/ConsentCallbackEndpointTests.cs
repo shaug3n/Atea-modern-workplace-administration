@@ -101,6 +101,77 @@ public sealed class ConsentCallbackEndpointTests
         body.Should().Contain("\"status\":\"consent_denied\"").And.NotContain("access_denied").And.NotContain("error_description");
     }
 
+    [Fact]
+    public async Task Valid_invitation_completion_runs_comprehensive_verification_once_and_returns_coverage()
+    {
+        var invitationConsent = new FixtureInvitationConsentService();
+        var verifier = new RecordingConnectionVerifier();
+        using var factory = CreateFactory(out var repository, invitationConsent, verifier);
+        using var client = AuthenticatedClient(factory);
+
+        var response = await client.PostAsJsonAsync("/api/workspaces/current/consent/complete", new
+        {
+            state = "invitation-state",
+            tenant = TenantId
+        });
+        var body = await response.Content.ReadAsStringAsync();
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        body.Should().Contain("\"status\":\"consent_received\"");
+        body.Should().Contain("\"health\":").And.Contain("\"status\":\"permission_incomplete\"");
+        body.Should().Contain("\"permissionCoverage\"");
+        body.Should().Contain("\"missingScopes\":[\"User.Read.All\"]");
+        body.Should().Contain("\"unknownScopes\":[\"Group.Read.All\"]");
+        verifier.CallCount.Should().Be(1);
+        verifier.IncludePermissionCoverage.Should().BeTrue();
+        repository.ConsumeCalls.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task Invalid_invitation_state_does_not_run_connection_verification()
+    {
+        var invitationConsent = new FixtureInvitationConsentService();
+        var verifier = new RecordingConnectionVerifier();
+        using var factory = CreateFactory(out var repository, invitationConsent, verifier);
+        using var client = AuthenticatedClient(factory);
+
+        var response = await client.PostAsJsonAsync("/api/workspaces/current/consent/complete", new
+        {
+            state = "tampered-invitation-state",
+            tenant = TenantId
+        });
+        var body = await response.Content.ReadAsStringAsync();
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        body.Should().Contain("\"valid\":false");
+        verifier.CallCount.Should().Be(0);
+        repository.ConsumeCalls.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task Connection_check_uses_comprehensive_coverage_only_when_explicitly_requested()
+    {
+        var verifier = new RecordingConnectionVerifier();
+        using var factory = CreateFactory(out _, verifier: verifier);
+        using var client = AuthenticatedClient(factory);
+
+        var baseline = await client.PostAsync("/api/workspaces/current/connection-health/check", null);
+        var baselineBody = await baseline.Content.ReadAsStringAsync();
+        baseline.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        baselineBody.Should().NotContain("permissionCoverage");
+        verifier.CallCount.Should().Be(0);
+
+        var comprehensive = await client.PostAsJsonAsync(
+            "/api/workspaces/current/connection-health/check",
+            new { includePermissionCoverage = true });
+        var comprehensiveBody = await comprehensive.Content.ReadAsStringAsync();
+
+        comprehensive.StatusCode.Should().Be(HttpStatusCode.OK);
+        comprehensiveBody.Should().Contain("\"missingScopes\":[\"User.Read.All\"]");
+        verifier.CallCount.Should().Be(1);
+        verifier.IncludePermissionCoverage.Should().BeTrue();
+    }
+
     private static async Task<ConsentStartResponse> StartAsync(HttpClient client)
     {
         var response = await client.PostAsync("/api/workspaces/current/consent/start", null);
@@ -117,7 +188,10 @@ public sealed class ConsentCallbackEndpointTests
         return client;
     }
 
-    private static WebApplicationFactory<Program> CreateFactory(out RecordingConsentChallengeRepository repository)
+    private static WebApplicationFactory<Program> CreateFactory(
+        out RecordingConsentChallengeRepository repository,
+        IInvitationConsentService? invitationConsent = null,
+        IWorkspaceConnectionVerifier? verifier = null)
     {
         var configuredRepository = new RecordingConsentChallengeRepository();
         repository = configuredRepository;
@@ -143,6 +217,16 @@ public sealed class ConsentCallbackEndpointTests
                 services.AddSingleton<IGraphAuthorizationSnapshotReader>(new StaticSnapshotReader());
                 services.RemoveAll<IConsentChallengeRepository>();
                 services.AddSingleton<IConsentChallengeRepository>(configuredRepository);
+                if (invitationConsent is not null)
+                {
+                    services.RemoveAll<IInvitationConsentService>();
+                    services.AddSingleton<IInvitationConsentService>(invitationConsent);
+                }
+                if (verifier is not null)
+                {
+                    services.RemoveAll<IWorkspaceConnectionVerifier>();
+                    services.AddSingleton<IWorkspaceConnectionVerifier>(verifier);
+                }
             });
         });
     }
@@ -174,6 +258,54 @@ public sealed class ConsentCallbackEndpointTests
     private sealed class StaticSnapshotReader : IGraphAuthorizationSnapshotReader
     {
         public Task<GraphAuthorizationSnapshot> ReadAsync(WorkspaceContext context, CancellationToken cancellationToken = default) => Task.FromResult(GraphAuthorizationSnapshot.Unavailable("temporarily_unavailable"));
+    }
+
+    private sealed class FixtureInvitationConsentService : IInvitationConsentService
+    {
+        public Task<InvitationPreviewResult?> PreviewAsync(string nonce, CancellationToken cancellationToken = default) =>
+            Task.FromResult<InvitationPreviewResult?>(null);
+
+        public Task<InvitationConsentStartResult> StartAsync(string nonce, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public Task<InvitationConsentResumeResult> ResumeAsync(string nonce, string state, Guid? tenant, string? errorCode, CancellationToken cancellationToken = default) =>
+            Task.FromResult(new InvitationConsentResumeResult(false, "invalid_callback", null, string.Empty));
+
+        public Task<InvitationCompletionResult> CompleteInvitationAsync(
+            string state,
+            Guid workspaceId,
+            Guid tokenTenantId,
+            Guid tokenObjectId,
+            Guid? callbackTenant,
+            string? errorCode,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(state == "invitation-state"
+                ? new InvitationCompletionResult(true, "consent_received", "invitation-correlation")
+                : new InvitationCompletionResult(false, "invalid_callback", string.Empty));
+    }
+
+    private sealed class RecordingConnectionVerifier : IWorkspaceConnectionVerifier
+    {
+        public int CallCount { get; private set; }
+        public bool IncludePermissionCoverage { get; private set; }
+
+        public Task<WorkspaceConnectionVerification> VerifyAsync(
+            WorkspaceContext context,
+            bool includePermissionCoverage,
+            CancellationToken cancellationToken = default)
+        {
+            CallCount++;
+            IncludePermissionCoverage = includePermissionCoverage;
+            var coverage = new PermissionCoverage(["User.Read"], ["User.Read.All"], ["Group.Read.All"]);
+            var health = new ConnectionHealthDto(
+                context.Membership.WorkspaceId,
+                ConnectionState.PermissionIncomplete,
+                DateTimeOffset.UtcNow,
+                coverage.AvailableScopes,
+                "permission_incomplete",
+                string.Empty);
+            return Task.FromResult(new WorkspaceConnectionVerification(health, coverage));
+        }
     }
 
     private sealed class FixtureMembershipReader : IWorkspaceMembershipReader

@@ -293,11 +293,28 @@ public static class WorkspaceEndpoints
         return Results.Ok(ToHealthDto(state, null, ""));
     }
 
-    private static async Task<IResult> CheckConnectionHealthAsync(IWorkspaceContextAccessor accessor, IOnboardingService onboarding, IConnectionHealthReader reader, HttpContext httpContext, CancellationToken cancellationToken)
+    private static async Task<IResult> CheckConnectionHealthAsync(
+        IWorkspaceContextAccessor accessor,
+        IOnboardingService onboarding,
+        IConnectionHealthReader reader,
+        IWorkspaceConnectionVerifier verifier,
+        HttpContext httpContext,
+        CancellationToken cancellationToken,
+        ConnectionHealthCheckRequest? request = null)
     {
         var context = accessor.Current;
         if (context is null) return Results.StatusCode(StatusCodes.Status403Forbidden);
         var correlationId = httpContext.TraceIdentifier;
+        if (request?.IncludePermissionCoverage == true)
+        {
+            var verification = await verifier.VerifyAsync(context, includePermissionCoverage: true, cancellationToken);
+            return Results.Ok(verification.Health with
+            {
+                CorrelationId = correlationId,
+                PermissionCoverage = verification.PermissionCoverage
+            });
+        }
+
         var result = await reader.ReadAsync(context.User.TenantId, cancellationToken);
         var status = result.Status switch
         {
@@ -339,6 +356,8 @@ public static class WorkspaceEndpoints
         ConsentChallengeService challenges,
         IConsentChallengeRepository challengeRepository,
         IInvitationConsentService invitationConsent,
+        IWorkspaceConnectionVerifier verifier,
+        HttpContext httpContext,
         CancellationToken cancellationToken)
     {
         var context = accessor.Current;
@@ -361,7 +380,18 @@ public static class WorkspaceEndpoints
         }
 
         if (invitationResult.Valid)
-            return Results.Ok(new ConsentCompletionResponse(invitationResult.Valid, invitationResult.Status, invitationResult.CorrelationId));
+        {
+            if (invitationResult.Status != "consent_received")
+                return Results.Ok(new ConsentCompletionResponse(invitationResult.Valid, invitationResult.Status, invitationResult.CorrelationId));
+
+            var verification = await verifier.VerifyAsync(context, includePermissionCoverage: true, cancellationToken);
+            return Results.Ok(new ConsentCompletionResponse(
+                invitationResult.Valid,
+                invitationResult.Status,
+                invitationResult.CorrelationId,
+                verification.Health with { CorrelationId = httpContext.TraceIdentifier },
+                verification.PermissionCoverage));
+        }
 
         if (request.Tenant == Guid.Empty || request.Tenant != context.User.TenantId || string.IsNullOrWhiteSpace(request.State))
             return Results.Ok(new ConsentCompletionResponse(false, "invalid_callback", string.Empty));
