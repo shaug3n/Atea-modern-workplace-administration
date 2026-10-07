@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import React from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { CapabilitySnapshot } from '../../../src/Web/src/capabilities/capabilityTypes';
@@ -88,7 +88,7 @@ describe('AppShell', () => {
 
     const nav = screen.getByRole('navigation', { name: 'Primary navigation' });
     expect(nav.querySelectorAll('a[href="/settings"]')).toHaveLength(1);
-    expect(screen.getByRole('link', { name: 'Workspace Settings' }).getAttribute('aria-current')).toBe('page');
+    expect(within(nav).getByRole('link', { name: 'Workspace Settings' }).getAttribute('aria-current')).toBe('page');
     expect(screen.getByRole('navigation', { name: 'Breadcrumbs' }).textContent).toContain('General');
   });
 
@@ -135,10 +135,10 @@ describe('AppShell', () => {
     render(<App loadCapabilities={async () => snapshot} loadSession={async () => session} />);
     await screen.findByRole('heading', { name: 'Devices' });
     expect(screen.getByLabelText('Device filters')).toBeTruthy();
-    const warning = await screen.findByRole('button', { name: 'Notifications, 1 warnings' });
+    const warning = await screen.findByRole('button', { name: 'Notifications, 1 need attention' });
     fireEvent.click(screen.getByRole('link', { name: 'Overview' }));
     await screen.findByRole('heading', { name: 'Overview' });
-    fireEvent.click(screen.getByRole('button', { name: /Notifications, \d+ warnings/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Notifications, \d+ need attention/i }));
     expect(screen.getByText('Access needs attention')).toBeTruthy();
     expect(apiMock).not.toHaveBeenCalledWith('/api/devices');
   });
@@ -159,10 +159,10 @@ describe('AppShell', () => {
     let checks = 0;
     apiMock.mockResolvedValue(Response.json({ items: [], total: 0, fetchedAt: '2026-09-25T10:00:00Z', freshness: 'live', partialData: false }));
     render(<App loadCapabilities={async () => ++checks === 1 ? denied : recovered} loadSession={async () => session} />);
-    await screen.findByRole('button', { name: 'Notifications, 1 warnings' });
+    await screen.findByRole('button', { name: 'Notifications, 1 need attention' });
     fireEvent.focus(window);
     await waitFor(() => expect(checks).toBe(2));
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Notifications, 0 warnings' })).toBeTruthy());
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Notifications, 0 need attention' })).toBeTruthy());
   });
 
   it('keeps workspace settings available when the Graph capability check fails', async () => {
@@ -186,7 +186,7 @@ describe('AppShell', () => {
     render(<App loadCapabilities={async () => ({ ...allowedCapabilities, capabilities: [] })} loadSession={async () => session} />);
     expect(await screen.findByRole('heading', { name: 'Users' })).toBeTruthy();
     expect(screen.getByRole('alert').textContent).toContain('Data cannot be shown');
-    await waitFor(() => expect(screen.getByRole('button', { name: /notifications, 1 warnings/i })).toBeTruthy());
+    await waitFor(() => expect(screen.getByRole('button', { name: /notifications, 1 need attention/i })).toBeTruthy());
     expect(apiMock).not.toHaveBeenCalled();
   });
 
@@ -273,10 +273,10 @@ describe('AppShell', () => {
       calls++;
       return calls === 1 ? { ...allowedCapabilities, capabilities: [{ capability: 'users.view', state: 'consent_required', reasonCode: 'consent_required' }] } : allowedCapabilities;
     }} loadConnectionHealth={async () => ({ status: 'connected', lastVerifiedAt: null })} />);
-    fireEvent.click(await screen.findByRole('button', { name: /notifications, 1 warnings/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /notifications, 1 need attention/i }));
     expect(screen.getByText('Microsoft Graph consent required')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Refresh' }));
-    await waitFor(() => expect(screen.getByRole('button', { name: /notifications, 0 warnings/i })).toBeTruthy());
+    await waitFor(() => expect(screen.getByRole('button', { name: /notifications, 0 need attention/i })).toBeTruthy());
   });
 
   it('rechecks capabilities when returning to the workspace tab', async () => {
@@ -287,8 +287,48 @@ describe('AppShell', () => {
       calls++;
       return calls === 1 ? { ...allowedCapabilities, capabilities: [{ capability: 'users.view', state: 'consent_required', reasonCode: 'consent_required' }] } : allowedCapabilities;
     }} loadConnectionHealth={async () => ({ status: 'connected', lastVerifiedAt: null })} />);
-    await screen.findByRole('button', { name: /notifications, 1 warnings/i });
+    await screen.findByRole('button', { name: /notifications, 1 need attention/i });
     fireEvent.focus(window);
-    await waitFor(() => expect(screen.getByRole('button', { name: /notifications, 0 warnings/i })).toBeTruthy());
+    await waitFor(() => expect(screen.getByRole('button', { name: /notifications, 0 need attention/i })).toBeTruthy());
+  });
+
+  it('shows nothing about access in the header when the snapshot is healthy and a chip when it is degraded', () => {
+    const { rerender } = render(<ThemeProvider systemTheme={() => 'light'}><AppShell capabilities={allowedCapabilities} currentPath="/overview" session={session}><p>x</p></AppShell></ThemeProvider>);
+    expect(screen.queryByText(/Access snapshot|Entra roles and Graph/)).toBeNull();
+    expect(screen.queryByRole('button', { name: /Access limited/ })).toBeNull();
+    rerender(<ThemeProvider systemTheme={() => 'light'}><AppShell capabilities={{ ...allowedCapabilities, sourceState: 'unavailable' }} currentPath="/overview" session={session}><p>x</p></AppShell></ThemeProvider>);
+    fireEvent.click(screen.getByRole('button', { name: /Access limited/ }));
+    expect(screen.getByRole('region', { name: 'Workspace notifications' })).toBeTruthy();
+    expect(screen.getByText(/Access check: limited · checked/)).toBeTruthy();
+  });
+
+  it('shows initials and the display name in the account area and falls back for a missing name', () => {
+    const { rerender, container } = render(<ThemeProvider systemTheme={() => 'light'}><AppShell capabilities={allowedCapabilities} currentPath="/overview" session={{ ...session, user: { displayName: 'Sondre Haugen' } }}><p>x</p></AppShell></ThemeProvider>);
+    expect(container.querySelector('.account-summary__avatar')?.textContent).toBe('SH');
+    rerender(<ThemeProvider systemTheme={() => 'light'}><AppShell capabilities={allowedCapabilities} currentPath="/overview" session={{ ...session, user: { displayName: null, userPrincipalName: 'zed@example.com' } }}><p>x</p></AppShell></ThemeProvider>);
+    expect(container.querySelector('.account-summary__avatar')?.textContent).toBe('Z');
+  });
+
+  it('uses generic Details crumbs for ids, links registered parents and labels main by the page title', () => {
+    const { container } = render(<ThemeProvider systemTheme={() => 'light'}><AppShell capabilities={allowedCapabilities} currentPath="/devices/3f2b8c1e-aaaa-bbbb-cccc-123456789abc" session={session}><h1 id="page-title">Laptop</h1></AppShell></ThemeProvider>);
+    const crumbs = screen.getByRole('navigation', { name: 'Breadcrumbs' });
+    expect(crumbs.textContent).toContain('Details');
+    expect(document.body.textContent).not.toContain('3f2b8c1e');
+    expect(crumbs.querySelector('a')?.getAttribute('href')).toBe('/devices');
+    expect(container.querySelector('main')?.getAttribute('aria-labelledby')).toBe('page-title');
+  });
+
+  it('puts the dark mode row and account in the mobile drawer, leaving one switch at a time, and closes on Escape', () => {
+    render(<ThemeProvider systemTheme={() => 'light'}><AppShell capabilities={allowedCapabilities} currentPath="/overview" session={session}><p>x</p></AppShell></ThemeProvider>);
+    expect(screen.getAllByRole('switch', { name: 'Dark mode' })).toHaveLength(1);
+    const menu = screen.getByRole('button', { name: 'Menu' });
+    fireEvent.click(menu);
+    expect(screen.getAllByRole('switch', { name: 'Dark mode' })).toHaveLength(1);
+    const drawer = document.getElementById('primary-navigation')!;
+    expect(drawer.querySelector('.theme-toggle--row')).not.toBeNull();
+    expect(drawer.textContent).toContain('Alex Morgan');
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(menu.getAttribute('aria-expanded')).toBe('false');
+    expect(document.activeElement).toBe(menu);
   });
 });

@@ -97,4 +97,11 @@ describe('PrimaryNav', () => {
     expect(activity.getAttribute('href')).toBe('/activity');
     expect(activity.getAttribute('aria-current')).toBe('page');
   });
+
+  it('shows a decorative icon in every navigation link', () => {
+    render(<PrimaryNav capabilities={snapshot()} currentPath="/users" session={{ user: {}, workspace: { id: 'w', name: 'Customer' }, workspaceAccess: { role: 'owner', canManageMembers: true, canManageSettings: true } }} />);
+    const links = screen.getAllByRole('link');
+    expect(links.length).toBeGreaterThan(3);
+    for (const link of links) expect(link.querySelector('svg[aria-hidden="true"]')).not.toBeNull();
+  });
 });
