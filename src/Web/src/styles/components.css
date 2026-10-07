@@ -909,3 +909,7 @@ td.numeric {
 .admin-list__item { display: grid; gap: 0.25rem; }
 .admin-list__open { display: grid; gap: 0.25rem; text-align: start; background: none; border: 0; padding: 0; color: inherit; font: inherit; cursor: pointer; }
 .admin-list__meta { display: inline-flex; align-items: center; gap: 0.5rem; }
+
+/* 320px reflow safeguards */
+.workspace-page-header, .workspace-page-header > *, .users-toolbar, .settings-form-footer, .mutation-dialog, .mutation-dialog form { min-width: 0; }
+.workspace-page-header__actions, .workspace-page-header__meta { flex-wrap: wrap; }

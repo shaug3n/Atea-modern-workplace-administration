@@ -52,3 +52,16 @@ The Task 7 brief used the name `workspace.configure`, but the completed backend 
 The shell keeps visible focus outlines on links, buttons and focusable regions. Navigation active state uses `aria-current="page"` and a non-colour indicator. Status badges include text and do not rely on colour alone. The narrow layout stacks the header context, keeps navigation reachable as a horizontal labelled nav, and uses 16px page padding. Reduced-motion users receive no decorative transitions.
 
 Known follow-up: the repo did not include Playwright, a Playwright config, or `@playwright/test`, so browser viewport smoke coverage could not be executed in Task 7.
+
+## Content rules
+
+1. Sentence case everywhere; buttons are verb + object ("Disable user", "Open module settings").
+2. Back links read "Back to {Section}".
+3. No raw implementation terms (scope names, class names, capability keys) in primary content or action labels.
+4. Technical values (GUIDs, SKU IDs, correlation IDs, JSON) live only in a collapsed `TechnicalDetails`, with copy buttons.
+5. Dates use the shared formatters in `format/dateTime` (never `toLocaleString`).
+6. Green marks only the one primary action and the active navigation item; red is only for destructive actions, which always ask for confirmation.
+7. Each page has one H1 (the `WorkspacePageHeader` title), one freshness line, and failures say what is affected and offer one next step.
+
+These rules are guarded by `tests/Web.UnitTests/content-rules.test.mjs`.
+
