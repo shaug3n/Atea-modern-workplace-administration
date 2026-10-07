@@ -220,6 +220,8 @@ def main() -> int:
     require_text(workflow, r"branches:\s*\[master\]", "master branch CI trigger", errors)
     require_text(workflow, r"concurrency:[\s\S]{0,200}group:", "serialized deployment gate", errors)
     require_text(workflow, r"environment:\s*test", "protected test deployment environment", errors)
+    require_text(workflow, r"deploy-candidate:\s*\n\s+if:[^\n]*github\.event_name == 'push'[^\n]*head\.repo\.full_name == github\.repository", "automatic candidate deployment excluding fork PRs", errors)
+    require_text(workflow, r"promote:\s*\n\s+if:\s*github\.ref == 'refs/heads/master'", "promotion restricted to master", errors)
     require_text(workflow, r"template-file\s+infra/application\.bicep", "application-only release deployment", errors)
     if "template-file infra/main.bicep" in workflow:
         errors.append("release workflow must not redeploy the foundation on every application release")
