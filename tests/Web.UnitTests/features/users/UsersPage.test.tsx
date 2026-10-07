@@ -65,8 +65,8 @@ describe('UsersPage', () => {
       error: { category: 'temporarily_unavailable', message: 'raw Graph diagnostic' },
     })} />);
     expect(await screen.findByRole('table')).toBeTruthy();
-    expect(screen.getByRole('alert').textContent).toContain('Partial results');
-    expect(screen.getByRole('alert').textContent).toContain('verified');
+    expect(screen.getByText('Partly loaded')).toBeTruthy();
+    expect(screen.getByText(/verified/).textContent).toContain('Partial results');
     expect(screen.getByRole('table').textContent).toContain('Ada Lovelace');
     expect(screen.queryByText('raw Graph diagnostic')).toBeNull();
     expect(issueReporter.report).toHaveBeenCalledWith(expect.objectContaining({ key: 'users:read', kind: 'service' }));

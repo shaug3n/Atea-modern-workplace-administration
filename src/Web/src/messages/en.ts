@@ -39,4 +39,5 @@ export const messages = {
     consent_revoked: { label: 'Consent revoked', action: 'Grant delegated consent again.' },
     connection_failed: { label: 'Connection failed', action: 'Review the handoff instructions and retry consent or connection verification.' },
   } satisfies Record<ConnectionState, { label: string; action: string }>,
+  statusUpToDate: 'Up to date', statusCached: 'Cached', statusStale: 'May be out of date', statusPartial: 'Partly loaded', statusUnavailable: 'Unavailable', statusUpdated: 'Updated', statusLoading: 'Loading…', statusAccessNeeded: 'Access needed', statusReadOnly: 'Read-only',
 } as const;

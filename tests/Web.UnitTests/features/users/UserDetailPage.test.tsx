@@ -143,7 +143,7 @@ describe('UserDetailPage', () => {
     render(<UserDetailPage userId="user-1" loadUserDetail={async () => staleDetail} />);
 
     expect(await screen.findByRole('heading', { name: 'Ada Lovelace' })).toBeTruthy();
-    expect(screen.getByText('Directory data may be stale')).toBeTruthy();
+    expect(screen.getAllByText('May be out of date')[0]).toBeTruthy();
     expect(screen.getAllByText('Section data is unavailable. Check Notifications for details.')).toHaveLength(2);
     expect(document.body.textContent).not.toContain('Microsoft Graph throttled this section request.');
   });

@@ -1,1 +1,123 @@
 /* Component and shell styles layered after theme.css. Tokens live in foundations.css. */
+
+/* Data states */
+.workspace-data-state {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--uw-gap-sm);
+  padding: var(--uw-gap-md);
+  border: 1px solid var(--uw-border);
+  border-radius: var(--uw-radius-md);
+  background: var(--uw-surface-subtle);
+  color: var(--uw-text);
+}
+
+.workspace-data-state p {
+  margin: 0;
+}
+
+.workspace-data-state__body {
+  display: grid;
+  gap: var(--uw-gap-xs);
+  min-width: 0;
+}
+
+.workspace-data-state__title {
+  color: var(--uw-heading);
+}
+
+.workspace-data-state__affected {
+  margin: 0;
+  padding-left: var(--uw-gap-md);
+}
+
+.workspace-data-state__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--uw-gap-sm);
+  margin-top: var(--uw-gap-xs);
+}
+
+.workspace-data-state__icon {
+  display: inline-flex;
+  flex: none;
+  padding-top: 0.125rem;
+}
+
+.workspace-data-state__spinner {
+  flex: none;
+  width: 1rem;
+  height: 1rem;
+  border: 2px solid var(--uw-border-strong);
+  border-top-color: var(--uw-primary);
+  border-radius: 50%;
+  animation: uw-spin 0.9s linear infinite;
+}
+
+@keyframes uw-spin {
+  to { transform: rotate(360deg); }
+}
+
+.workspace-data-state--unavailable { border-color: var(--uw-status-danger-border); background: var(--uw-status-danger-bg); color: var(--uw-status-danger-fg); }
+.workspace-data-state--unavailable .workspace-data-state__title { color: var(--uw-status-danger-fg); }
+.workspace-data-state--partial,
+.workspace-data-state--stale { border-color: var(--uw-status-warning-border); background: var(--uw-status-warning-bg); color: var(--uw-status-warning-fg); }
+.workspace-data-state--partial .workspace-data-state__title,
+.workspace-data-state--stale .workspace-data-state__title { color: var(--uw-status-warning-fg); }
+.workspace-data-state--permission { border-color: var(--uw-status-info-border); background: var(--uw-status-info-bg); color: var(--uw-status-info-fg); }
+.workspace-data-state--permission .workspace-data-state__title { color: var(--uw-status-info-fg); }
+
+.workspace-data-state--compact {
+  padding: var(--uw-gap-xs) var(--uw-gap-sm);
+  border-width: 0 0 0 3px;
+  border-radius: 0;
+  background: transparent;
+}
+
+.workspace-data-state--compact.workspace-data-state--empty,
+.workspace-data-state--compact.workspace-data-state--loading { border-left-color: var(--uw-border-strong); color: var(--uw-muted); }
+
+/* Freshness line */
+.data-freshness {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--uw-gap-xs);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--uw-muted);
+  font-size: var(--uw-font-meta);
+}
+
+.data-freshness[data-tone='warning'] { color: var(--uw-status-warning-fg); }
+.data-freshness[data-tone='danger'] { color: var(--uw-status-danger-fg); }
+.data-freshness__label { font-weight: 600; }
+.data-freshness .button { min-height: 2rem; }
+
+/* Status badge */
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--uw-gap-xs);
+  width: fit-content;
+  padding: 0.125rem var(--uw-gap-sm);
+  border: 1px solid var(--uw-status-neutral-border);
+  border-radius: var(--uw-radius-sm);
+  background: var(--uw-status-neutral-bg);
+  color: var(--uw-status-neutral-fg);
+  font-size: var(--uw-font-meta);
+  font-weight: 600;
+}
+
+.status-badge__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.status-badge[data-tone='success'] { border-color: var(--uw-status-success-border); background: var(--uw-status-success-bg); color: var(--uw-status-success-fg); }
+.status-badge[data-tone='warning'] { border-color: var(--uw-status-warning-border); background: var(--uw-status-warning-bg); color: var(--uw-status-warning-fg); }
+.status-badge[data-tone='danger'] { border-color: var(--uw-status-danger-border); background: var(--uw-status-danger-bg); color: var(--uw-status-danger-fg); }
+.status-badge[data-tone='info'] { border-color: var(--uw-status-info-border); background: var(--uw-status-info-bg); color: var(--uw-status-info-fg); }

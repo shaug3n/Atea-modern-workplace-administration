@@ -163,7 +163,7 @@ export function DevicesPage({ loadDevices, capabilities = [], moduleAssigned = t
       {exportMessage && <p role="status">{exportMessage}</p>}
       {exportError && <p role="alert">{exportError}</p>}
 
-      {!currentFailed && currentResult && <DataFreshness fetchedAt={currentResult.fetchedAt} freshness={currentResult.freshness === 'live' ? 'fresh' : currentResult.freshness === 'stale' ? 'stale' : 'unavailable'} partialData={currentResult.partialData} message={currentResult.error ? 'Some device data could not be loaded.' : undefined} labels={{ fresh: 'Device data is fresh', stale: 'Device data may be stale', unavailable: 'Device data is unavailable' }} />}
+      {!currentFailed && currentResult && <DataFreshness fetchedAt={currentResult.fetchedAt} freshness={currentResult.freshness === 'live' ? 'fresh' : currentResult.freshness === 'stale' ? 'stale' : 'unavailable'} partialData={currentResult.partialData} message={currentResult.error ? 'Some device data could not be loaded.' : undefined} />}
       {!currentFailed && currentResult && !currentResult.error && <div className="device-summary-grid" aria-label="Device summary">
         <SummaryCard label="Managed devices" value={String(currentResult.total)} detail="In the current result" />
         <SummaryCard label="Compliant" value={String(summary?.compliant ?? 0)} detail="Ready for work" />

@@ -81,7 +81,7 @@ export function AuthenticationMethodsSection({ userId, userLabel, decision, mana
     <section className="detail-section detail-section--wide" aria-labelledby="authentication-methods-section-title">
       <div className="detail-section__header">
         <h2 id="authentication-methods-section-title">{messages.userAuthenticationMethodsSection}</h2>
-        {result && <DataFreshness fetchedAt={result.fetchedAt} freshness={result.freshness === 'live' ? 'fresh' : result.freshness === 'stale' ? 'stale' : 'unavailable'} partialData={result.partialData} message={result.error?.message} labels={{ fresh: 'Authentication data is fresh', stale: 'Authentication data may be stale', unavailable: 'Authentication data is unavailable' }} />}
+        {result && <DataFreshness fetchedAt={result.fetchedAt} freshness={result.freshness === 'live' ? 'fresh' : result.freshness === 'stale' ? 'stale' : 'unavailable'} partialData={result.partialData} message={result.error?.message} />}
         {manageDecision?.state === 'allowed' && <div className="section-actions"><button type="button" className="button button--primary" onClick={() => setTapOpen(true)}>Grant Temporary Access Pass</button>{hasRemovableMethods && <button type="button" className="button button--danger" onClick={() => setResetOpen(true)}>{messages.userAuthenticationMethodsReset}</button>}</div>}
       </div>
       <p className="section-help">{messages.userAuthenticationMethodsDescription}</p>
