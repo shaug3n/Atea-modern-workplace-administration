@@ -89,7 +89,7 @@ body {
   max-width: 78rem;
 }
 
-.workspace-settings-hub > [id] {
+.workspace-settings-hub .settings-sections > [id] {
   min-width: 0;
   scroll-margin-top: var(--atea-space-5);
 }

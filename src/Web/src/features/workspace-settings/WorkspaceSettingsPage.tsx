@@ -20,13 +20,13 @@ function AuthenticatedWorkspaceSettingsPage({ embedded }: { embedded: boolean })
 }
 
 function LoadedWorkspaceSettingsPage({ loader, saver, embedded }: { loader: SettingsLoader; saver?: SettingsSaver; embedded: boolean }) {
-  const [settings, setSettings] = useState<WorkspaceSettings | null>(null); const [failed, setFailed] = useState(false); const [loading, setLoading] = useState(true); const [retrievedAt, setRetrievedAt] = useState<string | null>(null); const [retry, setRetry] = useState(0);
-  useEffect(() => { let cancelled = false; setLoading(true); setFailed(false); setSettings(null); setRetrievedAt(null); loader().then(value => { if (!cancelled) { setSettings(value); setRetrievedAt(new Date().toISOString()); } }).catch(() => { if (!cancelled) setFailed(true); }).finally(() => { if (!cancelled) setLoading(false); }); return () => { cancelled = true; }; }, [loader, retry]);
+  const [settings, setSettings] = useState<WorkspaceSettings | null>(null); const [failed, setFailed] = useState(false); const [loading, setLoading] = useState(true); const [retry, setRetry] = useState(0);
+  useEffect(() => { let cancelled = false; setLoading(true); setFailed(false); setSettings(null); loader().then(value => { if (!cancelled) { setSettings(value); } }).catch(() => { if (!cancelled) setFailed(true); }).finally(() => { if (!cancelled) setLoading(false); }); return () => { cancelled = true; }; }, [loader, retry]);
   return <section className="settings-page content-panel" aria-labelledby="general-title">
     <header className="page-header"><div>{!embedded && <p className="eyebrow">Settings</p>}{embedded ? <h2 id="general-title" tabIndex={-1}>General</h2> : <h1 id="general-title">General</h1>}<p>Update the workspace name and customer-facing preferences.</p></div></header>
     {loading && <p role="status">Loading workspace settings…</p>}
     {!loading && failed && <div className="async-state" role="alert">Workspace settings are unavailable. <button type="button" onClick={() => setRetry(value => value + 1)}>{messages.retry}</button></div>}
     {!loading && !failed && settings?.access.state !== 'allowed' && <div className="permission-panel"><h2>{messages.permissionRequiredTitle}</h2><p>{messages.permissionRequiredBody}</p></div>}
-    {!loading && !failed && settings?.access.state === 'allowed' && <><p className="data-freshness">Source: Workspace settings. Retrieved: {retrievedAt ? new Date(retrievedAt).toLocaleString() : 'Not retrieved'}</p>{saver && <WorkspaceAdminForm settings={settings} saveSettings={async next => { const saved = await saver(next); setSettings(saved); setRetrievedAt(new Date().toISOString()); return saved; }} />}</>}
+    {!loading && !failed && settings?.access.state === 'allowed' && <>{saver && <WorkspaceAdminForm settings={settings} saveSettings={async next => { const saved = await saver(next); setSettings(saved); return saved; }} />}</>}
   </section>;
 }

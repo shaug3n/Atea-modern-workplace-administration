@@ -12,7 +12,6 @@ export function WorkspaceAccessPage({ isOwner = false, canManageModules = false,
   const [data, setData] = useState<AccessResponse | null>(null);
   const [loadError, setLoadError] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [retrievedAt, setRetrievedAt] = useState<string | null>(null);
   const [retry, setRetry] = useState(0);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -31,12 +30,11 @@ export function WorkspaceAccessPage({ isOwner = false, canManageModules = false,
   const removeDialogRef = useFocusContainment<HTMLElement>(Boolean(removeTarget), () => { if (!busy) setRemoveTarget(null); }, removeTriggerRef);
 
   const load = useCallback(async () => {
-    setLoading(true); setLoadError(false); setRetrievedAt(null);
+    setLoading(true); setLoadError(false);
     try {
       const response = await api('/api/workspaces/current/access');
       if (!response.ok) throw new Error('access unavailable');
       setData(await response.json() as AccessResponse);
-      setRetrievedAt(new Date().toISOString());
     } catch { setLoadError(true); } finally { setLoading(false); }
   }, [api]);
 
@@ -139,7 +137,6 @@ export function WorkspaceAccessPage({ isOwner = false, canManageModules = false,
   const pendingInvitations = data.invitations.filter(invitation => !invitation.redeemedAt && !invitation.revokedAt);
   return <section className="content-panel workspace-access-page" aria-labelledby="workspace-access-title">
     {header}
-    <p className="data-freshness">Source: Workspace membership and invitations. Retrieved: {retrievedAt ? new Date(retrievedAt).toLocaleString() : 'Not retrieved'}</p>
     <p>Invitation links are shown once. Share them through an approved channel; this application does not send email.</p>
     {!isOwner && <p className="integration-note"><strong>Owner transfer:</strong> only the current workspace owner can transfer ownership.</p>}
     {error && <p role="alert">{error}</p>}{notice && <p role="status">{notice}</p>}

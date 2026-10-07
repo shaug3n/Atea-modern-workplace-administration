@@ -52,6 +52,6 @@ describe('WorkspaceSettingsPage', () => {
     expect(screen.getByRole('heading', { name: 'General' })).toBeTruthy();
     expect(document.body.textContent).not.toContain('private settings detail');
     screen.getByRole('button', { name: 'Retry' }).click();
-    await waitFor(() => expect(screen.getByText(/Source: Workspace settings.*Retrieved:/)).toBeTruthy());
+    await waitFor(() => expect(screen.queryByRole('alert')).toBeNull());
   });
 });

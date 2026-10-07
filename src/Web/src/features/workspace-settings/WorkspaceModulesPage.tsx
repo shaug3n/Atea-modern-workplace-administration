@@ -14,7 +14,6 @@ export function WorkspaceModulesPage({ embedded = false }: { embedded?: boolean 
   const api = useApi();
   const [enabledModules, setEnabledModules] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
-  const [retrievedAt, setRetrievedAt] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
@@ -22,7 +21,7 @@ export function WorkspaceModulesPage({ embedded = false }: { embedded?: boolean 
   const [restoreConfirmation, setRestoreConfirmation] = useState(false);
   const originalModules = useRef<string[]>([]);
   const load = useCallback(async () => {
-    setLoading(true); setError(null); setRetrievedAt(null);
+    setLoading(true); setError(null);
     try {
       const response = await api('/api/workspaces/current/modules');
       if (!response.ok) throw new Error('modules unavailable');
@@ -30,7 +29,6 @@ export function WorkspaceModulesPage({ embedded = false }: { embedded?: boolean 
       setEnabledModules(value.enabledModules);
       originalModules.current = value.enabledModules;
       setDormantGrantCount(value.dormantGrantCount ?? 0);
-      setRetrievedAt(new Date().toISOString());
     } catch { setError('Workspace modules are unavailable.'); } finally { setLoading(false); }
   }, [api]);
   useEffect(() => { void load(); }, [load]);
@@ -55,7 +53,6 @@ export function WorkspaceModulesPage({ embedded = false }: { embedded?: boolean 
     <header className="page-header"><div>{!embedded && <p className="eyebrow">Settings</p>}{embedded ? <h2 id="modules-title" tabIndex={-1}>Modules</h2> : <h1 id="modules-title">Modules</h1>}<p>Enable services for this workspace. People only see modules that are enabled here and assigned to them.</p></div></header>
     {loading && <p className="async-state" role="status">Loading modules…</p>}
     {!loading && error && <div className="async-state" role="alert">{error} <button type="button" onClick={() => void load()}>Retry</button></div>}
-    {!loading && !error && <p className="data-freshness">Source: Workspace module configuration. Retrieved: {retrievedAt ? new Date(retrievedAt).toLocaleString() : 'Not retrieved'}</p>}
     {!loading && !error && <>
     {dormantGrantCount > 0 && <p className="integration-note">{dormantGrantCount} existing member or invitation module grant{dormantGrantCount === 1 ? '' : 's'} are dormant because a module is disabled. They remain stored and will become effective again if you re-enable that module.</p>}
     <div className="module-settings-list">{workspaceModules.map(module => <label className="module-setting" key={module.key}>
