@@ -4,7 +4,8 @@ import React from 'react';
 import type { ReactNode } from 'react';
 
 const auth = vi.hoisted(() => ({
-  account: { homeAccountId: 'account-1', localAccountId: 'object-1', username: 'alex@example.com' },
+  account: { homeAccountId: 'account-1', localAccountId: 'object-1', tenantId: '22222222-2222-2222-2222-222222222222', username: 'alex@example.com' },
+  accounts: [{ homeAccountId: 'account-1', localAccountId: 'object-1', tenantId: '22222222-2222-2222-2222-222222222222', username: 'alex@example.com' }],
   authenticated: true,
   inProgress: 'none',
   instance: {
@@ -22,29 +23,32 @@ vi.mock('@azure/msal-browser', () => ({
 }));
 vi.mock('@azure/msal-react', () => ({
   MsalProvider: ({ children }: { children: ReactNode }) => children,
-  useMsal: () => ({ instance: auth.instance, accounts: auth.authenticated ? [auth.account] : [], inProgress: auth.inProgress }),
+  useMsal: () => ({ instance: auth.instance, accounts: auth.authenticated ? auth.accounts : [], inProgress: auth.inProgress }),
   useIsAuthenticated: () => auth.authenticated
 }));
 
 import { AuthProvider, useAuth } from '../../../src/Web/src/auth/AuthProvider';
 import { msalConfig } from '../../../src/Web/src/auth/msalConfig';
 import { useApi } from '../../../src/Web/src/auth/useApi';
+import { writePendingFlow } from '../../../src/Web/src/features/invitations/pendingFlow';
 
 function Harness() {
-  const { signIn, switchAccount, signOut, getApiToken } = useAuth();
+  const { signIn, signInForTenant, switchAccount, signOut, getApiToken } = useAuth();
   const api = useApi();
-  return <><button onClick={() => void signIn()}>sign-in</button><button onClick={() => void switchAccount()}>switch-account</button><button onClick={() => void signOut()}>sign-out</button><button onClick={() => void getApiToken().catch(() => undefined)}>token</button><button onClick={() => void api('/api/session').catch(() => undefined)}>api</button></>;
+  return <><button onClick={() => void signIn()}>sign-in</button><button onClick={() => void signInForTenant('11111111-1111-1111-1111-111111111111', '/invitations/nonce')}>tenant-sign-in</button><button onClick={() => void switchAccount()}>switch-account</button><button onClick={() => void signOut()}>sign-out</button><button onClick={() => void getApiToken().catch(() => undefined)}>token</button><button onClick={() => void getApiToken('11111111-1111-1111-1111-111111111111').catch(() => undefined)}>tenant-token</button><button onClick={() => void api('/api/session').catch(() => undefined)}>api</button></>;
 }
 
 describe('AuthProvider behavior', () => {
   afterEach(() => {
     cleanup();
+    sessionStorage.clear();
     window.history.replaceState(null, '', '/');
   });
 
   beforeEach(() => {
     auth.authenticated = true;
     auth.inProgress = 'none';
+    auth.accounts = [auth.account];
     vi.clearAllMocks();
     auth.instance.acquireTokenSilent.mockResolvedValue({ accessToken: 'api-token' });
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('{}')));
@@ -85,6 +89,53 @@ describe('AuthProvider behavior', () => {
     expect(screen.getByText('public invitation surface')).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Sign in' })).toBeNull();
     expect(auth.instance.acquireTokenSilent).not.toHaveBeenCalled();
+  });
+
+  it('renders consent callbacks anonymously so callback dispatch can validate tab state', () => {
+    auth.authenticated = false;
+    window.history.replaceState(null, '', '/onboarding/consent/callback?state=callback-secret');
+    render(<AuthProvider instance={auth.instance as never}><p>consent callback surface</p></AuthProvider>);
+    expect(screen.getByText('consent callback surface')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Sign in' })).toBeNull();
+  });
+
+  it('uses the server tenant authority and explicit account selection for consent sign-in', async () => {
+    render(<AuthProvider instance={auth.instance as never}><Harness /></AuthProvider>);
+    fireEvent.click(screen.getByText('tenant-sign-in'));
+    await waitFor(() => expect(auth.instance.loginRedirect).toHaveBeenCalledWith(expect.objectContaining({
+      authority: 'https://login.microsoftonline.com/11111111-1111-1111-1111-111111111111',
+      prompt: 'select_account',
+      redirectStartPage: `${window.location.origin}/invitations/nonce`,
+    })));
+  });
+
+  it('does not acquire an API token using a cached account from another tenant', async () => {
+    render(<AuthProvider instance={auth.instance as never}><Harness /></AuthProvider>);
+    fireEvent.click(screen.getByText('tenant-token'));
+    await waitFor(() => expect(auth.instance.acquireTokenSilent).not.toHaveBeenCalled());
+    expect(auth.instance.acquireTokenRedirect).not.toHaveBeenCalled();
+  });
+
+  it('selects only the cached account matching the tenant stored in the pending invitation', async () => {
+    const tenantId = '11111111-1111-1111-1111-111111111111';
+    const matchingAccount = { homeAccountId: 'target-account', tenantId, username: 'invited@example.com' };
+    auth.accounts = [auth.account, matchingAccount];
+    writePendingFlow({
+      kind: 'invitation',
+      nonce: 'A'.repeat(43),
+      challenge: 'signed-challenge',
+      tenantId,
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      step: 'tenant_sign_in_started',
+    });
+    render(<AuthProvider instance={auth.instance as never}><Harness /></AuthProvider>);
+
+    fireEvent.click(screen.getByText('tenant-token'));
+
+    await waitFor(() => expect(auth.instance.acquireTokenSilent).toHaveBeenCalledWith({
+      account: matchingAccount,
+      scopes: [expect.any(String)],
+    }));
   });
 
   it('does not begin a second sign-in while MSAL handles a redirect', () => {

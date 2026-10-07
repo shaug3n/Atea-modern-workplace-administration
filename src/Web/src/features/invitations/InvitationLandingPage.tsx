@@ -7,7 +7,7 @@ import {
   startInvitationConsent,
   type InvitationPreview,
 } from './invitationApi';
-import { writePendingFlow } from './pendingFlow';
+import { readPendingFlow, writePendingFlow } from './pendingFlow';
 import { InvitationRedemptionPage } from './InvitationRedemptionPage';
 
 const recoveryMessage = 'Your invitation is no longer available. Ask Atea for a new invitation.';
@@ -19,12 +19,17 @@ export function InvitationLandingPage({
   nonce: string;
   redirectToConsent?: (url: string) => void;
 }) {
-  const { account, signIn } = useAuth();
+  const { account, signIn, signInForTenant } = useAuth();
   const [preview, setPreview] = useState<InvitationPreview | null>(null);
   const [loading, setLoading] = useState(true);
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
+  const pendingFlow = readPendingFlow();
+  const consentFlow = pendingFlow?.kind === 'invitation' && pendingFlow.nonce === nonce &&
+    pendingFlow.tenantId && ['tenant_sign_in_started', 'redeeming', 'completion_pending', 'completion_submitted', 'result'].includes(pendingFlow.step)
+    ? pendingFlow
+    : null;
 
   useEffect(() => {
     let active = true;
@@ -51,6 +56,10 @@ export function InvitationLandingPage({
 
   if (preview?.flow === 'sign_in' && account) {
     return <InvitationRedemptionPage nonce={nonce} />;
+  }
+  if (consentFlow &&
+      account?.tenantId?.toLowerCase() === consentFlow.tenantId?.toLowerCase()) {
+    return <InvitationRedemptionPage nonce={nonce} challenge={consentFlow.challenge} tenantId={consentFlow.tenantId} />;
   }
 
   async function beginConsent() {
@@ -119,15 +128,31 @@ export function InvitationLandingPage({
                   {preview.permissionScopes.map(scope => <li key={scope}>{scope}</li>)}
                 </ul>
               </details>
-              <button
-                className="invitation-page__primary"
-                type="button"
-                onClick={() => void beginConsent()}
-                disabled={starting}
-                aria-busy={starting}
-              >
-                {starting ? messages.invitationConsentStarting : messages.invitationConsentAction}
-              </button>
+              {consentFlow ? (
+                <button
+                  className="invitation-page__primary"
+                  type="button"
+                  disabled={starting}
+                  onClick={() => {
+                    setStarting(true);
+                    void signInForTenant(consentFlow.tenantId!, `/invitations/${nonce}`)
+                      .catch(() => setError(messages.authSignInError))
+                      .finally(() => setStarting(false));
+                  }}
+                >
+                  {starting ? messages.authPreparing : messages.invitationSignInAction}
+                </button>
+              ) : (
+                <button
+                  className="invitation-page__primary"
+                  type="button"
+                  onClick={() => void beginConsent()}
+                  disabled={starting}
+                  aria-busy={starting}
+                >
+                  {starting ? messages.invitationConsentStarting : messages.invitationConsentAction}
+                </button>
+              )}
               {error && <p role="alert" tabIndex={-1}>{error}</p>}
             </>
           ) : null}

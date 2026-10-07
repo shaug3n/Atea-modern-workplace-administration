@@ -2,7 +2,7 @@ import { ModuleUnavailable } from '../components/ModuleUnavailable';
 import React, { useCallback, useEffect, useState } from 'react';
 import { useApi } from '../auth/useApi';
 import { useAuth } from '../auth/AuthProvider';
-import { capabilityDecisionFor, isInvitationPath, matchRoute, type AppRoute } from './routes';
+import { capabilityDecisionFor, isConsentCallbackPath, isInvitationPath, matchRoute, type AppRoute } from './routes';
 import { AppShell } from '../components/AppShell';
 import { AppThemeProvider, ThemeProvider, type ThemePreferenceStore } from '../components/ThemeToggle';
 import type { AppSession } from '../components/TenantContextHeader';
@@ -13,6 +13,7 @@ import type { CapabilitySnapshot } from '../capabilities/capabilityTypes';
 import { useCapabilities, type CapabilityLoader } from '../capabilities/useCapabilities';
 import { InvitationRedemptionPage } from '../features/invitations/InvitationRedemptionPage';
 import { InvitationLandingPage } from '../features/invitations/InvitationLandingPage';
+import { ConsentCallbackPage } from '../features/workspace-settings/ConsentCallbackPage';
 import { DevicesPage } from '../features/devices/DevicesPage';
 import type { ConnectionHealthLoader } from '../features/overview/OverviewPage';
 import { messages } from './messages';
@@ -24,6 +25,7 @@ export function App({ loadCapabilities, loadSession, loadConnectionHealth, theme
   if (isInvitationPath(window.location.pathname)) {
     return <InvitationLandingPage nonce={window.location.pathname.slice('/invitations/'.length)} />;
   }
+  if (isConsentCallbackPath(window.location.pathname)) return <ConsentCallbackPage />;
   if (loadCapabilities && loadSession) {
     return <ThemeProvider preferenceStore={themePreferenceStore}><AppExperience loadCapabilities={loadCapabilities} loadSession={loadSession} loadConnectionHealth={loadConnectionHealth} signInAction={signInAction} /></ThemeProvider>;
   }
@@ -70,6 +72,7 @@ function AppExperience({ loadCapabilities, loadSession, loadConnectionHealth, si
   }, []);
 
   if (isInvitationPath(path)) return <InvitationRedemptionPage nonce={path.slice('/invitations/'.length)} />;
+  if (isConsentCallbackPath(path.split('#')[0])) return <ConsentCallbackPage />;
   return <WorkspaceExperience path={path} navigate={navigate} loadCapabilities={loadCapabilities} loadSession={loadSession} loadConnectionHealth={loadConnectionHealth} signInAction={signInAction} switchAccountAction={switchAccountAction} />;
 }
 

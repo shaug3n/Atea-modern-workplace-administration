@@ -84,6 +84,19 @@ describe('InvitationLandingPage', () => {
     expect(auth.getApiToken).not.toHaveBeenCalled();
   });
 
+  it('renders unsolicited consent callbacks before workspace loaders and removes callback query data', async () => {
+    const loadSession = vi.fn(async () => null as never);
+    const loadCapabilities = vi.fn(async () => null as never);
+    window.history.replaceState(null, '', '/onboarding/consent/callback?state=secret&tenant=11111111-1111-1111-1111-111111111111');
+
+    render(<App loadSession={loadSession} loadCapabilities={loadCapabilities} />);
+
+    expect(await screen.findByText('Open workspace settings and start consent again.')).toBeTruthy();
+    expect(loadSession).not.toHaveBeenCalled();
+    expect(loadCapabilities).not.toHaveBeenCalled();
+    await waitFor(() => expect(window.location.search).toBe(''));
+  });
+
   it('shows the exact delegated scope set in expandable details', async () => {
     render(<InvitationLandingPage nonce={nonce} />);
     await screen.findByRole('heading', { name: 'Connect Demo workspace to Microsoft 365' });

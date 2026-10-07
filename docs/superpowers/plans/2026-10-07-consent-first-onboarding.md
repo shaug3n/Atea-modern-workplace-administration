@@ -751,7 +751,7 @@ git commit -m "feat(web): add anonymous consent-first invitation page"
 - Consumes: server-validated `resume` result `tenantId`; authority is exactly `https://login.microsoftonline.com/{tenantId}`.
 - Produces: invitation flow order `resume -> tenant-pinned sign-in -> one redemption -> one authenticated completion -> health result/overview`; legacy workspace flow remains authenticated `complete -> baseline check`.
 
-- [ ] **Step 1: Add failing auth and callback-flow tests.**
+- [x] **Step 1: Add failing auth and callback-flow tests.**
 
 ```tsx
 it('uses the server tenant authority and refuses an account cached in another tenant', async () => {
@@ -769,30 +769,30 @@ it('redeems and completes once across StrictMode rerenders', async () => {
 
 Also assert a missing/mismatched tab challenge, wrong callback tenant, denied consent, or missing transaction does not sign in or redeem; callback query parameters are removed with `history.replaceState`; recovery submits the still-valid invitation challenge; a second identity cannot use the recovery path.
 
-- [ ] **Step 2: Run focused web tests.**
+- [x] **Step 2: Run focused web tests.**
 
 Run: `npm run test:behavior --prefix src/Web -- --run AuthProvider`
 Run: `npm run test:behavior --prefix src/Web -- --run InvitationAuthRedirect`
 Run: `npm test --prefix tests/Web.E2E -- consent-callback`
 Expected: FAIL because MSAL account/authority pinning and callback dispatch are not implemented.
 
-- [ ] **Step 3: Implement tenant-pinned MSAL actions and route gating.**
+- [x] **Step 3: Implement tenant-pinned MSAL actions and route gating.**
 
 Keep `MsalProvider` initialized for public paths, but render invitation and `/onboarding/consent/callback` before `AuthenticatedContent`'s sign-in block. Select only the account matching the server tenant for silent/redirect token acquisition. Preserve the invitation redirect-start-page behavior and leave `/admin`'s separate provider/authority unchanged.
 
-- [ ] **Step 4: Dispatch callbacks by persisted flow, not callback claims.**
+- [x] **Step 4: Dispatch callbacks by persisted flow, not callback claims.**
 
 For invitation flow, require the pending state to exactly match the callback state and call anonymous resume; denial shows safe guidance without sign-in, success starts MSAL at the returned tenant authority and returns to `/invitations/{nonce}`. Remove query parameters after consuming callback fields. If no tab transaction exists, show **“Open your original invitation and try again.”** Legacy workspace flow keeps authenticated completion then its separate automatic baseline check; an old unsolicited legacy callback offers workspace-settings re-consent.
 
-- [ ] **Step 5: Redeem, complete and display truthful verification.**
+- [x] **Step 5: Redeem, complete and display truthful verification.**
 
 After authenticated account selection, automatically redeem once; persist the pending step across redirect/lost response and deduplicate in-flight work under StrictMode/double clicks. Do not render the workspace shell until redemption succeeds. Then complete the original state once and render `health`/coverage: connected continues to `/overview`; partial shows **“Connected to Microsoft, but some delegated permissions are unavailable.”** with exact missing scopes and re-consent; unknown checks show retry guidance and do not claim full coverage. Keep membership after transient failure and let retry call comprehensive health check, never replay consumed state.
 
-- [ ] **Step 6: Update the authenticated onboarding re-consent action.**
+- [x] **Step 6: Update the authenticated onboarding re-consent action.**
 
 Before navigating to the existing workspace consent URL, store a `workspace` pending transaction with its challenge and the validated tenant from that trusted URL. Do not store an invitation nonce in the workspace flow. Preserve the legacy API-client/Graph-`.default` URL and existing onboarding/member behavior.
 
-- [ ] **Step 7: Run focused frontend tests and production build.**
+- [x] **Step 7: Run focused frontend tests and production build.**
 
 Run: `npm run test:behavior --prefix src/Web -- --run AuthProvider`
 Run: `npm run test:behavior --prefix src/Web -- --run InvitationAuthRedirect`
@@ -800,7 +800,7 @@ Run: `npm test --prefix tests/Web.E2E -- consent-callback`
 Run: `npm run build --prefix src/Web`
 Expected: PASS; invitation path makes one redeem and one completion; legacy consent still completes then checks once.
 
-- [ ] **Step 8: Commit.**
+- [x] **Step 8: Commit.**
 
 ```bash
 git add src/Web/src/auth/AuthProvider.tsx src/Web/src/auth/msalConfig.ts src/Web/src/app/App.tsx src/Web/src/app/routes.tsx src/Web/src/features/invitations/InvitationLandingPage.tsx src/Web/src/features/invitations/invitationApi.ts src/Web/src/features/invitations/pendingFlow.ts src/Web/src/features/workspace-settings/ConsentCallbackPage.tsx src/Web/src/features/workspace-settings/OnboardingPage.tsx tests/Web.UnitTests/auth/AuthProvider.test.tsx tests/Web.UnitTests/auth/InvitationAuthRedirect.test.tsx tests/Web.UnitTests/features/invitations/InvitationRedemptionPage.test.tsx tests/Web.E2E/consent-callback.spec.tsx

@@ -18,6 +18,18 @@ export type InvitationConsentResume = {
   tenantId?: string;
   correlationId: string;
 };
+export type PermissionCoverage = {
+  availableScopes: string[];
+  missingScopes: string[];
+  unknownScopes: string[];
+};
+export type InvitationCompletion = {
+  valid: boolean;
+  status: string;
+  correlationId: string;
+  health?: { status: string; lastVerifiedAt?: string | null; permissionCoverage?: PermissionCoverage | null } | null;
+  permissionCoverage?: PermissionCoverage | null;
+};
 
 async function requestInvitationJson<T>(url: string, init?: RequestInit): Promise<T> {
   let response: Response;
@@ -113,14 +125,60 @@ export async function resumeInvitationConsent(
   return value as InvitationConsentResume;
 }
 
-export async function redeemInvitation(nonce: string, getApiToken: () => Promise<string>): Promise<InvitationRedemption> {
-  const token = await getApiToken();
+export async function redeemInvitation(
+  nonce: string,
+  getApiToken: (expectedTenantId?: string) => Promise<string>,
+  challenge?: string,
+  expectedTenantId?: string,
+): Promise<InvitationRedemption> {
+  const token = await getApiToken(expectedTenantId);
   const response = await fetch(`/api/invitations/${encodeURIComponent(nonce)}/redeem`, {
     method: 'POST',
-    headers: { Authorization: `Bearer ${token}` }
+    headers: {
+      Authorization: `Bearer ${token}`,
+      ...(challenge ? { 'Content-Type': 'application/json' } : {}),
+    },
+    ...(challenge ? { body: JSON.stringify({ challenge }) } : {}),
   });
   if (!response.ok) throw new Error(response.status === 400 ? 'invitation_invalid_or_expired' : 'invitation_redemption_failed');
   const value = await response.json() as Partial<InvitationRedemption>;
   if (typeof value.status !== 'string' || typeof value.workspaceId !== 'string' || typeof value.workspaceName !== 'string' || typeof value.nextStep !== 'string') throw new Error('invitation_redemption_failed');
   return value as InvitationRedemption;
+}
+
+export async function completeInvitationConsent(
+  state: string,
+  tenant: string,
+  getApiToken: (expectedTenantId?: string) => Promise<string>,
+): Promise<InvitationCompletion> {
+  const token = await getApiToken(tenant);
+  const response = await fetch('/api/workspaces/current/consent/complete', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ state, tenant }),
+  });
+  if (!response.ok) throw new Error('invitation_completion_failed');
+  const value = await response.json() as Partial<InvitationCompletion>;
+  if (
+    typeof value.valid !== 'boolean' ||
+    typeof value.status !== 'string' ||
+    typeof value.correlationId !== 'string'
+  ) {
+    throw new Error('invitation_completion_failed');
+  }
+  return value as InvitationCompletion;
+}
+
+export async function checkInvitationConnectionHealth(
+  getApiToken: (expectedTenantId?: string) => Promise<string>,
+  tenant: string,
+): Promise<NonNullable<InvitationCompletion['health']>> {
+  const token = await getApiToken(tenant);
+  const response = await fetch('/api/workspaces/current/connection-health/check', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ includePermissionCoverage: true }),
+  });
+  if (!response.ok) throw new Error('connection_check_failed');
+  return await response.json() as NonNullable<InvitationCompletion['health']>;
 }

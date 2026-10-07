@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useApi } from '../../auth/useApi';
 import { ConnectionStatusCard } from '../../components/ConnectionStatusCard';
 import { messages, type ConnectionState } from '../../messages/en';
+import { writePendingFlow } from '../invitations/pendingFlow';
 
 type Health = { status: ConnectionState; lastVerifiedAt: string | null; correlationId?: string | null };
 
@@ -41,8 +42,29 @@ export function OnboardingPage({ onNavigate, embedded = false }: { onNavigate?: 
     setBusy(true); setError(null);
     try {
       const response = await api('/api/workspaces/current/consent/start', { method: 'POST' });
-      const value = await response.json() as { authorizationUrl?: string; correlationId?: string };
+      const value = await response.json() as { authorizationUrl?: string; challenge?: string; correlationId?: string };
       if (!response.ok || !value.authorizationUrl) throw Object.assign(new Error('consent start failed'), { correlationId: value.correlationId });
+      const consent = new URL(value.authorizationUrl);
+      const tenantMatch = consent.protocol === 'https:' && consent.hostname === 'login.microsoftonline.com'
+        ? /^\/([0-9a-f-]{36})\/v2\.0\/adminconsent$/i.exec(consent.pathname)
+        : null;
+      const tenantId = tenantMatch?.[1];
+      const redirectUriValue = consent.searchParams.get('redirect_uri');
+      const redirectUri = redirectUriValue ? new URL(redirectUriValue) : null;
+      if (!tenantId || tenantId === '00000000-0000-0000-0000-000000000000' ||
+          !value.challenge || consent.searchParams.get('state') !== value.challenge ||
+          consent.searchParams.get('scope') !== 'https://graph.microsoft.com/.default' ||
+          !redirectUri || redirectUri.origin !== window.location.origin ||
+          redirectUri.pathname !== '/onboarding/consent/callback' || redirectUri.search || redirectUri.hash) {
+        throw Object.assign(new Error('consent start invalid'), { correlationId: value.correlationId });
+      }
+      writePendingFlow({
+        kind: 'workspace',
+        challenge: value.challenge,
+        tenantId,
+        expiresAt: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
+        step: 'workspace_callback',
+      });
       setConsentUrl(value.authorizationUrl); setCorrelationId(value.correlationId ?? null);
     } catch (reason) {
       setError(messages.connectionActionFailed); setCorrelationId((reason as Error & { correlationId?: string }).correlationId ?? correlationId);
