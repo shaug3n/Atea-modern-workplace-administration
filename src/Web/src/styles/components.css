@@ -810,3 +810,40 @@ td.numeric {
 .devices-filters {
   flex-wrap: wrap;
 }
+
+/* Device detail */
+.device-detail-layout {
+  align-items: start;
+}
+
+.device-actions {
+  display: grid;
+  gap: var(--uw-gap-sm);
+  width: 100%;
+}
+
+.device-actions__item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--uw-gap-sm) var(--uw-gap-md);
+}
+
+.device-actions__item > span {
+  color: var(--uw-muted);
+  flex: 1 1 16rem;
+}
+
+.device-recovery__reason {
+  display: grid;
+  gap: var(--uw-gap-xs, 0.25rem);
+}
+
+.device-recovery__reason input {
+  width: 100%;
+}
+
+.field-hint {
+  margin: 0;
+  color: var(--uw-muted);
+}

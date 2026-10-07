@@ -101,7 +101,9 @@ describe('DeviceDetailPage', () => {
     }]} />);
     await screen.findByRole('heading', { name: 'WIN-01' });
     expect((screen.getByRole('button', { name: 'Load BitLocker metadata' }) as HTMLButtonElement).disabled).toBe(true);
-    expect(screen.getByText(/BitlockerKey.ReadBasic.All/)).toBeTruthy();
+    expect(screen.getByText(/isn't available to you/)).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Open PIM guidance' })).toBeTruthy();
+    expect(document.body.textContent).not.toContain('BitlockerKey.');
     expect(apiMock).toHaveBeenCalledTimes(1);
   });
 
@@ -158,20 +160,19 @@ describe('DeviceDetailPage', () => {
     });
     render(<DeviceDetailPage deviceId="device-1" />);
     await screen.findByRole('heading', { name: 'WIN-01' });
-    expect(screen.getByText(/Source: Microsoft Graph.*Intune managedDevices/)).toBeTruthy();
-    expect(screen.getByText(/Device details retrieved:/).textContent).not.toContain('2020');
-    expect(screen.getByText(/Source: Microsoft Graph.*BitLocker recovery keys/)).toBeTruthy();
-    expect(screen.getByText(/Source: Microsoft Graph.*Windows LAPS/)).toBeTruthy();
+    expect(screen.getByText('Microsoft Graph')).toBeTruthy();
+    expect(document.body.textContent).not.toContain('Source:');
+    expect(document.querySelector('.workspace-page-header__meta')!.textContent).not.toContain('2020');
     expect(screen.getAllByText(/Not loaded yet/)).toHaveLength(2);
     fireEvent.click(screen.getByRole('button', { name: 'Load BitLocker metadata' }));
     fireEvent.click(screen.getByRole('button', { name: 'Load Windows LAPS metadata' }));
     expect(screen.getByText('Loading BitLocker metadata…')).toBeTruthy();
     expect(screen.getByText('Loading Windows LAPS metadata…')).toBeTruthy();
     await act(async () => bitlocker.resolve(response({ status: 'succeeded', data: [{ id: 'key-1' }] })));
-    expect(screen.getByText(/BitLocker metadata retrieved:/)).toBeTruthy();
+    expect(screen.getByText(/BitLocker metadata retrieved/)).toBeTruthy();
     expect(screen.getByText('Loading Windows LAPS metadata…')).toBeTruthy();
     await act(async () => laps.resolve(response({ status: 'succeeded', data: { id: 'aad-1' } })));
-    expect(screen.getByText(/Windows LAPS metadata retrieved:/)).toBeTruthy();
+    expect(screen.getByText(/Windows LAPS metadata retrieved/)).toBeTruthy();
   });
 
   it('shows BitLocker retrieval time even when Graph returns no recovery records', async () => {
@@ -182,7 +183,7 @@ describe('DeviceDetailPage', () => {
     await screen.findByRole('heading', { name: 'WIN-01' });
     fireEvent.click(screen.getByRole('button', { name: 'Load BitLocker metadata' }));
     expect(await screen.findByText('No BitLocker recovery record found.')).toBeTruthy();
-    expect(screen.getByText(/BitLocker metadata retrieved:/)).toBeTruthy();
+    expect(screen.getByText(/BitLocker metadata retrieved/)).toBeTruthy();
   });
 
   it('keeps BitLocker and LAPS metadata failures independent', async () => {
@@ -216,5 +217,46 @@ describe('DeviceDetailPage', () => {
     expect(alert.textContent).toContain('Global Reader');
     expect(alert.textContent).toContain('metadata');
     expect(alert.textContent).toContain('Cloud Device Administrator');
+  });
+
+  const guid = '3f2b8c1e-1111-2222-3333-444455556666';
+  const manage = [{ capability: 'devices.privileged.manage', state: 'allowed', reasonCode: 'ok' }] as never;
+
+  it('keeps identifiers out of the overview and inside collapsed technical details', async () => {
+    apiMock.mockResolvedValue(response({ id: guid, deviceName: 'WIN-01', userId: 'user-guid-1', complianceState: 'compliant' }));
+    render(<DeviceDetailPage deviceId={guid} />);
+    await screen.findByRole('heading', { level: 1, name: 'WIN-01' });
+    const overview = screen.getByRole('heading', { name: 'Overview' }).closest('section')!;
+    expect(overview.textContent).not.toContain(guid);
+    const details = screen.getByText('Technical details').closest('details')!;
+    expect(details.open).toBe(false);
+    expect(details.textContent).toContain(guid);
+    expect(document.body.textContent).not.toContain('Source:');
+  });
+
+  it('shows an unnamed placeholder instead of the id and a working back link', async () => {
+    const onNavigate = vi.fn();
+    apiMock.mockResolvedValue(response({ id: guid, deviceName: '' }));
+    render(<DeviceDetailPage deviceId={guid} onNavigate={onNavigate} />);
+    expect((await screen.findByRole('heading', { level: 1 })).textContent).toBe('Unnamed device');
+    fireEvent.click(screen.getByRole('link', { name: '← Back to Devices' }));
+    expect(onNavigate).toHaveBeenCalledWith('/devices');
+  });
+
+  it('puts the danger zone last with only retire and wipe, and keeps confirmations', async () => {
+    apiMock.mockResolvedValue(response({ id: guid, deviceName: 'WIN-01' }));
+    render(<DeviceDetailPage deviceId={guid} capabilities={manage} />);
+    await screen.findByRole('heading', { level: 1, name: 'WIN-01' });
+    const actions = screen.getByRole('heading', { name: 'Device actions' });
+    const danger = screen.getByRole('heading', { name: 'Danger zone' });
+    expect(actions.compareDocumentPosition(danger) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const dangerButtons = Array.from(danger.closest('section')!.querySelectorAll('button')).map(b => b.textContent);
+    expect(dangerButtons).toEqual(['Retire device', 'Wipe device']);
+    fireEvent.click(screen.getByRole('button', { name: 'Restart device' }));
+    expect(screen.getByRole('dialog')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    fireEvent.click(danger.closest('section')!.querySelectorAll('button')[1]);
+    const confirm = screen.getAllByRole('button', { name: 'Wipe device' }).find(b => b.closest('[role="dialog"]')) as HTMLButtonElement;
+    expect(confirm.disabled).toBe(true);
   });
 });
