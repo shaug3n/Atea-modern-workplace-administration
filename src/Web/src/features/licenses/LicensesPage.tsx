@@ -4,6 +4,8 @@ import { messages } from '../../messages/en';
 import type { ApiFetch, UsersDirectoryResponse } from '../users/usersApi';
 import { downloadCsv, exportStatus, type CsvExportInfo } from '../exports/csvExport';
 import { WorkspacePageHeader } from '../../components/WorkspacePageHeader';
+import { DataFreshness } from '../../components/DataFreshness';
+import { TechnicalDetails } from '../../components/TechnicalDetails';
 import { ResponsiveDataView } from '../../components/ResponsiveDataView';
 import { useWorkspaceIssueReporter } from '../../notifications/WorkspaceNotifications';
 
@@ -111,14 +113,13 @@ function LoadedLicensesPage({ loader, loadAssignees, exportCsv }: { loader: Lice
     finally { setExportPending(false); }
   };
 
-  return <section className="content-panel licenses-page" aria-label="License inventory">
-    <WorkspacePageHeader eyebrow="Licenses" title="License inventory" description="Review purchased seats, assignments, and license rosters." />
+  return <section className="licenses-page">
+    <WorkspacePageHeader eyebrow="Licenses" title="License inventory" description="Review purchased seats, assignments, and license rosters." meta={result && loadedQueryKey === queryKey ? <DataFreshness fetchedAt={result.fetchedAt} freshness={result.freshness === 'live' ? 'fresh' : result.freshness === 'stale' ? 'stale' : result.freshness === 'unavailable' ? 'unavailable' : 'fresh'} partialData={result.partialData} source="Microsoft Graph" onRefresh={() => setRetry(value => value + 1)} /> : undefined} />
     {failed ? <div className="license-state"><p role="alert">License data is unavailable. Try again later.</p><button type="button" onClick={() => setRetry(value => value + 1)}>{messages.retry}</button></div>
     : !result || loadedQueryKey !== queryKey ? <p role="status">Loading licenses…</p>
     : result.access.state !== 'allowed' && result.access.state !== 'read_only' ? <div className="license-state"><h2>{messages.permissionRequiredTitle}</h2><p>{messages.permissionRequiredBody}</p></div>
     : result.error && result.items.length === 0 ? <div className="license-state"><p role="alert">License data is unavailable. {result.error.message}</p><button type="button" onClick={() => setRetry(value => value + 1)}>{messages.retry}</button></div>
     : <>
-    <p className="license-source">Source: Microsoft Graph subscribed SKUs. Retrieved {new Date(result.fetchedAt).toLocaleString()}.</p>
     {result.partialData && <p role="alert" className="license-partial">Some license data could not be loaded. Showing available results.</p>}
     <div className="license-tabs" role="tablist" aria-label="License view">
       <button type="button" role="tab" aria-selected={tab === 'inventory'} onClick={() => setTab('inventory')}>Inventory</button>
@@ -128,15 +129,16 @@ function LoadedLicensesPage({ loader, loadAssignees, exportCsv }: { loader: Lice
       <div className="license-toolbar"><label>Search SKUs <input value={search} onChange={event => { setSearch(event.target.value); setPage(1); }} /></label>
       {exportCsv && <button type="button" onClick={() => void runExport('inventory')} disabled={exportPending}>Export filtered CSV</button>}</div>
       {result.items.length === 0 ? <p>No license data is available.</p> : <ResponsiveDataView items={result.items} keyOf={item => item.skuId} label="Licenses"
-        renderCompact={item => <><strong>{item.displayName}</strong>{item.displayName === item.partNumber && <span className="license-unavailable">Product name unavailable</span>}<div className="license-identifiers"><span>{item.partNumber}</span><small>SKU ID: {item.skuId}</small></div><dl className="responsive-data-view__details license-item-counts"><div><dt>Purchased</dt><dd>{item.purchased}</dd></div><div><dt>Assigned</dt><dd>{item.assigned}</dd></div><div><dt>Available</dt><dd>{item.available}</dd></div></dl><div className="responsive-data-view__actions"><button type="button" className="table-action" aria-label={`View assigned users for ${item.displayName}`} onClick={() => choose(item)}>View assigned users</button></div></>}
-        renderTable={items => <div className="users-table-wrap"><table className="users-table"><thead><tr><th scope="col">License</th><th scope="col">Purchased</th><th scope="col">Assigned</th><th scope="col">Available</th><th scope="col">Roster</th></tr></thead><tbody>{items.map(item => <tr key={item.skuId}><th scope="row" data-label="License"><strong>{item.displayName}</strong>{item.displayName === item.partNumber && <span className="license-unavailable">Product name unavailable</span>}<span className="license-identifiers"><span>{item.partNumber}</span><small>SKU ID: {item.skuId}</small></span></th><td data-label="Purchased">{item.purchased}</td><td data-label="Assigned">{item.assigned}</td><td data-label="Available">{item.available}</td><td data-label="Roster"><button type="button" className="table-action" aria-label={`View assigned users for ${item.displayName}`} onClick={() => choose(item)}>View assigned users</button></td></tr>)}</tbody></table></div>}
+        renderCompact={item => <><strong>{licenseName(item)}</strong>{unrecognised(item) && <span className="license-unavailable">Unrecognised product</span>}<LicenseUsage item={item} /><dl className="responsive-data-view__details license-item-counts"><div><dt>Purchased</dt><dd>{item.purchased}</dd></div><div><dt>Assigned</dt><dd>{item.assigned}</dd></div><div><dt>Available</dt><dd>{item.available}</dd></div></dl><div className="responsive-data-view__actions"><button type="button" className="button button--secondary button--sm" aria-label={`View assigned users for ${licenseName(item)}`} onClick={() => choose(item)}>View assigned users</button></div><LicenseIdentifiers item={item} /></>}
+        renderTable={items => <div className="users-table-wrap"><table className="users-table"><thead><tr><th scope="col">License</th><th scope="col" className="numeric">Purchased</th><th scope="col" className="numeric">Assigned</th><th scope="col" className="numeric">Available</th><th scope="col">Usage</th><th scope="col"><span className="sr-only">Roster</span></th></tr></thead><tbody>{items.map(item => <tr key={item.skuId}><th scope="row" data-label="License"><strong>{licenseName(item)}</strong>{unrecognised(item) && <span className="license-unavailable">Unrecognised product</span>}<LicenseIdentifiers item={item} /></th><td className="numeric" data-label="Purchased">{item.purchased}</td><td className="numeric" data-label="Assigned">{item.assigned}</td><td className="numeric" data-label="Available">{item.available}</td><td data-label="Usage"><LicenseUsage item={item} /></td><td data-label="Roster"><button type="button" className="button button--secondary button--sm" aria-label={`View assigned users for ${licenseName(item)}`} onClick={() => choose(item)}>View assigned users</button></td></tr>)}</tbody></table></div>}
       />}
       <nav className="table-pagination" aria-label="License pages"><span>Page {page} of {Math.max(1, Math.ceil(result.total / result.pageSize))}</span><button type="button" onClick={() => setPage(value => value - 1)} disabled={page <= 1}>Previous page</button><button type="button" onClick={() => setPage(value => value + 1)} disabled={page * result.pageSize >= result.total}>Next page</button></nav>
     </section> : <section role="tabpanel" aria-label="Assigned users">
-      {selected && <><h2>{selected.displayName}</h2>{selected.displayName === selected.partNumber && <p className="license-unavailable">Product name unavailable</p>}<p className="license-identifiers">{selected.partNumber} · SKU ID: {selected.skuId}</p><dl className="license-counts"><div><dt>Purchased</dt><dd>{selected.purchased}</dd></div><div><dt>Assigned</dt><dd>{selected.assigned}</dd></div><div><dt>Available</dt><dd>{selected.available}</dd></div></dl>
+      {result.items.length > 0 && <label className="license-select">License <select value={selected?.skuId ?? ''} onChange={event => { const next = result.items.find(item => item.skuId === event.target.value); if (next) choose(next); }}>{result.items.map(item => <option key={item.skuId} value={item.skuId}>{licenseName(item)}</option>)}</select></label>}
+      {selected && <><h2>Users assigned {licenseName(selected)}</h2><dl className="license-counts"><div><dt>Purchased</dt><dd>{selected.purchased}</dd></div><div><dt>Assigned</dt><dd>{selected.assigned}</dd></div><div><dt>Available</dt><dd>{selected.available}</dd></div></dl>
       {exportCsv && <button type="button" onClick={() => void runExport('assignees')} disabled={exportPending}>Export assignees CSV</button>}
       {!loadAssignees ? <p>Assigned-user roster is unavailable.</p> : <>
-        {assigneeLoading ? <p role="status">Loading assigned users…</p> : assigneeError || assignees?.error ? <><p role="alert">Assigned-user roster is unavailable.</p><button type="button" onClick={retryAssignees}>{messages.retry}</button></> : assignees ? <><p>Source: Microsoft Graph users assigned to this SKU. Retrieved {new Date(assignees.fetchedAt).toLocaleString()}.</p>{assignees.items.length === 0 ? <p>No assigned users were returned.</p> : <div className="users-table-wrap"><table className="users-table"><thead><tr><th>User</th><th>User principal name</th></tr></thead><tbody>{assignees.items.map(user => <tr key={user.id}><th scope="row" data-label="User"><a href={`/users/${encodeURIComponent(user.id)}`}>{user.displayName || user.userPrincipalName || user.id}</a></th><td data-label="User principal name">{user.userPrincipalName}</td></tr>)}</tbody></table></div>}</> : null}
+        {assigneeLoading ? <p role="status">Loading assigned users…</p> : assigneeError || assignees?.error ? <><p role="alert">Assigned-user roster is unavailable.</p><button type="button" onClick={retryAssignees}>{messages.retry}</button></> : assignees ? <>{assignees.items.length === 0 ? <p>No assigned users were returned.</p> : <div className="users-table-wrap"><table className="users-table"><thead><tr><th>User</th><th>User principal name</th></tr></thead><tbody>{assignees.items.map(user => <tr key={user.id}><th scope="row" data-label="User"><a href={`/users/${encodeURIComponent(user.id)}`}>{user.displayName || user.userPrincipalName || user.id}</a></th><td data-label="User principal name">{user.userPrincipalName}</td></tr>)}</tbody></table></div>}</> : null}
         <nav className="table-pagination" aria-label="Assignee pages"><span>Page {history.length + 1}</span><button type="button" onClick={previousAssignees} disabled={assigneeLoading || assigneeError || !!assignees?.error || history.length === 0}>Previous page</button><button type="button" onClick={nextAssignees} disabled={assigneeLoading || assigneeError || !assignees?.continuationToken}>Next page</button></nav>
       </>}
       </>}
@@ -144,4 +146,26 @@ function LoadedLicensesPage({ loader, loadAssignees, exportCsv }: { loader: Lice
     {exportMessage && <p role="status">{exportMessage}</p>}{exportError && <p role="alert">{exportError}</p>}
   </>}
   </section>;
+}
+
+function unrecognised(item: LicenseItem) {
+  return !item.displayName || item.displayName === item.partNumber;
+}
+
+function licenseName(item: LicenseItem) {
+  return item.displayName || item.partNumber || 'Unnamed license';
+}
+
+function LicenseIdentifiers({ item }: { item: LicenseItem }) {
+  return <TechnicalDetails items={[{ label: 'Part number', value: item.partNumber, copy: true }, { label: 'SKU ID', value: item.skuId, copy: true }]} />;
+}
+
+function LicenseUsage({ item }: { item: LicenseItem }) {
+  const total = item.purchased;
+  const pct = total > 0 ? Math.round((item.assigned / total) * 100) : 0;
+  const full = item.available === 0;
+  return <div className={`license-usage${pct >= 90 ? ' license-usage--high' : ''}`}>
+    <meter min={0} max={Math.max(total, 1)} value={Math.min(item.assigned, Math.max(total, 1))} aria-label={`${licenseName(item)} usage`} />
+    <span>{full && total > 0 ? 'Fully assigned' : `${item.assigned} of ${total} (${pct}%)`}</span>
+  </div>;
 }

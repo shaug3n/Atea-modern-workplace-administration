@@ -874,3 +874,9 @@ td.numeric {
 .record-list__main { display: grid; gap: var(--atea-space-1); min-width: 0; overflow-wrap: anywhere; }
 .record-list__meta { color: var(--uw-muted); font-size: var(--atea-text-s); }
 .button--danger-text, .button--danger-text:hover { color: var(--uw-danger-text, var(--uw-danger)); }
+
+/* Licenses */
+.license-usage { display: grid; gap: var(--atea-space-1); min-width: 8rem; font-size: var(--atea-text-s); font-variant-numeric: tabular-nums; }
+.license-usage meter { width: 100%; height: 0.5rem; }
+.license-usage--high { color: var(--uw-warning-text, inherit); }
+.license-select { display: grid; gap: var(--atea-space-2); max-width: 24rem; }
