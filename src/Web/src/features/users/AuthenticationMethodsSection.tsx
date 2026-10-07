@@ -1,6 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { messages } from '../../app/messages';
 import { useApi } from '../../auth/useApi';
+import { ActionGroup } from '../../components/ActionGroup';
+import { TechnicalDetails } from '../../components/TechnicalDetails';
+import { formatDate } from '../../format/dateTime';
+import { humanizeAuthMethodType } from '../../format/humanize';
 import { DataFreshness } from '../../components/DataFreshness';
 import { ConfirmationDialog } from '../../components/ConfirmationDialog';
 import { PermissionState } from '../../components/PermissionState';
@@ -82,7 +86,7 @@ export function AuthenticationMethodsSection({ userId, userLabel, decision, mana
       <div className="detail-section__header">
         <h2 id="authentication-methods-section-title">{messages.userAuthenticationMethodsSection}</h2>
         {result && <DataFreshness fetchedAt={result.fetchedAt} freshness={result.freshness === 'live' ? 'fresh' : result.freshness === 'stale' ? 'stale' : 'unavailable'} partialData={result.partialData} message={result.error?.message} />}
-        {manageDecision?.state === 'allowed' && <div className="section-actions"><button type="button" className="button button--primary" onClick={() => setTapOpen(true)}>Grant Temporary Access Pass</button>{hasRemovableMethods && <button type="button" className="button button--danger" onClick={() => setResetOpen(true)}>{messages.userAuthenticationMethodsReset}</button>}</div>}
+        {manageDecision?.state === 'allowed' && <div className="section-actions"><button type="button" className="button button--secondary" onClick={() => setTapOpen(true)}>Grant Temporary Access Pass</button></div>}
       </div>
       <p className="section-help">{messages.userAuthenticationMethodsDescription}</p>
       {failed && <p role="alert">{messages.userAuthenticationMethodsUnavailable}</p>}
@@ -90,8 +94,9 @@ export function AuthenticationMethodsSection({ userId, userLabel, decision, mana
       {result?.error && <p role="alert">{result.error.message}</p>}
       {result && !result.error && result.items.length === 0 && <p>{messages.userAuthenticationMethodsNone}</p>}
       {actionError && <p role="alert" className="action-feedback action-feedback--error">{actionError}</p>}
-      {result && !result.error && result.items.length > 0 && <div className="detail-table-wrap"><table className="detail-table"><caption className="sr-only">Authentication methods</caption><thead><tr><th scope="col">Method</th><th scope="col">Type</th><th scope="col">Registered</th><th scope="col"><span className="sr-only">Actions</span></th></tr></thead><tbody>{result.items.map((method) => <tr key={method.id}><th scope="row" data-label="Method">{method.displayName}</th><td data-label="Type"><code>{method.type}</code>{method.model && <span className="table-subtext">{method.model}</span>}</td><td data-label="Registered">{method.createdDateTime ? new Date(method.createdDateTime).toLocaleDateString() : messages.usersUnavailableValue}</td><td data-label="Actions" className="detail-table__actions">{manageDecision?.state === 'allowed' && method.type !== 'passwordAuthenticationMethod' && <button type="button" className="table-action table-action--danger" onClick={() => setRemoveTarget(method)}>{messages.userAuthenticationMethodsRemove}</button>}</td></tr>)}</tbody></table></div>}
+      {result && !result.error && result.items.length > 0 && <div className="detail-table-wrap"><table className="detail-table"><caption className="sr-only">Authentication methods</caption><thead><tr><th scope="col">Method</th><th scope="col">Type</th><th scope="col">Registered</th><th scope="col"><span className="sr-only">Actions</span></th></tr></thead><tbody>{result.items.map((method) => <tr key={method.id}><th scope="row" data-label="Method">{method.displayName}</th><td data-label="Type">{humanizeAuthMethodType(method.type)}{method.model && <span className="table-subtext">{method.model}</span>}<TechnicalDetails summary="Technical details" items={[{ label: 'Method type', value: method.type }]} /></td><td data-label="Registered">{method.createdDateTime ? formatDate(method.createdDateTime) : messages.usersUnavailableValue}</td><td data-label="Actions" className="detail-table__actions">{manageDecision?.state === 'allowed' && method.type !== 'passwordAuthenticationMethod' && <button type="button" className="button button--tertiary button--sm button--danger-text" onClick={() => setRemoveTarget(method)}>{messages.userAuthenticationMethodsRemove}</button>}</td></tr>)}</tbody></table></div>}
       {decision.state !== 'allowed' && <p className="section-help">{messages.userAuthenticationMethodsReadOnly}</p>}
+      {manageDecision?.state === 'allowed' && hasRemovableMethods && <ActionGroup tone="danger" description="Removes all registered methods except password. The user must register again."><button type="button" className="button button--danger" onClick={() => setResetOpen(true)}>{messages.userAuthenticationMethodsReset}</button></ActionGroup>}
       {removeTarget && <ConfirmationDialog title={messages.userAuthenticationMethodsRemoveTitle} target={removeTarget.displayName} proposedChange={messages.userAuthenticationMethodsRemoveDescription} requiredCapability="authentication.methods.manage" confirmLabel={messages.confirmRemoveMethod} consequence={messages.confirmRemoveMethodConsequence} tone="danger" busy={pending} onConfirm={() => void remove()} onCancel={() => { if (!pending) setRemoveTarget(null); }} />}
       {resetOpen && <ConfirmationDialog title={messages.userAuthenticationMethodsResetTitle} target={userLabel || userId} proposedChange={messages.userAuthenticationMethodsResetDescription} requiredCapability="authentication.methods.manage" destructivePhrase="RESET MFA" confirmLabel={messages.confirmResetMfa} consequence={messages.confirmResetMfaConsequence} tone="danger" busy={pending} onConfirm={() => void resetMfa()} onCancel={() => { if (!pending) setResetOpen(false); }} />}
       {tapOpen && <TemporaryAccessPassDialog userId={userId} target={userLabel || userId} onClose={() => setTapOpen(false)} />}

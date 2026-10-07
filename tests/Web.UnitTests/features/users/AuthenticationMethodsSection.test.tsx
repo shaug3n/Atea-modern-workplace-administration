@@ -69,4 +69,20 @@ describe('AuthenticationMethodsSection', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Close' }));
     expect(screen.queryByText('fixture-tap-value')).toBeNull();
   });
+
+  it('shows friendly method names, keeps raw types in technical details and puts reset in a danger zone', async () => {
+    apiMock.mockImplementation(async () => new Response(JSON.stringify({
+      userObjectId: 'user-1',
+      items: [
+        { id: 'm1', type: '#microsoft.graph.fido2AuthenticationMethod', displayName: 'YubiKey', createdDateTime: '2026-09-20T08:00:00Z' },
+        { id: 'm2', type: 'somethingNewAuthenticationMethod', displayName: 'Mystery', createdDateTime: '2026-09-20T08:00:00Z' },
+      ],
+      fetchedAt: '2026-09-22T08:00:00Z', freshness: 'live', partialData: false, access: { state: 'allowed' },
+    }), { status: 200 }));
+    render(<AuthenticationMethodsSection userId="user-1" decision={allowed} manageDecision={manage} />);
+    expect(await screen.findByText(/Passkey \(FIDO2\)/)).toBeTruthy();
+    expect(screen.getByText(/Other method/)).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Danger zone' })).toBeTruthy();
+    expect(screen.getByText(/The user must register again/)).toBeTruthy();
+  });
 });
