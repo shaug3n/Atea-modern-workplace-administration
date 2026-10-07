@@ -67,14 +67,17 @@ public static class WorkspaceEndpoints
         return detail is null ? Results.NotFound() : Results.Ok(detail);
     }
 
-    private static async Task<IResult> CreateWorkspaceAsync(CreateWorkspaceRequest request, HttpContext httpContext, IPlatformAuthorization authorization, IWorkspaceProvisioningService provisioning, CancellationToken cancellationToken)
+    private static async Task<IResult> CreateWorkspaceAsync(CreateWorkspaceRequest request, HttpContext httpContext, IPlatformAuthorization authorization, IWorkspaceProvisioningService provisioning, ITenantResolver tenantResolver, CancellationToken cancellationToken)
     {
         if (!authorization.IsAuthorized(httpContext.User)) return Results.Forbid();
-        if (request.TenantId == Guid.Empty || string.IsNullOrWhiteSpace(request.DisplayName)) return Results.BadRequest(new { error = "invalid_workspace" });
+        if (string.IsNullOrWhiteSpace(request.DisplayName)) return Results.BadRequest(new { error = "invalid_workspace" });
+        var tenantResolution = await ResolveTenantInputAsync(request.TenantId, request.TenantDomain, tenantResolver, cancellationToken);
+        if (tenantResolution.Status != TenantResolutionStatus.Resolved || tenantResolution.TenantId is not { } tenantId)
+            return TenantResolutionError(tenantResolution.Status);
         try
         {
             var operatorIdentity = PlatformOperatorIdentityReader.Read(httpContext.User);
-            var result = await provisioning.CreateWorkspaceAsync(request.TenantId, request.DisplayName.Trim(), operatorIdentity, cancellationToken);
+            var result = await provisioning.CreateWorkspaceAsync(tenantId, request.DisplayName.Trim(), operatorIdentity, cancellationToken);
             if (result.IsConflict) return Results.Conflict(new { error = "workspace_already_exists" });
             var workspace = result.Workspace!;
             return Results.Created($"/api/platform/workspaces/{workspace.Id}", ToDto(workspace));
@@ -82,24 +85,53 @@ public static class WorkspaceEndpoints
         catch (WorkspaceProvisioningUnavailableException) { return Results.Json(new { error = "workspace_database_unavailable" }, statusCode: StatusCodes.Status503ServiceUnavailable); }
     }
 
-    private static async Task<IResult> OnboardWorkspaceAsync(OnboardWorkspaceRequest request, HttpContext httpContext, IPlatformAuthorization authorization, IWorkspaceProvisioningService provisioning, CancellationToken cancellationToken)
+    private static async Task<IResult> OnboardWorkspaceAsync(OnboardWorkspaceRequest request, HttpContext httpContext, IPlatformAuthorization authorization, IWorkspaceProvisioningService provisioning, ITenantResolver tenantResolver, CancellationToken cancellationToken)
     {
         if (!authorization.IsAuthorized(httpContext.User)) return Results.Forbid();
-        if (request.TenantId == Guid.Empty || string.IsNullOrWhiteSpace(request.DisplayName) || request.DisplayName.Trim().Length > 200
+        if (string.IsNullOrWhiteSpace(request.DisplayName) || request.DisplayName.Trim().Length > 200
             || !TryNormalizeAdminInvite(request.AdminUpn, request.AdminDisplayName, out var upn, out var adminDisplayName))
             return Results.BadRequest(new { error = "invalid_workspace_onboarding" });
+        var tenantResolution = await ResolveTenantInputAsync(request.TenantId, request.TenantDomain, tenantResolver, cancellationToken);
+        if (tenantResolution.Status != TenantResolutionStatus.Resolved || tenantResolution.TenantId is not { } tenantId)
+            return TenantResolutionError(tenantResolution.Status);
 
         try
         {
             var audit = CreatePlatformAudit(httpContext.User, Guid.Empty, "workspace.onboarded", "workspace", "{}");
             var operatorIdentity = PlatformOperatorIdentityReader.Read(httpContext.User);
-            var result = await provisioning.OnboardAsync(request.TenantId, request.DisplayName.Trim(), upn, adminDisplayName, audit, operatorIdentity, cancellationToken);
+            var result = await provisioning.OnboardAsync(tenantId, request.DisplayName.Trim(), upn, adminDisplayName, audit, operatorIdentity, cancellationToken);
             if (result.IsConflict) return Results.Conflict(new { error = "workspace_already_exists" });
             var workspace = result.Workspace!;
             return Results.Created($"/api/platform/workspaces/{workspace.Id}", new WorkspaceOnboardingResponse(ToDto(workspace), result.InvitationUrl!, result.ExpiresAt!.Value));
         }
         catch (WorkspaceProvisioningUnavailableException) { return Results.Json(new { error = "workspace_database_unavailable" }, statusCode: StatusCodes.Status503ServiceUnavailable); }
     }
+
+    private static async Task<TenantResolutionResult> ResolveTenantInputAsync(
+        Guid? tenantId,
+        string? tenantDomain,
+        ITenantResolver tenantResolver,
+        CancellationToken cancellationToken)
+    {
+        var hasDomain = !string.IsNullOrWhiteSpace(tenantDomain);
+        if (tenantId == Guid.Empty || tenantId.HasValue == hasDomain)
+        {
+            return new TenantResolutionResult(TenantResolutionStatus.InvalidInput, null);
+        }
+
+        return tenantId.HasValue
+            ? new TenantResolutionResult(TenantResolutionStatus.Resolved, tenantId.Value)
+            : await tenantResolver.ResolveAsync(tenantDomain!.Trim(), cancellationToken);
+    }
+
+    private static IResult TenantResolutionError(TenantResolutionStatus status) =>
+        status switch
+        {
+            TenantResolutionStatus.InvalidInput => Results.BadRequest(new { error = "invalid_tenant_input" }),
+            TenantResolutionStatus.NotFound => Results.Json(new { error = "tenant_domain_not_found" }, statusCode: StatusCodes.Status422UnprocessableEntity),
+            TenantResolutionStatus.Unavailable => Results.Json(new { error = "tenant_resolution_unavailable" }, statusCode: StatusCodes.Status503ServiceUnavailable),
+            _ => Results.BadRequest(new { error = "invalid_tenant_input" })
+        };
 
     private static async Task<IResult> AddMembershipAsync(Guid workspaceId, AddWorkspaceMembershipRequest request, HttpContext httpContext, IPlatformAuthorization authorization, IWorkspaceProvisioningService provisioning, CancellationToken cancellationToken)
     {

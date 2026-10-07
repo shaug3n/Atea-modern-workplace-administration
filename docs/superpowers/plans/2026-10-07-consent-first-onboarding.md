@@ -114,7 +114,7 @@ git commit -m "feat: resolve customer tenant domains"
 - Produces: `CreateWorkspaceRequest(Guid? TenantId, string? TenantDomain, string DisplayName)` and `OnboardWorkspaceRequest(Guid? TenantId, string? TenantDomain, string? DisplayName, string? AdminUpn, string? AdminDisplayName = null)`.
 - Produces: both handlers resolve input before calling the existing `IWorkspaceProvisioningService.CreateWorkspaceAsync(Guid tenantId, string displayName, PlatformOperatorIdentity? operatorIdentity, CancellationToken)` or `OnboardAsync(Guid tenantId, string displayName, string adminUpn, string adminDisplayName, AuditEvent auditEvent, PlatformOperatorIdentity? operatorIdentity, CancellationToken)`.
 
-- [ ] **Step 1: Add failing endpoint tests.**
+- [x] **Step 1: Add failing endpoint tests.**
 
 ```csharp
 [Fact] public async Task Create_rejects_missing_or_mutually_supplied_tenant_inputs()
@@ -133,21 +133,21 @@ git commit -m "feat: resolve customer tenant domains"
 
 Cover GUID-only requests unchanged, `Guid.Empty`, malformed domain (`400 invalid_tenant_input`), valid domain not found (`422 tenant_domain_not_found`), timeout (`503 tenant_resolution_unavailable`), and no provisioning call when discovery fails.
 
-- [ ] **Step 2: Run the endpoint tests.**
+- [x] **Step 2: Run the endpoint tests.**
 
 Run: `dotnet test tests/Api.IntegrationTests/Api.IntegrationTests.csproj --filter FullyQualifiedName~WorkspaceTenantInputEndpointTests`
 Expected: FAIL because requests have no `tenantDomain` contract or resolver injection.
 
-- [ ] **Step 3: Implement the two request records and resolve before provisioning.**
+- [x] **Step 3: Implement the two request records and resolve before provisioning.**
 
 In `WorkspaceEndpoints.cs`, require exactly one nonempty tenant input, map `InvalidInput` to `400 invalid_tenant_input`, `NotFound` to `422 tenant_domain_not_found`, and `Unavailable` to `503 tenant_resolution_unavailable`. Continue passing only the resolved GUID to provisioning so duplicate checks remain canonical.
 
-- [ ] **Step 4: Run new and retained platform provisioning tests.**
+- [x] **Step 4: Run new and retained platform provisioning tests.**
 
 Run: `dotnet test tests/Api.IntegrationTests/Api.IntegrationTests.csproj --filter "FullyQualifiedName~WorkspaceTenantInputEndpointTests|FullyQualifiedName~WorkspaceEndpointsTests"`
 Expected: PASS; the existing authenticated GUID create/onboard assertions remain unchanged.
 
-- [ ] **Step 5: Commit.**
+- [x] **Step 5: Commit.**
 
 ```bash
 git add src/Api/Features/Workspaces/WorkspaceContracts.cs src/Api/Features/Workspaces/WorkspaceEndpoints.cs tests/Api.IntegrationTests/Workspaces/WorkspaceEndpointsTests.cs tests/Api.IntegrationTests/Workspaces/WorkspaceTenantInputEndpointTests.cs
