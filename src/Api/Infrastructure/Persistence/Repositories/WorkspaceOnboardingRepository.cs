@@ -48,7 +48,11 @@ public sealed class WorkspaceOnboardingRepository(WorkplaceDbContext db) : IOnbo
                 x.Purpose,
                 x.CorrelationId,
                 x.ExpiresAt,
-                x.ConsumedAt))
+                x.ConsumedAt,
+                x.Invitation == null ? null : x.Invitation.RedeemedAt,
+                x.Invitation == null ? null : x.Invitation.RedeemedByTenantObjectId,
+                x.Invitation == null ? null : x.Invitation.RevokedAt,
+                x.Invitation == null ? null : x.Invitation.ExpiresAt))
             .SingleOrDefaultAsync(cancellationToken);
     }
 
@@ -155,17 +159,92 @@ public sealed class WorkspaceOnboardingRepository(WorkplaceDbContext db) : IOnbo
         return invitation;
     }
 
-    public async Task<InvitationRedemption?> RedeemAsync(string nonceHash, Guid tenantId, Guid tenantObjectId, string? email, string displayName, CancellationToken cancellationToken = default)
+    public Task<InvitationRedemption?> RedeemAsync(
+        string nonceHash,
+        Guid tenantId,
+        Guid tenantObjectId,
+        string? email,
+        string displayName,
+        CancellationToken cancellationToken = default) =>
+        RedeemAsync(nonceHash, tenantId, tenantObjectId, email, displayName, invitationStateHash: null, cancellationToken);
+
+    public async Task<InvitationRedemption?> RedeemAsync(
+        string nonceHash,
+        Guid tenantId,
+        Guid tenantObjectId,
+        string? email,
+        string displayName,
+        string? invitationStateHash,
+        CancellationToken cancellationToken = default)
     {
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
         var now = DateTimeOffset.UtcNow;
+
+        if (invitationStateHash is not null)
+        {
+            var challengeMatchesInvitation = await db.ConsentChallenges.AnyAsync(x =>
+                x.StateHash == invitationStateHash &&
+                x.Purpose == "invitation" &&
+                x.ConsumedAt == null &&
+                x.ExpiresAt > now &&
+                x.InvitationId != null &&
+                x.Invitation != null &&
+                x.Invitation.NonceHash == nonceHash &&
+                x.Invitation.Id == x.InvitationId &&
+                x.Invitation.WorkspaceId == x.WorkspaceId &&
+                x.TenantId == tenantId &&
+                x.Invitation.Workspace.TenantId == tenantId &&
+                x.Invitation.RevokedAt == null &&
+                x.Invitation.ExpiresAt > now,
+                cancellationToken);
+            if (!challengeMatchesInvitation) return null;
+        }
+
         var claimed = await db.PlatformInvitations
             .Where(x => x.NonceHash == nonceHash && x.RedeemedAt == null && x.RevokedAt == null && x.ExpiresAt > now && x.Workspace.TenantId == tenantId && (x.ApprovedTenantObjectId == tenantObjectId || (x.ApprovedTenantObjectId == null && email != null && x.Email.ToLower() == email.Trim().ToLower())))
-            .ExecuteUpdateAsync(updates => updates.SetProperty(x => x.RedeemedAt, now), cancellationToken);
-        if (claimed != 1) return null;
+            .ExecuteUpdateAsync(updates => updates
+                .SetProperty(x => x.RedeemedAt, now)
+                .SetProperty(x => x.RedeemedByTenantObjectId, tenantObjectId), cancellationToken);
+        if (claimed != 1)
+        {
+            if (invitationStateHash is null) return null;
+
+            var recoveredInvitation = await db.PlatformInvitations.AsNoTracking()
+                .Include(x => x.Workspace)
+                .SingleOrDefaultAsync(x =>
+                    x.NonceHash == nonceHash &&
+                    x.RedeemedAt != null &&
+                    x.RedeemedByTenantObjectId == tenantObjectId &&
+                    x.RevokedAt == null &&
+                    x.ExpiresAt > now &&
+                    x.Workspace.TenantId == tenantId,
+                    cancellationToken);
+            if (recoveredInvitation is null) return null;
+
+            var challengeStillValid = await db.ConsentChallenges.AnyAsync(x =>
+                x.StateHash == invitationStateHash &&
+                x.Purpose == "invitation" &&
+                x.ConsumedAt == null &&
+                x.ExpiresAt > now &&
+                x.InvitationId == recoveredInvitation.Id &&
+                x.WorkspaceId == recoveredInvitation.WorkspaceId &&
+                x.TenantId == tenantId &&
+                x.Invitation != null &&
+                x.Invitation.RedeemedByTenantObjectId == tenantObjectId &&
+                x.Invitation.RevokedAt == null &&
+                x.Invitation.ExpiresAt > now &&
+                x.Invitation.Workspace.TenantId == tenantId,
+                cancellationToken);
+            if (!challengeStillValid) return null;
+
+            var existingMembership = await db.WorkspaceMemberships.AsNoTracking()
+                .SingleOrDefaultAsync(x => x.WorkspaceId == recoveredInvitation.WorkspaceId && x.TenantObjectId == tenantObjectId, cancellationToken);
+            return existingMembership is null
+                ? null
+                : new InvitationRedemption(recoveredInvitation.Workspace, existingMembership);
+        }
 
         var invitation = await db.PlatformInvitations.Include(x => x.Workspace).SingleAsync(x => x.NonceHash == nonceHash, cancellationToken);
-        invitation.RedeemedByTenantObjectId = tenantObjectId;
         await db.PlatformInvitations
             .Where(x => x.WorkspaceId == invitation.WorkspaceId
                 && x.Id != invitation.Id

@@ -13,6 +13,7 @@ public sealed class InvitationConsentServiceTests
     private static readonly Guid InvitationId = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
     private static readonly Guid WorkspaceId = Guid.Parse("55555555-5555-5555-5555-555555555555");
     private static readonly Guid TenantId = Guid.Parse("11111111-1111-1111-1111-111111111111");
+    private static readonly Guid RedeemerObjectId = Guid.Parse("33333333-3333-3333-3333-333333333333");
     private const string Nonce = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
     private const string Base64SigningKey = "MDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDA=";
 
@@ -151,6 +152,94 @@ public sealed class InvitationConsentServiceTests
     }
 
     [Fact]
+    public async Task Resume_remains_valid_after_redemption_while_its_challenge_is_live()
+    {
+        var invitation = LiveInvitation("customer_admin", isRedeemed: true);
+        var readRepository = new FixtureInvitationRepository(invitation);
+        var challenges = new ConsentChallengeService(Convert.FromBase64String(Base64SigningKey));
+        var signed = challenges.CreateInvitation(WorkspaceId, TenantId, InvitationId, invitation.ExpiresAt);
+        var challengeRepository = new FixtureConsentChallengeRepository();
+        challengeRepository.Add(new InvitationConsentChallengeRecord(
+            ConsentChallengeService.HashState(signed.Challenge), WorkspaceId, TenantId, InvitationId,
+            "invitation", signed.CorrelationId, signed.ExpiresAt, null));
+        var service = CreateService(readRepository, challengeRepository, challenges);
+
+        var result = await service.ResumeAsync(Nonce, signed.Challenge, TenantId);
+
+        result.Valid.Should().BeTrue();
+        result.Status.Should().Be("ready_to_sign_in");
+        challengeRepository.ConsumeCalls.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task Completion_rejects_wrong_workspace_tenant_and_callback_hint_without_consuming()
+    {
+        var (service, repository, signed) = CreateCompletionService(consumeResult: true);
+
+        var wrongWorkspace = await service.CompleteInvitationAsync(
+            signed.Challenge, Guid.NewGuid(), TenantId, Guid.NewGuid(), TenantId, null);
+        var wrongTokenTenant = await service.CompleteInvitationAsync(
+            signed.Challenge, WorkspaceId, Guid.NewGuid(), Guid.NewGuid(), TenantId, null);
+        var wrongCallbackTenant = await service.CompleteInvitationAsync(
+            signed.Challenge, WorkspaceId, TenantId, Guid.NewGuid(), Guid.NewGuid(), null);
+
+        wrongWorkspace.Valid.Should().BeFalse();
+        wrongTokenTenant.Valid.Should().BeFalse();
+        wrongCallbackTenant.Valid.Should().BeFalse();
+        repository.ConsumeCalls.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task Completion_requires_a_matching_redeemed_invitation_and_exact_redeemer()
+    {
+        var (service, repository, signed) = CreateCompletionService(consumeResult: false);
+
+        var result = await service.CompleteInvitationAsync(
+            signed.Challenge, WorkspaceId, TenantId, Guid.NewGuid(), TenantId, null);
+
+        result.Valid.Should().BeFalse();
+        repository.ConsumeCalls.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task Completion_consumes_once_only_for_the_recorded_redeemer()
+    {
+        var (service, repository, signed) = CreateCompletionService(consumeResult: true);
+
+        var result = await service.CompleteInvitationAsync(
+            signed.Challenge, WorkspaceId, TenantId, RedeemerObjectId, TenantId, null);
+
+        result.Valid.Should().BeTrue();
+        result.Status.Should().Be("consent_received");
+        repository.ConsumeCalls.Should().Be(1);
+        repository.LastConsumeInvitationId.Should().Be(InvitationId);
+        repository.LastConsumeWorkspaceId.Should().Be(WorkspaceId);
+        repository.LastConsumeTenantId.Should().Be(TenantId);
+        repository.LastConsumeRedeemerObjectId.Should().Be(RedeemerObjectId);
+    }
+
+    [Fact]
+    public async Task Denied_or_invalid_completion_does_not_consume_invitation_state()
+    {
+        var (service, repository, signed) = CreateCompletionService(consumeResult: true);
+
+        var denied = await service.CompleteInvitationAsync(
+            signed.Challenge, WorkspaceId, TenantId, RedeemerObjectId, TenantId, "access_denied");
+        var tampered = await service.CompleteInvitationAsync(
+            signed.Challenge + "x", WorkspaceId, TenantId, RedeemerObjectId, TenantId, null);
+        var expired = new ConsentChallengeService(Convert.FromBase64String(Base64SigningKey))
+            .CreateInvitation(WorkspaceId, TenantId, InvitationId, DateTimeOffset.UtcNow.AddMinutes(-1));
+        var expiredResult = await service.CompleteInvitationAsync(
+            expired.Challenge, WorkspaceId, TenantId, RedeemerObjectId, TenantId, null);
+
+        denied.Valid.Should().BeTrue();
+        denied.Status.Should().Be("consent_denied");
+        tampered.Valid.Should().BeFalse();
+        expiredResult.Valid.Should().BeFalse();
+        repository.ConsumeCalls.Should().Be(0);
+    }
+
+    [Fact]
     public async Task Invalid_signed_state_is_rejected_before_invitation_database_lookup()
     {
         var repository = new FixtureInvitationRepository(LiveInvitation("customer_admin"));
@@ -209,6 +298,29 @@ public sealed class InvitationConsentServiceTests
             options);
     }
 
+    private static (InvitationConsentService Service, FixtureConsentChallengeRepository Repository, ConsentChallenge Signed)
+        CreateCompletionService(bool consumeResult)
+    {
+        var invitation = LiveInvitation("customer_admin");
+        var challengeService = new ConsentChallengeService(Convert.FromBase64String(Base64SigningKey));
+        var signed = challengeService.CreateInvitation(WorkspaceId, TenantId, InvitationId, invitation.ExpiresAt);
+        var repository = new FixtureConsentChallengeRepository { ConsumeResult = consumeResult };
+        repository.Add(new InvitationConsentChallengeRecord(
+            ConsentChallengeService.HashState(signed.Challenge),
+            WorkspaceId,
+            TenantId,
+            InvitationId,
+            "invitation",
+            signed.CorrelationId,
+            signed.ExpiresAt,
+            null,
+            DateTimeOffset.UtcNow,
+            RedeemerObjectId,
+            null,
+            invitation.ExpiresAt));
+        return (CreateService(new FixtureInvitationRepository(invitation), repository, challengeService), repository, signed);
+    }
+
     private static InvitationLookup LiveInvitation(
         string role,
         DateTimeOffset? expiresAt = null,
@@ -239,6 +351,11 @@ public sealed class InvitationConsentServiceTests
     {
         public InvitationConsentChallengeRecord? Record { get; private set; }
         public int ConsumeCalls { get; private set; }
+        public bool ConsumeResult { get; set; }
+        public Guid LastConsumeInvitationId { get; private set; }
+        public Guid LastConsumeWorkspaceId { get; private set; }
+        public Guid LastConsumeTenantId { get; private set; }
+        public Guid LastConsumeRedeemerObjectId { get; private set; }
 
         public Task CreateAsync(Guid workspaceId, Guid tenantId, string stateHash, string correlationId, DateTimeOffset expiresAt, CancellationToken cancellationToken = default) =>
             Task.CompletedTask;
@@ -258,7 +375,11 @@ public sealed class InvitationConsentServiceTests
         public Task<bool> TryConsumeInvitationAsync(string stateHash, Guid invitationId, Guid workspaceId, Guid tenantId, Guid redeemerObjectId, DateTimeOffset now, CancellationToken cancellationToken = default)
         {
             ConsumeCalls++;
-            return Task.FromResult(false);
+            LastConsumeInvitationId = invitationId;
+            LastConsumeWorkspaceId = workspaceId;
+            LastConsumeTenantId = tenantId;
+            LastConsumeRedeemerObjectId = redeemerObjectId;
+            return Task.FromResult(ConsumeResult);
         }
 
         public void Add(InvitationConsentChallengeRecord record) => Record = record;

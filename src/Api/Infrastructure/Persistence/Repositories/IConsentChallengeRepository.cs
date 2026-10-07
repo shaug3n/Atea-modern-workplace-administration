@@ -20,4 +20,8 @@ public sealed record InvitationConsentChallengeRecord(
     string Purpose,
     string CorrelationId,
     DateTimeOffset ExpiresAt,
-    DateTimeOffset? ConsumedAt);
+    DateTimeOffset? ConsumedAt,
+    DateTimeOffset? InvitationRedeemedAt = null,
+    Guid? RedeemedByTenantObjectId = null,
+    DateTimeOffset? InvitationRevokedAt = null,
+    DateTimeOffset? InvitationExpiresAt = null);

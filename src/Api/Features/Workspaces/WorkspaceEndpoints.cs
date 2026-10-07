@@ -261,13 +261,25 @@ public static class WorkspaceEndpoints
         return await accessRepository.RevokeInvitationAsync(workspaceId, invitationId, audit, cancellationToken) ? Results.NoContent() : Results.NotFound();
     }
 
-    private static async Task<IResult> RedeemInvitationAsync(string nonce, HttpContext httpContext, InvitationService invitations, CancellationToken cancellationToken)
+    private static async Task<IResult> RedeemInvitationAsync(
+        string nonce,
+        HttpContext httpContext,
+        InvitationService invitations,
+        CancellationToken cancellationToken,
+        InvitationRedemptionRequest? request = null)
     {
         var tenantId = ParseGuidClaim(httpContext.User, "tid");
         var objectId = ParseGuidClaim(httpContext.User, "oid");
         var email = httpContext.User.FindFirstValue("preferred_username") ?? httpContext.User.FindFirstValue("upn");
         if (tenantId == Guid.Empty || objectId == Guid.Empty) return Results.Unauthorized();
-        var redemption = await invitations.RedeemDetailedAsync(nonce, tenantId, objectId, email, httpContext.User.FindFirstValue("name") ?? string.Empty, cancellationToken);
+        var redemption = await invitations.RedeemDetailedAsync(
+            nonce,
+            tenantId,
+            objectId,
+            email,
+            httpContext.User.FindFirstValue("name") ?? string.Empty,
+            request?.Challenge,
+            cancellationToken);
         return redemption is null
             ? Results.BadRequest(new { error = "invitation_invalid_or_expired" })
             : Results.Ok(new InvitationRedemptionResponse(ConnectionState.ConsentRequired, redemption.Workspace.Id, redemption.Workspace.DisplayName, "/overview"));
@@ -321,10 +333,36 @@ public static class WorkspaceEndpoints
         return Results.Ok(new ConsentStartResponse(url, GraphScopeCatalog.CapabilityEvaluationScopes, challenge.Challenge, challenge.CorrelationId));
     }
 
-    private static async Task<IResult> CompleteConsentAsync(ConsentCompletionRequest request, IWorkspaceContextAccessor accessor, ConsentChallengeService challenges, IConsentChallengeRepository challengeRepository, CancellationToken cancellationToken)
+    private static async Task<IResult> CompleteConsentAsync(
+        ConsentCompletionRequest request,
+        IWorkspaceContextAccessor accessor,
+        ConsentChallengeService challenges,
+        IConsentChallengeRepository challengeRepository,
+        IInvitationConsentService invitationConsent,
+        CancellationToken cancellationToken)
     {
         var context = accessor.Current;
         if (context is null) return Results.StatusCode(StatusCodes.Status403Forbidden);
+        InvitationCompletionResult invitationResult;
+        try
+        {
+            invitationResult = await invitationConsent.CompleteInvitationAsync(
+                request.State,
+                context.Membership.WorkspaceId,
+                context.User.TenantId,
+                context.User.ObjectId,
+                request.Tenant,
+                request.ErrorCode,
+                cancellationToken);
+        }
+        catch (InvitationConsentUnavailableException)
+        {
+            return Results.Json(new { error = "consent_completion_unavailable" }, statusCode: StatusCodes.Status503ServiceUnavailable);
+        }
+
+        if (invitationResult.Valid)
+            return Results.Ok(new ConsentCompletionResponse(invitationResult.Valid, invitationResult.Status, invitationResult.CorrelationId));
+
         if (request.Tenant == Guid.Empty || request.Tenant != context.User.TenantId || string.IsNullOrWhiteSpace(request.State))
             return Results.Ok(new ConsentCompletionResponse(false, "invalid_callback", string.Empty));
         if (!await challenges.TryValidateAndConsumeAsync(request.State, context.Membership.WorkspaceId, context.User.TenantId, challengeRepository, cancellationToken))

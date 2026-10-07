@@ -36,6 +36,14 @@ public interface IInvitationConsentService
     Task<InvitationPreviewResult?> PreviewAsync(string nonce, CancellationToken cancellationToken = default);
     Task<InvitationConsentStartResult> StartAsync(string nonce, CancellationToken cancellationToken = default);
     Task<InvitationConsentResumeResult> ResumeAsync(string nonce, string state, Guid? tenant, string? errorCode, CancellationToken cancellationToken = default);
+    Task<InvitationCompletionResult> CompleteInvitationAsync(
+        string state,
+        Guid workspaceId,
+        Guid tokenTenantId,
+        Guid tokenObjectId,
+        Guid? callbackTenant,
+        string? errorCode,
+        CancellationToken cancellationToken = default);
 }
 
 public sealed class InvitationConsentService(
@@ -168,6 +176,91 @@ public sealed class InvitationConsentService(
         return new InvitationConsentResumeResult(true, "ready_to_sign_in", invitation.TenantId, payload.CorrelationId);
     }
 
+    public async Task<InvitationCompletionResult> CompleteInvitationAsync(
+        string state,
+        Guid workspaceId,
+        Guid tokenTenantId,
+        Guid tokenObjectId,
+        Guid? callbackTenant,
+        string? errorCode,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrEmpty(state) ||
+            state.Length > MaximumStateLength ||
+            workspaceId == Guid.Empty ||
+            tokenTenantId == Guid.Empty ||
+            tokenObjectId == Guid.Empty ||
+            !challengeService.TryReadInvitation(state, out var payload) ||
+            payload.WorkspaceId != workspaceId ||
+            payload.TenantId != tokenTenantId ||
+            (callbackTenant.HasValue && callbackTenant.Value != tokenTenantId))
+        {
+            return InvalidCompletion();
+        }
+
+        InvitationConsentChallengeRecord? stored;
+        try
+        {
+            stored = await challenges.FindInvitationAsync(ConsentChallengeService.HashState(state), cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception)
+        {
+            throw new InvitationConsentUnavailableException();
+        }
+
+        if (stored is null ||
+            stored.ConsumedAt is not null ||
+            stored.ExpiresAt <= DateTimeOffset.UtcNow ||
+            stored.Purpose != "invitation" ||
+            stored.InvitationId != payload.InvitationId ||
+            stored.WorkspaceId != payload.WorkspaceId ||
+            stored.TenantId != payload.TenantId ||
+            stored.CorrelationId != payload.CorrelationId ||
+            stored.ExpiresAt.ToUnixTimeSeconds() != payload.ExpiresAt.ToUnixTimeSeconds() ||
+            stored.InvitationRedeemedAt is null ||
+            stored.RedeemedByTenantObjectId != tokenObjectId ||
+            stored.InvitationRevokedAt is not null ||
+            stored.InvitationExpiresAt is null ||
+            stored.InvitationExpiresAt <= DateTimeOffset.UtcNow)
+        {
+            return InvalidCompletion();
+        }
+
+        if (!string.IsNullOrWhiteSpace(errorCode))
+        {
+            return new InvitationCompletionResult(true, "consent_denied", payload.CorrelationId);
+        }
+
+        bool consumed;
+        try
+        {
+            consumed = await challenges.TryConsumeInvitationAsync(
+                stored.StateHash,
+                payload.InvitationId,
+                payload.WorkspaceId,
+                tokenTenantId,
+                tokenObjectId,
+                DateTimeOffset.UtcNow,
+                cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception)
+        {
+            throw new InvitationConsentUnavailableException();
+        }
+
+        return consumed
+            ? new InvitationCompletionResult(true, "consent_received", payload.CorrelationId)
+            : InvalidCompletion();
+    }
+
     private async Task<InvitationLookup?> FindInvitationAsync(string nonce, CancellationToken cancellationToken)
     {
         var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(nonce))).ToLowerInvariant();
@@ -209,6 +302,9 @@ public sealed class InvitationConsentService(
 
     private static InvitationConsentResumeResult InvalidResume() =>
         new(false, "invalid_callback", null, string.Empty);
+
+    private static InvitationCompletionResult InvalidCompletion() =>
+        new(false, "invalid_callback", string.Empty);
 }
 
 public sealed class InvitationRequestSecurityMiddleware(RequestDelegate next, IOptions<OnboardingOptions> onboardingOptions)

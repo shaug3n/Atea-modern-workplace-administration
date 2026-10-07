@@ -6,6 +6,7 @@ using System.Text;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using Atea.UnifiedWorkplace.Api.Features.AdminAuth;
+using Atea.UnifiedWorkplace.Api.Features.Workspaces;
 using Atea.UnifiedWorkplace.Api.Infrastructure.Persistence.Entities;
 using Atea.UnifiedWorkplace.Api.Infrastructure.Persistence.Repositories;
 using FluentAssertions;
@@ -23,6 +24,7 @@ public sealed class InvitationRedemptionEndpointTests
     private static readonly Guid WorkspaceId = Guid.Parse("55555555-5555-5555-5555-555555555555");
     private static readonly Guid TenantId = Guid.Parse("11111111-1111-1111-1111-111111111111");
     private static readonly Guid ObjectId = Guid.Parse("22222222-2222-2222-2222-222222222222");
+    private const string ConsentSigningKey = "MDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDA=";
 
     [Fact]
     public async Task Redemption_requires_bearer_authentication_and_does_not_use_the_admin_cookie()
@@ -127,6 +129,28 @@ public sealed class InvitationRedemptionEndpointTests
         repository.Invitation!.RedeemedAt.Should().BeNull();
     }
 
+    [Fact]
+    public async Task Challenge_bound_replay_recovers_only_for_the_recorded_redeemer()
+    {
+        using var factory = CreateFactory(out var repository);
+        var nonce = SeedInvitation(repository);
+        var challenge = new ConsentChallengeService(Convert.FromBase64String(ConsentSigningKey))
+            .CreateInvitation(WorkspaceId, TenantId, repository.Invitation!.Id, repository.Invitation.ExpiresAt);
+        using var sameIdentity = AuthenticatedClient(factory, TenantId.ToString(), ObjectId.ToString(), "customer@example.com");
+        using var anotherIdentity = AuthenticatedClient(factory, TenantId.ToString(), "99999999-9999-9999-9999-999999999999", "customer@example.com");
+
+        var first = await sameIdentity.PostAsJsonAsync($"/api/invitations/{nonce}/redeem", new { challenge = challenge.Challenge });
+        var nonceOnlyReplay = await sameIdentity.PostAsync($"/api/invitations/{nonce}/redeem", null);
+        var anotherIdentityReplay = await anotherIdentity.PostAsJsonAsync($"/api/invitations/{nonce}/redeem", new { challenge = challenge.Challenge });
+        var recovered = await sameIdentity.PostAsJsonAsync($"/api/invitations/{nonce}/redeem", new { challenge = challenge.Challenge });
+
+        first.StatusCode.Should().Be(HttpStatusCode.OK);
+        nonceOnlyReplay.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        anotherIdentityReplay.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        recovered.StatusCode.Should().Be(HttpStatusCode.OK);
+        repository.RedemptionAuditCount.Should().Be(1);
+    }
+
     private static HttpClient AuthenticatedClient(WebApplicationFactory<Program> factory, string tenant, string objectId, string email)
     {
         var client = factory.CreateClient();
@@ -171,7 +195,8 @@ public sealed class InvitationRedemptionEndpointTests
                 ["AteaAdmin:LocalDevelopment:Password"] = "secret",
                 ["AteaAdmin:LocalDevelopment:ObjectId"] = ObjectId.ToString(),
                 ["AteaAdmin:LocalDevelopment:DisplayName"] = "Local Atea Admin",
-                ["AteaAdmin:LocalDevelopment:AllowAllWorkspaces"] = "true"
+                ["AteaAdmin:LocalDevelopment:AllowAllWorkspaces"] = "true",
+                ["Onboarding:ConsentSigningKey"] = ConsentSigningKey
             }));
             builder.ConfigureServices(services =>
             {
@@ -191,17 +216,39 @@ public sealed class InvitationRedemptionEndpointTests
         public PlatformInvitation? Invitation { get; set; }
         public Workspace? Workspace { get; set; }
         public int RedeemCalls { get; private set; }
+        public int RedemptionAuditCount { get; private set; }
 
         public Task<PlatformInvitation> CreateAsync(PlatformInvitation invitation, CancellationToken cancellationToken = default) => Task.FromResult(invitation);
 
         public Task<InvitationRedemption?> RedeemAsync(string nonceHash, Guid tenantId, Guid tenantObjectId, string? email, string displayName, CancellationToken cancellationToken = default)
+            => RedeemAsync(nonceHash, tenantId, tenantObjectId, email, displayName, invitationStateHash: null, cancellationToken);
+
+        public Task<InvitationRedemption?> RedeemAsync(string nonceHash, Guid tenantId, Guid tenantObjectId, string? email, string displayName, string? invitationStateHash, CancellationToken cancellationToken = default)
         {
             RedeemCalls++;
-            if (Invitation is null || Workspace is null || Invitation.NonceHash != nonceHash || Invitation.RedeemedAt is not null || Invitation.ExpiresAt <= DateTimeOffset.UtcNow || Workspace.TenantId != tenantId || (Invitation.ApprovedTenantObjectId != tenantObjectId && !(Invitation.ApprovedTenantObjectId is null && string.Equals(Invitation.Email, email, StringComparison.OrdinalIgnoreCase)))) return Task.FromResult<InvitationRedemption?>(null);
+            if (Invitation is null || Workspace is null || Invitation.NonceHash != nonceHash || Invitation.ExpiresAt <= DateTimeOffset.UtcNow || Invitation.RevokedAt is not null || Workspace.TenantId != tenantId) return Task.FromResult<InvitationRedemption?>(null);
+            if (Invitation.RedeemedAt is not null)
+            {
+                if (invitationStateHash is null ||
+                    invitationStateHash != RecordedChallengeHash ||
+                    Invitation.RedeemedByTenantObjectId != tenantObjectId)
+                    return Task.FromResult<InvitationRedemption?>(null);
+                return Task.FromResult<InvitationRedemption?>(CreateRedemption(tenantObjectId, email));
+            }
+            if (Invitation.ApprovedTenantObjectId != tenantObjectId && !(Invitation.ApprovedTenantObjectId is null && string.Equals(Invitation.Email, email, StringComparison.OrdinalIgnoreCase)))
+                return Task.FromResult<InvitationRedemption?>(null);
+            if (invitationStateHash is not null) RecordedChallengeHash = invitationStateHash;
             Invitation.RedeemedAt = DateTimeOffset.UtcNow;
+            Invitation.RedeemedByTenantObjectId = tenantObjectId;
+            RedemptionAuditCount++;
             Workspace.ConnectionStatus = "consent_required";
-            return Task.FromResult<InvitationRedemption?>(new InvitationRedemption(Workspace, new WorkspaceMembership { WorkspaceId = Workspace.Id, TenantObjectId = tenantObjectId, Email = email!, PlatformRole = "customer_admin" }));
+            return Task.FromResult<InvitationRedemption?>(CreateRedemption(tenantObjectId, email));
         }
+
+        private InvitationRedemption CreateRedemption(Guid tenantObjectId, string? email) =>
+            new(Workspace!, new WorkspaceMembership { WorkspaceId = Workspace!.Id, TenantObjectId = tenantObjectId, Email = email!, PlatformRole = "customer_admin" });
+
+        private string? RecordedChallengeHash { get; set; }
     }
 
     private sealed class TestAuthenticationHandler(IOptionsMonitor<AuthenticationSchemeOptions> options, ILoggerFactory logger, UrlEncoder encoder)

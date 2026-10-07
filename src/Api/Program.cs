@@ -121,7 +121,10 @@ builder.Services.AddSingleton<ConsentChallengeService>(services => new ConsentCh
 builder.Services.AddScoped<InvitationService>(services =>
 {
     var options = services.GetRequiredService<IOptions<OnboardingOptions>>().Value;
-    return new InvitationService(services.GetRequiredService<IInvitationRepository>(), new Uri(options.PublicBaseUrl, UriKind.Absolute));
+    return new InvitationService(
+        services.GetRequiredService<IInvitationRepository>(),
+        new Uri(options.PublicBaseUrl, UriKind.Absolute),
+        services.GetRequiredService<ConsentChallengeService>());
 });
 builder.Services.AddScoped<IInvitationConsentService>(services =>
 {

@@ -377,7 +377,7 @@ git commit -m "feat: add protected anonymous invitation consent"
 - Produces: `IConsentChallengeRepository.TryConsumeInvitationAsync(string stateHash, Guid invitationId, Guid workspaceId, Guid tenantId, Guid redeemerObjectId, DateTimeOffset now, CancellationToken cancellationToken = default) -> Task<bool>`.
 - Produces: `IInvitationConsentService.CompleteInvitationAsync(string state, Guid workspaceId, Guid tokenTenantId, Guid tokenObjectId, Guid? callbackTenant, string? errorCode, CancellationToken) -> Task<InvitationCompletionResult>`.
 
-- [ ] **Step 1: Add failing redemption and completion tests.**
+- [x] **Step 1: Add failing redemption and completion tests.**
 
 ```csharp
 [Fact] public async Task Challenge_bound_replay_recovers_only_for_the_recorded_redeemer()
@@ -396,25 +396,25 @@ git commit -m "feat: add protected anonymous invitation consent"
 
 Also cover callback with no matching redeemed invitation (membership alone is insufficient), concurrent completion (exactly one consume), invalid/expired/tampered state, revoked/reissued invitation race, and `resume` after redemption while its own challenge is still valid.
 
-- [ ] **Step 2: Run the focused integration tests.**
+- [x] **Step 2: Run the focused integration tests.**
 
 Run: `dotnet test tests/Api.IntegrationTests/Api.IntegrationTests.csproj --filter "FullyQualifiedName~InvitationRedemptionEndpointTests|FullyQualifiedName~InvitationConsentRaceTests"`
 Expected: FAIL because redeemer identity is not currently recorded or challenge-bound replay is not supported.
 
-- [ ] **Step 3: Implement challenge-bound recovery in the redemption transaction.**
+- [x] **Step 3: Implement challenge-bound recovery in the redemption transaction.**
 
 Validate the optional challenge signature/purpose and invitation binding before passing its hash to persistence. Keep nonce-only replay invalid. In one transaction, persist the first redeemer object ID and membership; return the previous safe success result only for the same recorded object ID with the same live invitation challenge. Do not add a second membership or audit event. A different identity always fails.
 
-- [ ] **Step 4: Implement authenticated invitation completion and transactional consume.**
+- [x] **Step 4: Implement authenticated invitation completion and transactional consume.**
 
 Require token tenant/workspace, invitation ID, recorded redeemer object ID, unrevoked/unexpired invitation, unexpired challenge and callback hint agreement. Enforce all predicates in the atomic consume operation. Denied invitation callbacks do not consume or mutate state; preserve the legacy challenge's existing denial-consumes behavior.
 
-- [ ] **Step 5: Run invitation API and PostgreSQL race tests.**
+- [x] **Step 5: Run invitation API and PostgreSQL race tests.**
 
 Run: `dotnet test tests/Api.IntegrationTests/Api.IntegrationTests.csproj --filter "FullyQualifiedName~InvitationRedemptionEndpointTests|FullyQualifiedName~InvitationConsentRaceTests"`
 Expected: PASS; simultaneous completion starts at most one verifier path and revoke/reissue races fail closed.
 
-- [ ] **Step 6: Commit.**
+- [x] **Step 6: Commit.**
 
 ```bash
 git add src/Api/Features/Workspaces/WorkspaceEndpoints.cs src/Api/Features/Workspaces/InvitationConsentService.cs src/Api/Features/Workspaces/ConsentChallengeService.cs src/Api/Features/Workspaces/InvitationContracts.cs src/Api/Infrastructure/Persistence/Repositories/IWorkspaceRepository.cs src/Api/Infrastructure/Persistence/Repositories/WorkspaceOnboardingRepository.cs tests/Api.IntegrationTests/Workspaces/InvitationRedemptionEndpointTests.cs tests/Api.IntegrationTests/Workspaces/InvitationConsentRaceTests.cs

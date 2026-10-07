@@ -15,3 +15,5 @@ public sealed record InvitationConsentResumeResponse(
     string Status,
     Guid? TenantId,
     string CorrelationId);
+public sealed record InvitationRedemptionRequest(string? Challenge = null);
+public sealed record InvitationCompletionResult(bool Valid, string Status, string CorrelationId);
