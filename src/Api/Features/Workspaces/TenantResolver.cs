@@ -24,6 +24,7 @@ public sealed class OidcTenantResolver(IHttpClientFactory httpClientFactory) : I
 {
     private static readonly Uri DiscoveryBaseUri = new("https://login.microsoftonline.com/");
     private static readonly TimeSpan CacheDuration = TimeSpan.FromHours(1);
+    private static readonly TimeSpan DiscoveryTimeout = TimeSpan.FromSeconds(5);
     private const int MaxMetadataBytes = 64 * 1024;
     private static readonly HashSet<string> ReservedAuthorities = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -53,11 +54,16 @@ public sealed class OidcTenantResolver(IHttpClientFactory httpClientFactory) : I
         var requestUri = new Uri(DiscoveryBaseUri, $"{Uri.EscapeDataString(normalizedDomain)}/v2.0/.well-known/openid-configuration");
         try
         {
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeout.CancelAfter(DiscoveryTimeout);
+            var discoveryCancellationToken = timeout.Token;
             using var request = new HttpRequestMessage(HttpMethod.Get, requestUri);
             using var response = await httpClientFactory.CreateClient("EntraTenantDiscovery")
-                .SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+                .SendAsync(request, HttpCompletionOption.ResponseHeadersRead, discoveryCancellationToken);
 
-            if (response.StatusCode == HttpStatusCode.NotFound)
+            if (response.StatusCode == HttpStatusCode.NotFound ||
+                (response.StatusCode == HttpStatusCode.BadRequest &&
+                 await IsTenantNotFoundErrorAsync(response.Content, discoveryCancellationToken)))
             {
                 return new TenantResolutionResult(TenantResolutionStatus.NotFound, null);
             }
@@ -67,40 +73,16 @@ public sealed class OidcTenantResolver(IHttpClientFactory httpClientFactory) : I
                 return new TenantResolutionResult(TenantResolutionStatus.Unavailable, null);
             }
 
-            if (response.Content.Headers.ContentLength is > MaxMetadataBytes)
+            var metadataBytes = await ReadBoundedContentAsync(response.Content, discoveryCancellationToken);
+            if (metadataBytes is null)
             {
                 return new TenantResolutionResult(TenantResolutionStatus.Unavailable, null);
             }
 
-            await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
-            using var boundedContent = new MemoryStream();
-            var buffer = new byte[8192];
-            while (true)
-            {
-                var remaining = MaxMetadataBytes + 1 - (int)boundedContent.Length;
-                if (remaining <= 0)
-                {
-                    return new TenantResolutionResult(TenantResolutionStatus.Unavailable, null);
-                }
-
-                var read = await stream.ReadAsync(buffer.AsMemory(0, Math.Min(buffer.Length, remaining)), cancellationToken);
-                if (read == 0)
-                {
-                    break;
-                }
-
-                await boundedContent.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
-            }
-
-            if (boundedContent.Length > MaxMetadataBytes)
-            {
-                return new TenantResolutionResult(TenantResolutionStatus.Unavailable, null);
-            }
-
-            boundedContent.Position = 0;
+            using var metadataContent = new MemoryStream(metadataBytes);
             var metadata = await JsonSerializer.DeserializeAsync<OpenIdConfiguration>(
-                boundedContent,
-                cancellationToken: cancellationToken);
+                metadataContent,
+                cancellationToken: discoveryCancellationToken);
             if (!TryReadTenantId(metadata, out var tenantId))
             {
                 return new TenantResolutionResult(TenantResolutionStatus.Unavailable, null);
@@ -162,6 +144,63 @@ public sealed class OidcTenantResolver(IHttpClientFactory httpClientFactory) : I
 
         normalized = ascii;
         return true;
+    }
+
+    private static async Task<bool> IsTenantNotFoundErrorAsync(HttpContent content, CancellationToken cancellationToken)
+    {
+        var body = await ReadBoundedContentAsync(content, cancellationToken);
+        if (body is null)
+        {
+            return false;
+        }
+
+        using var document = JsonDocument.Parse(body);
+        var root = document.RootElement;
+        if (root.ValueKind != JsonValueKind.Object)
+        {
+            return false;
+        }
+
+        if (root.TryGetProperty("error", out var error) &&
+            error.ValueKind == JsonValueKind.String &&
+            string.Equals(error.GetString(), "invalid_tenant", StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        return root.TryGetProperty("error_codes", out var errorCodes) &&
+            errorCodes.ValueKind == JsonValueKind.Array &&
+            errorCodes.EnumerateArray().Any(code => code.TryGetInt32(out var value) && value == 90002);
+    }
+
+    private static async Task<byte[]?> ReadBoundedContentAsync(HttpContent content, CancellationToken cancellationToken)
+    {
+        if (content.Headers.ContentLength is > MaxMetadataBytes)
+        {
+            return null;
+        }
+
+        await using var stream = await content.ReadAsStreamAsync(cancellationToken);
+        using var boundedContent = new MemoryStream();
+        var buffer = new byte[8192];
+        while (true)
+        {
+            var remaining = MaxMetadataBytes + 1 - (int)boundedContent.Length;
+            if (remaining <= 0)
+            {
+                return null;
+            }
+
+            var read = await stream.ReadAsync(buffer.AsMemory(0, Math.Min(buffer.Length, remaining)), cancellationToken);
+            if (read == 0)
+            {
+                break;
+            }
+
+            await boundedContent.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
+        }
+
+        return boundedContent.Length > MaxMetadataBytes ? null : boundedContent.ToArray();
     }
 
     private static bool TryReadTenantId(OpenIdConfiguration? metadata, out Guid tenantId)

@@ -1,4 +1,5 @@
 using System.Net;
+using System.Diagnostics;
 using System.Text;
 using Atea.UnifiedWorkplace.Api.Features.Workspaces;
 using FluentAssertions;
@@ -98,6 +99,60 @@ public sealed class TenantResolverTests
     }
 
     [Fact]
+    public async Task ResolveAsync_maps_Entra_invalid_tenant_errors_to_not_found()
+    {
+        var body = """{"error":"invalid_tenant","error_description":"AADSTS90002: Tenant was not found.","error_codes":[90002]}""";
+        var resolver = CreateResolver(new StubHandler(_ => JsonResponse(body, HttpStatusCode.BadRequest)));
+
+        var result = await resolver.ResolveAsync(Domain);
+
+        result.Status.Should().Be(TenantResolutionStatus.NotFound);
+        result.TenantId.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task ResolveAsync_does_not_treat_other_bad_requests_as_missing_tenants()
+    {
+        var resolver = CreateResolver(new StubHandler(_ => JsonResponse("""{"error":"invalid_request"}""", HttpStatusCode.BadRequest)));
+
+        var result = await resolver.ResolveAsync(Domain);
+
+        result.Status.Should().Be(TenantResolutionStatus.Unavailable);
+        result.TenantId.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task ResolveAsync_applies_the_five_second_deadline_to_metadata_body_reads()
+    {
+        var handler = new StubHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StreamContent(new DelayedReadStream(TimeSpan.FromSeconds(6)))
+        });
+        var resolver = CreateResolver(handler);
+        var stopwatch = Stopwatch.StartNew();
+
+        var result = await resolver.ResolveAsync(Domain);
+
+        stopwatch.Elapsed.Should().BeLessThan(TimeSpan.FromSeconds(5.8));
+        result.Status.Should().Be(TenantResolutionStatus.Unavailable);
+    }
+
+    [Fact]
+    public async Task ResolveAsync_preserves_caller_cancellation_during_body_reads()
+    {
+        var handler = new StubHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StreamContent(new DelayedReadStream(TimeSpan.FromSeconds(6)))
+        });
+        var resolver = CreateResolver(handler);
+        using var cancellation = new CancellationTokenSource(TimeSpan.FromMilliseconds(50));
+
+        var action = () => resolver.ResolveAsync(Domain, cancellation.Token);
+
+        await FluentActions.Invoking(action).Should().ThrowAsync<OperationCanceledException>();
+    }
+
+    [Fact]
     public async Task ResolveAsync_caches_successful_aliases_but_not_failures()
     {
         var successHandler = new StubHandler(_ => JsonResponse(Metadata(TenantId)));
@@ -116,8 +171,8 @@ public sealed class TenantResolverTests
     private static OidcTenantResolver CreateResolver(StubHandler handler) =>
         new(new StubHttpClientFactory(handler));
 
-    private static HttpResponseMessage JsonResponse(string json) =>
-        new(HttpStatusCode.OK) { Content = new StringContent(json, Encoding.UTF8, "application/json") };
+    private static HttpResponseMessage JsonResponse(string json, HttpStatusCode statusCode = HttpStatusCode.OK) =>
+        new(statusCode) { Content = new StringContent(json, Encoding.UTF8, "application/json") };
 
     private static string Metadata(Guid tenantId, string? issuer = null, string? authorizationEndpoint = null)
     {
@@ -151,6 +206,26 @@ public sealed class TenantResolverTests
             RequestUri = request.RequestUri;
             RequestCount++;
             return Task.FromResult(responder(request));
+        }
+    }
+
+    private sealed class DelayedReadStream(TimeSpan delay) : Stream
+    {
+        public override bool CanRead => true;
+        public override bool CanSeek => false;
+        public override bool CanWrite => false;
+        public override long Length => throw new NotSupportedException();
+        public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
+        public override void Flush() => throw new NotSupportedException();
+        public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+        public override void SetLength(long value) => throw new NotSupportedException();
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+
+        public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+        {
+            await Task.Delay(delay, cancellationToken);
+            return 0;
         }
     }
 }
