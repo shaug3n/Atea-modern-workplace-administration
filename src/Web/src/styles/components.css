@@ -342,6 +342,13 @@
   border-color: var(--uw-primary);
 }
 
+.metric-card--filter > .icon--check {
+  position: absolute;
+  top: var(--uw-gap-md);
+  right: var(--uw-gap-md);
+  color: var(--uw-primary);
+}
+
 .metric-card--filter:focus-visible,
 .status-pill-filter__option:focus-visible {
   outline: 2px solid var(--uw-primary);
@@ -375,6 +382,10 @@
 .status-pill-filter__count {
   color: var(--uw-muted);
   font-variant-numeric: tabular-nums;
+}
+
+.status-pill-filter__option > .icon--check {
+  color: var(--uw-primary);
 }
 
 /* Action groups and menus */

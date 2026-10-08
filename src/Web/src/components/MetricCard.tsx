@@ -12,16 +12,18 @@ export type MetricCardProps = {
   valueTitle?: string;
 };
 
-export type MetricCardBodyProps = Pick<MetricCardProps, 'label' | 'value' | 'detail' | 'unavailableReason' | 'valueTitle'>;
+export type MetricCardBodyProps = Pick<MetricCardProps, 'label' | 'value' | 'detail' | 'unavailableReason' | 'valueTitle'> & {
+  hideEmptyValue?: boolean;
+};
 
-export function MetricCardBody({ label, value, detail, unavailableReason, valueTitle }: MetricCardBodyProps) {
+export function MetricCardBody({ label, value, detail, unavailableReason, valueTitle, hideEmptyValue }: MetricCardBodyProps) {
   const hasValue = value !== null && value !== undefined && value !== '';
   return (
     <>
       <span className="metric-card__label">{label}</span>
       {hasValue
         ? <strong className="metric-card__value" title={valueTitle}>{value}</strong>
-        : <span className="metric-card__empty">—</span>}
+        : <span className="metric-card__empty" aria-hidden={hideEmptyValue || undefined}>—</span>}
       {detail && <span className="metric-card__detail">{detail}</span>}
       {!hasValue && unavailableReason && <span className="metric-card__detail">{unavailableReason}</span>}
     </>
@@ -34,7 +36,7 @@ export function MetricCard({ label, value, detail, href, onNavigate, linkLabel, 
   return (
     <div className="metric-card">
       {href
-        ? <a className="metric-card__link" href={href} aria-label={name} onClick={(event) => { if (onNavigate) { event.preventDefault(); onNavigate(href); } }}><MetricCardBody label={label} value={value} detail={detail} unavailableReason={unavailableReason} valueTitle={valueTitle} /><span className="metric-card__arrow" aria-hidden="true">→</span></a>
+        ? <a className="metric-card__link" href={href} aria-label={name} onClick={(event) => { if (onNavigate) { event.preventDefault(); onNavigate(href); } }}><MetricCardBody label={label} value={value} detail={detail} unavailableReason={unavailableReason} valueTitle={valueTitle} hideEmptyValue /><span className="metric-card__arrow" aria-hidden="true">→</span></a>
         : <div className="metric-card__content"><MetricCardBody label={label} value={value} detail={detail} unavailableReason={unavailableReason} valueTitle={valueTitle} /></div>}
       {!hasValue && action && <a className="metric-card__action" href={action.href} onClick={(event) => { if (onNavigate) { event.preventDefault(); onNavigate(action.href); } }}>{action.label}</a>}
     </div>

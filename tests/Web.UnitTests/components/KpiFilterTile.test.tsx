@@ -9,9 +9,10 @@ describe('KpiFilterTile', () => {
   it('uses a controlled native button and aria-pressed', () => {
     const onClick = vi.fn();
     const { rerender } = render(<KpiFilterTile label="Users" value={42} detail="Active" selected={false} onClick={onClick} />);
-    const button = screen.getByRole('button', { name: /Users/ });
+    const button = screen.getByRole('button', { name: 'Users 42 Active' });
 
     expect(button.getAttribute('aria-pressed')).toBe('false');
+    expect(button.querySelector('svg[aria-hidden="true"]')).toBeNull();
     expect(screen.getByText('42')).toBeTruthy();
     expect(screen.queryByRole('link')).toBeNull();
 
@@ -20,6 +21,8 @@ describe('KpiFilterTile', () => {
     expect(button.getAttribute('aria-pressed')).toBe('false');
 
     rerender(<KpiFilterTile label="Users" value={42} detail="Active" selected onClick={onClick} />);
-    expect(screen.getByRole('button', { name: /Users/ }).getAttribute('aria-pressed')).toBe('true');
+    const selectedButton = screen.getByRole('button', { name: 'Users 42 Active' });
+    expect(selectedButton.getAttribute('aria-pressed')).toBe('true');
+    expect(selectedButton.querySelector('svg[aria-hidden="true"]')).not.toBeNull();
   });
 });

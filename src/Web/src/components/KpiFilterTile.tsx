@@ -1,4 +1,5 @@
 import React from 'react';
+import { Icon } from './icons';
 import { MetricCardBody } from './MetricCard';
 
 export type KpiFilterTileProps = {
@@ -16,6 +17,7 @@ export function KpiFilterTile({ label, value, detail, selected, onClick, valueTi
       <span className="metric-card__content">
         <MetricCardBody label={label} value={value} detail={detail} valueTitle={valueTitle} />
       </span>
+      {selected && <Icon name="check" size={16} />}
     </button>
   );
 }

@@ -1,4 +1,5 @@
 import React from 'react';
+import { Icon } from './icons';
 
 export type StatusPillFilterOption = {
   value: string;
@@ -26,6 +27,7 @@ export function StatusPillFilter({ label, options, onToggle }: StatusPillFilterP
         >
           <span>{option.label}</span>
           <span className="status-pill-filter__count">{option.count}</span>
+          {option.selected && <Icon name="check" size={14} />}
         </button>
       ))}
     </div>
