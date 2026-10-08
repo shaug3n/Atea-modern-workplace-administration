@@ -17,6 +17,7 @@ import { DeviceDetailPage } from '../features/devices/DeviceDetailPage';
 import { ExchangeOverviewPage } from '../features/exchange/ExchangeOverviewPage';
 import { WorkspaceModulesPage } from '../features/workspace-settings/WorkspaceModulesPage';
 import { WorkspaceSettingsHub } from '../features/workspace-settings/WorkspaceSettingsHub';
+import { AuthenticationCampaignsPage, type AuthenticationCampaignsLoader } from '../features/authentication-campaigns/AuthenticationCampaignsPage';
 import { messages } from './messages';
 import type { AppSession } from '../components/TenantContextHeader';
 import type { IconName } from '../components/icons';
@@ -32,7 +33,7 @@ export type AppRoute = {
   module?: 'users' | 'devices' | 'licenses' | 'exchange' | 'authentication-campaigns' | 'license-hygiene' | 'about' | 'feedback';
   workspaceAccess?: 'members' | 'settings' | 'modules' | 'any';
   navigation?: { group: NavigationGroup; order: number; icon: IconName; visibility: NavigationVisibility };
-  render: (options?: { loadConnectionHealth?: ConnectionHealthLoader; loadOverview?: OverviewLoader; capabilities?: CapabilityDecision[]; navigate?: (path: string) => void; session?: AppSession; authorizationUnavailable?: boolean; onAuthorizationRetry?: () => Promise<void>; onRefreshAccess?: () => Promise<void> }) => ReactNode;
+  render: (options?: { loadConnectionHealth?: ConnectionHealthLoader; loadOverview?: OverviewLoader; loadAuthenticationCampaigns?: AuthenticationCampaignsLoader; capabilities?: CapabilityDecision[]; navigate?: (path: string) => void; session?: AppSession; authorizationUnavailable?: boolean; onAuthorizationRetry?: () => Promise<void>; onRefreshAccess?: () => Promise<void> }) => ReactNode;
 };
 
 export function isInvitationPath(pathname: string) {
@@ -62,6 +63,21 @@ export const appRoutes: AppRoute[] = [
     capability: 'users.view',
     navigation: { group: 'identity-access', order: 0, icon: 'users', visibility: 'module' },
     render: (options) => <UsersPage capabilities={options?.capabilities ?? []} onNavigate={options?.navigate} authorizationUnavailable={options?.authorizationUnavailable} onAuthorizationRetry={options?.onAuthorizationRetry} />,
+  },
+  {
+    path: '/authentication-campaigns',
+    label: messages.navAuthenticationCampaigns,
+    module: 'authentication-campaigns',
+    capability: 'authentication.campaigns.view',
+    navigation: { group: 'identity-access', order: 1, icon: 'lock', visibility: 'module' },
+    render: (options) => <AuthenticationCampaignsPage
+      loadRegistrations={options?.loadAuthenticationCampaigns ?? (() => Promise.reject(new Error('authentication_campaigns_loader_unavailable')))}
+      capabilities={options?.capabilities}
+      session={options?.session}
+      onNavigate={options?.navigate}
+      authorizationUnavailable={options?.authorizationUnavailable}
+      onAuthorizationRetry={options?.onAuthorizationRetry}
+    />,
   },
   {
     path: '/users/:userId',
