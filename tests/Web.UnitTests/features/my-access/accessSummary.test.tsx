@@ -6,8 +6,15 @@ import { accessSummaryCapabilityGroups, summarizeAccess } from '../../../../src/
 import type { AppSession } from '../../../../src/Web/src/components/TenantContextHeader';
 import type { Capability, CapabilityDecision, CapabilitySnapshot } from '../../../../src/Web/src/capabilities/capabilityTypes';
 
+vi.mock('../../../../src/Web/src/auth/useApi', () => ({
+  useApi: () => async (path: string) => fetch(path),
+}));
+
 const session: AppSession = { user: {}, workspace: { id: 'workspace-1', name: 'Workspace One' } };
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
 
 const mappedCapabilities: Capability[] = [
   'users.view',
@@ -174,28 +181,25 @@ function AccessContextProbe() {
 }
 
 describe('AccessTransparencyProvider', () => {
-  it('loads and refreshes the current workspace snapshot through the shared context', async () => {
-    const loadSnapshot = vi.fn().mockResolvedValue(snapshot());
-    render(<AccessTransparencyProvider session={session} loadSnapshot={loadSnapshot}><AccessContextProbe /></AccessTransparencyProvider>);
+  it('forwards the supplied App capability state and callback without making a request', async () => {
+    const fetchSpy = vi.fn().mockResolvedValue({ ok: true, json: async () => snapshot() });
+    vi.stubGlobal('fetch', fetchSpy);
+    const refresh = vi.fn().mockResolvedValue(undefined);
+    const value = { snapshot: snapshot(), loading: true, error: false, refresh };
+    render(<AccessTransparencyProvider session={session} value={value}><AccessContextProbe /></AccessTransparencyProvider>);
 
-    await waitFor(() => expect(screen.getByText('workspace-1')).toBeTruthy());
-    expect(screen.getByRole('status').textContent).toBe('ready');
-    fireEvent.click(screen.getByRole('button', { name: 'Refresh evidence' }));
-    await waitFor(() => expect(loadSnapshot).toHaveBeenCalledTimes(2));
     expect(screen.getByText('workspace-1')).toBeTruthy();
+    expect(screen.getByRole('status').textContent).toBe('loading');
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh evidence' }));
+    await waitFor(() => expect(refresh).toHaveBeenCalledTimes(1));
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
 
-  it('exposes retryable load failure without fabricating a snapshot', async () => {
-    const loadSnapshot = vi.fn()
-      .mockRejectedValueOnce(new Error('private failure detail'))
-      .mockResolvedValue(snapshot());
-    render(<AccessTransparencyProvider session={session} loadSnapshot={loadSnapshot}><AccessContextProbe /></AccessTransparencyProvider>);
+  it('does not expose a snapshot from a different workspace', () => {
+    const value = { snapshot: snapshot({ workspaceId: 'workspace-2' }), loading: false, error: true, refresh: vi.fn() };
+    render(<AccessTransparencyProvider session={session} value={value}><AccessContextProbe /></AccessTransparencyProvider>);
 
-    await waitFor(() => expect(screen.getByRole('status').textContent).toBe('error'));
     expect(screen.getByText('no-current-snapshot')).toBeTruthy();
-    expect(document.body.textContent).not.toContain('private failure detail');
-    fireEvent.click(screen.getByRole('button', { name: 'Refresh evidence' }));
-    await waitFor(() => expect(screen.getByText('workspace-1')).toBeTruthy());
-    expect(screen.getByRole('status').textContent).toBe('ready');
+    expect(screen.getByRole('status').textContent).toBe('error');
   });
 });
