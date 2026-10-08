@@ -345,4 +345,63 @@ describe('AppShell', () => {
     expect(menu.getAttribute('aria-expanded')).toBe('false');
     expect(document.activeElement).toBe(menu);
   });
+
+  it('shows the same domain access summaries in both account slots and closes the mobile drawer on My access selection', () => {
+    const navigate = vi.fn();
+    const member = { user: session.user, workspace: session.workspace };
+    const { container } = render(
+      <ThemeProvider systemTheme={() => 'light'}>
+        <AppShell capabilities={allowedCapabilities} currentPath="/overview" session={member} onNavigate={navigate}>
+          <p>Overview content</p>
+        </AppShell>
+      </ThemeProvider>,
+    );
+    const menuSummaries = container.querySelectorAll('.account-access-menu__summary');
+    expect(menuSummaries).toHaveLength(1);
+    const desktopDetails = container.querySelector('.app-header__account details') as HTMLDetailsElement;
+    const desktopText = desktopDetails.textContent;
+
+    fireEvent.click(screen.getByRole('button', { name: 'Menu' }));
+    const drawer = document.getElementById('primary-navigation')!;
+    const mobileDetails = drawer.querySelector('details') as HTMLDetailsElement;
+    expect(mobileDetails.textContent).toBe(desktopText);
+    fireEvent.click(mobileDetails.querySelector('summary')!);
+    fireEvent.click(within(mobileDetails).getByRole('link', { name: 'My access' }));
+
+    expect(navigate).toHaveBeenCalledWith('/my-access');
+    expect(screen.getByRole('button', { name: 'Menu' }).getAttribute('aria-expanded')).toBe('false');
+    expect(mobileDetails.open).toBe(false);
+  });
+
+  it('lets an ordinary member navigate to My access without Graph or workspace grants', async () => {
+    window.history.pushState(null, '', '/identity');
+    const loadCapabilities = vi.fn(async () => { throw new Error('Graph unavailable'); });
+    const member = { user: session.user, workspace: { id: session.workspace.id, name: session.workspace.name } };
+
+    render(<App loadCapabilities={loadCapabilities} loadSession={async () => member} />);
+
+    expect(await screen.findByRole('heading', { name: 'PIM guidance' })).toBeTruthy();
+    const accountDisclosure = document.querySelector('.app-header__account details')!;
+    fireEvent.click(accountDisclosure.querySelector('summary')!);
+    fireEvent.click(within(accountDisclosure as HTMLElement).getByRole('link', { name: 'My access' }));
+
+    expect(await screen.findByRole('heading', { name: 'My access' })).toBeTruthy();
+    expect(screen.getByText(/Access information could not be loaded/)).toBeTruthy();
+    expect(window.location.pathname).toBe('/my-access');
+    expect(loadCapabilities).toHaveBeenCalledOnce();
+    expect(screen.getByRole('navigation', { name: 'Primary navigation' }).querySelector('a[href="/my-access"]')).toBeNull();
+  });
+
+  it('refreshes account disclosure from the existing capability loader', async () => {
+    window.history.pushState(null, '', '/my-access');
+    const loadCapabilities = vi.fn(async () => allowedCapabilities);
+    render(<App loadCapabilities={loadCapabilities} loadSession={async () => session} />);
+    await screen.findByRole('heading', { name: 'My access' });
+
+    const desktopMenu = document.querySelector('.app-header__account details')!;
+    fireEvent.click(desktopMenu.querySelector('summary')!);
+    fireEvent.click(within(desktopMenu as HTMLElement).getByRole('button', { name: 'Refresh access' }));
+
+    await waitFor(() => expect(loadCapabilities).toHaveBeenCalledTimes(2));
+  });
 });

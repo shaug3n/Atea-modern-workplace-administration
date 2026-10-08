@@ -8,8 +8,10 @@ import greyLogo from '../assets/logos/atea-logo-grey.svg';
 import whiteLogo from '../assets/logos/atea-logo-white.svg';
 import { NotificationsMenu } from './NotificationsMenu';
 import { useWorkspaceNotifications } from '../notifications/WorkspaceNotifications';
+import { AccessTransparencyProvider } from '../features/my-access/accessContext';
+import { AccountAccessMenu } from '../features/my-access/AccountAccessMenu';
 
-export function AppShell({ children, capabilities, currentPath, session, onNavigate }: { children: ReactNode; capabilities: CapabilitySnapshot | null; currentPath: string; session: AppSession; onNavigate?: (path: string) => void }) {
+export function AppShell({ children, capabilities, currentPath, session, onNavigate, accessState = { loading: false, error: false, refresh: async () => {} } }: { children: ReactNode; capabilities: CapabilitySnapshot | null; currentPath: string; session: AppSession; onNavigate?: (path: string) => void; accessState?: { loading: boolean; error: boolean; refresh: () => Promise<void> } }) {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const menuButton = useRef<HTMLButtonElement>(null);
   useEffect(() => { setMobileNavOpen(false); }, [currentPath]);
@@ -33,6 +35,7 @@ export function AppShell({ children, capabilities, currentPath, session, onNavig
   const linkable = ['/users', '/devices', '/licenses', '/settings'];
   const breadcrumbs = segments.map((segment, index) => ({ label: breadcrumbLabel(segment, index), href: `/${segments.slice(0, index + 1).join('/')}` }));
   return (
+    <AccessTransparencyProvider session={session} value={{ snapshot: capabilities, ...accessState }}>
     <div className="atea-app">
       <a className="skip-link" href="#main-content">{messages.skipToContent}</a>
       <header className="app-header">
@@ -51,13 +54,13 @@ export function AppShell({ children, capabilities, currentPath, session, onNavig
           <NotificationsMenu issues={notifications.issues} onRefresh={notifications.refresh} open={notificationsOpen} onOpenChange={setNotificationsOpen} access={capabilities ? { label: accessLimited ? 'limited' : 'up to date', checkedAt: capabilities.evaluatedAt } : undefined} />
           {!mobileNavOpen && <ThemeToggle />}
         </div>
-        <div className="app-header__account"><AccountSummary session={session} /></div>
+        <div className="app-header__account"><AccountSummary session={session} /><AccountAccessMenu session={session} onNavigate={path => { setMobileNavOpen(false); onNavigate?.(path); }} /></div>
         <button ref={menuButton} type="button" className="mobile-menu-toggle" aria-expanded={mobileNavOpen} aria-controls="primary-navigation" onClick={() => setMobileNavOpen(open => !open)}>{mobileNavOpen ? 'Close menu' : 'Menu'}</button>
       </header>
       <div className="app-body">
         <div id="primary-navigation" className={mobileNavOpen ? 'mobile-nav-container is-open' : 'mobile-nav-container'}>
           <PrimaryNav capabilities={capabilities} session={session} currentPath={currentPath} onNavigate={path => { setMobileNavOpen(false); onNavigate?.(path); }} />
-          {mobileNavOpen && <div className="mobile-nav-extras"><ThemeToggle variant="row" /><AccountSummary session={session} /></div>}
+          {mobileNavOpen && <div className="mobile-nav-extras"><ThemeToggle variant="row" /><AccountSummary session={session} /><AccountAccessMenu session={session} onNavigate={path => { setMobileNavOpen(false); onNavigate?.(path); }} /></div>}
         </div>
         <main id="main-content" className="app-main" aria-labelledby="page-title" tabIndex={-1}>
           {breadcrumbs.length > 1 && <nav className="breadcrumbs" aria-label="Breadcrumbs"><ol>{breadcrumbs.map((item, index) => <li key={item.href}>{index === breadcrumbs.length - 1 ? <span aria-current="page">{item.label}</span> : linkable.includes(item.href) ? <a href={item.href} onClick={event => { if (onNavigate) { event.preventDefault(); onNavigate(item.href); } }}>{item.label}</a> : <span>{item.label}</span>}</li>)}</ol></nav>}
@@ -65,5 +68,6 @@ export function AppShell({ children, capabilities, currentPath, session, onNavig
         </main>
       </div>
     </div>
+    </AccessTransparencyProvider>
   );
 }

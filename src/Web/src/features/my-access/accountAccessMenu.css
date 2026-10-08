@@ -1,0 +1,94 @@
+.account-access-menu {
+  position: relative;
+  color: var(--uw-text);
+  font-size: var(--uw-font-meta);
+}
+
+.account-access-menu__summary {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2.5rem;
+  padding: 0 var(--uw-gap-sm);
+  border-radius: var(--uw-radius-sm);
+  color: var(--uw-heading);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.account-access-menu__summary:focus-visible,
+.account-access-menu__link:focus-visible,
+.account-access-menu__header button:focus-visible {
+  outline: 2px solid var(--uw-focus);
+  outline-offset: 2px;
+}
+
+.account-access-menu__panel {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + var(--uw-gap-xs));
+  right: 0;
+  width: min(22rem, calc(100vw - 2 * var(--uw-gap-md)));
+  max-height: min(70vh, 36rem);
+  overflow: auto;
+  padding: var(--uw-gap-md);
+  border: 1px solid var(--uw-border);
+  border-radius: var(--uw-radius-md);
+  background: var(--uw-surface);
+  box-shadow: var(--uw-elevation-2);
+}
+
+.account-access-menu__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--uw-gap-sm);
+}
+
+.account-access-menu__status {
+  margin: var(--uw-gap-sm) 0 0;
+  color: var(--uw-muted);
+}
+
+.account-access-menu__modules {
+  display: grid;
+  gap: var(--uw-gap-sm);
+  margin: var(--uw-gap-md) 0;
+  padding: 0;
+  list-style: none;
+}
+
+.account-access-menu__modules li {
+  display: grid;
+  gap: 0.125rem;
+  padding-bottom: var(--uw-gap-sm);
+  border-bottom: 1px solid var(--uw-border);
+}
+
+.account-access-menu__modules li > strong {
+  color: var(--uw-heading);
+}
+
+.account-access-menu__modules li > span {
+  color: var(--uw-muted);
+}
+
+.account-access-menu__link {
+  color: var(--uw-link);
+  font-weight: 600;
+}
+
+.mobile-nav-extras .account-access-menu {
+  width: 100%;
+}
+
+.mobile-nav-extras .account-access-menu__summary {
+  width: 100%;
+}
+
+.mobile-nav-extras .account-access-menu__panel {
+  position: static;
+  width: 100%;
+  max-height: none;
+  margin-top: var(--uw-gap-xs);
+  box-shadow: none;
+}
