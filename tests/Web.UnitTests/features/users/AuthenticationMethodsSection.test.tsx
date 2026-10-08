@@ -39,11 +39,12 @@ describe('AuthenticationMethodsSection', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: 'Reset MFA methods' }));
     expect(screen.getByRole('dialog', { name: 'Reset MFA methods' })).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('Reason'), { target: { value: '  Lost authenticator  ' } });
     fireEvent.change(screen.getByLabelText('Type DISABLE to confirm'), { target: { value: 'RESET MFA' } });
     fireEvent.click(screen.getByLabelText('I reviewed the target, change and required capability.'));
     fireEvent.click(screen.getByRole('button', { name: 'Reset MFA' }));
 
-    await waitFor(() => expect(apiMock).toHaveBeenCalledWith('/api/users/user-1/authentication-methods/reset-mfa', expect.objectContaining({ method: 'POST' })));
+    await waitFor(() => expect(apiMock).toHaveBeenCalledWith('/api/users/user-1/authentication-methods/reset-mfa', expect.objectContaining({ method: 'POST', body: '{"reason":"Lost authenticator"}' })));
   });
 
   it('explains missing authentication-method consent without making a Graph request', () => {
@@ -110,11 +111,12 @@ describe('AuthenticationMethodsSection', () => {
     render(<AuthenticationMethodsSection userId="user-1" userLabel="Ada Lovelace" decision={allowed} manageDecision={manage} />);
 
     fireEvent.click(await screen.findByRole('button', { name: 'Grant Temporary Access Pass' }));
+    fireEvent.change(screen.getByLabelText('Reason'), { target: { value: '  New device access  ' } });
     fireEvent.click(screen.getByLabelText('I reviewed the target, change and required capability.'));
     fireEvent.click(screen.getByRole('button', { name: 'Issue Temporary Access Pass' }));
 
     expect(await screen.findByText('fixture-tap-value')).toBeTruthy();
-    expect((await screen.findByRole('alert')).textContent).toContain('Pass issued, but its audit record could not be written.');
+    expect((await screen.findAllByRole('alert')).some((alert) => alert.textContent?.includes('Pass issued, but its audit record could not be written.'))).toBe(true);
     fireEvent.click(screen.getByRole('button', { name: 'Close' }));
     expect(screen.queryByText('fixture-tap-value')).toBeNull();
   });
@@ -180,6 +182,7 @@ describe('AuthenticationMethodsSection', () => {
     render(<AuthenticationMethodsSection userId="user-1" decision={allowed} manageDecision={manage} onResult={onResult} />);
 
     fireEvent.click(await screen.findByRole('button', { name: 'Remove' }));
+    fireEvent.change(screen.getByLabelText('Reason'), { target: { value: '  Device retired  ' } });
     fireEvent.click(screen.getByLabelText('I reviewed the target, change and required capability.'));
     fireEvent.click(screen.getByRole('button', { name: 'Remove method' }));
 
@@ -190,7 +193,11 @@ describe('AuthenticationMethodsSection', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Retry authentication methods' }));
     expect(await screen.findByText('Work phone')).toBeTruthy();
     expect(screen.queryByText('YubiKey')).toBeNull();
+    const removeRequest = apiMock.mock.calls.find(([, init]) => init?.method === 'DELETE')!;
     expect(apiMock.mock.calls.filter(([, init]) => init?.method === 'DELETE')).toHaveLength(1);
+    expect(removeRequest[0]).toBe('/api/users/user-1/authentication-methods/method-1?type=fido2AuthenticationMethod');
+    expect(removeRequest[1].body).toBe('{"reason":"Device retired"}');
+    expect(removeRequest[1].headers['Idempotency-Key']).toBeTruthy();
     expect(onResult).toHaveBeenLastCalledWith({ status: 'available', items: [{ id: 'method-2', type: 'phoneAuthenticationMethod', displayName: 'Work phone' }] });
   });
 
@@ -212,6 +219,7 @@ describe('AuthenticationMethodsSection', () => {
     render(<AuthenticationMethodsSection userId="user-1" decision={allowed} manageDecision={manage} onResult={onResult} />);
 
     fireEvent.click(await screen.findByRole('button', { name: 'Reset MFA methods' }));
+    fireEvent.change(screen.getByLabelText('Reason'), { target: { value: '  User changed devices  ' } });
     fireEvent.change(screen.getByLabelText('Type DISABLE to confirm'), { target: { value: 'RESET MFA' } });
     fireEvent.click(screen.getByLabelText('I reviewed the target, change and required capability.'));
     fireEvent.click(screen.getByRole('button', { name: 'Reset MFA' }));
@@ -223,6 +231,9 @@ describe('AuthenticationMethodsSection', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Retry authentication methods' }));
     expect(await screen.findByText('Work phone')).toBeTruthy();
     expect(apiMock.mock.calls.filter(([, init]) => init?.method === 'POST')).toHaveLength(1);
+    const resetRequest = apiMock.mock.calls.find(([, init]) => init?.method === 'POST' && init?.body)!;
+    expect(resetRequest[1].body).toBe('{"reason":"User changed devices"}');
+    expect(resetRequest[1].headers['Idempotency-Key']).toBeTruthy();
     expect(onResult).toHaveBeenLastCalledWith({ status: 'available', items: [{ id: 'method-2', type: 'phoneAuthenticationMethod', displayName: 'Work phone' }] });
   });
 
@@ -238,9 +249,12 @@ describe('AuthenticationMethodsSection', () => {
     render(<AuthenticationMethodsSection userId="user-1" decision={allowed} manageDecision={manage} />);
 
     fireEvent.click(await screen.findByRole('button', { name: 'Remove' }));
+    fireEvent.change(screen.getByLabelText('Reason'), { target: { value: '  Credential no longer used  ' } });
     fireEvent.click(screen.getByLabelText('I reviewed the target, change and required capability.'));
     fireEvent.click(screen.getByRole('button', { name: 'Remove method' }));
 
     expect((await screen.findByRole('alert')).textContent).toContain('Audit record could not be written.');
+    const removeRequest = apiMock.mock.calls.find(([, init]) => init?.method === 'DELETE');
+    expect(removeRequest?.[1].body).toBe('{"reason":"Credential no longer used"}');
   });
 });

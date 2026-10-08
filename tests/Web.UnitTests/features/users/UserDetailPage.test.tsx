@@ -156,11 +156,13 @@ describe('UserDetailPage', () => {
     await screen.findByRole('heading', { name: 'Ada Lovelace' });
     fireEvent.click(screen.getByRole('button', { name: 'More actions' }));
     fireEvent.click(screen.getByRole('menuitem', { name: 'Disable user' }));
+    fireEvent.change(screen.getByLabelText('Reason'), { target: { value: '  Account security  ' } });
     fireEvent.change(screen.getByLabelText('Type DISABLE to confirm'), { target: { value: 'DISABLE' } });
     fireEvent.click(screen.getByLabelText('I reviewed the target, change and required capability.'));
     fireEvent.click(screen.getByRole('button', { name: 'Disable user' }));
 
     expect((await screen.findByRole('alert')).textContent).toContain('Audit record could not be written.');
+    expect(JSON.parse(apiMock.mock.calls.at(-1)![1].body)).toEqual({ reason: 'Account security' });
   });
 
   it('keeps a session-revocation audit warning visible after success', async () => {
@@ -172,10 +174,12 @@ describe('UserDetailPage', () => {
     await screen.findByRole('heading', { name: 'Ada Lovelace' });
     fireEvent.click(screen.getByRole('button', { name: 'More actions' }));
     fireEvent.click(screen.getByRole('menuitem', { name: 'Revoke sessions' }));
+    fireEvent.change(screen.getByLabelText('Reason'), { target: { value: '  Suspected token exposure  ' } });
     fireEvent.click(screen.getByLabelText('I reviewed the target, change and required capability.'));
     fireEvent.click(screen.getByRole('button', { name: 'Revoke sessions' }));
 
     expect((await screen.findByRole('alert')).textContent).toContain('Sessions were revoked, but the audit record could not be written.');
+    expect(JSON.parse(apiMock.mock.calls[0][1].body)).toEqual({ reason: 'Suspected token exposure' });
   });
 
   it('offers card-level profile editing through the existing editor only when source editing is allowed', async () => {
@@ -394,30 +398,36 @@ describe('UserDetailPage', () => {
 
   it('opens edit for an allowed capability and refreshes the detail after saving', async () => {
     const loadUserDetail = vi.fn(async () => ({ ...detail, user: { ...detail.user, isReadOnly: false, sourceOfAuthorityReason: null } }));
-    apiMock.mockResolvedValue(new Response(JSON.stringify({ status: 'succeeded', requiredCapability: 'users.update', replayed: false }), { status: 200 }));
+    apiMock.mockResolvedValue(new Response(JSON.stringify({ status: 'succeeded', requiredCapability: 'users.update', replayed: false, auditWarning: 'Profile changed, but the audit record could not be written.' }), { status: 200 }));
 
     render(<UserDetailPage userId="user-1" loadUserDetail={loadUserDetail} capabilities={[{ capability: 'users.update', state: 'allowed', reasonCode: 'active_role' }, { capability: 'users.disable', state: 'hidden', reasonCode: 'not_returned' }]} />);
     fireEvent.click(await screen.findByRole('button', { name: 'Edit user' }));
+    fireEvent.change(screen.getByLabelText('Reason'), { target: { value: '  Correcting identity  ' } });
     fireEvent.click(screen.getByLabelText('I reviewed the target, change and required capability.'));
     fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
 
     await waitFor(() => expect(apiMock).toHaveBeenCalledWith('/api/users/user-1', expect.objectContaining({ method: 'PATCH' })));
+    expect(JSON.parse(apiMock.mock.calls[0][1].body)).toMatchObject({ displayName: 'Ada Lovelace', reason: 'Correcting identity' });
     await waitFor(() => expect(loadUserDetail).toHaveBeenCalledTimes(2));
+    expect((await screen.findByRole('alert')).textContent).toContain('Profile changed, but the audit record could not be written.');
   });
 
   it('reactivates a disabled user and refreshes the detail', async () => {
     const loadUserDetail = vi.fn(async () => ({ ...detail, user: { ...detail.user, accountEnabled: false, isReadOnly: false, sourceOfAuthorityReason: null } }));
-    apiMock.mockResolvedValue(new Response(JSON.stringify({ status: 'succeeded', requiredCapability: 'users.reactivate', replayed: false }), { status: 200 }));
+    apiMock.mockResolvedValue(new Response(JSON.stringify({ status: 'succeeded', requiredCapability: 'users.reactivate', replayed: false, auditWarning: 'Account enabled, but the audit record could not be written.' }), { status: 200 }));
 
     render(<UserDetailPage userId="user-1" loadUserDetail={loadUserDetail} capabilities={[{ capability: 'users.update', state: 'hidden', reasonCode: 'not_returned' }, { capability: 'users.disable', state: 'allowed', reasonCode: 'active_role' }]} />);
     await screen.findByRole('heading', { name: 'Ada Lovelace' });
     expect(screen.getByRole('region', { name: 'User summary' }).textContent).toContain('Account disabled');
     fireEvent.click(await screen.findByRole('button', { name: 'Reactivate user' }));
+    fireEvent.change(screen.getByLabelText('Reason'), { target: { value: '  Access restored  ' } });
     fireEvent.click(screen.getByLabelText('I reviewed the target, change and required capability.'));
     fireEvent.click(screen.getByRole('button', { name: 'Enable user' }));
 
     await waitFor(() => expect(apiMock).toHaveBeenCalledWith('/api/users/user-1/reactivate', expect.objectContaining({ method: 'POST' })));
+    expect(JSON.parse(apiMock.mock.calls[0][1].body)).toEqual({ reason: 'Access restored' });
     await waitFor(() => expect(loadUserDetail).toHaveBeenCalledTimes(2));
+    expect((await screen.findByRole('alert')).textContent).toContain('Account enabled, but the audit record could not be written.');
   });
 
   it('resets a user password and displays the temporary credential once', async () => {
@@ -431,6 +441,7 @@ describe('UserDetailPage', () => {
 
     render(<UserDetailPage userId="user-1" loadUserDetail={async () => ({ ...detail, user: { ...detail.user, isReadOnly: false, sourceOfAuthorityReason: null } })} capabilities={[{ capability: 'users.reset_password', state: 'allowed', reasonCode: 'active_role' }]} />);
     fireEvent.click(await screen.findByRole('button', { name: 'Reset password' }));
+    fireEvent.change(screen.getByLabelText('Reason'), { target: { value: '  Password compromised  ' } });
     fireEvent.click(screen.getByLabelText('I reviewed the target, change and required capability.'));
     fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Reset password' }));
 
@@ -438,6 +449,33 @@ describe('UserDetailPage', () => {
     expect(await screen.findByText('Temp-Password-12345!')).toBeTruthy();
     expect(screen.getByText('The user must change this password at next sign-in.')).toBeTruthy();
     expect((await screen.findByRole('alert')).textContent).toContain('Password reset completed, but its audit record could not be written.');
+    expect(JSON.parse(apiMock.mock.calls[0][1].body)).toEqual({ reason: 'Password compromised' });
+  });
+
+  it('keeps a TAP audit warning visible after closing the one-time secret view', async () => {
+    apiMock.mockImplementation(async (path: string) => {
+      if (path.includes('/temporary-access-pass')) {
+        return new Response(JSON.stringify({ status: 'succeeded', temporaryAccessPass: 'fixture-tap-value', auditWarning: 'Pass issued, but its audit record could not be written.' }), { status: 200 });
+      }
+      if (path.includes('/authentication-methods')) {
+        return new Response(JSON.stringify({ userObjectId: 'user-1', items: [], fetchedAt: '2026-09-23T08:00:00Z', freshness: 'live', partialData: false, access: { state: 'allowed' } }), { status: 200 });
+      }
+      return new Response('{}', { status: 200 });
+    });
+    render(<UserDetailPage userId="user-1" loadUserDetail={async () => detail} capabilities={[
+      { capability: 'authentication.methods.view', state: 'allowed', reasonCode: 'active_role' },
+      { capability: 'authentication.methods.manage', state: 'allowed', reasonCode: 'active_role' },
+    ]} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Grant Temporary Access Pass' }));
+    fireEvent.change(screen.getByLabelText('Reason'), { target: { value: 'New device access' } });
+    fireEvent.click(screen.getByLabelText('I reviewed the target, change and required capability.'));
+    fireEvent.click(screen.getByRole('button', { name: 'Issue Temporary Access Pass' }));
+
+    expect(await screen.findByText('fixture-tap-value')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    expect(screen.queryByText('fixture-tap-value')).toBeNull();
+    expect((await screen.findAllByRole('alert')).some((alert) => alert.textContent?.includes('Pass issued, but its audit record could not be written.'))).toBe(true);
   });
 
   it('does not render group or license mutation controls for read-only sections', async () => {
@@ -520,16 +558,18 @@ describe('UserDetailPage', () => {
     const loadUserDetail = vi.fn(async () => detail);
     apiMock.mockImplementation(async (path: string) => path.startsWith('/api/groups')
       ? new Response(JSON.stringify({ items: [{ id: 'group-2', displayName: 'Engineering' }], access: { state: 'allowed' } }), { status: 200 })
-      : new Response(JSON.stringify({ status: 'succeeded', requiredCapability: 'groups.manage_members', replayed: false }), { status: 200 }));
+      : new Response(JSON.stringify({ status: 'succeeded', requiredCapability: 'groups.manage_members', replayed: false, auditWarning: 'Group changed, but the audit record could not be written.' }), { status: 200 }));
 
     render(<UserDetailPage userId="user-1" loadUserDetail={loadUserDetail} capabilities={[{ capability: 'groups.manage_members', state: 'allowed', reasonCode: 'active_role' }, { capability: 'licenses.assign', state: 'allowed', reasonCode: 'active_role' }]} />);
     fireEvent.click(await screen.findByRole('button', { name: /add group/i }));
     fireEvent.change(await screen.findByRole('combobox', { name: /group/i }), { target: { value: 'group-2' } });
+    fireEvent.change(screen.getByLabelText('Reason'), { target: { value: 'Project membership' } });
     fireEvent.click(screen.getByLabelText('I reviewed the target, change and required capability.'));
     fireEvent.click(screen.getByRole('button', { name: 'Add to group' }));
 
     await waitFor(() => expect(apiMock).toHaveBeenCalledWith('/api/users/user-1/groups/group-2', expect.objectContaining({ method: 'POST' })));
     await waitFor(() => expect(loadUserDetail).toHaveBeenCalledTimes(2));
+    expect((await screen.findByRole('alert')).textContent).toContain('Group changed, but the audit record could not be written.');
   });
 
   it('loads a group catalog for add, excludes assigned groups, and works when the user has no groups', async () => {
@@ -545,6 +585,7 @@ describe('UserDetailPage', () => {
     expect(await screen.findByRole('option', { name: 'Engineering' })).toBeTruthy();
     expect(screen.queryByRole('option', { name: 'Already assigned' })).toBeNull();
     fireEvent.change(screen.getByRole('combobox', { name: /group/i }), { target: { value: 'group-2' } });
+    fireEvent.change(screen.getByLabelText('Reason'), { target: { value: 'Project membership' } });
     fireEvent.click(screen.getByLabelText('I reviewed the target, change and required capability.'));
     fireEvent.click(screen.getByRole('button', { name: 'Add to group' }));
     await waitFor(() => expect(apiMock).toHaveBeenCalledWith('/api/users/user-1/groups/group-2', expect.objectContaining({ method: 'POST' })));
@@ -561,6 +602,7 @@ describe('UserDetailPage', () => {
     render(<UserDetailPage userId="user-1" loadUserDetail={loadUserDetail} capabilities={[{ capability: 'groups.manage_members', state: 'allowed', reasonCode: 'active_role' }]} />);
     fireEvent.click(await screen.findByRole('button', { name: /add group/i }));
     fireEvent.change(await screen.findByRole('combobox', { name: /group/i }), { target: { value: 'group-2' } });
+    fireEvent.change(screen.getByLabelText('Reason'), { target: { value: 'Correcting group membership' } });
     fireEvent.click(screen.getByLabelText('I reviewed the target, change and required capability.'));
     fireEvent.click(screen.getByRole('button', { name: 'Add to group' }));
 
@@ -591,16 +633,18 @@ describe('UserDetailPage', () => {
     const loadUserDetail = vi.fn(async () => emptyDetail);
     apiMock.mockImplementation(async (path: string) => path.startsWith('/api/licenses')
       ? new Response(JSON.stringify({ items: [{ skuId: 'sku-2', partNumber: 'E5', displayName: 'Microsoft 365 E5' }], access: { state: 'allowed' } }), { status: 200 })
-      : new Response(JSON.stringify({ status: 'succeeded', requiredCapability: 'licenses.assign', replayed: false }), { status: 200 }));
+      : new Response(JSON.stringify({ status: 'succeeded', requiredCapability: 'licenses.assign', replayed: false, auditWarning: 'License changed, but the audit record could not be written.' }), { status: 200 }));
 
     render(<UserDetailPage userId="user-1" loadUserDetail={loadUserDetail} capabilities={[{ capability: 'licenses.assign', state: 'allowed', reasonCode: 'active_role' }]} />);
     fireEvent.click(await screen.findByRole('button', { name: /assign license/i }));
     expect(await screen.findByRole('option', { name: 'Microsoft 365 E5' })).toBeTruthy();
     fireEvent.change(screen.getByRole('combobox', { name: 'License' }), { target: { value: 'sku-2' } });
+    fireEvent.change(screen.getByLabelText('Reason'), { target: { value: 'Role requires E5' } });
     fireEvent.click(screen.getByLabelText('I reviewed the target, change and required capability.'));
     fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Assign license' }));
     await waitFor(() => expect(apiMock).toHaveBeenCalledWith('/api/users/user-1/licenses/sku-2', expect.objectContaining({ method: 'POST' })));
     await waitFor(() => expect(loadUserDetail).toHaveBeenCalledTimes(2));
+    expect((await screen.findByRole('alert')).textContent).toContain('License changed, but the audit record could not be written.');
   });
 
   it('opens group selection when the user has no existing groups', async () => {

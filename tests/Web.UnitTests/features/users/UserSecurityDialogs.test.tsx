@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import React from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { TemporaryAccessPassDialog } from '../../../../src/Web/src/features/users/TemporaryAccessPassDialog';
@@ -19,30 +19,34 @@ describe('user security dialogs', () => {
   it('keeps a failed TAP alert inside the confirmation dialog', async () => {
     apiMock.mockRejectedValue(new Error('tap_failed'));
     render(<TemporaryAccessPassDialog userId="user-1" target="Ada Lovelace" onClose={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText('Reason'), { target: { value: '  User recovery  ' } });
     confirmDialog();
 
     const dialog = await screen.findByRole('dialog', { name: 'Grant Temporary Access Pass' });
     expect(within(dialog).getByRole('alert').textContent).toContain('temporary access pass could not be issued');
   });
 
-  it('keeps a failed session-revoke alert inside the confirmation dialog', async () => {
+  it('keeps a failed session-revoke alert visible with the confirmation dialog', async () => {
     apiMock.mockRejectedValue(new Error('revoke_failed'));
     render(<RevokeSessionsDialog userId="user-1" target="Ada Lovelace" onClose={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText('Reason'), { target: { value: '  Session compromise  ' } });
     confirmDialog();
 
     const dialog = await screen.findByRole('dialog', { name: 'Revoke user sessions' });
-    expect(within(dialog).getByRole('alert').textContent).toContain('Sessions could not be revoked');
+    expect(dialog).toBeTruthy();
+    expect((await screen.findByRole('alert')).textContent).toContain('Sessions could not be revoked');
   });
 
-  it('posts TAP without a body, does not use storage, and never reveals replayed code', async () => {
+  it('posts a trimmed TAP reason without storage and never reveals replayed code', async () => {
     const setItem = vi.spyOn(Storage.prototype, 'setItem');
     apiMock.mockResolvedValue(new Response(JSON.stringify({ status: 'succeeded', replayed: true, temporaryAccessPass: 'fixture-replayed-value' }), { status: 200 }));
     render(<TemporaryAccessPassDialog userId="user-1" target="Ada Lovelace" onClose={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText('Reason'), { target: { value: '  User recovery  ' } });
     confirmDialog();
 
     await screen.findByRole('alert');
-    expect(apiMock).toHaveBeenCalledWith('/api/users/user-1/authentication-methods/temporary-access-pass', expect.objectContaining({ method: 'POST' }));
-    expect(apiMock.mock.calls[0][1]).not.toHaveProperty('body');
+    expect(apiMock).toHaveBeenCalledWith('/api/users/user-1/authentication-methods/temporary-access-pass', expect.objectContaining({ method: 'POST', body: '{"reason":"User recovery"}' }));
+    expect(apiMock.mock.calls[0][1].headers['Idempotency-Key']).toBeTruthy();
     expect(screen.queryByText('fixture-replayed-value')).toBeNull();
     expect(setItem).not.toHaveBeenCalled();
     setItem.mockRestore();
@@ -56,6 +60,7 @@ describe('user security dialogs', () => {
     apiMock.mockResolvedValue(new Response(JSON.stringify({ status: 'succeeded', temporaryAccessPass: 'fixture-tap-value' }), { status: 200 }));
     const onClose = vi.fn();
     const { unmount } = render(<TemporaryAccessPassDialog userId="user-1" target="Ada Lovelace" onClose={onClose} />);
+    fireEvent.change(screen.getByLabelText('Reason'), { target: { value: '  First sign-in  ' } });
     confirmDialog();
 
     const result = await screen.findByRole('dialog', { name: 'Temporary access pass issued' });
@@ -70,5 +75,17 @@ describe('user security dialogs', () => {
     unmount();
     expect(document.activeElement).toBe(trigger);
     trigger.remove();
+  });
+
+  it('posts a trimmed reason in a session-revocation request while retaining its idempotency key', async () => {
+    apiMock.mockResolvedValue(new Response(JSON.stringify({ status: 'succeeded' }), { status: 200 }));
+    render(<RevokeSessionsDialog userId="user-1" target="Ada Lovelace" onClose={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText('Reason'), { target: { value: '  Access review  ' } });
+    confirmDialog();
+
+    await waitFor(() => expect(apiMock).toHaveBeenCalledTimes(1));
+    expect(apiMock.mock.calls[0][0]).toBe('/api/users/user-1/revoke-sessions');
+    expect(apiMock.mock.calls[0][1].headers['Idempotency-Key']).toBeTruthy();
+    expect(JSON.parse(apiMock.mock.calls[0][1].body)).toEqual({ reason: 'Access review' });
   });
 });

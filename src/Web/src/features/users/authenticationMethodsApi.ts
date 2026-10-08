@@ -25,32 +25,44 @@ export async function fetchAuthenticationMethods(api: ApiFetch, userId: string) 
   return await response.json() as AuthenticationMethodsResponse;
 }
 
-export async function removeAuthenticationMethod(api: ApiFetch, userId: string, method: AuthenticationMethod) {
+export async function removeAuthenticationMethod(api: ApiFetch, userId: string, method: AuthenticationMethod, reason: string) {
   const response = await api(`/api/users/${encodeURIComponent(userId)}/authentication-methods/${encodeURIComponent(method.id)}?type=${encodeURIComponent(method.type)}`, {
     method: 'DELETE',
-    headers: { 'Idempotency-Key': globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}` },
+    headers: {
+      'Content-Type': 'application/json',
+      'Idempotency-Key': globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`,
+    },
+    body: JSON.stringify({ reason }),
   });
   const body = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(body.error ?? 'authentication_method_remove_failed');
-  return body as { status: string };
+  return body as { status: string; auditWarning?: string | null };
 }
 
-export async function resetAuthenticationMethods(api: ApiFetch, userId: string) {
+export async function resetAuthenticationMethods(api: ApiFetch, userId: string, reason: string) {
   const response = await api(`/api/users/${encodeURIComponent(userId)}/authentication-methods/reset-mfa`, {
     method: 'POST',
-    headers: { 'Idempotency-Key': globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}` },
+    headers: {
+      'Content-Type': 'application/json',
+      'Idempotency-Key': globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`,
+    },
+    body: JSON.stringify({ reason }),
   });
   const body = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(body.error ?? 'authentication_methods_reset_failed');
-  return body as { status: string; removedCount: number };
+  return body as { status: string; removedCount: number; auditWarning?: string | null };
 }
 
 export type TemporaryAccessPassResponse = { status: string; temporaryAccessPass?: string | null; replayed?: boolean; auditWarning?: string | null };
 
-export async function grantTemporaryAccessPass(api: ApiFetch, userId: string) {
+export async function grantTemporaryAccessPass(api: ApiFetch, userId: string, reason: string) {
   const response = await api(`/api/users/${encodeURIComponent(userId)}/authentication-methods/temporary-access-pass`, {
     method: 'POST',
-    headers: { 'Idempotency-Key': globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}` },
+    headers: {
+      'Content-Type': 'application/json',
+      'Idempotency-Key': globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`,
+    },
+    body: JSON.stringify({ reason }),
   });
   const body = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(body.error ?? 'temporary_access_pass_failed');

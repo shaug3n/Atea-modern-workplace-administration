@@ -4,16 +4,25 @@ import { useApi } from '../../auth/useApi';
 import { ConfirmationDialog } from '../../components/ConfirmationDialog';
 import type { UserDetails } from './userDetailApi';
 import { mutateUser, type UpdateUserCommand, type UserCommandResponse } from './userMutationApi';
+import { UserWriteReasonField, normalizeUserWriteReason } from './UserWriteReasonField';
 
 export function UserEditDialog({ user, onCompleted, onCancel }: { user: UserDetails; onCompleted?: (result: UserCommandResponse) => void; onCancel?: () => void }) {
   const api = useApi();
   const [displayName, setDisplayName] = useState(user.displayName ?? '');
   const [jobTitle, setJobTitle] = useState(user.jobTitle ?? '');
   const [error, setError] = useState<string | null>(null);
+  const [reason, setReason] = useState('');
+  const [reasonError, setReasonError] = useState<'reason_required' | 'reason_too_long' | null>(null);
   const [pending, setPending] = useState(false);
   const sourceLimitation = user.isReadOnly ? user.sourceOfAuthorityReason ?? messages.userSourceReadOnlyTitle : null;
   const submit = async () => {
     if (pending) return;
+    const normalizedReason = normalizeUserWriteReason(reason);
+    if (normalizedReason.error) {
+      setReasonError(normalizedReason.error);
+      return;
+    }
+    setReasonError(null);
     setPending(true);
     const command: UpdateUserCommand = {
       displayName,
@@ -27,7 +36,7 @@ export function UserEditDialog({ user, onCompleted, onCancel }: { user: UserDeta
       accountEnabled: user.accountEnabled,
     };
     try {
-      const response = await mutateUser(api, `/api/users/${encodeURIComponent(user.id)}`, 'PATCH', command);
+      const response = await mutateUser(api, `/api/users/${encodeURIComponent(user.id)}`, 'PATCH', { ...command, reason: normalizedReason.reason });
       if (response.status !== 'succeeded') setError(formatEditError(response));
       onCompleted?.(response);
     } catch {
@@ -46,11 +55,13 @@ export function UserEditDialog({ user, onCompleted, onCancel }: { user: UserDeta
       confirmLabel={messages.confirmEditUser}
       sourceLimitation={sourceLimitation}
       busy={pending}
+      confirmBlocked={Boolean(reasonError)}
       onConfirm={submit}
       onCancel={onCancel}
     >
       <label>{messages.usersNameColumn}<input value={displayName} onChange={(event) => setDisplayName(event.target.value)} /></label>
       <label>{messages.userJobTitle}<input value={jobTitle} onChange={(event) => setJobTitle(event.target.value)} /></label>
+      <UserWriteReasonField value={reason} onChange={(value) => { setReason(value); setReasonError(null); }} error={reasonError} />
       {error && <p role="alert">{error}</p>}
     </ConfirmationDialog>
   );

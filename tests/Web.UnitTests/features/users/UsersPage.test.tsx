@@ -255,12 +255,28 @@ describe('UsersPage', () => {
     expect(screen.getByLabelText('Name')).toBeTruthy();
   });
 
+  it('keeps the create audit warning visible after the form closes', async () => {
+    apiMock.mockResolvedValue(new Response(JSON.stringify({ status: 'succeeded', auditWarning: 'User created, but the audit record could not be written.' }), { status: 201 }));
+    render(<UsersPage capabilities={[decision('users.view', 'allowed'), decision('users.create', 'allowed'), decision('users.disable', 'hidden')]} loadUsers={async () => usersResponse} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Create user' }));
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Ada Lovelace' } });
+    fireEvent.change(screen.getByLabelText('User principal name'), { target: { value: 'ada@example.com' } });
+    fireEvent.change(screen.getByLabelText('Reason'), { target: { value: 'New employee onboarding' } });
+    fireEvent.click(screen.getByLabelText('I reviewed the target, change and required capability.'));
+    fireEvent.click(within(screen.getByRole('dialog', { name: 'Create user' })).getByRole('button', { name: 'Create user' }));
+
+    expect((await screen.findByRole('alert')).textContent).toContain('User created, but the audit record could not be written.');
+    expect(screen.queryByRole('dialog', { name: 'Create user' })).toBeNull();
+  });
+
   it('opens disable confirmation and mutates only after review and destructive phrase', async () => {
     const loadUsers = vi.fn(async (_filters: UserFiltersState, _continuationToken: string | null) => usersResponse);
     apiMock.mockResolvedValue(new Response(JSON.stringify({
       status: 'succeeded',
       requiredCapability: 'users.disable',
       replayed: false,
+      auditWarning: 'The user was disabled, but the audit record could not be written.',
     }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
 
     render(<UsersPage capabilities={allowedCapabilities} loadUsers={loadUsers} />);
@@ -269,6 +285,7 @@ describe('UsersPage', () => {
     expect(screen.getByRole('dialog', { name: 'Disable user' })).toBeTruthy();
     expect(screen.getByText('Disable sign-in for this user.')).toBeTruthy();
 
+    fireEvent.change(screen.getByLabelText('Reason'), { target: { value: '  Offboarding  ' } });
     const confirm = screen.getByRole('button', { name: 'Disable user' }) as HTMLButtonElement;
     expect(confirm.disabled).toBe(true);
     fireEvent.click(screen.getByLabelText('I reviewed the target, change and required capability.'));
@@ -285,7 +302,9 @@ describe('UsersPage', () => {
     expect(path).not.toMatch(/graph\.microsoft\.com/i);
     expect(init.method).toBe('POST');
     expect(init.headers['Idempotency-Key']).toBeTruthy();
+    expect(JSON.parse(init.body)).toEqual({ reason: 'Offboarding' });
     expect(await screen.findByText('Ada Lovelace sign-in was disabled.')).toBeTruthy();
+    expect((await screen.findByRole('alert')).textContent).toContain('audit record could not be written');
     await waitFor(() => expect(loadUsers).toHaveBeenCalledTimes(2));
   });
 
@@ -316,6 +335,7 @@ describe('UsersPage', () => {
     render(<UsersPage capabilities={allowedCapabilities} loadUsers={async () => usersResponse} />);
 
     await openDisable('Ada Lovelace');
+    fireEvent.change(screen.getByLabelText('Reason'), { target: { value: 'Offboarding' } });
     fireEvent.click(screen.getByLabelText('I reviewed the target, change and required capability.'));
     fireEvent.change(screen.getByLabelText('Type DISABLE to confirm'), { target: { value: 'DISABLE' } });
     expect((screen.getByRole('button', { name: 'Disable user' }) as HTMLButtonElement).disabled).toBe(false);
@@ -325,6 +345,7 @@ describe('UsersPage', () => {
     expect(within(screen.getByRole('dialog', { name: 'Disable user' })).getByText('Grace Hopper')).toBeTruthy();
     expect((screen.getByLabelText('I reviewed the target, change and required capability.') as HTMLInputElement).checked).toBe(false);
     expect((screen.getByLabelText('Type DISABLE to confirm') as HTMLInputElement).value).toBe('');
+    expect((screen.getByLabelText('Reason') as HTMLTextAreaElement).value).toBe('');
     expect((screen.getByRole('button', { name: 'Disable user' }) as HTMLButtonElement).disabled).toBe(true);
   });
 
@@ -333,6 +354,7 @@ describe('UsersPage', () => {
     const { rerender } = render(<UsersPage capabilities={allowedCapabilities} loadUsers={loadUsers} />);
 
     await openDisable('Ada Lovelace');
+    fireEvent.change(screen.getByLabelText('Reason'), { target: { value: 'Account review' } });
     fireEvent.click(screen.getByLabelText('I reviewed the target, change and required capability.'));
     fireEvent.change(screen.getByLabelText('Type DISABLE to confirm'), { target: { value: 'DISABLE' } });
 
@@ -360,11 +382,30 @@ describe('UsersPage', () => {
     render(<UsersPage capabilities={allowedCapabilities} loadUsers={async () => usersResponse} />);
 
     await openDisable('Ada Lovelace');
+    fireEvent.change(screen.getByLabelText('Reason'), { target: { value: 'Offboarding' } });
     fireEvent.click(screen.getByLabelText('I reviewed the target, change and required capability.'));
     fireEvent.change(screen.getByLabelText('Type DISABLE to confirm'), { target: { value: 'DISABLE' } });
     fireEvent.click(screen.getByRole('button', { name: 'Disable user' }));
 
     expect((await screen.findByRole('alert')).textContent).toContain('idempotency key');
     expect(screen.getByRole('dialog', { name: 'Disable user' })).toBeTruthy();
+  });
+
+  it('keeps an overlength reason in the disable review and does not send a request', async () => {
+    render(<UsersPage capabilities={allowedCapabilities} loadUsers={async () => usersResponse} />);
+    await openDisable('Ada Lovelace');
+    fireEvent.change(screen.getByLabelText('Reason'), { target: { value: '   ' } });
+    fireEvent.click(screen.getByLabelText('I reviewed the target, change and required capability.'));
+    expect((screen.getByRole('button', { name: 'Disable user' }) as HTMLButtonElement).disabled).toBe(true);
+    expect(apiMock).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByLabelText('Reason'), { target: { value: 'r'.repeat(1001) } });
+    fireEvent.change(screen.getByLabelText('Type DISABLE to confirm'), { target: { value: 'DISABLE' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Disable user' }));
+
+    expect(await screen.findByRole('alert')).toBeTruthy();
+    const dialog = screen.getByRole('dialog', { name: 'Disable user' });
+    expect(within(dialog).getByText(/Keep the reason to 1,000 characters or fewer/)).toBeTruthy();
+    expect((within(dialog).getByLabelText('Reason') as HTMLTextAreaElement).value).toBe('r'.repeat(1001));
+    expect(apiMock).not.toHaveBeenCalled();
   });
 });

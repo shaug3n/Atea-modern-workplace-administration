@@ -5,6 +5,7 @@ import { ConfirmationDialog } from '../../components/ConfirmationDialog';
 import type { ApiFetch } from './userDetailApi';
 import { grantTemporaryAccessPass } from './authenticationMethodsApi';
 import { useFocusContainment } from '../../components/useFocusContainment';
+import { UserWriteReasonField, normalizeUserWriteReason } from './UserWriteReasonField';
 
 export function TemporaryAccessPassDialog({ userId, target, onClose, onAuditWarning }: { userId: string; target: string; onClose: () => void; onAuditWarning?: (warning: string | null) => void }) {
   const api = useApi();
@@ -12,6 +13,8 @@ export function TemporaryAccessPassDialog({ userId, target, onClose, onAuditWarn
   const [code, setCode] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [auditWarning, setAuditWarning] = useState<string | null>(null);
+  const [reason, setReason] = useState('');
+  const [reasonError, setReasonError] = useState<'reason_required' | 'reason_too_long' | null>(null);
   const close = () => {
     const trigger = Array.from(document.querySelectorAll<HTMLButtonElement>('button')).find((button) => button.textContent?.trim() === 'Grant Temporary Access Pass' && !button.closest('[role="dialog"]'));
     const restoreTarget = trigger ?? returnFocusRef.current;
@@ -25,9 +28,15 @@ export function TemporaryAccessPassDialog({ userId, target, onClose, onAuditWarn
   const resultRef = useFocusContainment<HTMLElement>(Boolean(code), close, returnFocusRef);
   const submit = async () => {
     if (pending) return;
+    const normalizedReason = normalizeUserWriteReason(reason);
+    if (normalizedReason.error) {
+      setReasonError(normalizedReason.error);
+      return;
+    }
+    setReasonError(null);
     setPending(true); setError(null);
     try {
-      const result = await grantTemporaryAccessPass(api as ApiFetch, userId);
+      const result = await grantTemporaryAccessPass(api as ApiFetch, userId, normalizedReason.reason);
       const warning = result.auditWarning?.trim() || null;
       setAuditWarning(warning);
       onAuditWarning?.(warning);
@@ -37,5 +46,5 @@ export function TemporaryAccessPassDialog({ userId, target, onClose, onAuditWarn
     finally { setPending(false); }
   };
   if (code) return <div className="modal-backdrop"><section ref={resultRef} className="mutation-dialog" role="dialog" aria-modal="true" aria-labelledby="tap-result-title"><h2 id="tap-result-title">Temporary access pass issued</h2><p>Copy this one-time code now. It will not be shown again after closing.</p>{auditWarning && <p role="alert" className="audit-warning">{auditWarning}</p>}<code className="temporary-access-pass__code">{code}</code><button type="button" className="button button--quiet" onClick={() => void navigator.clipboard?.writeText(code)}>Copy code</button><button type="button" className="button button--secondary" onClick={close}>Close</button></section></div>;
-  return <ConfirmationDialog title="Grant Temporary Access Pass" target={target} proposedChange="Issue a single-use temporary access pass valid for 60 minutes." requiredCapability="authentication.methods.manage" confirmLabel={messages.confirmIssueTap} busy={pending} onConfirm={() => void submit()} onCancel={close}>{error && <p role="alert">{error}</p>}{auditWarning && <p role="alert" className="audit-warning">{auditWarning}</p>}</ConfirmationDialog>;
+  return <ConfirmationDialog title="Grant Temporary Access Pass" target={target} proposedChange="Issue a single-use temporary access pass valid for 60 minutes." requiredCapability="authentication.methods.manage" confirmLabel={messages.confirmIssueTap} busy={pending} confirmBlocked={Boolean(reasonError)} onConfirm={() => void submit()} onCancel={close}><UserWriteReasonField value={reason} onChange={(value) => { setReason(value); setReasonError(null); }} error={reasonError} />{error && <p role="alert">{error}</p>}{auditWarning && <p role="alert" className="audit-warning">{auditWarning}</p>}</ConfirmationDialog>;
 }

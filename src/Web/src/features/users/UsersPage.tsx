@@ -3,7 +3,7 @@ import type { CapabilityDecision } from '../../capabilities/capabilityTypes';
 import { WorkspaceDataState } from '../../components/WorkspaceDataState';
 import { WorkspacePageHeader } from '../../components/WorkspacePageHeader';
 import { useWorkspaceIssueReporter } from '../../notifications/WorkspaceNotifications';
-import { ConfirmationDialog } from '../../components/ConfirmationDialog';
+import { ReasonDialog } from '../../components/ReasonDialog';
 import { DataFreshness } from '../../components/DataFreshness';
 import { PermissionState } from '../../components/PermissionState';
 import { useApi } from '../../auth/useApi';
@@ -14,6 +14,8 @@ import { UsersTable } from './UsersTable';
 import { mutateUser, type UserCommandResponse } from './userMutationApi';
 import { fetchUsers, type ApiFetch, type UserFiltersState, type UsersDirectoryResponse, type UserSummary } from './usersApi';
 import { downloadCsv, exportStatus } from '../exports/csvExport';
+import { getUserWriteReasonErrorMessage, getUserWriteReasonHint, normalizeUserWriteReason } from './UserWriteReasonField';
+import { userFeatureMessages } from './messages';
 
 const emptyFilters: UserFiltersState = {
   search: '',
@@ -38,7 +40,9 @@ export function UsersPage({ capabilities, onNavigate, loadUsers, authorizationUn
   const [disableTarget, setDisableTarget] = useState<UserSummary | null>(null);
   const [disablePending, setDisablePending] = useState(false);
   const [disableError, setDisableError] = useState<string | null>(null);
+  const [disableReasonError, setDisableReasonError] = useState<string | null>(null);
   const [disableStatus, setDisableStatus] = useState<string | null>(null);
+  const [auditWarning, setAuditWarning] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [exportPending, setExportPending] = useState(false);
   const [exportMessage, setExportMessage] = useState<string | null>(null);
@@ -142,17 +146,28 @@ export function UsersPage({ capabilities, onNavigate, loadUsers, authorizationUn
   const startDisable = useCallback((user: UserSummary) => {
     setDisableTarget(user);
     setDisableError(null);
+    setDisableReasonError(null);
     setDisableStatus(null);
+    setAuditWarning(null);
   }, []);
 
   const cancelDisable = useCallback(() => {
     if (disablePending) return;
     setDisableTarget(null);
     setDisableError(null);
+    setDisableReasonError(null);
   }, [disablePending]);
 
-  const submitDisable = useCallback(async () => {
+  const submitDisable = useCallback(async (value: string) => {
     if (!disableTarget) return;
+    const normalizedReason = normalizeUserWriteReason(value);
+    if (normalizedReason.error) {
+      const reasonError = getUserWriteReasonErrorMessage(normalizedReason.error);
+      setDisableReasonError(reasonError);
+      setDisableError(reasonError);
+      return;
+    }
+    setDisableReasonError(null);
     if (resultKey !== activeQueryKey || loading || loadFailed) { setDisableTarget(null); return; }
     if (usersDisable.state !== 'allowed') {
       setDisableTarget(null);
@@ -167,7 +182,7 @@ export function UsersPage({ capabilities, onNavigate, loadUsers, authorizationUn
         api as ApiFetch,
         `/api/users/${encodeURIComponent(disableTarget.id)}/disable`,
         'POST',
-        {},
+        { reason: normalizedReason.reason },
       );
       if (response.status !== 'succeeded') {
         setDisableError(formatMutationError(response));
@@ -175,6 +190,7 @@ export function UsersPage({ capabilities, onNavigate, loadUsers, authorizationUn
       }
 
       setDisableStatus(`${displayName(disableTarget)} ${messages.userDisableSucceeded}`);
+      setAuditWarning(typeof response.auditWarning === 'string' && response.auditWarning.trim() ? response.auditWarning : null);
       setDisableTarget(null);
       setRefreshVersion((version) => version + 1);
     } catch {
@@ -252,8 +268,9 @@ export function UsersPage({ capabilities, onNavigate, loadUsers, authorizationUn
       )}
 
       {disableStatus && <p role="status">{disableStatus}</p>}
+      {auditWarning && <p role="alert" className="audit-warning">{auditWarning}</p>}
       {disableTarget && (
-        <ConfirmationDialog
+        <ReasonDialog
           title={messages.userDisableDialogTitle}
           target={disableTargetName}
           proposedChange={messages.userDisableProposedChange}
@@ -263,12 +280,14 @@ export function UsersPage({ capabilities, onNavigate, loadUsers, authorizationUn
           consequence={messages.confirmDisableUserConsequence(disableTargetName)}
           tone="danger"
           busy={disablePending}
+          reasonHint={getUserWriteReasonHint(disableReasonError)}
           onConfirm={submitDisable}
           onCancel={cancelDisable}
         />
       )}
       {disableError && <p role="alert">{disableError}</p>}
       {createOpen && <UserCreateDialog onCompleted={(response) => {
+        setAuditWarning(typeof response.auditWarning === 'string' && response.auditWarning.trim() ? response.auditWarning : null);
         if (response.status === 'succeeded') {
           setCreateOpen(false);
           setRefreshVersion((version) => version + 1);

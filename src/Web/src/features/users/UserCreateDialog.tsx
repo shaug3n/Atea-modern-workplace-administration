@@ -3,6 +3,7 @@ import { messages } from '../../app/messages';
 import { useApi } from '../../auth/useApi';
 import { ConfirmationDialog } from '../../components/ConfirmationDialog';
 import { mutateUser, type CreateUserCommand, type UserCommandResponse } from './userMutationApi';
+import { UserWriteReasonField, normalizeUserWriteReason } from './UserWriteReasonField';
 
 export function UserCreateDialog({ onCompleted }: { onCompleted?: (result: UserCommandResponse) => void }) {
   const api = useApi();
@@ -11,6 +12,8 @@ export function UserCreateDialog({ onCompleted }: { onCompleted?: (result: UserC
   const [usageLocation, setUsageLocation] = useState('NO');
   const [result, setResult] = useState<UserCommandResponse | null>(null);
   const [pending, setPending] = useState(false);
+  const [reason, setReason] = useState('');
+  const [reasonError, setReasonError] = useState<'reason_required' | 'reason_too_long' | null>(null);
 
   const command: CreateUserCommand = {
     displayName,
@@ -28,9 +31,15 @@ export function UserCreateDialog({ onCompleted }: { onCompleted?: (result: UserC
 
   const submit = async () => {
     if (pending) return;
+    const normalizedReason = normalizeUserWriteReason(reason);
+    if (normalizedReason.error) {
+      setReasonError(normalizedReason.error);
+      return;
+    }
+    setReasonError(null);
     setPending(true);
     try {
-      const response = await mutateUser(api, '/api/users', 'POST', command);
+      const response = await mutateUser(api, '/api/users', 'POST', { ...command, reason: normalizedReason.reason });
       setResult(response);
       onCompleted?.(response);
     } catch {
@@ -45,6 +54,7 @@ export function UserCreateDialog({ onCompleted }: { onCompleted?: (result: UserC
       <label>{messages.usersNameColumn}<input value={displayName} onChange={(event) => { setDisplayName(event.target.value); setResult(null); }} /></label>
       <label>{messages.usersUpnColumn}<input value={userPrincipalName} onChange={(event) => { setUserPrincipalName(event.target.value); setResult(null); }} /></label>
       <label>{messages.userUsageLocation}<input value={usageLocation} onChange={(event) => { setUsageLocation(event.target.value.toUpperCase()); setResult(null); }} /></label>
+      <UserWriteReasonField value={reason} onChange={(value) => { setReason(value); setReasonError(null); }} error={reasonError} />
       <ConfirmationDialog
         title={messages.userCreateDialogTitle}
         target={displayName || userPrincipalName || messages.usersUnnamedUser}
@@ -52,8 +62,10 @@ export function UserCreateDialog({ onCompleted }: { onCompleted?: (result: UserC
         requiredCapability="users.create"
         confirmLabel={messages.confirmCreateUser}
         busy={pending}
+        confirmBlocked={Boolean(reasonError)}
         onConfirm={submit}
       />
+      {result?.auditWarning && <p role="alert" className="audit-warning">{result.auditWarning}</p>}
       {result?.temporaryCredentialNotice && (
         <section role="status" aria-label={messages.userTemporaryPasswordNotice}>
           <strong>{messages.userTemporaryPasswordNotice}</strong>

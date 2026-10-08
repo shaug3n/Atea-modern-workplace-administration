@@ -1,21 +1,29 @@
 import React, { useState } from 'react';
 import { messages } from '../../app/messages';
 import { useApi } from '../../auth/useApi';
-import { ConfirmationDialog } from '../../components/ConfirmationDialog';
+import { ReasonDialog } from '../../components/ReasonDialog';
 import type { UserDetails } from './userDetailApi';
 import { mutateUser, type UserCommandResponse } from './userMutationApi';
+import { getUserWriteReasonErrorMessage, getUserWriteReasonHint, normalizeUserWriteReason } from './UserWriteReasonField';
 
 export function PasswordResetDialog({ user, onClose, onAuditWarning }: { user: UserDetails; onClose: () => void; onAuditWarning?: (warning: string | null) => void }) {
   const api = useApi();
   const [pending, setPending] = useState(false);
   const [result, setResult] = useState<UserCommandResponse | null>(null);
   const [auditWarning, setAuditWarning] = useState<string | null>(null);
+  const [reasonError, setReasonError] = useState<string | null>(null);
 
-  const submit = async () => {
+  const submit = async (value: string) => {
     if (pending) return;
+    const normalizedReason = normalizeUserWriteReason(value);
+    if (normalizedReason.error) {
+      setReasonError(getUserWriteReasonErrorMessage(normalizedReason.error));
+      return;
+    }
+    setReasonError(null);
     setPending(true);
     try {
-      const response = await mutateUser(api, `/api/users/${encodeURIComponent(user.id)}/reset-password`, 'POST', {});
+      const response = await mutateUser(api, `/api/users/${encodeURIComponent(user.id)}/reset-password`, 'POST', { reason: normalizedReason.reason });
       setResult(response);
       const warning = readAuditWarning(response);
       setAuditWarning(warning);
@@ -47,16 +55,18 @@ export function PasswordResetDialog({ user, onClose, onAuditWarning }: { user: U
 
   return (
     <div>
-      <ConfirmationDialog
+      <ReasonDialog
         title={messages.userResetPasswordDialogTitle}
         target={user.displayName || user.userPrincipalName || user.id}
         proposedChange={messages.userResetPasswordProposedChange}
         requiredCapability="users.reset_password"
         confirmLabel={messages.confirmResetPassword}
         busy={pending}
+        reasonHint={getUserWriteReasonHint(reasonError)}
         onConfirm={submit}
         onCancel={onClose}
       />
+      {reasonError && <p role="alert">{reasonError}</p>}
       {result && <p role="alert">{formatResetError(result)}</p>}
     </div>
   );

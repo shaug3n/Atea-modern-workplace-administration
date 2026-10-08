@@ -27,7 +27,8 @@ export const userFeatureMessages = {
 
   userFeatureReasonLabel: 'Reason',
   userFeatureReasonRequired: 'Enter a reason before continuing.',
-  userFeatureReasonHint: 'Explain why this change is needed. Do not include passwords or other secrets.',
+  userFeatureReasonTooLong: 'Keep the reason to 1,000 characters or fewer.',
+  userFeatureReasonHint: 'Briefly explain why this change is needed, for example: “Access required for the employee’s role.” Do not enter passwords or passcodes.',
   userTapDurationLabel: 'Temporary Access Pass duration',
   userTapDurationMinutesLabel: 'Duration in minutes',
   userTapOneTimeUseLabel: 'One-time use',

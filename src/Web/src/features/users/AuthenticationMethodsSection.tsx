@@ -6,7 +6,7 @@ import { TechnicalDetails } from '../../components/TechnicalDetails';
 import { formatDate } from '../../format/dateTime';
 import { humanizeAuthMethodType } from '../../format/humanize';
 import { DataFreshness } from '../../components/DataFreshness';
-import { ConfirmationDialog } from '../../components/ConfirmationDialog';
+import { ReasonDialog } from '../../components/ReasonDialog';
 import { LoadingSkeleton } from '../../components/LoadingSkeleton';
 import { PermissionState } from '../../components/PermissionState';
 import { DisabledReason } from '../../components/DisabledReason';
@@ -14,6 +14,8 @@ import type { CapabilityDecision } from '../../capabilities/capabilityTypes';
 import { fetchAuthenticationMethods, removeAuthenticationMethod, resetAuthenticationMethods, type AuthenticationMethod, type AuthenticationMethodsResponse } from './authenticationMethodsApi';
 import type { ApiFetch } from './userDetailApi';
 import { TemporaryAccessPassDialog } from './TemporaryAccessPassDialog';
+import { getUserWriteReasonErrorMessage, getUserWriteReasonHint, normalizeUserWriteReason } from './UserWriteReasonField';
+import { userFeatureMessages } from './messages';
 
 export type AuthenticationMethodsSummary = { status: 'loading' | 'available' | 'unavailable'; items: AuthenticationMethod[] };
 
@@ -26,6 +28,7 @@ export function AuthenticationMethodsSection({ userId, userLabel, decision, mana
   const [removeTarget, setRemoveTarget] = useState<AuthenticationMethod | null>(null);
   const [pending, setPending] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [reasonValidationError, setReasonValidationError] = useState<string | null>(null);
   const [auditWarning, setAuditWarning] = useState<string | null>(null);
   const [resetOpen, setResetOpen] = useState(false);
   const [tapOpen, setTapOpen] = useState(false);
@@ -78,13 +81,23 @@ export function AuthenticationMethodsSection({ userId, userLabel, decision, mana
     return () => { cancelled = true; };
   }, [api, decision.state, userId, retryVersion, onResult]);
 
-  const remove = async () => {
+  const remove = async (value: string) => {
     if (!removeTarget) return;
+    const normalizedReason = normalizeUserWriteReason(value);
+    if (normalizedReason.error) {
+      const reasonError = getUserWriteReasonErrorMessage(normalizedReason.error);
+      setReasonValidationError(reasonError);
+      setActionError(reasonError);
+      return;
+    }
+    setReasonValidationError(null);
     setPending(true);
     setActionError(null);
     try {
-      const response = await removeAuthenticationMethod(api as ApiFetch, userId, removeTarget);
-      setAuditWarning(readAuditWarning(response));
+      const response = await removeAuthenticationMethod(api as ApiFetch, userId, removeTarget, normalizedReason.reason);
+      const warning = readAuditWarning(response);
+      if (onAuditWarning) onAuditWarning(warning);
+      else setAuditWarning(warning);
       setRemoveTarget(null);
       await refreshAfterMutation();
     } catch (error) {
@@ -94,12 +107,22 @@ export function AuthenticationMethodsSection({ userId, userLabel, decision, mana
     }
   };
 
-  const resetMfa = async () => {
+  const resetMfa = async (value: string) => {
+    const normalizedReason = normalizeUserWriteReason(value);
+    if (normalizedReason.error) {
+      const reasonError = getUserWriteReasonErrorMessage(normalizedReason.error);
+      setReasonValidationError(reasonError);
+      setActionError(reasonError);
+      return;
+    }
+    setReasonValidationError(null);
     setPending(true);
     setActionError(null);
     try {
-      const response = await resetAuthenticationMethods(api as ApiFetch, userId);
-      setAuditWarning(readAuditWarning(response));
+      const response = await resetAuthenticationMethods(api as ApiFetch, userId, normalizedReason.reason);
+      const warning = readAuditWarning(response);
+      if (onAuditWarning) onAuditWarning(warning);
+      else setAuditWarning(warning);
       setResetOpen(false);
       await refreshAfterMutation();
     } catch (error) {
@@ -146,14 +169,14 @@ export function AuthenticationMethodsSection({ userId, userLabel, decision, mana
       {actionError && <p role="alert" className="action-feedback action-feedback--error">{actionError}</p>}
       {auditWarning && <p role="alert" className="audit-warning">{auditWarning}</p>}
       {result && !result.error && result.items.length > 0 && <div className="detail-table-wrap"><table className="detail-table"><caption className="sr-only">Authentication methods</caption><thead><tr><th scope="col">Method</th><th scope="col">Type</th><th scope="col">Registered</th><th scope="col"><span className="sr-only">Actions</span></th></tr></thead><tbody>{result.items.map((method) => <tr key={method.id}><th scope="row" data-label="Method">{method.displayName}</th><td data-label="Type">{humanizeAuthMethodType(method.type)}{method.model && <span className="table-subtext">{method.model}</span>}<TechnicalDetails summary="Technical details" items={[{ label: 'Method type', value: method.type }]} /></td><td data-label="Registered">{method.createdDateTime ? formatDate(method.createdDateTime) : messages.usersUnavailableValue}</td><td data-label="Actions" className="detail-table__actions">{manageDecision && manageDecision.state !== 'hidden' && method.type !== 'passwordAuthenticationMethod' && (manageDecision.state === 'allowed'
-        ? <button type="button" className="button button--tertiary button--sm button--danger-text" onClick={() => setRemoveTarget(method)}>{messages.userAuthenticationMethodsRemove}</button>
+        ? <button type="button" className="button button--tertiary button--sm button--danger-text" onClick={() => { setActionError(null); setReasonValidationError(null); setRemoveTarget(method); }}>{messages.userAuthenticationMethodsRemove}</button>
         : <DisabledReason reason={managementDecisionReason(manageDecision)}><button type="button" className="button button--tertiary button--sm button--danger-text" disabled>{messages.userAuthenticationMethodsRemove}</button></DisabledReason>)}</td></tr>)}</tbody></table></div>}
       {decision.state !== 'allowed' && <p className="section-help">{messages.userAuthenticationMethodsReadOnly}</p>}
       {manageDecision && manageDecision.state !== 'hidden' && hasRemovableMethods && <ActionGroup tone="danger" description="Removes all registered methods except password. The user must register again.">{manageDecision.state === 'allowed'
-        ? <button type="button" className="button button--danger" onClick={() => setResetOpen(true)}>{messages.userAuthenticationMethodsReset}</button>
+        ? <button type="button" className="button button--danger" onClick={() => { setActionError(null); setReasonValidationError(null); setResetOpen(true); }}>{messages.userAuthenticationMethodsReset}</button>
         : <DisabledReason reason={managementDecisionReason(manageDecision)}><button type="button" className="button button--danger" disabled>{messages.userAuthenticationMethodsReset}</button></DisabledReason>}</ActionGroup>}
-      {removeTarget && <ConfirmationDialog title={messages.userAuthenticationMethodsRemoveTitle} target={removeTarget.displayName} proposedChange={messages.userAuthenticationMethodsRemoveDescription} requiredCapability="authentication.methods.manage" confirmLabel={messages.confirmRemoveMethod} consequence={messages.confirmRemoveMethodConsequence} tone="danger" busy={pending} onConfirm={() => void remove()} onCancel={() => { if (!pending) setRemoveTarget(null); }} />}
-      {resetOpen && <ConfirmationDialog title={messages.userAuthenticationMethodsResetTitle} target={userLabel || userId} proposedChange={messages.userAuthenticationMethodsResetDescription} requiredCapability="authentication.methods.manage" destructivePhrase="RESET MFA" confirmLabel={messages.confirmResetMfa} consequence={messages.confirmResetMfaConsequence} tone="danger" busy={pending} onConfirm={() => void resetMfa()} onCancel={() => { if (!pending) setResetOpen(false); }} />}
+      {removeTarget && <ReasonDialog title={messages.userAuthenticationMethodsRemoveTitle} target={removeTarget.displayName} proposedChange={messages.userAuthenticationMethodsRemoveDescription} requiredCapability="authentication.methods.manage" confirmLabel={messages.confirmRemoveMethod} consequence={messages.confirmRemoveMethodConsequence} tone="danger" busy={pending} reasonHint={getUserWriteReasonHint(reasonValidationError)} onConfirm={(reason) => void remove(reason)} onCancel={() => { if (!pending) { setRemoveTarget(null); setActionError(null); setReasonValidationError(null); } }} />}
+      {resetOpen && <ReasonDialog title={messages.userAuthenticationMethodsResetTitle} target={userLabel || userId} proposedChange={messages.userAuthenticationMethodsResetDescription} requiredCapability="authentication.methods.manage" destructivePhrase="RESET MFA" confirmLabel={messages.confirmResetMfa} consequence={messages.confirmResetMfaConsequence} tone="danger" busy={pending} reasonHint={getUserWriteReasonHint(reasonValidationError)} onConfirm={(reason) => void resetMfa(reason)} onCancel={() => { if (!pending) { setResetOpen(false); setActionError(null); setReasonValidationError(null); } }} />}
       {tapOpen && <TemporaryAccessPassDialog userId={userId} target={userLabel || userId} onClose={() => { setTapOpen(false); onTemporaryAccessPassOpenChange?.(false); }} onAuditWarning={onAuditWarning} />}
     </section>
   );
