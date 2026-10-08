@@ -22,10 +22,17 @@ import { WorkspaceNotificationsProvider } from '../notifications/WorkspaceNotifi
 export type SessionLoader = () => Promise<AppSession>;
 
 export function App({ loadCapabilities, loadSession, loadConnectionHealth, themePreferenceStore, signInAction }: { loadCapabilities?: CapabilityLoader; loadSession?: SessionLoader; loadConnectionHealth?: ConnectionHealthLoader; themePreferenceStore?: ThemePreferenceStore; signInAction?: () => Promise<void> }) {
-  if (isInvitationPath(window.location.pathname)) {
-    return <InvitationLandingPage nonce={window.location.pathname.slice('/invitations/'.length)} />;
+  const [pathname, setPathname] = useState(() => window.location.pathname);
+  useEffect(() => {
+    const updatePath = () => setPathname(window.location.pathname);
+    window.addEventListener('popstate', updatePath);
+    return () => window.removeEventListener('popstate', updatePath);
+  }, []);
+
+  if (isInvitationPath(pathname)) {
+    return <InvitationLandingPage nonce={pathname.slice('/invitations/'.length)} />;
   }
-  if (isConsentCallbackPath(window.location.pathname)) return <ConsentCallbackPage />;
+  if (isConsentCallbackPath(pathname)) return <ConsentCallbackPage />;
   if (loadCapabilities && loadSession) {
     return <ThemeProvider preferenceStore={themePreferenceStore}><AppExperience loadCapabilities={loadCapabilities} loadSession={loadSession} loadConnectionHealth={loadConnectionHealth} signInAction={signInAction} /></ThemeProvider>;
   }
