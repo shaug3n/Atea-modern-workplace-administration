@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Headers;
+using System.Data.Common;
 using System.Security.Claims;
 using System.Text;
 using System.Text.Encodings.Web;
@@ -15,6 +16,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
@@ -163,6 +165,84 @@ public sealed class FeedbackEndpointTests : IAsyncLifetime
         listed.StatusCode.Should().Be(HttpStatusCode.OK);
         var listBody = await listed.Content.ReadAsStringAsync();
         listBody.Should().Contain("Private subject").And.Contain("Private message");
+        (await db.AuditEvents.CountAsync()).Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Concurrent_identical_posts_share_one_receipt_submission_and_content_free_audit()
+    {
+        const int requestCount = 8;
+        var interceptor = new ConcurrentRetryLookupInterceptor(requestCount);
+        using var factory = CreateFactory(
+            new TestIdentity(TenantA, UserA, WorkspaceA),
+            retryLookupInterceptor: interceptor);
+        using var client = AuthorizedClient(factory);
+        var responses = await PostConcurrentlyAsync(
+            client,
+            Enumerable.Repeat(
+                ("concurrent-identical-key", "Bug", "Concurrent private subject", "Concurrent private message"),
+                requestCount).ToArray());
+        var bodies = await Task.WhenAll(responses.Select(response => response.Content.ReadAsStringAsync()));
+
+        responses.Select(response => response.StatusCode).Should().OnlyContain(status =>
+            status == HttpStatusCode.Created || status == HttpStatusCode.OK);
+        bodies.Should().OnlyContain(body => body == bodies[0]);
+        bodies[0].Should()
+            .NotContain("Concurrent private subject")
+            .And.NotContain("Concurrent private message")
+            .And.NotContain("concurrent-identical-key");
+        interceptor.LookupCount.Should().BeGreaterThanOrEqualTo(requestCount * 2 - 1);
+
+        await using var scope = factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<WorkplaceDbContext>();
+        (await SubmissionCountAsync(db)).Should().Be(1);
+        var audits = await db.AuditEvents.ToListAsync();
+        audits.Should().ContainSingle();
+        audits[0].Action.Should().Be("feedback.submitted");
+        var auditJson = JsonSerializer.Serialize(audits[0]);
+        auditJson.Should().NotContain("Concurrent private subject")
+            .And.NotContain("Concurrent private message")
+            .And.NotContain("concurrent-identical-key");
+    }
+
+    [Fact]
+    public async Task Concurrent_changed_payloads_with_same_key_create_once_and_conflict_for_the_other()
+    {
+        const int requestCount = 8;
+        var interceptor = new ConcurrentRetryLookupInterceptor(requestCount);
+        using var factory = CreateFactory(
+            new TestIdentity(TenantA, UserA, WorkspaceA),
+            retryLookupInterceptor: interceptor);
+        using var client = AuthorizedClient(factory);
+        var responses = await PostConcurrentlyAsync(
+            client,
+            Enumerable.Range(0, requestCount)
+                .Select(index => (
+                    "concurrent-changed-key",
+                    "Bug",
+                    $"Private subject {index}",
+                    $"Private message {index}"))
+                .ToArray());
+        var bodies = await Task.WhenAll(responses.Select(response => response.Content.ReadAsStringAsync()));
+
+        var statuses = responses.Select(response => response.StatusCode).ToArray();
+        statuses.Should().OnlyContain(status =>
+            status == HttpStatusCode.Created || status == HttpStatusCode.Conflict);
+        statuses.Count(status => status == HttpStatusCode.Conflict).Should().Be(requestCount - 1);
+        responses.Count(response => response.StatusCode == HttpStatusCode.Created).Should().Be(1);
+        interceptor.LookupCount.Should().BeGreaterThanOrEqualTo(requestCount * 2 - 1);
+        foreach (var body in bodies)
+        {
+            body.Should().NotContain("Private subject")
+                .And.NotContain("Private message")
+                .And.NotContain("concurrent-changed-key");
+        }
+        bodies[Array.FindIndex(responses, response => response.StatusCode == HttpStatusCode.Conflict)]
+            .Should().Contain("idempotency_key_reused");
+
+        await using var scope = factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<WorkplaceDbContext>();
+        (await SubmissionCountAsync(db)).Should().Be(1);
         (await db.AuditEvents.CountAsync()).Should().Be(1);
     }
 
@@ -325,6 +405,24 @@ public sealed class FeedbackEndpointTests : IAsyncLifetime
         return await client.SendAsync(request);
     }
 
+    private async Task<HttpResponseMessage[]> PostConcurrentlyAsync(
+        HttpClient client,
+        (string Key, string Category, string Subject, string Message)[] posts)
+    {
+        var readyCount = 0;
+        var start = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        async Task<HttpResponseMessage> SendWhenReadyAsync((string Key, string Category, string Subject, string Message) post)
+        {
+            if (Interlocked.Increment(ref readyCount) == posts.Length)
+                start.SetResult();
+            await start.Task;
+            return await PostAsync(client, post.Key, post.Category, post.Subject, post.Message);
+        }
+
+        return await Task.WhenAll(posts.Select(SendWhenReadyAsync));
+    }
+
     private static async Task<HttpResponseMessage> PostRawAsync(HttpClient client, string payload, string? key)
     {
         using var request = new HttpRequestMessage(HttpMethod.Post, CreateUrl)
@@ -339,14 +437,19 @@ public sealed class FeedbackEndpointTests : IAsyncLifetime
     private static Task<int> SubmissionCountAsync(WorkplaceDbContext db) =>
         db.Database.SqlQuery<int>($"SELECT COUNT(*)::int AS \"Value\" FROM \"FeedbackSubmissions\"").SingleAsync();
 
-    private WebApplicationFactory<Program> CreateFactory(TestIdentity identity, IReadOnlyCollection<string>? enabledModules = null) =>
-        new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
+    private WebApplicationFactory<Program> CreateFactory(
+        TestIdentity identity,
+        IReadOnlyCollection<string>? enabledModules = null,
+        DbCommandInterceptor? retryLookupInterceptor = null)
+    {
+        var databaseConnectionString = postgres.GetConnectionString();
+        return new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
         {
             builder.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
             {
                 ["AzureAd:Audience"] = "api://atea-unified-workplace-api",
                 ["AzureAd:ClientId"] = "test-client-id",
-                ["ConnectionStrings:WorkplaceDb"] = postgres.GetConnectionString()
+                ["ConnectionStrings:WorkplaceDb"] = databaseConnectionString
             }));
             builder.ConfigureServices(services =>
             {
@@ -361,11 +464,45 @@ public sealed class FeedbackEndpointTests : IAsyncLifetime
                 services.RemoveAll<IWorkspaceSettingsService>();
                 services.AddSingleton<IWorkspaceSettingsService>(new FixtureWorkspaceSettingsService(enabledModules ?? ["feedback"]));
                 services.RemoveAll<DbContextOptions<WorkplaceDbContext>>();
-                services.AddDbContext<WorkplaceDbContext>(options => options.UseNpgsql(postgres.GetConnectionString()));
+                services.AddDbContext<WorkplaceDbContext>(options =>
+                {
+                    options.UseNpgsql(databaseConnectionString);
+                    if (retryLookupInterceptor is not null)
+                        options.AddInterceptors(retryLookupInterceptor);
+                });
             });
         });
+    }
 
     private sealed record TestIdentity(Guid TenantId, Guid ObjectId, Guid? WorkspaceId, IReadOnlyCollection<string>? ModuleKeys = null);
+
+    private sealed class ConcurrentRetryLookupInterceptor(int expectedLookups) : DbCommandInterceptor
+    {
+        private readonly TaskCompletionSource ready = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private int lookupCount;
+
+        public int LookupCount => Volatile.Read(ref lookupCount);
+
+        public override async ValueTask<DbDataReader> ReaderExecutedAsync(
+            DbCommand command,
+            CommandExecutedEventData eventData,
+            DbDataReader result,
+            CancellationToken cancellationToken = default)
+        {
+            if (IsRetryKeyLookup(command))
+            {
+                var currentLookupCount = Interlocked.Increment(ref lookupCount);
+                if (currentLookupCount == expectedLookups)
+                    ready.TrySetResult();
+                await ready.Task.WaitAsync(cancellationToken);
+            }
+            return result;
+        }
+
+        private static bool IsRetryKeyLookup(DbCommand command) =>
+            command.CommandText.TrimStart().StartsWith("SELECT", StringComparison.OrdinalIgnoreCase)
+            && command.CommandText.Contains("\"RetryKeyHash\"", StringComparison.Ordinal);
+    }
 
     private sealed class FixtureMembershipReader(TestIdentity identity) : IWorkspaceMembershipReader
     {

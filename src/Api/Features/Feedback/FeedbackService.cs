@@ -37,59 +37,68 @@ public sealed class FeedbackService(WorkplaceDbContext db, IAuditWriter auditWri
         var retryKeyHash = Hash(idempotencyKey);
         var fingerprint = Fingerprint(request);
         var nowUtc = DateTimeOffset.UtcNow;
-        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
-
-        var existing = await FindByRetryKeyAsync(context, retryKeyHash, cancellationToken);
-        if (existing is not null)
-            return ResolveExisting(existing, fingerprint, nowUtc);
-
-        var submission = new FeedbackSubmission
-        {
-            Id = Guid.NewGuid(),
-            WorkspaceId = context.Membership.WorkspaceId,
-            SubmitterObjectId = context.User.ObjectId,
-            Category = request.Category,
-            Subject = request.Subject,
-            Message = request.Message,
-            CreatedAt = nowUtc,
-            ExpiresAt = nowUtc.Add(RetentionPeriod),
-            RetryKeyHash = retryKeyHash,
-            PayloadFingerprint = fingerprint
-        };
-        db.FeedbackSubmissions.Add(submission);
-
+        FeedbackSubmission? submission = null;
         try
         {
-            await db.SaveChangesAsync(cancellationToken);
+            await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+
+            var existing = await FindByRetryKeyAsync(context, retryKeyHash, cancellationToken);
+            if (existing is not null)
+                return ResolveExisting(existing, fingerprint, nowUtc);
+
+            submission = new FeedbackSubmission
+            {
+                Id = Guid.NewGuid(),
+                WorkspaceId = context.Membership.WorkspaceId,
+                SubmitterObjectId = context.User.ObjectId,
+                Category = request.Category,
+                Subject = request.Subject,
+                Message = request.Message,
+                CreatedAt = nowUtc,
+                ExpiresAt = nowUtc.Add(RetentionPeriod),
+                RetryKeyHash = retryKeyHash,
+                PayloadFingerprint = fingerprint
+            };
+            db.FeedbackSubmissions.Add(submission);
+
+            try
+            {
+                await db.SaveChangesAsync(cancellationToken);
+            }
+            catch (DbUpdateException exception) when (IsRetryKeyUniqueViolation(exception))
+            {
+                await transaction.RollbackAsync(cancellationToken);
+                throw;
+            }
+
+            await auditWriter.WriteAsync(new AuditEvent
+            {
+                WorkspaceId = context.Membership.WorkspaceId,
+                TenantId = context.User.TenantId,
+                ActorTenantId = context.User.TenantId,
+                ActorObjectId = context.User.ObjectId,
+                Action = "feedback.submitted",
+                TargetType = "feedback_submission",
+                TargetId = submission.Id.ToString("D"),
+                Outcome = "success",
+                Timestamp = nowUtc,
+                SafeMetadataJson = "{}"
+            }, cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+
+            return new FeedbackCreateResult(
+                FeedbackCreateStatus.Created,
+                new FeedbackSubmissionReceipt(submission.Id, submission.CreatedAt, submission.ExpiresAt));
         }
         catch (DbUpdateException exception) when (IsRetryKeyUniqueViolation(exception))
         {
-            await transaction.RollbackAsync(cancellationToken);
-            db.Entry(submission).State = EntityState.Detached;
-            existing = await FindByRetryKeyAsync(context, retryKeyHash, cancellationToken);
+            if (submission is not null)
+                db.Entry(submission).State = EntityState.Detached;
+            var existing = await FindByRetryKeyAsync(context, retryKeyHash, cancellationToken);
             if (existing is null)
                 throw;
             return ResolveExisting(existing, fingerprint, nowUtc);
         }
-
-        await auditWriter.WriteAsync(new AuditEvent
-        {
-            WorkspaceId = context.Membership.WorkspaceId,
-            TenantId = context.User.TenantId,
-            ActorTenantId = context.User.TenantId,
-            ActorObjectId = context.User.ObjectId,
-            Action = "feedback.submitted",
-            TargetType = "feedback_submission",
-            TargetId = submission.Id.ToString("D"),
-            Outcome = "success",
-            Timestamp = nowUtc,
-            SafeMetadataJson = "{}"
-        }, cancellationToken);
-        await transaction.CommitAsync(cancellationToken);
-
-        return new FeedbackCreateResult(
-            FeedbackCreateStatus.Created,
-            new FeedbackSubmissionReceipt(submission.Id, submission.CreatedAt, submission.ExpiresAt));
     }
 
     public async Task<FeedbackPageResponse> GetMineAsync(
