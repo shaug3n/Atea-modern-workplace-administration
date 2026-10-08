@@ -8,17 +8,27 @@ const auth = vi.hoisted(() => ({
   accounts: [{ homeAccountId: 'account-1', localAccountId: 'object-1', tenantId: '22222222-2222-2222-2222-222222222222', username: 'alex@example.com' }],
   authenticated: true,
   inProgress: 'none',
+  activeAccount: null as any,
+  eventCallback: null as ((event: { eventType: string; payload?: unknown }) => void) | null,
   instance: {
     loginRedirect: vi.fn(),
     logoutRedirect: vi.fn(),
     acquireTokenSilent: vi.fn(),
-    acquireTokenRedirect: vi.fn()
+    acquireTokenRedirect: vi.fn(),
+    getActiveAccount: vi.fn(() => auth.activeAccount),
+    setActiveAccount: vi.fn((account: unknown) => { auth.activeAccount = account; }),
+    addEventCallback: vi.fn((callback: (event: { eventType: string; payload?: unknown }) => void) => {
+      auth.eventCallback = callback;
+      return 'callback-id';
+    }),
+    removeEventCallback: vi.fn(),
   }
 }));
 
 vi.mock('@azure/msal-browser', () => ({
   InteractionRequiredAuthError: class InteractionRequiredAuthError extends Error {},
   InteractionStatus: { None: 'none', Startup: 'startup' },
+  EventType: { LOGIN_SUCCESS: 'msal:loginSuccess' },
   PublicClientApplication: class PublicClientApplication {}
 }));
 vi.mock('@azure/msal-react', () => ({
@@ -49,6 +59,8 @@ describe('AuthProvider behavior', () => {
     auth.authenticated = true;
     auth.inProgress = 'none';
     auth.accounts = [auth.account];
+    auth.activeAccount = null;
+    auth.eventCallback = null;
     vi.clearAllMocks();
     auth.instance.acquireTokenSilent.mockResolvedValue({ accessToken: 'api-token' });
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('{}')));
@@ -134,6 +146,45 @@ describe('AuthProvider behavior', () => {
 
     await waitFor(() => expect(auth.instance.acquireTokenSilent).toHaveBeenCalledWith({
       account: matchingAccount,
+      scopes: [expect.any(String)],
+    }));
+  });
+
+  it('does not silently choose the first of multiple same-tenant accounts and offers tenant-pinned selection', async () => {
+    const tenantId = '11111111-1111-1111-1111-111111111111';
+    auth.accounts = [
+      { homeAccountId: 'first-account', localAccountId: 'first', tenantId, username: 'first@example.com' },
+      { homeAccountId: 'second-account', localAccountId: 'second', tenantId, username: 'second@example.com' },
+    ];
+    writePendingFlow({
+      kind: 'invitation', nonce: 'A'.repeat(43), challenge: 'signed-challenge', tenantId,
+      expiresAt: new Date(Date.now() + 60_000).toISOString(), step: 'tenant_sign_in_started',
+    });
+    render(<AuthProvider instance={auth.instance as never}><Harness /></AuthProvider>);
+
+    expect(auth.instance.acquireTokenSilent).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Choose account' }));
+
+    await waitFor(() => expect(auth.instance.loginRedirect).toHaveBeenCalledWith(expect.objectContaining({
+      authority: 'https://login.microsoftonline.com/11111111-1111-1111-1111-111111111111',
+      prompt: 'select_account',
+      redirectStartPage: window.location.href,
+    })));
+  });
+
+  it('sets the account returned by the MSAL LOGIN_SUCCESS event as active', async () => {
+    const selectedAccount = { homeAccountId: 'selected-account', localAccountId: 'selected', tenantId: auth.account.tenantId, username: 'selected@example.com' };
+    auth.accounts = [auth.account, selectedAccount];
+    const rendered = render(<AuthProvider instance={auth.instance as never}><Harness /></AuthProvider>);
+    await waitFor(() => expect(auth.instance.addEventCallback).toHaveBeenCalledOnce());
+
+    auth.eventCallback?.({ eventType: 'msal:loginSuccess', payload: { account: selectedAccount } });
+    expect(auth.instance.setActiveAccount).toHaveBeenCalledWith(selectedAccount);
+    rendered.rerender(<AuthProvider instance={auth.instance as never}><Harness /></AuthProvider>);
+    fireEvent.click(screen.getByText('token'));
+
+    await waitFor(() => expect(auth.instance.acquireTokenSilent).toHaveBeenCalledWith({
+      account: selectedAccount,
       scopes: [expect.any(String)],
     }));
   });

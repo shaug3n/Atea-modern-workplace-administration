@@ -1,12 +1,12 @@
-import { InteractionRequiredAuthError, InteractionStatus, PublicClientApplication, type AccountInfo } from '@azure/msal-browser';
+import { EventType, InteractionRequiredAuthError, InteractionStatus, PublicClientApplication, type AccountInfo, type AuthenticationResult } from '@azure/msal-browser';
 import { MsalProvider, useIsAuthenticated, useMsal } from '@azure/msal-react';
-import { createContext, useContext, useMemo, useState, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { messages } from '../app/messages';
 import { apiScope, msalConfig, tenantAuthority } from './msalConfig';
 import { readPendingFlow } from '../features/invitations/pendingFlow';
 
 const msalInstance = new PublicClientApplication(msalConfig);
-type AuthContextValue = { account: AccountInfo | null; getApiToken: (expectedTenantId?: string) => Promise<string>; signIn: () => Promise<void>; signInForTenant: (tenantId: string, returnPath: string) => Promise<void>; switchAccount: () => Promise<void>; signOut: () => Promise<void> };
+type AuthContextValue = { account: AccountInfo | null; getApiToken: (expectedTenantId?: string) => Promise<string>; signIn: () => Promise<void>; signInForTenant: (tenantId: string, returnPath: string) => Promise<void>; selectAccount: (tenantId?: string) => Promise<void>; switchAccount: () => Promise<void>; signOut: () => Promise<void> };
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function createAuthActions(
@@ -45,6 +45,14 @@ export function createAuthActions(
         redirectStartPage: returnUrl.href,
       });
     },
+    selectAccount: async (tenantId) => {
+      await instance.loginRedirect({
+        scopes: [apiScope],
+        prompt: 'select_account',
+        redirectStartPage: window.location.href,
+        ...(tenantId ? { authority: tenantAuthority(tenantId) } : {}),
+      });
+    },
     switchAccount: async () => {
       setError(null);
       await instance.logoutRedirect({ account: account ?? undefined, onRedirectNavigate: () => false });
@@ -70,6 +78,16 @@ function AuthenticatedContent({ children }: { children: ReactNode }) {
   const { instance, accounts, inProgress } = useMsal();
   const isAuthenticated = useIsAuthenticated();
   const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    const callbackId = instance.addEventCallback((message) => {
+      if (message.eventType !== EventType.LOGIN_SUCCESS) return;
+      const account = (message.payload as AuthenticationResult | null)?.account;
+      if (account) instance.setActiveAccount(account);
+    });
+    return () => {
+      if (callbackId) instance.removeEventCallback(callbackId);
+    };
+  }, [instance]);
   const activeAccount = typeof instance.getActiveAccount === 'function' ? instance.getActiveAccount() : null;
   const pendingFlow = readPendingFlow();
   const expectedTenantId = pendingFlow?.tenantId;
@@ -86,6 +104,9 @@ function AuthenticatedContent({ children }: { children: ReactNode }) {
   const isConsentCallbackRoute = ['/onboarding/consent/callback', '/consent-callback'].includes(window.location.pathname) &&
     readPendingFlow()?.kind !== 'workspace';
 
+  if (isAuthenticated && !account && accounts.length > 0) {
+    return <main role="main"><h1>Choose an account to continue</h1><button type="button" onClick={() => value.selectAccount(expectedTenantId).catch(() => { console.error('MSAL account selection failed'); setError(messages.authSignInError); })}>{messages.authChooseAccount}</button>{error && <p role="alert">{error}</p>}</main>;
+  }
   if (!isAuthenticated && !isPublicInvitationRoute && !isConsentCallbackRoute) {
     const signInInProgress = inProgress !== InteractionStatus.None;
     return <main role="main"><h1>{messages.authSignInTitle}</h1><button type="button" disabled={signInInProgress} onClick={() => value.signIn().catch(() => { console.error('MSAL sign-in failed'); setError(messages.authSignInError); })}>{inProgress === InteractionStatus.Startup ? messages.authPreparing : messages.authSignIn}</button>{error && <p role="alert">{error}</p>}</main>;
