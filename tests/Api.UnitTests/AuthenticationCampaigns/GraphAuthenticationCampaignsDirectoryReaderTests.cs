@@ -61,6 +61,43 @@ public sealed class GraphAuthenticationCampaignsDirectoryReaderTests
         transport.Requests.Should().HaveCount(2);
     }
 
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task Blank_initial_continuation_link_is_rejected_with_partial_rows(string nextLink)
+    {
+        var transport = new RecordingTransport(
+            Success($$"""{"value":[{"id":"user-1"}],"@odata.nextLink":"{{nextLink}}"}"""));
+
+        var result = await new GraphAuthenticationCampaignsDirectoryReader(new RecordingFactory(transport))
+            .ReadAsync(Workspace, CancellationToken.None);
+
+        result.Error.Should().NotBeNull();
+        result.Error!.Category.Should().Be("invalid_response");
+        result.PartialData.Should().BeTrue();
+        result.Users.Keys.Should().Equal("user-1");
+        transport.Requests.Should().ContainSingle();
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task Blank_later_page_continuation_link_is_rejected_with_prior_rows(string nextLink)
+    {
+        var transport = new RecordingTransport(
+            Success("""{"value":[{"id":"user-1"}],"@odata.nextLink":"/v1.0/users?$skiptoken=page2"}"""),
+            Success($$"""{"value":[{"id":"user-2"}],"@odata.nextLink":"{{nextLink}}"}"""));
+
+        var result = await new GraphAuthenticationCampaignsDirectoryReader(new RecordingFactory(transport))
+            .ReadAsync(Workspace, CancellationToken.None);
+
+        result.Error.Should().NotBeNull();
+        result.Error!.Category.Should().Be("invalid_response");
+        result.PartialData.Should().BeTrue();
+        result.Users.Keys.Should().Equal("user-1", "user-2");
+        transport.Requests.Should().HaveCount(2);
+    }
+
     [Fact]
     public async Task Cancellation_is_passed_to_the_transport()
     {

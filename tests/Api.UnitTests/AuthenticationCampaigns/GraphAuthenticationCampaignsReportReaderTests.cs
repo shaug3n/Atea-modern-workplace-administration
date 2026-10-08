@@ -83,6 +83,43 @@ public sealed class GraphAuthenticationCampaignsReportReaderTests
         transport.Requests.Should().HaveCount(2);
     }
 
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task Blank_initial_continuation_link_is_rejected_with_partial_rows(string nextLink)
+    {
+        var transport = new RecordingTransport(
+            Success($$"""{"value":[{"id":"user-1"}],"@odata.nextLink":"{{nextLink}}"}"""));
+
+        var result = await new GraphAuthenticationCampaignsReportReader(new RecordingFactory(transport))
+            .ReadAsync(Workspace, CancellationToken.None);
+
+        result.Error.Should().NotBeNull();
+        result.Error!.Category.Should().Be("invalid_response");
+        result.PartialData.Should().BeTrue();
+        result.Records.Select(record => record.Id).Should().Equal("user-1");
+        transport.Requests.Should().ContainSingle();
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task Blank_later_page_continuation_link_is_rejected_with_prior_rows(string nextLink)
+    {
+        var transport = new RecordingTransport(
+            Success("""{"value":[{"id":"user-1"}],"@odata.nextLink":"/v1.0/reports/authenticationMethods/userRegistrationDetails?$skiptoken=page2"}"""),
+            Success($$"""{"value":[{"id":"user-2"}],"@odata.nextLink":"{{nextLink}}"}"""));
+
+        var result = await new GraphAuthenticationCampaignsReportReader(new RecordingFactory(transport))
+            .ReadAsync(Workspace, CancellationToken.None);
+
+        result.Error.Should().NotBeNull();
+        result.Error!.Category.Should().Be("invalid_response");
+        result.PartialData.Should().BeTrue();
+        result.Records.Select(record => record.Id).Should().Equal("user-1", "user-2");
+        transport.Requests.Should().HaveCount(2);
+    }
+
     [Fact]
     public async Task Initial_page_failure_returns_an_error_without_fabricating_rows()
     {

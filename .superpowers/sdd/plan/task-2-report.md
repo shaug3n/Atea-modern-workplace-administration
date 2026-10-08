@@ -55,3 +55,39 @@ None. The Task 2 boundary intentionally does not add the Task 3 API endpoint or 
 ## Commit
 
 `feat: read authentication registration report` (includes the required `Co-authored-by` trailer).
+
+## Round 1 reader-review fix
+
+- Changed both Graph readers to treat only an absent or JSON `null` `@odata.nextLink` as end-of-pagination. Empty and whitespace-only string links now produce `invalid_response`; rows already read remain in the result with `PartialData=true`.
+- Added report-reader and directory-reader tests for empty and whitespace-only links on both the first and later pages. The tests verify invalid-response errors, retained rows, and no request for a blank link.
+
+### TDD verification
+
+**RED command:**
+
+```sh
+DOTNET_ROOT=/Users/sondre.haugen/.copilot/session-state/5dfd44f8-a6cc-432d-b416-acb907b2aa35/files/dotnet PATH=/Users/sondre.haugen/.copilot/session-state/5dfd44f8-a6cc-432d-b416-acb907b2aa35/files/dotnet:$PATH dotnet test tests/Api.UnitTests/Api.UnitTests.csproj --filter 'FullyQualifiedName~Blank_initial_continuation_link|FullyQualifiedName~Blank_later_page_continuation_link' --no-restore
+```
+
+**RED output:**
+
+```text
+Expected result.Error not to be <null>.
+Failed!  - Failed:     8, Passed:     0, Skipped:     0, Total:     8, Duration: 21 ms - Api.UnitTests.dll (net10.0)
+```
+
+**GREEN command:**
+
+```sh
+DOTNET_ROOT=/Users/sondre.haugen/.copilot/session-state/5dfd44f8-a6cc-432d-b416-acb907b2aa35/files/dotnet PATH=/Users/sondre.haugen/.copilot/session-state/5dfd44f8-a6cc-432d-b416-acb907b2aa35/files/dotnet:$PATH dotnet test tests/Api.UnitTests/Api.UnitTests.csproj --filter 'FullyQualifiedName~GraphAuthenticationCampaignsReportReaderTests|FullyQualifiedName~GraphAuthenticationCampaignsDirectoryReaderTests' --no-restore
+```
+
+**GREEN output:**
+
+```text
+Passed!  - Failed:     0, Passed:    25, Skipped:     0, Total:    25, Duration: 30 ms - Api.UnitTests.dll (net10.0)
+```
+
+### Fix commit
+
+`fix: reject blank authentication campaign continuation links` (includes the required `Co-authored-by` trailer).

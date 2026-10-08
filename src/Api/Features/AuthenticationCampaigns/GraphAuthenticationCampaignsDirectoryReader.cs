@@ -131,7 +131,7 @@ public sealed class GraphAuthenticationCampaignsDirectoryReader(IDelegatedGraphC
         var link = next.GetString();
         if (string.IsNullOrWhiteSpace(link))
         {
-            return true;
+            return false;
         }
 
         if (link.Contains("://", StringComparison.Ordinal)
