@@ -27,6 +27,14 @@ public static class CapabilityEvaluator
         EntraRoleCatalog.PrivilegedAuthenticationAdministratorTemplateId
     };
 
+    private static readonly IReadOnlySet<string> AuthenticationCampaignReaderRoles = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+    {
+        EntraRoleCatalog.ReportsReaderTemplateId,
+        EntraRoleCatalog.SecurityReaderTemplateId,
+        EntraRoleCatalog.SecurityAdministratorTemplateId,
+        EntraRoleCatalog.GlobalReaderTemplateId
+    };
+
     private static readonly IReadOnlyDictionary<string, CapabilityRequirement> Requirements = new Dictionary<string, CapabilityRequirement>(StringComparer.OrdinalIgnoreCase)
     {
         [Capability.UsersView] = new(
@@ -104,7 +112,11 @@ public static class CapabilityEvaluator
             WriteScopes: GraphScopeCatalog.AuthenticationMethodWriteScopes,
             RoleTemplateIds: [EntraRoleCatalog.GlobalAdministratorTemplateId, EntraRoleCatalog.AuthenticationAdministratorTemplateId, EntraRoleCatalog.PrivilegedAuthenticationAdministratorTemplateId],
             MissingReadState: CapabilityState.ConsentRequired,
-            ReadOnlyRoleTemplateIds: [EntraRoleCatalog.GlobalReaderTemplateId])
+            ReadOnlyRoleTemplateIds: [EntraRoleCatalog.GlobalReaderTemplateId]),
+        [Capability.AuthenticationCampaignsView] = new(
+            ReadScopes: GraphScopeCatalog.AuthenticationCampaignReportScopes,
+            RoleTemplateIds: AuthenticationCampaignReaderRoles,
+            MissingReadState: CapabilityState.ConsentRequired)
     };
 
     public static CapabilitySnapshot Evaluate(GraphAuthorizationSnapshot snapshot, WorkspaceMembership workspaceMembership)
@@ -210,6 +222,50 @@ public static class CapabilityEvaluator
             .Where(IsTenantWide)
             .Select(role => role.RoleTemplateId)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        if (capability == Capability.AuthenticationCampaignsView)
+        {
+            if (tenantWideActiveTemplates.Overlaps(requirement.RoleTemplateIds))
+            {
+                return new CapabilityDecision(capability, CapabilityState.Allowed, "active_role");
+            }
+
+            var scopedActiveRole = activeRoles.FirstOrDefault(role =>
+                requirement.RoleTemplateIds.Contains(role.RoleTemplateId, StringComparer.OrdinalIgnoreCase)
+                && !IsTenantWide(role));
+            if (scopedActiveRole is not null)
+            {
+                return new CapabilityDecision(
+                    capability,
+                    CapabilityState.Hidden,
+                    "directory_role_scope_not_tenant_wide",
+                    scopedActiveRole.RoleTemplateId);
+            }
+
+            var campaignEligibleRoles = snapshot.DirectoryRoles
+                .Where(role =>
+                    string.Equals(role.AssignmentState, DirectoryRoleAssignmentState.Eligible, StringComparison.OrdinalIgnoreCase)
+                    && requirement.RoleTemplateIds.Contains(role.RoleTemplateId, StringComparer.OrdinalIgnoreCase))
+                .ToArray();
+            var tenantWideEligibleRole = campaignEligibleRoles.FirstOrDefault(IsTenantWide);
+            if (tenantWideEligibleRole is not null)
+            {
+                return PimDecision(capability, tenantWideEligibleRole);
+            }
+
+            var campaignScopedEligibleRole = campaignEligibleRoles.FirstOrDefault(role => !IsTenantWide(role));
+            return campaignScopedEligibleRole is not null
+                ? new CapabilityDecision(
+                    capability,
+                    CapabilityState.Hidden,
+                    "directory_role_scope_not_tenant_wide",
+                    campaignScopedEligibleRole.RoleTemplateId)
+                : new CapabilityDecision(
+                    capability,
+                    CapabilityState.Hidden,
+                    "directory_role_required",
+                    requirement.RoleTemplateIds.First());
+        }
 
         if (capability == Capability.UsersView)
         {

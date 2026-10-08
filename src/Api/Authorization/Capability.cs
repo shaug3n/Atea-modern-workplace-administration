@@ -34,7 +34,6 @@ public static class Capability
 
     public static readonly IReadOnlyList<string> Reserved =
     [
-        AuthenticationCampaignsView,
         AuthenticationCampaignsManage,
         LicensesHygieneView,
         PlatformAboutView,
@@ -64,6 +63,7 @@ public static class Capability
         DevicesLapsReveal,
         AuthenticationMethodsView,
         AuthenticationMethodsManage,
+        AuthenticationCampaignsView,
         AuditView,
         WorkspaceSettingsManage,
         WorkspaceMembersManage
@@ -114,6 +114,7 @@ public static class EntraRoleCatalog
     public const string HelpdeskAdministratorTemplateId = "729827e3-9c14-49f7-bb1b-9608f156bbb8";
     public const string SecurityAdministratorTemplateId = "194ae4cb-b126-40b2-bd5b-6091b380977d";
     public const string SecurityReaderTemplateId = "5d6b6bb7-de71-4623-b4af-96380a352509";
+    public const string ReportsReaderTemplateId = "4a5d8f65-41da-4de4-8968-e035b65339cf";
 
     // These are guidance lists for eligible PIM roles; Graph remains the final authority
     // for device ownership, custom roles, scope, and the requested recovery record.
@@ -147,6 +148,7 @@ public static class EntraRoleCatalog
         [IntuneAdministratorTemplateId] = "Intune Administrator",
         [HelpdeskAdministratorTemplateId] = "Helpdesk Administrator",
         [SecurityAdministratorTemplateId] = "Security Administrator",
-        [SecurityReaderTemplateId] = "Security Reader"
+        [SecurityReaderTemplateId] = "Security Reader",
+        [ReportsReaderTemplateId] = "Reports Reader"
     };
 }
