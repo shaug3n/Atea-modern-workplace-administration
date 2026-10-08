@@ -85,3 +85,21 @@ test('reserved capability names match FE and BE', async () => {
   ]);
   assert.deepEqual(backendValues, frontendValues);
 });
+
+test('module inventory labels reserved candidates planned and not active', async () => {
+  const inventory = await readFile('../../docs/module-inventory.md', 'utf8');
+  const plannedCandidates = [
+    'Passkeys',
+    'MFA campaigns',
+    'License Hygiene',
+    'About',
+    'Feedback',
+  ];
+
+  for (const candidate of plannedCandidates) {
+    const row = inventory.split('\n').find((line) => line.startsWith(`| ${candidate} |`));
+    assert.ok(row, `${candidate} should have an inventory row`);
+    assert.match(row, /planned wave 1/i, `${candidate} should be planned for wave 1`);
+    assert.match(row, /not shipped, enabled, validated, or granted/i, `${candidate} should be explicitly inactive`);
+  }
+});
