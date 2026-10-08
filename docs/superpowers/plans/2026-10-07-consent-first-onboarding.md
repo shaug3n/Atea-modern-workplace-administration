@@ -821,21 +821,21 @@ git commit -m "feat(web): finish consent-first invitation onboarding"
 - Documentation describes the actual API, manifest, script flags, environment mappings, callback URIs, test commands and rollout prerequisite; it does not claim live-tenant validation.
 - Verification consumes all test suites and build/contract commands established above. Container-backed integration tests use `Testcontainers.PostgreSql`; `DatabaseMigrationRunnerTests` starts PostgreSQL 16 Alpine without a Docker-unavailable skip, while some other container tests explicitly skip when Docker is absent.
 
-- [ ] **Step 1: Update documentation from the implemented interfaces.**
+- [x] **Step 1: Update documentation from the implemented interfaces.**
 
 Document domain-or-GUID operator provisioning, explicit choice of tenant (no email-domain inference), the anonymous one-link consent-first sequence, the delegated-only role/PIM boundary, customer SPA `knownClientApplications` bundling and API-resource `/.default` versus retained legacy Graph `/.default`. Add script dry-run/`--apply` instructions, new runtime mappings, exact primary callback registration, PostgreSQL/Docker requirements, failure/recovery cases, safe evidence rules, migration-before-app rollout, opt-in fresh-tenant acceptance gate and rollback behavior. Clarify that consent-first validation must run on the configured primary origin and cannot copy pending `sessionStorage` to a candidate host.
 
-- [ ] **Step 2: Run API unit tests.**
+- [x] **Step 2: Run API unit tests.**
 
 Run: `dotnet test tests/Api.UnitTests/Api.UnitTests.csproj`
 Expected: PASS.
 
-- [ ] **Step 3: Run API integration tests with Docker available.**
+- [x] **Step 3: Run API integration tests with Docker available.**
 
 Run: `dotnet test tests/Api.IntegrationTests/Api.IntegrationTests.csproj`
 Expected: PASS; Testcontainers PostgreSQL migration, atomicity and race tests execute. If Docker is unavailable, record the environmental failure/skip accurately; do not replace these tests with an in-memory database.
 
-- [ ] **Step 4: Run all web tests and the production build.**
+- [x] **Step 4: Run all web tests and the production build.**
 
 Run: `npm test --prefix tests/Web.UnitTests`
 Run: `npm run test:behavior --prefix src/Web -- --run`
@@ -843,19 +843,19 @@ Run: `npm test --prefix tests/Web.E2E`
 Run: `npm run build --prefix src/Web`
 Expected: PASS; the `tests/Web.E2E` command remains Vitest/jsdom and is not represented as a real browser or Entra acceptance test.
 
-- [ ] **Step 5: Run infra/Python and Compose contract checks.**
+- [x] **Step 5: Run infra/Python and Compose contract checks.**
 
 Run: `python3 infra/tests/test_configure_entra_onboarding.py`
 Run: `python3 infra/tests/validate_contract.py`
 Run: `docker compose config --quiet`
 Expected: PASS without Azure credentials or live registration changes.
 
-- [ ] **Step 6: Review the full diff and confirm only documentation/integration fixes accompany this final task.**
+- [x] **Step 6: Review the full diff and confirm only documentation/integration fixes accompany this final task.**
 
 Run: `git diff --check && git status --short`
 Expected: no whitespace errors; only intended spec-related files are modified.
 
-- [ ] **Step 7: Commit.**
+- [x] **Step 7: Commit.**
 
 ```bash
 git add README.md docs/testing/test-tenant.md docs/operations/azure-deployment.md docs/security/entra-app-registration.md docs/security/threat-model.md docs/security/data-isolation.md

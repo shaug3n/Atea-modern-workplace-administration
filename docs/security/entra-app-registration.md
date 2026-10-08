@@ -1,14 +1,15 @@
 # Entra app registrations
 
-Task 2 uses separate Entra app registrations for development and production. The API validates bearer tokens issued for the workforce application and never accepts a tenant identifier supplied by the browser.
+Development and hosted environments use separate Entra app registrations. The API validates bearer tokens issued for the workforce application and never accepts a tenant identifier supplied by the browser.
 
 ## Development registration
 
-- Register a multitenant workforce SPA/API pair in the development Entra tenant.
-- Approved development redirect URI set for the SPA: `http://localhost:5173/auth/callback` and `https://localhost:5173/auth/callback`. Register only the URI used by the local HTTPS/HTTP development profile and set `VITE_ENTRA_REDIRECT_URI` to that exact value.
-- The API registration must also have a **Web** redirect URI for the in-app tenant-admin consent handoff: `http://localhost:5173/onboarding/consent/callback`. This is configured under **API app registration → Authentication → Add a platform → Web**; it is separate from the SPA sign-in callback and must be registered on the API app because the admin-consent request uses the API client ID.
+- Register a multitenant workforce customer SPA/API pair in the Atea home tenant and keep the separate platform-admin SPA out of customer consent.
+- Approved development customer SPA **SPA** sign-in redirect is `http://localhost:5173/auth/callback` (or the exact HTTPS profile URI when that profile is used). Set `VITE_ENTRA_REDIRECT_URI` to that exact value.
+- The customer SPA registration also has the consent-first `/onboarding/consent/callback` URI under its **Web** platform. This admin-consent response returns parameters rather than an authorization code. The API registration retains its own Web `/onboarding/consent/callback` URI for the legacy authenticated API-client/Graph consent flow.
 - Expose the API scope named `access_as_user`; set `VITE_ENTRA_API_SCOPE` to the resulting `api://<development-api-client-id>/access_as_user` value.
 - Set `VITE_ENTRA_CLIENT_ID` to the SPA client ID and `VITE_ENTRA_AUTHORITY` to the tenant-independent `https://login.microsoftonline.com/organizations` authority.
+- Configure `Onboarding__CustomerClientId` with the customer SPA client ID and `Onboarding__ApiApplicationIdUri` with the API's actual application-ID URI (normally `api://<development-api-client-id>`). The consent-first request uses `<API application-ID URI>/.default`; it does not construct the resource URI from browser input.
 
 ### Local Graph permissions
 
@@ -82,10 +83,14 @@ commands by itself. Follow
 associated-device, and safe Sync checks. Never put TAP codes, tokens, client
 secrets, or other secret values in this document.
 
-The in-app consent handoff uses the tenant-specific Microsoft Entra
-`/v2.0/adminconsent` endpoint with `scope=https://graph.microsoft.com/.default`.
-That scope tells Entra to present the Graph permissions configured on this API
-registration, including permissions added after the initial tenant consent.
+The retained authenticated member re-consent handoff targets the API client ID
+and uses the tenant-specific Microsoft Entra `/v2.0/adminconsent` endpoint with
+`scope=https://graph.microsoft.com/.default`. That scope presents the Graph
+permissions configured on the API registration, including permissions added
+after initial tenant consent. The consent-first administrator-invitation flow
+is different: it targets the customer SPA client ID with the API resource's
+configured `/.default` scope so Entra can bundle the SPA → API delegated grant
+and the API → Graph delegated grants.
 
 Do not add these Graph permissions to the SPA. The SPA should request only the API's `access_as_user` scope, and the API client secret must remain server-side.
 
@@ -125,17 +130,86 @@ permissions to the SPA.
 ## Production registration
 
 - Create a separate multitenant SPA/API registration and do not reuse development client IDs or redirect URIs.
-- Approved production redirect URI set: `https://workplace.atea.com/auth/callback`. Register this exact HTTPS URI only; do not add wildcard or localhost URIs to the production registration. If the platform assigns a different approved Atea host, substitute that host through the deployment value `VITE_ENTRA_REDIRECT_URI` and update the registration and this allowlist together.
+- Approved production customer SPA **SPA** sign-in URI: `https://workplace.atea.com/auth/callback`; customer SPA **Web** consent response URI: `https://workplace.atea.com/onboarding/consent/callback`; API **Web** legacy consent URI: `https://workplace.atea.com/onboarding/consent/callback`. Register exact HTTPS URIs only; do not add wildcard or localhost URIs to production. If the platform assigns another approved Atea host, update the app registration and deployment values together.
 - Expose the same `access_as_user` API scope on the production API registration and use its exact scope value in `VITE_ENTRA_API_SCOPE`.
 - Supply production API `ClientId` and `Audience` through deployment environment configuration (`AzureAd__ClientId` and `AzureAd__Audience`); no real identifiers belong in source control.
 
+## Consent-first registration linkage and permissions
+
+The customer SPA and API must be existing Atea-owned registrations in the same
+home tenant. Both use `AzureADMultipleOrgs`. The API's
+`knownClientApplications` includes the customer SPA app ID; the API publishes
+`access_as_user`; the customer SPA requests that API scope. The API's Graph
+delegated permission set is the reviewed, sorted
+`infra/entra/delegated-permissions.json` manifest derived from the capability
+scope catalog, including optional module scopes. The customer SPA must not
+request Graph permissions directly or `platform.admin`; the separate
+platform-admin SPA is never linked into this customer consent bundle.
+
+Use the standard library registration script to inspect or converge these
+settings on the **existing** registrations:
+
+```bash
+python3 infra/scripts/configure-entra-onboarding.py \
+  --expected-home-tenant-id "$ENTRA_HOME_TENANT_ID" \
+  --api-app-id "$ENTRA_API_CLIENT_ID" \
+  --customer-spa-app-id "$CUSTOMER_SPA_CLIENT_ID" \
+  --api-application-id-uri "$ENTRA_API_AUDIENCE" \
+  --sign-in-redirect-uri "$APP_PUBLIC_URL/auth/callback" \
+  --consent-redirect-uri "$APP_PUBLIC_URL/onboarding/consent/callback"
+```
+
+The default is a sanitized dry-run. The script checks the Azure CLI home
+tenant, resolves enabled delegated scope IDs by name, preserves unrelated
+resource permissions and redirect URIs, and refuses unexpected Graph
+application permissions on the API or direct Graph/`platform.admin`
+permissions on the customer SPA. Review the diff with the registration owner;
+only a separately authorized operator should add `--apply`. The script
+re-reads registrations after writes, but does not create apps, grant admin
+consent, create service principals in customer tenants, add secrets, assign
+roles, or modify customer directories. Its tests use fake CLI/Graph responses;
+they are not live-tenant validation.
+
+The customer admin consent screen must show both SPA → API and API → Graph
+delegated grants in a dedicated fresh tenant. If registration linkage does not
+produce the single expected screen, stop rollout and investigate the
+registrations. Do not fall back silently to two consent screens or app-only
+permissions. Consent grants application permissions only; it does not redeem
+the invitation, create workspace membership, assign Entra roles, or bypass
+active-role/PIM and tenant policy checks.
+
 ## Consent handoff
 
-The platform owner supplies the API permission and scope details to each customer tenant administrator. The administrator grants consent for the approved multitenant application and scope, then the platform owner records the tenant's verified workspace membership separately. Consent does not itself grant workspace access: the server-side membership reader must match the verified token `tid` and `oid` before `/api/session` or later tenant data endpoints are available.
+For an eligible `customer_admin` or `workspace_owner` invitation, the
+administrator opens the invitation while signed out and reviews the displayed
+delegated permission summary. The consent-first start endpoint derives tenant,
+client, redirect and API resource scope from server-side invitation/configuration
+data. The invitation's signed state and hash are bound to the tenant,
+workspace, invitation and expiry; raw nonce/state values must not be logged.
+Pending browser state is tab-scoped in `sessionStorage`.
 
-After a customer member has redeemed an invitation, that authenticated workspace member may start the admin-consent handoff from the workspace. This is deliberately separate from workspace-settings administration: the consent URL still goes to Microsoft Entra, where only a tenant administrator can approve the requested Graph delegated permissions. Tenant data and mutations remain governed by the signed-in user's effective Entra roles and the API's delegated token.
+After returning to the configured callback, the browser asks the API to resume
+the invitation transaction and signs in at the tenant returned by the server.
+Only the authenticated invited identity can redeem and complete the invitation.
+The API then automatically verifies delegated access and reports connected,
+missing or unknown scopes honestly. Callback `tenant`, `admin_consent`, raw
+provider errors and consent itself are not identity or authorization evidence.
+Ordinary member invitations retain sign-in/redemption without anonymous
+consent-start access. After sign-in, an authenticated workspace member may
+still use the legacy API-client/Graph-`/.default` re-consent and explicit
+health-check route.
 
-Do not add client secrets to the SPA, request Graph tokens in the browser, persist tokens in browser storage, or implement arbitrary tenant switching.
+Consent does not itself grant workspace access: the server-side membership
+reader must match the verified token `tid` and `oid` before `/api/session` or
+later tenant data endpoints are available. The API verifies customer
+membership, the invitation's nominated identity and current consent/Graph
+state independently.
+
+Do not add client secrets to the SPA or request Graph tokens in the browser.
+MSAL keeps its normal API-authentication cache in the configured tab
+`sessionStorage`; do not copy tokens into application-managed storage, logs or
+other origins. The consent transaction also uses tab-scoped `sessionStorage`,
+and arbitrary tenant switching is not supported.
 
 ## Opt-in real-Entra integration validation
 

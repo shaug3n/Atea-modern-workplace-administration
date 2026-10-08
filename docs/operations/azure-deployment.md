@@ -15,20 +15,22 @@ The deployment is staged: an operator provisions a private foundation and databa
 ## Prerequisites
 
 - A personal Azure subscription with enough quota for Azure Container Apps, Container Registry, Key Vault, Storage, Log Analytics, and private Azure Database for PostgreSQL Flexible Server.
-- A Microsoft Entra test tenant and (for both customer and platform-admin paths) three app registrations: one API app registration exposing delegated `access_as_user` and `platform.admin` scopes; one customer SPA registration granted `access_as_user`; and a separate Atea platform-admin SPA registration granted `platform.admin`. Configure the API's Microsoft Graph delegated permissions and tenant consent for the modules being tested.
+- A Microsoft Entra test tenant and three existing app registrations: one API app registration exposing delegated `access_as_user` and `platform.admin` scopes; one customer SPA registration granted `access_as_user`; and a separate Atea platform-admin SPA registration granted `platform.admin`. The API and customer SPA are linked for consent-first customer onboarding; the platform-admin SPA is not included in customer consent. Configure the API's Graph delegated permissions from `infra/entra/delegated-permissions.json`.
 - Two GitHub OIDC identities. The provision identity needs a credential for the GitHub `test` environment; the release identity needs **two** credentials, one for `test` and another for `test-promotion`. Use audience `api://AzureADTokenExchange` for each. Do not create client secrets for GitHub Actions. The provision identity needs Contributor and temporary User Access Administrator at the existing dedicated resource-group scope to create foundation resources and narrowly scoped role assignments. The release identity needs Contributor at that resource group; the foundation grants it ACR Push. The provision identity alone receives Key Vault Secrets Officer on the dedicated test vault so it can seed values; it is not used for ordinary releases. Remove temporary User Access Administrator from the provision identity after foundation setup and retain it only when an approved foundation reprovision is necessary. Keep both identities' access limited to this test resource group.
 - Docker, GitHub Actions, and the workflow files from this repository.
 
 In Entra, create both single-tenant GitHub OIDC app registrations/service principals. Under each app registration, open **Certificates & secrets → Federated credentials → Add credential → GitHub Actions deploying Azure resources**; choose the repository owner/name and entity type **Environment**. Add `test` to both apps and `test-promotion` to the release app. For the name-based GitHub OIDC format, the subjects end in `repo:<owner>/<repo>:environment:test` and `repo:<owner>/<repo>:environment:test-promotion`, respectively. Repositories using GitHub's newer immutable subject format include the numeric owner and repository IDs; confirm the generated subject matches the token format your repository uses rather than assuming the name-based form ([GitHub OIDC reference](https://docs.github.com/en/actions/reference/security/oidc)). A personal GitHub account can be the repository owner; if Entra asks for Organization ID or Repository ID, use the numeric `id` fields from GitHub's user and repository API responses, not the Entra tenant ID or `node_id`. Copy each app's **client ID** into the matching GitHub environment secret, and its service principal's **object ID** into the matching repository variable. Assign the provision principal Contributor and temporary User Access Administrator on the disposable resource group; assign the release principal Contributor there. Do not add either identity to the Atea platform-operator allowlist.
 
-The Container Apps candidate revision is reached through a stable revision-label URL that has a unique ACA hostname. Revision labels provide a stable URL pinned to one revision, independent of primary traffic weighting ([Microsoft revision docs](https://learn.microsoft.com/en-us/azure/container-apps/revisions-manage)). Ingress allow rules limit the app to explicitly listed IPv4 ranges ([Microsoft IP restrictions](https://learn.microsoft.com/en-us/azure/container-apps/ip-restrictions)). Add the following **exact** callback URLs to their corresponding Entra SPA registrations before the first application release:
+The Container Apps candidate revision is reached through a stable revision-label URL that has a unique ACA hostname. Revision labels provide a stable URL pinned to one revision, independent of primary traffic weighting ([Microsoft revision docs](https://learn.microsoft.com/en-us/azure/container-apps/revisions-manage)). Ingress allow rules limit the app to explicitly listed IPv4 ranges ([Microsoft IP restrictions](https://learn.microsoft.com/en-us/azure/container-apps/ip-restrictions)). Add the following **exact** callback URLs to their corresponding Entra registrations before the first application release. The customer consent callback is a **Web** redirect on the customer SPA registration; it receives the admin-consent response, not an authorization code. The retained authenticated re-consent callback is a separate **Web** redirect on the API registration.
 
-| SPA registration | Primary host callback | Candidate host callback |
+| Registration/platform | Primary host callback | Candidate host callback |
 | --- | --- | --- |
-| Customer SPA | `https://<app>.<environment-domain>/auth/callback` | `https://<app>---candidate.<environment-domain>/auth/callback` |
+| Customer SPA — SPA platform | `https://<app>.<environment-domain>/auth/callback` | `https://<app>---candidate.<environment-domain>/auth/callback` |
+| Customer SPA — Web platform | `https://<app>.<environment-domain>/onboarding/consent/callback` | Not used |
+| API — Web platform (legacy authenticated re-consent) | `https://<app>.<environment-domain>/onboarding/consent/callback` | Not used |
 | Platform admin SPA | `https://<app>.<environment-domain>/admin/auth/callback` | `https://<app>---candidate.<environment-domain>/admin/auth/callback` |
 
-Use the environment's actual `defaultDomain` output, including its unique environment and region components. Do not use wildcard redirect URIs. The SPA computes its sign-in callback from the current origin, which makes candidate-host sign-in return to the candidate revision. The API consent callback remains the primary host at `/onboarding/consent/callback`. If you configure a custom domain, register its exact callbacks as well and validate the ACA certificate/DNS process separately.
+Use the environment's actual `defaultDomain` output, including its unique environment and region components. Do not use wildcard redirect URIs. The SPA computes its sign-in callback from the current origin, which makes candidate-host sign-in return to the candidate revision. Consent-first browser state is held in tab `sessionStorage` and cannot be copied from a candidate host to the configured primary origin; run that end-to-end acceptance on the primary host. Do not register or use a candidate consent callback. If you configure a custom domain, register its exact callbacks as well and validate the ACA certificate/DNS process separately.
 
 ## GitHub configuration
 
@@ -42,7 +44,7 @@ Add the non-secret values below as **repository variables**. The `build-test` jo
 - `AZURE_APP_PUBLIC_URL`: exact HTTPS primary host, `https://<app>.<environment-domain>` (no trailing slash).
 - `AZURE_SMOKE_TEST_SOURCE_CIDR`: your test operator's current public IPv4 CIDR (usually `<address>/32`). Do not use `0.0.0.0/0`. The app's ACA ingress allows only this range; CI temporarily adds its runner egress IP during health probes and removes that rule afterwards. If your ISP/VPN address changes, update the variable and rerun deployment before opening the hosted URL.
 - `PLATFORM_HOME_TENANT_ID`, `PLATFORM_ADMIN_OBJECT_IDS_JSON` (a JSON array of Atea/test operator object IDs).
-- `ENTRA_API_CLIENT_ID`, `ENTRA_API_AUDIENCE`, `CUSTOMER_SPA_CLIENT_ID`, `CUSTOMER_API_SCOPE`, `CUSTOMER_ENTRA_AUTHORITY`, `PLATFORM_ADMIN_CLIENT_ID`, and `PLATFORM_ADMIN_SCOPE`.
+- `ENTRA_API_CLIENT_ID`, `ENTRA_API_AUDIENCE`, `CUSTOMER_SPA_CLIENT_ID`, `CUSTOMER_API_SCOPE`, `CUSTOMER_ENTRA_AUTHORITY`, `PLATFORM_ADMIN_CLIENT_ID`, and `PLATFORM_ADMIN_SCOPE`. `ENTRA_API_AUDIENCE` is the API application-ID URI used by `Onboarding__ApiApplicationIdUri`; the SPA client ID is also supplied to `Onboarding__CustomerClientId`.
 
 Add these GitHub environment secrets (the `test` environment needs the provision and deploy credentials; `test-promotion` needs only the deploy credential plus tenant/subscription):
 
@@ -50,6 +52,22 @@ Add these GitHub environment secrets (the `test` environment needs the provision
 - `POSTGRES_ADMIN_PASSWORD`, a unique high-entropy password for the one-time database role bootstrap. This is never passed into the application container.
 
 Never put API client secrets, DB passwords, signing keys, or connection strings in GitHub variables, source files, workflow outputs, or checked-in parameter files. Keep the API app-registration client secret ready to enter directly into Key Vault after the foundation has been provisioned.
+
+### Configure existing Entra registrations
+
+Run `python3 infra/scripts/configure-entra-onboarding.py --help` to review the
+registration tool. It requires the expected Atea home tenant ID, existing API
+and customer SPA client IDs, configured API application-ID URI, and exact
+customer sign-in/consent redirect URIs. It reads the checked
+`infra/entra/delegated-permissions.json` scope names and resolves enabled Graph
+and API scope IDs from Microsoft Graph. The default is a sanitized dry-run;
+inspect its diff with the registration owner before separately authorized
+`--apply`. The script verifies the selected Azure CLI tenant, refuses
+unexpected direct Graph or `platform.admin` permissions on the customer SPA
+and Graph application permissions on the API, and verifies post-write state.
+It updates existing registrations only: it never creates apps, secrets,
+customer service principals, admin consent or directory roles. Do not run
+`--apply` in CI or as part of infrastructure validation.
 
 ## Provision the foundation and database
 
@@ -74,7 +92,7 @@ If the foundation deployment succeeded but the bootstrap job failed (for example
 2. The deploy job verifies the active subscription, Entra tenant, generated app hostname, migration-job name, and required public configuration. The release identity deliberately cannot read Key Vault secret values; missing secret references cause readiness/startup to fail before the candidate can be promoted. It builds and pushes an immutable image tagged by commit SHA.
 3. The dedicated migration job runs `dotnet Atea.UnifiedWorkplace.Api.dll --migrate` against the migration-only DB connection. If it fails, candidate deployment stops and existing traffic remains on its current revision. Review logs before retrying; do not bypass a failed migration.
 4. The new revision receives the stable `candidate` label. On the **first** release, Azure requires the only revision to have 100% of the primary-host traffic; access remains limited to `AZURE_SMOKE_TEST_SOURCE_CIDR` while migration, automated checks, and human review run. Later releases keep the previous revision on primary traffic and test the new candidate by its label URL. A fresh workflow dispatch uses a new revision suffix even for the same commit, and moves an existing `candidate` label without an interactive prompt; failed zero-traffic revisions may remain active until normal cleanup. Automated checks validate `/health`, `/health/ready`, and that unauthenticated `/api/platform/session` returns 401.
-5. Open the candidate URL printed in the GitHub Actions summary **from the network matching `AZURE_SMOKE_TEST_SOURCE_CIDR`**. Sign in with the nominated test-tenant admin, verify the workspace and intended module paths, then approve `test-promotion`. Do not approve if the candidate cannot sign in or complete the smoke checks. Candidate sign-in requires the exact candidate callback URI above.
+5. Open the candidate URL printed in the GitHub Actions summary **from the network matching `AZURE_SMOKE_TEST_SOURCE_CIDR`**. Sign in with the nominated test-tenant admin, verify the workspace and intended module paths, then approve `test-promotion`. Do not approve if the candidate cannot sign in or complete the smoke checks. Candidate sign-in requires the exact candidate callback URI above. Consent-first acceptance is different: it must use the configured primary origin because its pending transaction is tab-scoped and the consent callback is primary-only.
 6. The promotion job pins the primary host to the approved candidate. A post-route readiness failure rolls back to the previous revision when one exists. The first release has no previous revision to roll back to; keep the test IP allowlist in place and disable ingress if the initial deployment must be taken offline.
 
 The workflow's unauthenticated HTTP checks do not prove real Entra, Graph, PIM, consent, or tenant authorization behavior. Perform the human test-tenant check for each relevant flow and record any permissions/consent that still need configuration. The API consent callback uses the primary host; test tenant consent/onboarding separately on the primary URL after the first deployment if its callback flow must be exercised.
@@ -86,18 +104,31 @@ The workflow's unauthenticated HTTP checks do not prove real Entra, Graph, PIM, 
 | `ConnectionStrings__WorkplaceDb` | Key Vault secret `workplace-db`, read by the workload's managed identity |
 | `ConnectionStrings__WorkplaceMigrationDb` | Key Vault secret `workplace-migration-db`, consumed only by the migration job |
 | `Onboarding__ConsentSigningKey` | Key Vault secret `consent-signing-key` |
+| `Onboarding__CustomerClientId` | `CUSTOMER_SPA_CLIENT_ID` / `customerSpaClientId` |
+| `Onboarding__ApiApplicationIdUri` | `ENTRA_API_AUDIENCE` / `entraApiAudience` |
+| `Onboarding__TrustedProxyAddresses` | Explicit `trustedProxyAddresses` deployment parameter; empty disables forwarded-IP trust |
 | `Users__ContinuationSigningKey` | Key Vault secret `continuation-signing-key` |
 | `AzureAd__ClientSecret` | Key Vault secret `api-client-secret` |
 | `AzureAd__ClientId` / `AzureAd__Audience` | API Entra app ID and configured audience |
 | `PlatformAuthorization__HomeTenantId` / `__AdminObjectIds__N` | Test platform tenant and explicit operator object IDs |
 | `Onboarding__PublicBaseUrl` | Primary public URL |
-| `Onboarding__ConsentRedirectUri` | Primary URL plus `/onboarding/consent/callback` |
+| `Onboarding__ConsentRedirectUri` | Primary URL plus `/onboarding/consent/callback`; registered as Web on customer SPA and API (legacy flow) |
 | `HostedAuth__CustomerRedirectUri` / `HostedAuth__PlatformAdminRedirectUri` | Runtime validation copies of the primary SPA callback URLs |
 | `DataProtection__BlobUri` / `DataProtection__KeyIdentifier` | Shared Blob key ring and Key Vault wrapping key, accessed via managed identity |
 | `ASPNETCORE_URLS` | `http://+:8080` behind HTTPS ingress |
 | `/health` / `/health/ready` | Liveness and bounded database readiness probes; Graph is not part of either |
 
 Both local and Azure use the same Dockerfile, API migrations, and HTTP port. Azure runs in `Staging`, not `Development`, so local password administration is disabled. Only the infrastructure/configuration source changes.
+
+Release order is registration linkage/permissions/callbacks, additive PostgreSQL
+migration, then application release. Enable consent-first customer invitations
+only after deterministic validation and the opt-in fresh-tenant flow pass on
+the configured primary origin. If acceptance fails, do not route external
+customers to the new path; existing invitation URLs, GUID provisioning and
+authenticated legacy Graph re-consent remain available. The additive nullable
+and defaulted migration does not require destructive rollback. A tab already
+in an in-flight consent redirect may need to restart from its original
+invitation after rollback.
 
 ## Secret rotation
 
