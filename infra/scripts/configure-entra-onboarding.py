@@ -214,11 +214,15 @@ def build_changes(api: dict, spa: dict, api_sp: dict, graph_sp: dict, scope_name
         GRAPH_APP_ID,
         [{"id": graph_scope_ids[name], "type": "Scope"} for name in scope_names],
     )
-    known_clients = api.get("knownClientApplications", [])
+    api_configuration = api.get("api", {})
+    if not isinstance(api_configuration, dict):
+        raise ConfigurationError("API application api configuration must be an object.")
+    known_clients = api_configuration.get("knownClientApplications", [])
     if not isinstance(known_clients, list):
-        raise ConfigurationError("API knownClientApplications must be an array.")
+        raise ConfigurationError("API api.knownClientApplications must be an array.")
     if not any(str(item).lower() == args.customer_spa_app_id.lower() for item in known_clients):
         known_clients = [*known_clients, args.customer_spa_app_id]
+    api_configuration = {**api_configuration, "knownClientApplications": known_clients}
     identifier_uris = api.get("identifierUris", [])
     if not isinstance(identifier_uris, list) or any(not isinstance(item, str) for item in identifier_uris):
         raise ConfigurationError("API identifierUris must be an array of strings.")
@@ -232,7 +236,7 @@ def build_changes(api: dict, spa: dict, api_sp: dict, graph_sp: dict, scope_name
     )
     api_patch = {
         "signInAudience": "AzureADMultipleOrgs",
-        "knownClientApplications": known_clients,
+        "api": api_configuration,
         "requiredResourceAccess": api_access,
         "identifierUris": sorted(set(identifier_uris)),
     }
@@ -288,8 +292,8 @@ def configure(args) -> int:
         raise ConfigurationError("Selected Azure CLI tenant does not match the expected home tenant.")
 
     scope_names = load_manifest(args.manifest)
-    api = get_one("applications", api_app_id, "id,appId,signInAudience,knownClientApplications,requiredResourceAccess,identifierUris,web,spa")
-    spa = get_one("applications", spa_app_id, "id,appId,signInAudience,knownClientApplications,requiredResourceAccess,web,spa")
+    api = get_one("applications", api_app_id, "id,appId,signInAudience,api,requiredResourceAccess,identifierUris,web,spa")
+    spa = get_one("applications", spa_app_id, "id,appId,signInAudience,api,requiredResourceAccess,web,spa")
     graph_sp = get_one("servicePrincipals", GRAPH_APP_ID, "id,appId,oauth2PermissionScopes")
     api_sp = get_one("servicePrincipals", api_app_id, "id,appId,oauth2PermissionScopes")
     if not all(item.get("id") for item in (api, spa, graph_sp, api_sp)):
@@ -328,8 +332,8 @@ def configure(args) -> int:
         write_error = exc
 
     try:
-        api_after = get_one("applications", api_app_id, "id,appId,signInAudience,knownClientApplications,requiredResourceAccess,identifierUris,web,spa")
-        spa_after = get_one("applications", spa_app_id, "id,appId,signInAudience,knownClientApplications,requiredResourceAccess,web,spa")
+        api_after = get_one("applications", api_app_id, "id,appId,signInAudience,api,requiredResourceAccess,identifierUris,web,spa")
+        spa_after = get_one("applications", spa_app_id, "id,appId,signInAudience,api,requiredResourceAccess,web,spa")
     except ConfigurationError:
         if write_error is not None:
             raise ConfigurationError("Registration write failed and post-write state could not be verified; inspect both applications.") from None

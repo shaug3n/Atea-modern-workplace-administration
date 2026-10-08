@@ -32,7 +32,10 @@ def fake_state() -> dict:
             "id": "api-object-id",
             "appId": API_APP_ID,
             "signInAudience": "AzureADMyOrg",
-            "knownClientApplications": ["aaaaaaaa-0000-0000-0000-000000000001"],
+            "api": {
+                "knownClientApplications": ["aaaaaaaa-0000-0000-0000-000000000001"],
+                "requestedAccessTokenVersion": 2,
+            },
             "identifierUris": ["api://old-api-uri"],
             "requiredResourceAccess": [
                 {"resourceAppId": GRAPH_APP_ID, "resourceAccess": []},
@@ -45,7 +48,6 @@ def fake_state() -> dict:
             "id": "spa-object-id",
             "appId": SPA_APP_ID,
             "signInAudience": "AzureADMyOrg",
-            "knownClientApplications": [],
             "requiredResourceAccess": [
                 {
                     "resourceAppId": API_APP_ID,
@@ -119,6 +121,8 @@ class RegistrationScriptBehaviorTests(unittest.TestCase):
             url = command[command.index("--url") + 1]
             if method == "GET":
                 if "/applications?" in url:
+                    if "knownClientApplications" in url or "api" not in url:
+                        return subprocess.CompletedProcess(command, 1, "", "invalid Graph v1 application select")
                     item = state["api"] if API_APP_ID in url else state["spa"]
                     if state["staleSpaReadAfterPatch"] and item is state["spa"] and state["patches"]:
                         item = dict(item, signInAudience="AzureADMyOrg")
@@ -130,7 +134,16 @@ class RegistrationScriptBehaviorTests(unittest.TestCase):
             if method == "PATCH":
                 object_id = url.rsplit("/", 1)[-1]
                 patch_body = json.loads(command[command.index("--body") + 1])
+                if "knownClientApplications" in patch_body:
+                    return subprocess.CompletedProcess(command, 1, "", "knownClientApplications is not an application property")
+                if object_id == "api-object-id" and (
+                    not isinstance(patch_body.get("api"), dict)
+                    or "knownClientApplications" not in patch_body["api"]
+                ):
+                    return subprocess.CompletedProcess(command, 1, "", "missing nested api.knownClientApplications")
                 item = state["api"] if object_id == "api-object-id" else state["spa"]
+                if object_id == "api-object-id" and isinstance(patch_body.get("api"), dict):
+                    item["api"].update(patch_body["api"])
                 item.update(patch_body)
                 state["patches"].append((object_id, patch_body))
                 return subprocess.CompletedProcess(command, 0, "", "")
@@ -160,8 +173,9 @@ class RegistrationScriptBehaviorTests(unittest.TestCase):
         api = self.state["api"]
         spa = self.state["spa"]
         self.assertEqual(api["signInAudience"], "AzureADMultipleOrgs")
-        self.assertIn(SPA_APP_ID, api["knownClientApplications"])
-        self.assertIn("aaaaaaaa-0000-0000-0000-000000000001", api["knownClientApplications"])
+        self.assertIn(SPA_APP_ID, api["api"]["knownClientApplications"])
+        self.assertIn("aaaaaaaa-0000-0000-0000-000000000001", api["api"]["knownClientApplications"])
+        self.assertEqual(api["api"]["requestedAccessTokenVersion"], 2)
         self.assertIn(f"api://{API_APP_ID}", api["identifierUris"])
         self.assertIn("api://old-api-uri", api["identifierUris"])
         self.assertIn("https://workplace.example/legacy-api-consent", api["web"]["redirectUris"])
