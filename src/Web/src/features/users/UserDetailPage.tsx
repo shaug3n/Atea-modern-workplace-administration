@@ -16,6 +16,7 @@ import { LicenseAssignmentDialog } from './LicenseAssignmentDialog';
 import { PasswordResetDialog } from './PasswordResetDialog';
 import { AuthenticationMethodsSection, type AuthenticationMethodsSummary } from './AuthenticationMethodsSection';
 import { PermissionState } from '../../components/PermissionState';
+import { DisabledReason } from '../../components/DisabledReason';
 import { DomainAccessChip } from '../../components/DomainAccessChip';
 import { ActionMenu } from '../../components/ActionMenu';
 import { AssociatedDevicesSection } from './AssociatedDevicesSection';
@@ -256,6 +257,8 @@ export function UserDetailPage({ userId, loadUserDetail, capabilities = [], modu
           actions={<div className="page-action-bar user-detail-hero__actions" role="group" aria-label="User management actions">
             {updateDecision.state === 'allowed' && !user.isReadOnly && <button className="button button--secondary" type="button" onClick={() => { setMutationError(null); setEditOpen(true); }}>Edit user</button>}
             {disableDecision.state === 'allowed' && user.accountEnabled === false && <button className="button button--secondary" type="button" onClick={() => { setMutationError(null); setReactivateOpen(true); }}>Reactivate user</button>}
+            {disableDecision.state !== 'allowed' && disableDecision.state !== 'hidden' && user.accountEnabled === false && <DisabledReason reason={actionDecisionReason(disableDecision)}><button className="button button--secondary" type="button" disabled>Reactivate user</button></DisabledReason>}
+            {disableDecision.state !== 'allowed' && disableDecision.state !== 'hidden' && user.accountEnabled !== false && <DisabledReason reason={actionDecisionReason(disableDecision)}><button className="button button--secondary" type="button" disabled>Disable user</button></DisabledReason>}
             {resetPasswordDecision.state === 'allowed' && <button className="button button--secondary" type="button" onClick={() => { setMutationError(null); setResetPasswordOpen(true); }}>Reset password</button>}
             {moreActions.length > 0 && <ActionMenu label="More actions" items={moreActions} />}
           </div>}
@@ -329,18 +332,7 @@ export function UserDetailPage({ userId, loadUserDetail, capabilities = [], modu
 
 function ActionGuidance({ label, decision, readOnlySource }: { label: string; decision: CapabilityDecision; readOnlySource: boolean }) {
   if (decision.state === 'hidden' || (!readOnlySource && decision.state === 'allowed')) return null;
-  const explanation = readOnlySource
-    ? 'This account is read-only at its source of authority.'
-    : ({
-      read_only: 'This action is read-only for your current Entra role.',
-      pim_activation_required: 'Activate the required Entra role in PIM before continuing.',
-      pim_approval_required: 'This action is waiting for PIM approval.',
-      pim_mfa_required: 'Complete MFA for PIM activation before continuing.',
-      pim_eligibility_expired: 'Your PIM eligibility has expired. Request renewed access.',
-      consent_required: 'Delegated Microsoft Graph consent is required before this action can run.',
-      disabled: 'This action is disabled for the current workspace.',
-      temporarily_unavailable: 'Microsoft Graph authorization could not be verified. Try again later.',
-    } as Partial<Record<CapabilityDecision['state'], string>>)[decision.state] ?? 'This action is unavailable with your current permissions.';
+  const explanation = readOnlySource ? 'This account is read-only at its source of authority.' : actionDecisionReason(decision);
   return <p role="status">{label}: {explanation}</p>;
 }
 
@@ -402,6 +394,21 @@ function decisionReason(decision: CapabilityDecision) {
   if (decision.state === 'disabled') return 'This action is disabled for the current workspace.';
   if (decision.state === 'temporarily_unavailable') return 'The current Microsoft Graph authorization could not be verified.';
   return 'This action is unavailable with the current workspace permissions.';
+}
+
+function actionDecisionReason(decision: CapabilityDecision) {
+  return ({
+    read_only: 'This action is read-only for your current Entra role.',
+    pim_activation_required: 'Activate the required Entra role in PIM before continuing.',
+    pim_approval_required: 'This action is waiting for PIM approval.',
+    pim_mfa_required: 'Complete MFA for PIM activation before continuing.',
+    pim_eligibility_expired: 'Your PIM eligibility has expired. Request renewed access.',
+    consent_required: 'Delegated Microsoft Graph consent is required before this action can run.',
+    disabled: 'This action is disabled for the current workspace.',
+    temporarily_unavailable: 'Microsoft Graph authorization could not be verified. Try again later.',
+    allowed: 'This action is allowed by the current workspace capability snapshot.',
+    hidden: 'This action is unavailable with your current permissions.',
+  } as Record<CapabilityDecision['state'], string>)[decision.state];
 }
 
 function formatMutationError(response: UserCommandResponse) {

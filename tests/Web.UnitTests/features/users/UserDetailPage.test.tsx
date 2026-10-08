@@ -233,6 +233,39 @@ describe('UserDetailPage', () => {
     expect(screen.getByText(/Revoke sessions:.*consent/i)).toBeTruthy();
   });
 
+  it.each([
+    ['read_only', 'This action is read-only for your current Entra role.'],
+    ['consent_required', 'Delegated Microsoft Graph consent is required before this action can run.'],
+    ['pim_activation_required', 'Activate the required Entra role in PIM before continuing.'],
+    ['pim_approval_required', 'This action is waiting for PIM approval.'],
+    ['pim_mfa_required', 'Complete MFA for PIM activation before continuing.'],
+    ['pim_eligibility_expired', 'Your PIM eligibility has expired. Request renewed access.'],
+    ['disabled', 'This action is disabled for the current workspace.'],
+    ['temporarily_unavailable', 'Microsoft Graph authorization could not be verified. Try again later.'],
+  ] as const)('keeps disable unavailable state %s visible without dispatch', async (state, reason) => {
+    render(<UserDetailPage userId="user-1" loadUserDetail={async () => ({ ...detail, user: { ...detail.user!, isReadOnly: false } })} capabilities={[
+      { capability: 'users.disable', state, reasonCode: state },
+    ]} />);
+
+    await screen.findByRole('heading', { name: 'Ada Lovelace' });
+    const disable = screen.getByRole('button', { name: 'Disable user' }) as HTMLButtonElement;
+    expect(disable.disabled).toBe(true);
+    expect(disable.closest('.disabled-reason')?.textContent).toContain(reason);
+    fireEvent.click(disable);
+    expect(apiMock).not.toHaveBeenCalled();
+  });
+
+  it('suppresses the disable action when its capability is hidden', async () => {
+    render(<UserDetailPage userId="user-1" loadUserDetail={async () => ({ ...detail, user: { ...detail.user!, isReadOnly: false } })} capabilities={[
+      { capability: 'users.disable', state: 'hidden', reasonCode: 'not_returned' },
+    ]} />);
+
+    await screen.findByRole('heading', { name: 'Ada Lovelace' });
+    expect(screen.queryByRole('button', { name: 'Disable user' })).toBeNull();
+    expect(screen.queryByText(/Disable user:/)).toBeNull();
+    expect(apiMock).not.toHaveBeenCalled();
+  });
+
   it('renders independent sections, PIM activation contract, and source-of-authority read-only explanation', async () => {
     render(<UserDetailPage userId="user-1" loadUserDetail={async () => detail} />);
 
@@ -415,7 +448,7 @@ describe('UserDetailPage', () => {
     expect(screen.queryByRole('button', { name: /assign license/i })).toBeNull();
   });
 
-  it('does not render user security mutations for a Global Reader capability snapshot', async () => {
+  it('keeps unavailable authentication management visible and non-dispatching for a Global Reader capability snapshot', async () => {
     render(<UserDetailPage userId="user-1" loadUserDetail={async () => detail} capabilities={[{
       capability: 'users.view', state: 'read_only', reasonCode: 'role_read_only',
     }, {
@@ -427,9 +460,9 @@ describe('UserDetailPage', () => {
     }]} />);
 
     expect(await screen.findByRole('heading', { name: 'Ada Lovelace' })).toBeTruthy();
-    expect(screen.queryByRole('button', { name: 'Grant Temporary Access Pass' })).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Reset MFA methods' })).toBeNull();
+    expect((screen.getByRole('button', { name: 'Grant Temporary Access Pass' }) as HTMLButtonElement).disabled).toBe(true);
     expect(screen.queryByRole('button', { name: 'Revoke sessions' })).toBeNull();
+    expect(apiMock.mock.calls.every(([, init]) => init?.method !== 'POST' && init?.method !== 'DELETE')).toBe(true);
   });
 
   it('does not infer mutation permission from section access when the capability snapshot omits it', async () => {

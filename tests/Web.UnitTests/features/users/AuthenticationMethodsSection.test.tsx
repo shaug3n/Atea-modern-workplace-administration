@@ -55,6 +55,54 @@ describe('AuthenticationMethodsSection', () => {
     expect(apiMock).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ['read_only', 'This action is read-only for your current Entra role.'],
+    ['consent_required', 'Delegated Microsoft Graph consent is required before this action can run.'],
+    ['pim_activation_required', 'Activate the required Entra role in PIM before continuing.'],
+    ['pim_approval_required', 'This action is waiting for PIM approval.'],
+    ['pim_mfa_required', 'Complete MFA for PIM activation before continuing.'],
+    ['pim_eligibility_expired', 'Your PIM eligibility has expired. Request renewed access.'],
+    ['disabled', 'This action is disabled for the current workspace.'],
+    ['temporarily_unavailable', 'Microsoft Graph authorization could not be verified. Try again later.'],
+  ] as const)('shows authentication-management actions as disabled for %s without dispatch', async (state, reason) => {
+    apiMock.mockResolvedValue(new Response(JSON.stringify({
+      userObjectId: 'user-1',
+      items: [{ id: 'method-1', type: 'fido2AuthenticationMethod', displayName: 'YubiKey' }],
+      fetchedAt: '2026-09-22T08:00:00Z', freshness: 'live', partialData: false, access: { state: 'allowed' },
+    }), { status: 200 }));
+    render(<AuthenticationMethodsSection userId="user-1" decision={allowed} manageDecision={{
+      capability: 'authentication.methods.manage', state, reasonCode: state,
+    }} />);
+
+    const tap = await screen.findByRole('button', { name: 'Grant Temporary Access Pass' }) as HTMLButtonElement;
+    const remove = screen.getByRole('button', { name: 'Remove' }) as HTMLButtonElement;
+    const reset = screen.getByRole('button', { name: 'Reset MFA methods' }) as HTMLButtonElement;
+    expect(tap.disabled).toBe(true);
+    expect(remove.disabled).toBe(true);
+    expect(reset.disabled).toBe(true);
+    expect(document.body.textContent).toContain(reason);
+    fireEvent.click(tap);
+    fireEvent.click(remove);
+    fireEvent.click(reset);
+    expect(apiMock.mock.calls.every(([, init]) => init?.method !== 'POST' && init?.method !== 'DELETE')).toBe(true);
+  });
+
+  it('suppresses authentication-management controls when their capability is hidden', async () => {
+    apiMock.mockResolvedValue(new Response(JSON.stringify({
+      userObjectId: 'user-1',
+      items: [{ id: 'method-1', type: 'fido2AuthenticationMethod', displayName: 'YubiKey' }],
+      fetchedAt: '2026-09-22T08:00:00Z', freshness: 'live', partialData: false, access: { state: 'allowed' },
+    }), { status: 200 }));
+    render(<AuthenticationMethodsSection userId="user-1" decision={allowed} manageDecision={{
+      capability: 'authentication.methods.manage', state: 'hidden', reasonCode: 'not_returned',
+    }} />);
+
+    await screen.findByText('YubiKey');
+    expect(screen.queryByRole('button', { name: 'Grant Temporary Access Pass' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Remove' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Reset MFA methods' })).toBeNull();
+  });
+
   it('reveals a temporary access pass only on the first successful response', async () => {
     apiMock.mockImplementation(async (path: string) => path.includes('temporary-access-pass')
       ? new Response(JSON.stringify({ status: 'succeeded', temporaryAccessPass: 'fixture-tap-value', auditWarning: 'Pass issued, but its audit record could not be written.' }), { status: 200 })
@@ -112,6 +160,70 @@ describe('AuthenticationMethodsSection', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Retry authentication methods' }));
     expect(await screen.findByText('No authentication methods were returned.')).toBeTruthy();
     expect(apiMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('invalidates methods after a successful removal when refresh fails and retries only the read', async () => {
+    apiMock
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        userObjectId: 'user-1',
+        items: [{ id: 'method-1', type: 'fido2AuthenticationMethod', displayName: 'YubiKey' }],
+        fetchedAt: '2026-09-22T08:00:00Z', freshness: 'live', partialData: false, access: { state: 'allowed' },
+      }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ status: 'succeeded' }), { status: 200 }))
+      .mockResolvedValueOnce(new Response('{}', { status: 503 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        userObjectId: 'user-1',
+        items: [{ id: 'method-2', type: 'phoneAuthenticationMethod', displayName: 'Work phone' }],
+        fetchedAt: '2026-09-23T08:00:00Z', freshness: 'live', partialData: false, access: { state: 'allowed' },
+      }), { status: 200 }));
+    const onResult = vi.fn();
+    render(<AuthenticationMethodsSection userId="user-1" decision={allowed} manageDecision={manage} onResult={onResult} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Remove' }));
+    fireEvent.click(screen.getByLabelText('I reviewed the target, change and required capability.'));
+    fireEvent.click(screen.getByRole('button', { name: 'Remove method' }));
+
+    expect(await screen.findByRole('button', { name: 'Retry authentication methods' })).toBeTruthy();
+    expect(screen.queryByText('YubiKey')).toBeNull();
+    expect(onResult).toHaveBeenLastCalledWith({ status: 'unavailable', items: [] });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Retry authentication methods' }));
+    expect(await screen.findByText('Work phone')).toBeTruthy();
+    expect(screen.queryByText('YubiKey')).toBeNull();
+    expect(apiMock.mock.calls.filter(([, init]) => init?.method === 'DELETE')).toHaveLength(1);
+    expect(onResult).toHaveBeenLastCalledWith({ status: 'available', items: [{ id: 'method-2', type: 'phoneAuthenticationMethod', displayName: 'Work phone' }] });
+  });
+
+  it('invalidates methods after a successful reset when refresh fails and retries only the read', async () => {
+    apiMock
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        userObjectId: 'user-1',
+        items: [{ id: 'method-1', type: 'fido2AuthenticationMethod', displayName: 'YubiKey' }],
+        fetchedAt: '2026-09-22T08:00:00Z', freshness: 'live', partialData: false, access: { state: 'allowed' },
+      }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ status: 'succeeded', removedCount: 1 }), { status: 200 }))
+      .mockResolvedValueOnce(new Response('{}', { status: 503 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        userObjectId: 'user-1',
+        items: [{ id: 'method-2', type: 'phoneAuthenticationMethod', displayName: 'Work phone' }],
+        fetchedAt: '2026-09-23T08:00:00Z', freshness: 'live', partialData: false, access: { state: 'allowed' },
+      }), { status: 200 }));
+    const onResult = vi.fn();
+    render(<AuthenticationMethodsSection userId="user-1" decision={allowed} manageDecision={manage} onResult={onResult} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Reset MFA methods' }));
+    fireEvent.change(screen.getByLabelText('Type DISABLE to confirm'), { target: { value: 'RESET MFA' } });
+    fireEvent.click(screen.getByLabelText('I reviewed the target, change and required capability.'));
+    fireEvent.click(screen.getByRole('button', { name: 'Reset MFA' }));
+
+    expect(await screen.findByRole('button', { name: 'Retry authentication methods' })).toBeTruthy();
+    expect(screen.queryByText('YubiKey')).toBeNull();
+    expect(onResult).toHaveBeenLastCalledWith({ status: 'unavailable', items: [] });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Retry authentication methods' }));
+    expect(await screen.findByText('Work phone')).toBeTruthy();
+    expect(apiMock.mock.calls.filter(([, init]) => init?.method === 'POST')).toHaveLength(1);
+    expect(onResult).toHaveBeenLastCalledWith({ status: 'available', items: [{ id: 'method-2', type: 'phoneAuthenticationMethod', displayName: 'Work phone' }] });
   });
 
   it('keeps an audit warning visible after a successful security write', async () => {
