@@ -136,6 +136,25 @@ public sealed class Device360GraphReaderTests
     }
 
     [Fact]
+    public async Task protection_not_found_preserves_the_graph_error()
+    {
+        var notFound = new GraphOperationResult(
+            false,
+            "not_found",
+            404,
+            CorrelationId: "original-correlation",
+            RequestId: "original-request");
+        var transport = new RecordingTransport(
+            new GraphTransportResponse(notFound, """{"error":"not found"}""", 1, EmptyHeaders));
+
+        var result = await new GraphDevice360Reader(new RecordingFactory(transport))
+            .ReadWindowsProtectionStateAsync("managed-device-4", CancellationToken.None);
+
+        result.Data.Should().BeNull();
+        result.Error.Should().Be(notFound);
+    }
+
+    [Fact]
     public async Task unsafe_id_dispatches_no_graph_request()
     {
         var transport = new RecordingTransport();

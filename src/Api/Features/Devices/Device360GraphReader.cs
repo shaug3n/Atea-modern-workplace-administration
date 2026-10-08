@@ -165,8 +165,6 @@ public sealed class GraphDevice360Reader(IDelegatedGraphClientFactory clientFact
             var response = await lease.Transport.SendAsync(
                 new GraphRequest(HttpMethod.Get, $"{resourcePath}?$select={ProtectionSelect}"),
                 cancellationToken);
-            if (response.Result.Category == "not_found")
-                return new Device360GraphResult<DeviceWindowsProtectionState>(null);
             if (!response.Result.IsSuccess)
                 return new Device360GraphResult<DeviceWindowsProtectionState>(null, response.Result);
 
