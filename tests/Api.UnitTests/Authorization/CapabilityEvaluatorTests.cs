@@ -187,6 +187,162 @@ public sealed class CapabilityEvaluatorTests
         capabilities[Capability.LicensesAssign].State.Should().Be(CapabilityState.ConsentRequired);
     }
 
+    [Theory]
+    [InlineData(PimRequirement.ActivationRequired, CapabilityState.PimActivationRequired)]
+    [InlineData(PimRequirement.ApprovalRequired, CapabilityState.PimApprovalRequired)]
+    [InlineData(PimRequirement.MfaRequired, CapabilityState.PimMfaRequired)]
+    [InlineData(PimRequirement.EligibilityExpired, CapabilityState.PimEligibilityExpired)]
+    public void Hygiene_PIM_decisions_match_license_view(string pimRequirement, string expectedState)
+    {
+        var snapshot = AvailableSnapshot(
+            ["Directory.Read.All"],
+            [EligibleRole(EntraRoleCatalog.LicenseAdministratorTemplateId, pimRequirement)]);
+
+        var capabilities = CapabilityEvaluator.Evaluate(snapshot, Member());
+
+        var licensesView = capabilities[Capability.LicensesView];
+        var hygieneView = capabilities[Capability.LicensesHygieneView];
+        licensesView.State.Should().Be(expectedState);
+        hygieneView.State.Should().Be(licensesView.State);
+        hygieneView.ReasonCode.Should().Be(licensesView.ReasonCode);
+        hygieneView.RequiredRoleTemplateId.Should().Be(licensesView.RequiredRoleTemplateId);
+        hygieneView.Pim.Should().Be(licensesView.Pim);
+        hygieneView.NextStep.Should().Be(licensesView.NextStep);
+        capabilities[Capability.LicensesAssign].State.Should().Be(CapabilityState.ConsentRequired);
+    }
+
+    [Fact]
+    public void Workspace_module_evidence_uses_effective_catalog_rules()
+    {
+        var membership = Member() with { ModuleKeys = ["users", "feedback"] };
+
+        var snapshot = CapabilityEvaluator.Evaluate(
+            GraphAuthorizationSnapshot.Unavailable("temporarily_unavailable"),
+            membership,
+            ["users", "exchange", "authentication-campaigns"]);
+
+        snapshot.WorkspaceModules.Should().BeEquivalentTo(
+        [
+            new WorkspaceModuleEvidence("users", "explicit", Enabled: true, Effective: true),
+            new WorkspaceModuleEvidence("devices", "none", Enabled: false, Effective: false),
+            new WorkspaceModuleEvidence("licenses", "none", Enabled: false, Effective: false),
+            new WorkspaceModuleEvidence("exchange", "none", Enabled: true, Effective: false)
+        ], options => options.WithStrictOrdering());
+    }
+
+    [Fact]
+    public void Workspace_owner_evidence_is_inherited_only_for_enabled_modules()
+    {
+        var membership = Member("workspace_owner") with { ModuleKeys = [] };
+
+        var snapshot = CapabilityEvaluator.Evaluate(
+            GraphAuthorizationSnapshot.Unavailable("temporarily_unavailable"),
+            membership,
+            ["users", "exchange"]);
+
+        snapshot.WorkspaceModules.Should().BeEquivalentTo(
+        [
+            new WorkspaceModuleEvidence("users", "owner_inherited", Enabled: true, Effective: true),
+            new WorkspaceModuleEvidence("devices", "none", Enabled: false, Effective: false),
+            new WorkspaceModuleEvidence("licenses", "none", Enabled: false, Effective: false),
+            new WorkspaceModuleEvidence("exchange", "owner_inherited", Enabled: true, Effective: true)
+        ], options => options.WithStrictOrdering());
+    }
+
+    [Fact]
+    public void Role_evidence_is_filtered_to_existing_capability_requirements()
+    {
+        var snapshot = AvailableSnapshot(
+            scopes: ["Directory.Read.All", "User.Read.All", "DeviceManagementManagedDevices.Read.All"],
+            roles:
+            [
+                ActiveRole(EntraRoleCatalog.GlobalReaderTemplateId),
+                ActiveRole(EntraRoleCatalog.UserAdministratorTemplateId, "/administrativeUnits/au-1"),
+                ActiveRole(EntraRoleCatalog.IntuneAdministratorTemplateId),
+                EligibleRole(EntraRoleCatalog.CloudDeviceAdministratorTemplateId, PimRequirement.ActivationRequired)
+            ]);
+
+        var capabilities = CapabilityEvaluator.Evaluate(snapshot, Member());
+        var users = capabilities[Capability.UsersView].RoleEvidence!;
+        var devices = capabilities[Capability.DevicesView].RoleEvidence!;
+        var recovery = capabilities[Capability.DevicesLapsReveal].RoleEvidence!;
+
+        users.State.Should().Be("available");
+        users.RequiredRoleTemplateIds.Should().BeEquivalentTo([
+            EntraRoleCatalog.GlobalAdministratorTemplateId,
+            EntraRoleCatalog.GlobalReaderTemplateId,
+            EntraRoleCatalog.UserAdministratorTemplateId
+        ]);
+        users.Assignments.Select(assignment => assignment.RoleTemplateId)
+            .Should().BeEquivalentTo([
+                EntraRoleCatalog.GlobalReaderTemplateId,
+                EntraRoleCatalog.UserAdministratorTemplateId
+            ]);
+        users.Assignments.Single(assignment => assignment.RoleTemplateId == EntraRoleCatalog.UserAdministratorTemplateId)
+            .Scope.Should().Be("scoped");
+        System.Text.Json.JsonSerializer.Serialize(users).Should().NotContain("/administrativeUnits/au-1");
+
+        devices.RequiredRoleTemplateIds.Should().BeEquivalentTo([
+            EntraRoleCatalog.GlobalAdministratorTemplateId,
+            EntraRoleCatalog.GlobalReaderTemplateId,
+            EntraRoleCatalog.IntuneAdministratorTemplateId,
+            EntraRoleCatalog.CloudDeviceAdministratorTemplateId
+        ]);
+        devices.Assignments.Select(assignment => assignment.RoleTemplateId)
+            .Should().BeEquivalentTo([
+                EntraRoleCatalog.GlobalReaderTemplateId,
+                EntraRoleCatalog.IntuneAdministratorTemplateId,
+                EntraRoleCatalog.CloudDeviceAdministratorTemplateId
+            ]);
+        devices.Assignments.Single(assignment => assignment.RoleTemplateId == EntraRoleCatalog.CloudDeviceAdministratorTemplateId)
+            .Should().BeEquivalentTo(new CapabilityRoleAssignmentEvidence(
+                EntraRoleCatalog.CloudDeviceAdministratorTemplateId,
+                DirectoryRoleAssignmentState.Eligible,
+                "tenant_wide",
+                PimRequirement.ActivationRequired));
+        recovery.RequiredRoleTemplateIds.Should().BeEquivalentTo([
+            EntraRoleCatalog.CloudDeviceAdministratorTemplateId,
+            EntraRoleCatalog.IntuneAdministratorTemplateId
+        ]);
+        recovery.Assignments.Select(assignment => assignment.RoleTemplateId)
+            .Should().BeEquivalentTo([
+                EntraRoleCatalog.CloudDeviceAdministratorTemplateId,
+                EntraRoleCatalog.IntuneAdministratorTemplateId
+            ]);
+    }
+
+    [Fact]
+    public void Role_evidence_distinguishes_unavailable_and_not_applicable()
+    {
+        var unavailable = CapabilityEvaluator.Evaluate(
+            GraphAuthorizationSnapshot.Unavailable("temporarily_unavailable"),
+            Member());
+
+        unavailable[Capability.UsersView].RoleEvidence!.State.Should().Be("unavailable");
+        unavailable[Capability.UsersView].RoleEvidence!.Assignments.Should().BeEmpty();
+        unavailable[Capability.WorkspaceSettingsManage].RoleEvidence.Should().BeEquivalentTo(
+            new CapabilityRoleEvidence("not_applicable", [], []));
+    }
+
+    [Fact]
+    public void Decision_states_and_existing_fields_are_unchanged_when_workspace_module_evidence_is_projected()
+    {
+        var snapshot = AvailableSnapshot(
+            scopes: ["Directory.Read.All", "User.Read.All", "User.Create"],
+            roles:
+            [
+                ActiveRole(EntraRoleCatalog.GlobalReaderTemplateId),
+                EligibleRole(EntraRoleCatalog.UserAdministratorTemplateId, PimRequirement.ActivationRequired)
+            ]);
+        var membership = Member();
+        var withoutProjection = CapabilityEvaluator.Evaluate(snapshot, membership);
+        var withProjection = CapabilityEvaluator.Evaluate(snapshot, membership, ["users"]);
+
+        withoutProjection.WorkspaceModules.Should().BeNull();
+        withProjection.Capabilities.Select(ToLegacyDecision).Should()
+            .BeEquivalentTo(withoutProjection.Capabilities.Select(ToLegacyDecision), options => options.WithStrictOrdering());
+    }
+
     [Fact]
     public void Recovery_capabilities_separate_basic_and_secret_scopes_without_requiring_a_known_role()
     {
@@ -614,4 +770,15 @@ public sealed class CapabilityEvaluatorTests
 
     private static WorkspaceMembership Member(string platformRole = "member") =>
         new(Guid.Parse("55555555-5555-5555-5555-555555555555"), "Customer workspace", platformRole);
+
+    private static object ToLegacyDecision(CapabilityDecision decision) => new
+    {
+        decision.Capability,
+        decision.State,
+        decision.ReasonCode,
+        decision.RequiredRoleTemplateId,
+        decision.Pim,
+        decision.NextStep,
+        decision.MissingScopes
+    };
 }

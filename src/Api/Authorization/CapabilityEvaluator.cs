@@ -123,7 +123,10 @@ public static class CapabilityEvaluator
             MissingReadState: CapabilityState.ConsentRequired)
     };
 
-    public static CapabilitySnapshot Evaluate(GraphAuthorizationSnapshot snapshot, WorkspaceMembership workspaceMembership)
+    public static CapabilitySnapshot Evaluate(
+        GraphAuthorizationSnapshot snapshot,
+        WorkspaceMembership workspaceMembership,
+        IReadOnlyCollection<string>? enabledModules = null)
     {
         var decisions = Capability.All
             .Select(capability => EvaluateCapability(capability, snapshot, workspaceMembership))
@@ -131,9 +134,10 @@ public static class CapabilityEvaluator
         return new CapabilitySnapshot(
             workspaceMembership.WorkspaceId,
             DateTimeOffset.UtcNow,
-            decisions,
+            ProjectRoleEvidence(decisions, snapshot),
             snapshot.IsAvailable ? "graph_authoritative" : CapabilityState.TemporarilyUnavailable,
-            snapshot.ProblemCategory);
+            snapshot.ProblemCategory,
+            ProjectWorkspaceModules(workspaceMembership, enabledModules));
     }
 
     public static bool IsPlatformOnly(string capability) =>
@@ -322,6 +326,107 @@ public static class CapabilityEvaluator
         return tenantWideActiveTemplates.Overlaps(requirement.ReadOnlyRoleTemplateIds)
             ? new CapabilityDecision(capability, CapabilityState.ReadOnly, "role_read_only", requirement.RoleTemplateIds.First())
             : new CapabilityDecision(capability, CapabilityState.Hidden, "directory_role_required", requirement.RoleTemplateIds.First());
+    }
+
+    private static IReadOnlyList<CapabilityDecision> ProjectRoleEvidence(
+        IReadOnlyList<CapabilityDecision> decisions,
+        GraphAuthorizationSnapshot snapshot) =>
+        decisions.Select(decision => decision with
+        {
+            RoleEvidence = BuildRoleEvidence(decision.Capability, snapshot)
+        }).ToArray();
+
+    private static CapabilityRoleEvidence BuildRoleEvidence(string capability, GraphAuthorizationSnapshot snapshot)
+    {
+        if (IsPlatformOnly(capability))
+        {
+            return new CapabilityRoleEvidence("not_applicable", [], []);
+        }
+
+        var requiredRoleTemplateIds = RequiredRoleTemplateIds(capability, snapshot);
+        if (!snapshot.IsAvailable)
+        {
+            return new CapabilityRoleEvidence("unavailable", requiredRoleTemplateIds, []);
+        }
+
+        var requiredRoles = requiredRoleTemplateIds.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var assignments = snapshot.DirectoryRoles
+            .Where(role =>
+                requiredRoles.Contains(role.RoleTemplateId)
+                && (string.Equals(role.AssignmentState, DirectoryRoleAssignmentState.Active, StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(role.AssignmentState, DirectoryRoleAssignmentState.Eligible, StringComparison.OrdinalIgnoreCase)))
+            .Select(role => new CapabilityRoleAssignmentEvidence(
+                role.RoleTemplateId,
+                string.Equals(role.AssignmentState, DirectoryRoleAssignmentState.Active, StringComparison.OrdinalIgnoreCase)
+                    ? DirectoryRoleAssignmentState.Active
+                    : DirectoryRoleAssignmentState.Eligible,
+                IsTenantWide(role) ? "tenant_wide" : "scoped",
+                role.Pim?.State))
+            .ToArray();
+
+        return new CapabilityRoleEvidence("available", requiredRoleTemplateIds, assignments);
+    }
+
+    private static IReadOnlyCollection<string> RequiredRoleTemplateIds(string capability, GraphAuthorizationSnapshot snapshot)
+    {
+        if (IsRecoveryCapability(capability))
+        {
+            return EntraRoleCatalog.DisplayNames.Keys
+                .Where(role => EntraRoleCatalog.SupportsRecoveryOperation(capability, role))
+                .OrderBy(role => role, StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+        }
+
+        if (!Requirements.TryGetValue(capability, out var requirement))
+        {
+            return [];
+        }
+
+        var roleTemplateIds = requirement.RoleTemplateIds
+            .Concat(requirement.ReadOnlyRoleTemplateIds)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        if (capability == Capability.PimActivate)
+        {
+            foreach (var role in snapshot.DirectoryRoles.Where(role =>
+                         string.Equals(role.AssignmentState, DirectoryRoleAssignmentState.Eligible, StringComparison.OrdinalIgnoreCase)
+                         && IsTenantWide(role)
+                         && role.Pim is not null))
+            {
+                roleTemplateIds.Add(role.RoleTemplateId);
+            }
+        }
+
+        return roleTemplateIds.OrderBy(role => role, StringComparer.OrdinalIgnoreCase).ToArray();
+    }
+
+    private static IReadOnlyCollection<WorkspaceModuleEvidence>? ProjectWorkspaceModules(
+        WorkspaceMembership workspaceMembership,
+        IReadOnlyCollection<string>? enabledModules)
+    {
+        if (enabledModules is null)
+        {
+            return null;
+        }
+
+        var enabled = WorkspaceModuleCatalog.Normalize(enabledModules).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var granted = WorkspaceModuleCatalog.Normalize(workspaceMembership.ModuleKeys).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var owner = WorkspaceModuleCatalog.IsOwner(workspaceMembership.PlatformRole);
+
+        return WorkspaceModuleCatalog.All.Select(module =>
+        {
+            var isEnabled = enabled.Contains(module);
+            var hasExplicitGrant = granted.Contains(module);
+            var grantSource = owner && isEnabled
+                ? "owner_inherited"
+                : hasExplicitGrant ? "explicit" : "none";
+
+            return new WorkspaceModuleEvidence(
+                module,
+                grantSource,
+                isEnabled,
+                isEnabled && (owner || hasExplicitGrant));
+        }).ToArray();
     }
 
     private static CapabilityDecision PimDecision(string capability, DirectoryRoleSnapshot role)

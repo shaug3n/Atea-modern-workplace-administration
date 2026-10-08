@@ -32,11 +32,53 @@ public sealed class CapabilityEndpointTests
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         body.Should().Contain("\"workspaceId\":\"55555555-5555-5555-5555-555555555555\"");
         body.Should().Contain("\"capability\":\"users.view\"");
-        body.Should().Contain("\"state\":\"allowed\"");
+        body.Should().Contain("\"capability\":\"users.view\",\"state\":\"allowed\"");
         body.Should().Contain("\"capability\":\"users.create\"");
-        body.Should().Contain("\"state\":\"read_only\"");
+        body.Should().Contain("\"capability\":\"users.create\",\"state\":\"read_only\"");
+        body.Should().Contain($"\"roleTemplateId\":\"{EntraRoleCatalog.GlobalReaderTemplateId}\"");
+        body.Should().Contain("\"workspaceModules\"");
+        body.Should().NotContain("authentication-campaigns");
+        body.Should().NotContain("license-hygiene");
+        body.Should().NotContain("\"capability\":\"authentication.campaigns.view\"");
+        body.Should().NotContain("\"capability\":\"authentication.campaigns.manage\"");
+        body.Should().NotContain("\"capability\":\"licenses.hygiene.view\"");
+        body.Should().NotContain("\"capability\":\"platform.about.view\"");
+        body.Should().NotContain("\"capability\":\"feedback.submit\"");
         body.Should().NotContain("access_token");
         body.Should().NotContain("Authorization");
+    }
+
+    [Fact]
+    public async Task Capability_endpoint_is_readable_by_member_without_module_or_manager_grants()
+    {
+        using var factory = CreateFactory(platformRole: "member", moduleKeys: []);
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Test");
+
+        var response = await client.GetAsync("/api/capabilities");
+        using var body = System.Text.Json.JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        body.RootElement.GetProperty("workspaceId").GetString()
+            .Should().Be("55555555-5555-5555-5555-555555555555");
+        var modules = body.RootElement.GetProperty("workspaceModules").EnumerateArray().ToArray();
+        modules.Select(module => module.GetProperty("module").GetString())
+            .Should().Equal("users", "devices", "licenses", "exchange");
+        modules.Should().OnlyContain(module =>
+            !module.GetProperty("effective").GetBoolean()
+            && module.GetProperty("grantSource").GetString() == "none");
+    }
+
+    [Fact]
+    public async Task Capability_endpoint_requires_workspace_membership()
+    {
+        using var factory = CreateFactory(hasMembership: false);
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Test");
+
+        var response = await client.GetAsync("/api/capabilities");
+
+        response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
     }
 
     [Fact]
@@ -106,6 +148,8 @@ public sealed class CapabilityEndpointTests
         GraphAuthorizationSnapshot? snapshot = null,
         RecordingSnapshotReader? reader = null,
         string platformRole = "admin",
+        IReadOnlyCollection<string>? moduleKeys = null,
+        bool hasMembership = true,
         string consentRedirectUri = "http://localhost:5173/onboarding/consent/callback") =>
         new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
         {
@@ -127,7 +171,7 @@ public sealed class CapabilityEndpointTests
                     options.DefaultChallengeScheme = TestAuthenticationHandler.Scheme;
                 }).AddScheme<AuthenticationSchemeOptions, TestAuthenticationHandler>(TestAuthenticationHandler.Scheme, _ => { });
                 services.RemoveAll<IWorkspaceMembershipReader>();
-                services.AddSingleton<IWorkspaceMembershipReader>(new FixtureMembershipReader(platformRole));
+                services.AddSingleton<IWorkspaceMembershipReader>(new FixtureMembershipReader(platformRole, moduleKeys, hasMembership));
                 services.RemoveAll<IGraphAuthorizationSnapshotReader>();
                 services.AddSingleton<IGraphAuthorizationSnapshotReader>(reader ?? new RecordingSnapshotReader(snapshot ?? GraphAuthorizationSnapshot.Unavailable("temporarily_unavailable")));
                 services.RemoveAll<IConsentChallengeRepository>();
@@ -152,14 +196,16 @@ public sealed class CapabilityEndpointTests
         public Task<bool> TryConsumeAsync(Guid workspaceId, Guid tenantId, string stateHash, DateTimeOffset now, CancellationToken cancellationToken = default) => Task.FromResult(true);
     }
 
-    private sealed class FixtureMembershipReader(string platformRole) : IWorkspaceMembershipReader
+    private sealed class FixtureMembershipReader(string platformRole, IReadOnlyCollection<string>? moduleKeys, bool hasMembership) : IWorkspaceMembershipReader
     {
         public Task<WorkspaceMembership?> FindMembershipAsync(Guid tenantId, Guid objectId, CancellationToken cancellationToken = default) =>
-            Task.FromResult<WorkspaceMembership?>(new WorkspaceMembership(
-                Guid.Parse("55555555-5555-5555-5555-555555555555"),
-                "customer-workspace",
-                platformRole,
-                ModuleKeys: ["users", "devices", "licenses"]));
+            Task.FromResult<WorkspaceMembership?>(hasMembership
+                ? new WorkspaceMembership(
+                    Guid.Parse("55555555-5555-5555-5555-555555555555"),
+                    "customer-workspace",
+                    platformRole,
+                    ModuleKeys: moduleKeys ?? ["users", "devices", "licenses"])
+                : null);
     }
 
     private sealed class TestAuthenticationHandler(IOptionsMonitor<AuthenticationSchemeOptions> options, ILoggerFactory logger, UrlEncoder encoder)
