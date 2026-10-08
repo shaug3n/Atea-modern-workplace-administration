@@ -49,7 +49,7 @@ public sealed class InvitationConsentEndpointTests
         var query = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(new Uri(result!.AuthorizationUrl).Query);
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
-        query["client_id"].ToString().Should().Be("customer-spa");
+        query["client_id"].ToString().Should().Be("22222222-2222-2222-2222-222222222222");
         query["scope"].ToString().Should().Be("api://customer-api/.default");
         challenges.Record.Should().NotBeNull();
         challenges.Record!.StateHash.Should().Be(ConsentChallengeService.HashState(result.Challenge));
@@ -275,7 +275,7 @@ public sealed class InvitationConsentEndpointTests
                 ["Onboarding:PublicBaseUrl"] = "http://localhost",
                 ["Onboarding:ConsentRedirectUri"] = "http://localhost/onboarding/consent/callback",
                 ["Onboarding:ConsentSigningKey"] = Convert.ToBase64String(Enumerable.Repeat((byte)1, 32).ToArray()),
-                ["Onboarding:CustomerClientId"] = "customer-spa",
+                ["Onboarding:CustomerClientId"] = "22222222-2222-2222-2222-222222222222",
                 ["Onboarding:ApiApplicationIdUri"] = "api://customer-api",
                 ["Onboarding:TrustedProxyAddresses"] = trustedProxyAddresses
             }));

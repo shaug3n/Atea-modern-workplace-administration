@@ -90,7 +90,9 @@ public sealed class CapabilityEndpointTests
     [Fact]
     public async Task Consent_start_uses_the_validated_configured_redirect_uri()
     {
-        using var factory = CreateFactory(consentRedirectUri: "http://localhost:5173/consent-callback");
+        const string publicBaseUrl = "https://consent.workplace.example";
+        const string consentRedirectUri = $"{publicBaseUrl}/onboarding/consent/callback";
+        using var factory = CreateFactory(consentRedirectUri: consentRedirectUri, publicBaseUrl: publicBaseUrl);
         using var client = factory.CreateClient();
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Test");
 
@@ -98,15 +100,15 @@ public sealed class CapabilityEndpointTests
         var body = await response.Content.ReadAsStringAsync();
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
-        body.Should().Contain(Uri.EscapeDataString("http://localhost:5173/consent-callback"));
-        body.Should().NotContain("%2Fonboarding%2F");
+        body.Should().Contain(Uri.EscapeDataString(consentRedirectUri));
     }
 
     private static WebApplicationFactory<Program> CreateFactory(
         GraphAuthorizationSnapshot? snapshot = null,
         RecordingSnapshotReader? reader = null,
         string platformRole = "admin",
-        string consentRedirectUri = "http://localhost:5173/onboarding/consent/callback") =>
+        string consentRedirectUri = "http://localhost:5173/onboarding/consent/callback",
+        string publicBaseUrl = "http://localhost:5173") =>
         new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
         {
             builder.ConfigureAppConfiguration((_, config) =>
@@ -115,6 +117,7 @@ public sealed class CapabilityEndpointTests
                 {
                     ["AzureAd:Audience"] = "api://atea-unified-workplace-api",
                     ["AzureAd:ClientId"] = "test-client-id",
+                    ["Onboarding:PublicBaseUrl"] = publicBaseUrl,
                     ["Onboarding:ConsentSigningKey"] = Convert.ToBase64String(new byte[32]),
                     ["Onboarding:ConsentRedirectUri"] = consentRedirectUri
                 });
