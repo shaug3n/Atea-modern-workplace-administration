@@ -38,3 +38,14 @@ After implementation:
 ## Limitations
 
 No live tenant validation was performed; unit and integration tests do not prove delegated Graph access in a tenant. No source scouting or additional permission validation was performed.
+
+## Round 1 reviewer fix
+
+Unknown assigned SKU IDs remain in `SkuId`, while unresolved catalog `PartNumber` and `DisplayName` are now null instead of copying the ID into those metadata fields. The assigned-SKU DTO allows nullable catalog fields. Focused assertions verify exact unknown fields, known SKU resolution, and unknown assignment behavior remains independent of an inventory-source failure.
+
+Verification:
+
+- `$HOME/.dotnet/dotnet test tests/Api.UnitTests/Api.UnitTests.csproj --filter FullyQualifiedName~LicenseHygieneServiceTests --no-restore` before the service fix — failed as expected in the unknown-SKU, multi-SKU resolution, and independent-source tests because unresolved metadata still contained the raw ID.
+- `$HOME/.dotnet/dotnet test tests/Api.UnitTests/Api.UnitTests.csproj --filter FullyQualifiedName~LicenseHygieneServiceTests` — passed, 11/11.
+- `$HOME/.dotnet/dotnet test tests/Api.IntegrationTests/Api.IntegrationTests.csproj --filter FullyQualifiedName~LicenseHygieneEndpointTests` — passed, 6/6.
+- `$HOME/.dotnet/dotnet build src/Api/Atea.UnifiedWorkplace.Api.csproj --no-restore` — passed, 0 warnings, 0 errors.

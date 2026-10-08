@@ -208,7 +208,7 @@ public sealed class LicenseHygieneService(
         IReadOnlyDictionary<string, LicenseOverviewItem> catalog) =>
         catalog.TryGetValue(skuId, out var item)
             ? new LicenseHygieneAssignedSku(skuId, item.PartNumber, item.DisplayName)
-            : new LicenseHygieneAssignedSku(skuId, skuId, skuId);
+            : new LicenseHygieneAssignedSku(skuId, null, null);
 
     private static bool TryGetValidAssignments(
         LicenseHygieneUserObservation user,

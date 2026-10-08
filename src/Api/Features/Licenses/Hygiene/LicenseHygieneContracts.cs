@@ -63,8 +63,8 @@ public sealed record LicenseHygieneSkuRow(
 
 public sealed record LicenseHygieneAssignedSku(
     string SkuId,
-    string PartNumber,
-    string DisplayName);
+    string? PartNumber,
+    string? DisplayName);
 
 public sealed record LicenseHygieneDisabledAccountRow(
     string Id,

@@ -37,9 +37,10 @@ public sealed class LicenseHygieneServiceTests
         response.DisabledAccounts.Should().ContainSingle();
         response.DisabledAccounts[0].Id.Should().Be("user-1");
         response.DisabledAccounts[0].AssignedLicenses.Should().HaveCount(2);
-        response.DisabledAccounts[0].AssignedLicenses[0].DisplayName.Should().Be("Office 365 E3");
-        response.DisabledAccounts[0].AssignedLicenses[1].SkuId.Should().Be("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
-        response.DisabledAccounts[0].AssignedLicenses[1].PartNumber.Should().Be("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
+        response.DisabledAccounts[0].AssignedLicenses[0].Should().Be(
+            new LicenseHygieneAssignedSku("11111111-1111-1111-1111-111111111111", "ENTERPRISEPACK", "Office 365 E3"));
+        response.DisabledAccounts[0].AssignedLicenses[1].Should().Be(
+            new LicenseHygieneAssignedSku("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", null, null));
         response.Coverage.RecordsAssessed.Should().Be(1);
     }
 
@@ -76,7 +77,7 @@ public sealed class LicenseHygieneServiceTests
 
         response.DisabledAccounts.Should().ContainSingle();
         response.DisabledAccounts[0].AssignedLicenses.Should().ContainSingle()
-            .Which.Should().Be(new LicenseHygieneAssignedSku(unknownId, unknownId, unknownId));
+            .Which.Should().Be(new LicenseHygieneAssignedSku(unknownId, null, null));
     }
 
     [Fact]
@@ -119,6 +120,8 @@ public sealed class LicenseHygieneServiceTests
         response.Inventory.Error.RetryAfterSeconds.Should().Be(13);
         response.UserEvidence.Freshness.Should().Be("live");
         response.DisabledAccounts.Should().ContainSingle();
+        response.DisabledAccounts[0].AssignedLicenses.Should().ContainSingle()
+            .Which.Should().Be(new LicenseHygieneAssignedSku("cccccccc-cccc-cccc-cccc-cccccccccccc", null, null));
         response.CapacityItems.Should().BeEmpty();
     }
 
