@@ -24,6 +24,20 @@ describe('PermissionState', () => {
     expect(container.textContent).toBe('');
   });
 
+  it('announces a caller-supplied reasonText for a blocked decision', () => {
+    render(
+      <PermissionState
+        decision={{ capability: 'users.create', state: 'read_only', reasonCode: 'role_read_only' }}
+        reasonText="Changes are managed by the source directory."
+      >
+        <button>Create user</button>
+      </PermissionState>
+    );
+
+    expect(screen.getByRole('status').textContent).toContain('Changes are managed by the source directory.');
+    expect(screen.getByRole('status').textContent).not.toContain('This action is read-only');
+  });
+
   it('keeps read only content visible with an accessible explanation', () => {
     render(
       <PermissionState decision={{ capability: 'users.create', state: 'read_only', reasonCode: 'role_read_only' }}>

@@ -157,6 +157,55 @@
 .status-badge[data-tone='danger'] { border-color: var(--uw-status-danger-border); background: var(--uw-status-danger-bg); color: var(--uw-status-danger-fg); }
 .status-badge[data-tone='info'] { border-color: var(--uw-status-info-border); background: var(--uw-status-info-bg); color: var(--uw-status-info-fg); }
 
+.domain-access-chip {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--uw-gap-xs);
+}
+
+.domain-access-chip__label { font-weight: 600; }
+.domain-access-chip__reason { color: var(--uw-muted); font-size: var(--uw-font-meta); }
+
+.disabled-reason {
+  position: relative;
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--uw-gap-xs);
+}
+
+.disabled-reason:focus-visible {
+  border-radius: var(--uw-radius-sm);
+  outline: 2px solid var(--uw-focus);
+  outline-offset: 2px;
+}
+
+.disabled-reason__text { color: var(--uw-muted); font-size: var(--uw-font-meta); }
+.disabled-reason__source { display: inline; }
+
+.disabled-reason__tooltip {
+  position: absolute;
+  z-index: 10;
+  bottom: calc(100% + var(--uw-gap-xs));
+  left: 0;
+  max-width: min(24rem, calc(100vw - 2 * var(--uw-gap-md)));
+  padding: var(--uw-gap-xs) var(--uw-gap-sm);
+  border: 1px solid var(--uw-border-strong);
+  border-radius: var(--uw-radius-sm);
+  background: var(--uw-surface);
+  color: var(--uw-text);
+  box-shadow: var(--uw-elevation-2);
+  visibility: hidden;
+  opacity: 0;
+}
+
+.disabled-reason:hover .disabled-reason__tooltip,
+.disabled-reason:focus .disabled-reason__tooltip {
+  visibility: visible;
+  opacity: 1;
+}
+
 /* Technical details and copy */
 .technical-details {
   margin-top: var(--uw-gap-sm);
