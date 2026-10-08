@@ -132,6 +132,11 @@ test('module inventory documents the active, opt-in hygiene workflow', async () 
   assert.match(hygiene, /10,000.*100.*30 seconds/i);
   assert.match(hygiene, /no automatic module or member grants/i);
   assert.doesNotMatch(hygiene, /pending|not shipped/i);
+  const modules = inventory.split('\n').find((line) => line.startsWith('| Modules |'));
+  assert.ok(modules, 'Modules should have an inventory row');
+  assert.match(modules, /supported keys are Users, Devices, Licenses, Exchange, and License Hygiene \(`license-hygiene`\)/);
+  assert.match(modules, /License Hygiene is opt-in/i);
+  assert.match(modules, /does not grant it by default to a workspace or member/i);
   const candidateTable = inventory.split('## Prism-inspired candidates, outside live navigation')[1];
   assert.ok(candidateTable, 'the inactive candidate table should exist');
   assert.doesNotMatch(candidateTable, /^\| License Hygiene \|/m);
