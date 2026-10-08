@@ -349,6 +349,101 @@
   color: var(--uw-primary);
 }
 
+/* Explanation, provenance, and action layouts */
+.explainer-panel {
+  display: grid;
+  gap: var(--uw-gap-sm);
+  padding: var(--uw-gap-md);
+  border: 1px solid var(--uw-border);
+  border-radius: var(--uw-radius-md);
+  background: var(--uw-surface);
+}
+
+.explainer-panel__title {
+  margin: 0;
+  color: var(--uw-heading);
+  font-size: var(--uw-font-section-title);
+}
+
+.explainer-panel__content > :first-child { margin-top: 0; }
+.explainer-panel__content > :last-child { margin-bottom: 0; }
+
+.info-tip {
+  position: relative;
+  display: inline-flex;
+  vertical-align: middle;
+}
+
+.info-tip__trigger {
+  display: inline-grid;
+  width: 1.75rem;
+  min-height: 1.75rem;
+  padding: 0;
+  place-items: center;
+  border: 1px solid var(--uw-border-strong);
+  border-radius: 50%;
+  background: var(--uw-surface);
+  color: var(--uw-muted);
+  font: inherit;
+  font-size: var(--uw-font-meta);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.info-tip__trigger:hover { color: var(--uw-heading); }
+
+.info-tip__popover {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + var(--uw-gap-xs));
+  left: 0;
+  width: min(24rem, calc(100vw - 2 * var(--uw-gap-md)));
+  padding: var(--uw-gap-sm) var(--uw-gap-md);
+  border: 1px solid var(--uw-border-strong);
+  border-radius: var(--uw-radius-md);
+  background: var(--uw-surface);
+  color: var(--uw-text);
+  box-shadow: var(--uw-elevation-2);
+}
+
+.provenance-chip {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--uw-gap-xs);
+  width: fit-content;
+  padding: var(--uw-gap-2xs) var(--uw-gap-sm);
+  border: 1px solid var(--uw-border);
+  border-radius: var(--uw-radius-sm);
+  background: var(--uw-surface-subtle);
+  color: var(--uw-text);
+  font-size: var(--uw-font-meta);
+}
+
+.provenance-chip__source { font-weight: 600; }
+.provenance-chip__explanation { color: var(--uw-muted); }
+
+.quick-actions-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--uw-gap-sm) var(--uw-gap-md);
+}
+
+.quick-actions-bar__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--uw-gap-sm);
+}
+
+.quick-actions-bar__audit-notice {
+  margin: 0;
+  color: var(--uw-muted);
+  font-size: var(--uw-font-meta);
+}
+
 .metric-card--filter:focus-visible,
 .status-pill-filter__option:focus-visible {
   outline: 2px solid var(--uw-primary);
