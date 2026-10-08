@@ -50,12 +50,23 @@ public sealed class TenantResolverTests
     [Theory]
     [InlineData("https://evil.example/tenant/v2.0")]
     [InlineData("https://login.microsoftonline.com/common/v2.0")]
+    [InlineData("https://login.microsoftonline.com/11111111-1111-1111-1111-111111111111/nested/v2.0")]
     public async Task ResolveAsync_rejects_mismatched_metadata_authority(string issuer)
     {
         var handler = new StubHandler(_ => JsonResponse(Metadata(TenantId, issuer: issuer)));
         var resolver = CreateResolver(handler);
 
         var result = await resolver.ResolveAsync(Domain);
+
+        result.Status.Should().NotBe(TenantResolutionStatus.Resolved);
+        result.TenantId.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task ResolveAsync_rejects_empty_guid_issuer()
+    {
+        var handler = new StubHandler(_ => JsonResponse(Metadata(Guid.Empty)));
+        var result = await CreateResolver(handler).ResolveAsync(Domain);
 
         result.Status.Should().NotBe(TenantResolutionStatus.Resolved);
         result.TenantId.Should().BeNull();

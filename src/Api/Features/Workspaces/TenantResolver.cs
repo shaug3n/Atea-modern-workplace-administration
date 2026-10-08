@@ -208,6 +208,7 @@ public sealed class OidcTenantResolver(IHttpClientFactory httpClientFactory) : I
         tenantId = default;
         if (!TryReadTenantSegment(metadata?.Issuer, "/v2.0", out var issuerTenant) ||
             !Guid.TryParseExact(issuerTenant, "D", out tenantId) ||
+            tenantId == Guid.Empty ||
             !IsTrustedEndpoint(metadata?.AuthorizationEndpoint, tenantId) ||
             !IsTrustedEndpoint(metadata?.TokenEndpoint, tenantId))
         {
@@ -257,7 +258,16 @@ public sealed class OidcTenantResolver(IHttpClientFactory httpClientFactory) : I
             return false;
         }
 
-        return TryExtractTenantSegment(path[..^suffix.Length], out tenant);
+        var tenantPath = path[..^suffix.Length];
+        if (!tenantPath.StartsWith("/", StringComparison.Ordinal) ||
+            tenantPath.Length <= 1 ||
+            tenantPath[1..].Contains('/'))
+        {
+            return false;
+        }
+
+        tenant = tenantPath[1..];
+        return true;
     }
 
     private static bool TryExtractTenantSegment(string path, out string tenant)
