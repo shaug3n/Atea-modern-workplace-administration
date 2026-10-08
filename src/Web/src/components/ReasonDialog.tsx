@@ -1,4 +1,4 @@
-import React, { useId, useState } from 'react';
+import React, { useEffect, useId, useState } from 'react';
 import { messages } from '../app/messages';
 import { ConfirmationDialog, type ConfirmationDialogProps } from './ConfirmationDialog';
 
@@ -13,6 +13,10 @@ export function ReasonDialog({ onConfirm, reasonHint, ...props }: ReasonDialogPr
   const requiredId = useId();
   const hintId = useId();
   const trimmedReason = reason.trim();
+
+  useEffect(() => {
+    setReason('');
+  }, [props.target]);
 
   return (
     <ConfirmationDialog

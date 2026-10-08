@@ -32,6 +32,31 @@ describe('ReasonDialog', () => {
     expect(onConfirm).toHaveBeenCalledWith('Offboarding complete');
   });
 
+  it('clears the reason when the target changes', () => {
+    const onConfirm = vi.fn();
+    const { rerender } = render(<ReasonDialog {...base} onConfirm={onConfirm} />);
+    const confirm = screen.getByRole('button', { name: 'Disable user' }) as HTMLButtonElement;
+    const reason = screen.getByRole('textbox', { name: 'Reason' });
+
+    fireEvent.change(reason, { target: { value: 'Approved for Taylor' } });
+    fireEvent.click(screen.getByRole('checkbox'));
+    expect(confirm.disabled).toBe(false);
+
+    rerender(<ReasonDialog {...base} target="Jordan Lee" onConfirm={onConfirm} />);
+
+    expect((screen.getByRole('textbox', { name: 'Reason' }) as HTMLTextAreaElement).value).toBe('');
+    expect(confirm.disabled).toBe(true);
+    fireEvent.click(screen.getByRole('checkbox'));
+    expect(confirm.disabled).toBe(true);
+    fireEvent.click(confirm);
+    expect(onConfirm).not.toHaveBeenCalled();
+
+    fireEvent.change(screen.getByRole('textbox', { name: 'Reason' }), { target: { value: 'Approved for Jordan' } });
+    expect(confirm.disabled).toBe(false);
+    fireEvent.click(confirm);
+    expect(onConfirm).toHaveBeenCalledWith('Approved for Jordan');
+  });
+
   it('shows the required reason and audit notice', () => {
     render(<ReasonDialog {...base} onConfirm={vi.fn()} reasonHint="Include the approved request reference." />);
 
