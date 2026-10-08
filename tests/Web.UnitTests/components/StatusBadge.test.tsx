@@ -10,4 +10,11 @@ describe('StatusBadge', () => {
     expect(screen.getByText('Disabled')).not.toBeNull();
     expect(container.querySelector('[data-tone="neutral"]')).not.toBeNull();
   });
+
+  it('supports compact density while preserving its text label', () => {
+    const { container } = render(<StatusBadge density="compact" label="Up to date" />);
+
+    expect(screen.getByText('Up to date')).not.toBeNull();
+    expect(container.querySelector('.status-badge--compact')).not.toBeNull();
+  });
 });

@@ -95,6 +95,35 @@
 .data-freshness__label { font-weight: 600; }
 .data-freshness .button { min-height: 2rem; }
 
+.data-freshness--pill {
+  display: inline-flex;
+  padding: var(--uw-gap-xs) var(--uw-gap-sm);
+  border: 1px solid var(--uw-border-strong);
+  border-radius: 999px;
+  background: var(--uw-surface-subtle);
+}
+
+.data-freshness--banner {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  padding: var(--uw-gap-sm) var(--uw-gap-md);
+  border: 1px solid var(--uw-border-strong);
+  border-radius: var(--uw-radius-md);
+  background: var(--uw-surface-subtle);
+}
+
+.data-freshness__states,
+.data-freshness__details {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--uw-gap-xs);
+}
+
+.data-freshness__details { color: var(--uw-muted); }
+.data-freshness__details .button { min-height: 2rem; }
+
 /* Status badge */
 .status-badge {
   display: inline-flex;
@@ -108,6 +137,12 @@
   color: var(--uw-status-neutral-fg);
   font-size: var(--uw-font-meta);
   font-weight: 600;
+}
+
+.status-badge--compact {
+  gap: var(--uw-gap-2xs);
+  padding: 0 var(--uw-gap-xs);
+  font-size: var(--uw-font-meta);
 }
 
 .status-badge__dot {

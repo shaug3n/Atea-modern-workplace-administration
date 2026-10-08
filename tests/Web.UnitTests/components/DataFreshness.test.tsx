@@ -5,13 +5,66 @@ import { DataFreshness } from '../../../src/Web/src/components/DataFreshness';
 
 describe('DataFreshness', () => {
   afterEach(cleanup);
-  it('renders a quiet fresh line without alerts or success banners', () => {
+  it('renders the legacy quiet fresh line by default', () => {
     const { container } = render(<DataFreshness fetchedAt={new Date().toISOString()} freshness="fresh" partialData={false} source="Microsoft Graph" />);
     expect(screen.getByText('Up to date')).not.toBeNull();
     expect(container.querySelector('time')?.getAttribute('title')).toBeTruthy();
     expect(screen.queryByRole('alert')).toBeNull();
     expect(container.querySelector('[data-tone="success"]')).toBeNull();
     expect(screen.getByText('Microsoft Graph')).not.toBeNull();
+  });
+
+  it('renders the compact pill variant while preserving supplied details and refresh', () => {
+    const refresh = vi.fn();
+    const { container } = render(
+      <DataFreshness
+        fetchedAt="2026-10-07T10:00:00Z"
+        freshness="fresh"
+        partialData={false}
+        presentation="pill"
+        source="Microsoft Graph"
+        message="Directory data is current."
+        onRefresh={refresh}
+      />
+    );
+
+    expect(container.querySelector('.data-freshness--pill')).not.toBeNull();
+    expect(screen.getByText('Up to date')).not.toBeNull();
+    expect(screen.getByText('Directory data is current.')).not.toBeNull();
+    expect(screen.getByText('Microsoft Graph')).not.toBeNull();
+    expect(container.querySelector('time')?.getAttribute('title')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh' }));
+    expect(refresh).toHaveBeenCalledOnce();
+  });
+
+  it('shows freshness and partial data independently in a banner', () => {
+    const { container } = render(
+      <DataFreshness fetchedAt={null} freshness="fresh" partialData presentation="banner" />
+    );
+
+    expect(container.querySelector('.data-freshness--banner')).not.toBeNull();
+    expect(screen.getByText('Up to date')).not.toBeNull();
+    expect(screen.getByText('Partly loaded')).not.toBeNull();
+  });
+
+  it('shows unavailable status without a success tone', () => {
+    const { container } = render(<DataFreshness fetchedAt={null} freshness="unavailable" partialData={false} presentation="pill" />);
+
+    expect(screen.getByText('Unavailable')).not.toBeNull();
+    expect(container.querySelector('.status-badge[data-tone="danger"]')).not.toBeNull();
+    expect(container.querySelector('.status-badge[data-tone="success"]')).toBeNull();
+  });
+
+  it('shows throttling without success tone or invented retry timing', () => {
+    const { container } = render(
+      <DataFreshness fetchedAt={null} freshness="fresh" partialData={false} presentation="banner" throttled />
+    );
+
+    expect(screen.getByText('Refresh throttled')).not.toBeNull();
+    expect(container.querySelector('.status-badge[data-tone="warning"]')).not.toBeNull();
+    expect(container.querySelector('.status-badge[data-tone="success"]')).toBeNull();
+    expect(container.textContent?.toLowerCase()).not.toContain('retry');
+    expect(container.textContent).not.toMatch(/\d+\s*(seconds|minutes)/i);
   });
 
   it('shows a stale label and never renders Invalid Date', () => {
