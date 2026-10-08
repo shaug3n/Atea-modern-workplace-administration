@@ -30,6 +30,58 @@ public sealed record LicenseHygieneUserScanResult(
     DateTimeOffset StartedAt,
     DateTimeOffset? CompletedAt);
 
+public sealed record LicenseHygieneSourceStatus(
+    string Freshness,
+    bool PartialData,
+    DateTimeOffset? FetchedAt,
+    LicenseHygieneError? Error);
+
+public sealed record LicenseHygieneCoverage(
+    int RecordsAssessed,
+    bool Completed,
+    string StopReason,
+    int MissingEvidenceRecords);
+
+public sealed record LicenseHygieneError(
+    string Category,
+    string Message,
+    int? StatusCode = null,
+    int? RetryAfterSeconds = null);
+
+public sealed record LicenseHygieneAccess(
+    string State,
+    string? ReasonCode = null,
+    CapabilityDecision? Authorization = null);
+
+public sealed record LicenseHygieneSkuRow(
+    string SkuId,
+    string PartNumber,
+    string DisplayName,
+    int Purchased,
+    int Assigned,
+    int Available);
+
+public sealed record LicenseHygieneAssignedSku(
+    string SkuId,
+    string PartNumber,
+    string DisplayName);
+
+public sealed record LicenseHygieneDisabledAccountRow(
+    string Id,
+    string? DisplayName,
+    string? UserPrincipalName,
+    IReadOnlyList<LicenseHygieneAssignedSku> AssignedLicenses,
+    DateTimeOffset EvidenceAt,
+    string EvidenceSource);
+
+public sealed record LicenseHygieneResponse(
+    LicenseHygieneAccess Access,
+    LicenseHygieneSourceStatus Inventory,
+    LicenseHygieneSourceStatus UserEvidence,
+    LicenseHygieneCoverage Coverage,
+    IReadOnlyList<LicenseHygieneSkuRow> CapacityItems,
+    IReadOnlyList<LicenseHygieneDisabledAccountRow> DisabledAccounts);
+
 public interface ILicenseHygieneUserReader
 {
     Task<LicenseHygieneUserScanResult> ScanAsync(
