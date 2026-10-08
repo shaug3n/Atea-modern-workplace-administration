@@ -889,8 +889,28 @@
 }
 
 .primary-nav__group-label {
-  margin-top: var(--uw-gap-lg);
+  margin: var(--uw-gap-lg) 0 var(--uw-gap-xs);
   font-size: var(--uw-font-meta);
+  font-weight: 600;
+  color: var(--uw-muted);
+}
+
+.primary-nav__group:first-child .primary-nav__group-label {
+  margin-top: 0;
+}
+
+.primary-nav__group-label button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
 }
 
 .primary-nav a {

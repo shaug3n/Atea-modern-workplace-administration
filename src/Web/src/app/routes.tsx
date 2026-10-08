@@ -19,6 +19,10 @@ import { WorkspaceModulesPage } from '../features/workspace-settings/WorkspaceMo
 import { WorkspaceSettingsHub } from '../features/workspace-settings/WorkspaceSettingsHub';
 import { messages } from './messages';
 import type { AppSession } from '../components/TenantContextHeader';
+import type { IconName } from '../components/icons';
+
+export type NavigationGroup = 'overview' | 'identity-access' | 'devices' | 'licenses' | 'services' | 'operations' | 'platform';
+export type NavigationVisibility = 'always' | 'module' | 'device-module-or-settings-manager' | 'audit-not-hidden' | 'workspace-manager';
 
 export type AppRoute = {
   path: string;
@@ -27,6 +31,7 @@ export type AppRoute = {
   capability?: Capability;
   module?: 'users' | 'devices' | 'licenses' | 'exchange';
   workspaceAccess?: 'members' | 'settings' | 'modules' | 'any';
+  navigation?: { group: NavigationGroup; order: number; icon: IconName; visibility: NavigationVisibility };
   render: (options?: { loadConnectionHealth?: ConnectionHealthLoader; loadOverview?: OverviewLoader; capabilities?: CapabilityDecision[]; navigate?: (path: string) => void; session?: AppSession; authorizationUnavailable?: boolean; onAuthorizationRetry?: () => Promise<void>; onRefreshAccess?: () => Promise<void> }) => ReactNode;
 };
 
@@ -39,7 +44,7 @@ export const appRoutes: AppRoute[] = [
   { path: '/onboarding/consent/callback', label: messages.connectionTitle, render: () => <ConsentCallbackPage /> },
   { path: '/onboarding', label: messages.navOnboarding, render: (options) => <OnboardingPage onNavigate={options?.navigate} /> },
   { path: '/identity', label: 'PIM guidance', render: (options) => <PimGuidancePage onRefreshAccess={options?.onRefreshAccess} /> },
-  { path: '/settings', label: 'Workspace Settings', workspaceAccess: 'any', render: (options) => options?.session ? <WorkspaceSettingsHub session={options.session} /> : null },
+  { path: '/settings', label: 'Workspace Settings', workspaceAccess: 'any', navigation: { group: 'platform', order: 0, icon: 'settings', visibility: 'workspace-manager' }, render: (options) => options?.session ? <WorkspaceSettingsHub session={options.session} /> : null },
   { path: '/settings/setup', label: 'Setup', workspaceAccess: 'settings', render: (options) => <OnboardingPage onNavigate={options?.navigate} /> },
   { path: '/settings/general', label: 'General', workspaceAccess: 'settings', render: () => <WorkspaceSettingsPage /> },
   { path: '/settings/modules', label: 'Modules', workspaceAccess: 'modules', render: () => <WorkspaceModulesPage /> },
@@ -47,6 +52,7 @@ export const appRoutes: AppRoute[] = [
   {
     path: '/overview',
     label: messages.navOverview,
+    navigation: { group: 'overview', order: 0, icon: 'overview', visibility: 'always' },
     render: (options) => <OverviewPage loadOverview={options?.loadOverview} session={options?.session} onNavigate={options?.navigate} />,
   },
   {
@@ -54,6 +60,7 @@ export const appRoutes: AppRoute[] = [
     label: messages.navUsers,
     module: 'users',
     capability: 'users.view',
+    navigation: { group: 'identity-access', order: 0, icon: 'users', visibility: 'module' },
     render: (options) => <UsersPage capabilities={options?.capabilities ?? []} onNavigate={options?.navigate} authorizationUnavailable={options?.authorizationUnavailable} onAuthorizationRetry={options?.onAuthorizationRetry} />,
   },
   {
@@ -69,6 +76,7 @@ export const appRoutes: AppRoute[] = [
     label: messages.navLicenses,
     module: 'licenses',
     capability: 'licenses.view',
+    navigation: { group: 'licenses', order: 0, icon: 'licenses', visibility: 'module' },
     render: () => <LicensesPage />,
   },
   {
@@ -81,6 +89,7 @@ export const appRoutes: AppRoute[] = [
     path: '/activity',
     label: 'Activity',
     capability: 'audit.view',
+    navigation: { group: 'operations', order: 0, icon: 'activity', visibility: 'audit-not-hidden' },
     render: (options) => <AuditActivityPage authorizationUnavailable={options?.authorizationUnavailable} onAuthorizationRetry={options?.onAuthorizationRetry} />,
   },
   {
@@ -96,12 +105,14 @@ export const appRoutes: AppRoute[] = [
     label: messages.navDevices,
     module: 'devices',
     capability: 'devices.view',
+    navigation: { group: 'devices', order: 0, icon: 'devices', visibility: 'device-module-or-settings-manager' },
     render: (options) => <DevicesPage capabilities={options?.capabilities} moduleAssigned={options?.session?.workspace.moduleAccess?.includes('devices') ?? true} moduleEnabled={options?.session?.workspace.enabledModules?.includes('devices') ?? true} onNavigate={options?.navigate} authorizationUnavailable={options?.authorizationUnavailable} onAuthorizationRetry={options?.onAuthorizationRetry} />,
   },
   {
     path: '/services/exchange',
     label: 'Exchange',
     module: 'exchange',
+    navigation: { group: 'services', order: 0, icon: 'mail', visibility: 'module' },
     render: () => <ExchangeOverviewPage />,
   },
   {

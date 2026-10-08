@@ -1,48 +1,67 @@
 import React, { useState } from 'react';
 import type { CapabilitySnapshot } from '../capabilities/capabilityTypes';
 import { messages } from '../app/messages';
+import { appRoutes, type NavigationGroup } from '../app/routes';
 import type { AppSession } from './TenantContextHeader';
-import { Icon, type IconName } from './icons';
+import { Icon } from './icons';
 
-type NavItem = { href: string; label: string };
-
-const navIcons: Record<string, IconName> = { '/overview': 'overview', '/users': 'users', '/licenses': 'licenses', '/devices': 'devices', '/services/exchange': 'mail', '/activity': 'activity', '/settings': 'settings' };
-type NavGroup = { key: string; label?: string; items: NavItem[]; disclosure?: boolean };
+type NavGroup = { key: NavigationGroup; label: string; disclosure?: boolean };
 
 const isRouteActive = (path: string, href: string) => path === href || path.startsWith(`${href}/`);
 
 export function PrimaryNav({ capabilities, session = { user: {}, workspace: { id: '', name: '' } }, currentPath, onNavigate }: { capabilities: CapabilitySnapshot | null; session?: AppSession; currentPath: string; onNavigate?: (path: string) => void }) {
-  const [expanded, setExpanded] = useState<Record<string, boolean>>({ people: true, services: true });
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({ 'identity-access': true, services: true });
   const moduleAccess = session.workspace.moduleAccess ?? session.workspace.enabledModules ?? ['users', 'devices', 'licenses', 'exchange'];
   const enabledModules = session.workspace.enabledModules ? moduleAccess.filter(key => session.workspace.enabledModules?.includes(key)) : moduleAccess;
   const enabled = (key: string) => enabledModules.includes(key);
   const settings = session.workspaceAccess?.canManageSettings === true || session.workspaceAccess?.canManageMembers === true || session.workspaceAccess?.canManageModules === true;
-  const groups: NavGroup[] = [
-    { key: 'overview', items: [{ href: '/overview', label: messages.navOverview }] },
-    { key: 'people', label: 'People', disclosure: true, items: [
-      ...(enabled('users') ? [{ href: '/users', label: messages.navUsers }] : []),
-      ...(enabled('licenses') ? [{ href: '/licenses', label: messages.navLicenses }] : []),
-    ] },
-    { key: 'devices', items: enabled('devices') || session.workspaceAccess?.canManageSettings ? [{ href: '/devices', label: messages.navDevices }] : [] },
-    { key: 'services', label: 'Services', disclosure: true, items: enabled('exchange') ? [{ href: '/services/exchange', label: 'Exchange' }] : [] },
-    { key: 'activity', items: capabilities?.capabilities.find(item => item.capability === 'audit.view')?.state === 'hidden' ? [] : [{ href: '/activity', label: 'Activity' }] },
-    { key: 'settings', items: settings ? [{ href: '/settings', label: 'Workspace Settings' }] : [] },
-  ].filter(group => group.items.length > 0);
+  const groupDefinitions: NavGroup[] = [
+    { key: 'overview', label: 'Overview' },
+    { key: 'identity-access', label: 'Identity & Access', disclosure: true },
+    { key: 'devices', label: 'Devices' },
+    { key: 'licenses', label: 'Licenses' },
+    { key: 'services', label: 'Services', disclosure: true },
+    { key: 'operations', label: 'Operations' },
+    { key: 'platform', label: 'Platform' },
+  ];
+  const items = appRoutes
+    .filter(route => route.navigation)
+    .filter(route => {
+      const navigation = route.navigation!;
+      switch (navigation.visibility) {
+        case 'always':
+          return true;
+        case 'module':
+          return route.module ? enabled(route.module) : false;
+        case 'device-module-or-settings-manager':
+          return enabled(route.module ?? 'devices') || session.workspaceAccess?.canManageSettings === true;
+        case 'audit-not-hidden':
+          return capabilities?.capabilities.find(item => item.capability === 'audit.view')?.state !== 'hidden';
+        case 'workspace-manager':
+          return settings;
+      }
+    })
+    .sort((a, b) => groupDefinitions.findIndex(group => group.key === a.navigation!.group) - groupDefinitions.findIndex(group => group.key === b.navigation!.group) || a.navigation!.order - b.navigation!.order);
+  const groups = groupDefinitions
+    .map(group => ({ ...group, items: items.filter(item => item.navigation!.group === group.key) }))
+    .filter(group => group.items.length > 0);
 
   return (
     <nav className="primary-nav" aria-label={messages.primaryNavigationLabel}>
       {groups.map(group => {
-        const activeItem = group.items.filter(item => isRouteActive(currentPath, item.href)).sort((a, b) => b.href.length - a.href.length)[0];
+        const activeItem = group.items.filter(item => isRouteActive(currentPath, item.path)).sort((a, b) => b.path.length - a.path.length)[0];
         const isExpanded = !group.disclosure || Boolean(activeItem) || expanded[group.key] !== false;
         return <div className={`primary-nav__group${group.disclosure ? ' primary-nav__group--disclosure' : ''}`} key={group.key}>
-          {group.disclosure && <h2 className="primary-nav__group-label"><button type="button" aria-expanded={isExpanded} aria-controls={`primary-nav-${group.key}`} onClick={() => setExpanded(previous => ({ ...previous, [group.key]: !isExpanded }))}>{group.label}<span className="primary-nav__chevron" aria-hidden="true" /></button></h2>}
+          <h2 className="primary-nav__group-label">{group.disclosure
+            ? <button type="button" aria-expanded={isExpanded} aria-controls={`primary-nav-${group.key}`} onClick={() => setExpanded(previous => ({ ...previous, [group.key]: !isExpanded }))}>{group.label}<span className="primary-nav__chevron" aria-hidden="true" /></button>
+            : group.label}</h2>
           <ul id={group.disclosure ? `primary-nav-${group.key}` : undefined} hidden={!isExpanded}>{group.items.map(item => (
-            <li key={item.href}>
-              <a href={item.href} aria-current={activeItem?.href === item.href ? 'page' : undefined} onClick={event => {
+            <li key={item.path}>
+              <a href={item.path} aria-current={activeItem?.path === item.path ? 'page' : undefined} onClick={event => {
                 if (!onNavigate) return;
                 event.preventDefault();
-                onNavigate(item.href);
-              }}><Icon name={navIcons[item.href] ?? 'chevron'} size={18} /><span>{item.label}</span></a>
+                onNavigate(item.path);
+              }}><Icon name={item.navigation!.icon} size={18} /><span>{item.label}</span></a>
             </li>
           ))}</ul>
         </div>;
