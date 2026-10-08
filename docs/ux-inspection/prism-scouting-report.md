@@ -61,6 +61,16 @@ included. The observations below describe interface patterns only.
 - Validate responsive layouts, keyboard behavior, accessibility, and all
   state-changing flows separately before adopting a pattern.
 
+## Related repository work
+
+The approved [F4 License Hygiene design](../superpowers/specs/2026-10-08-license-hygiene-design.md)
+and the feature-owned API (`src/Api/Features/Licenses/Hygiene/`) and web
+(`src/Web/src/features/licenses/hygiene/`) implementations apply some of
+these general information and disclosure considerations. This repository
+reference does not establish implementation behavior: visual scouting did not
+verify data provenance, Graph authorization, tenant behavior, or any License
+Hygiene finding.
+
 ## Inspection coverage
 
 The scouting was visual and read-only. Some nested tabs, responsive sizes,

@@ -12,17 +12,18 @@ can declare a `path`, `label`, optional `pageTitle`, `module`, `capability`,
 `workspaceAccess`, `navigation`, and a `render` function.
 
 - `module` is checked against the workspace's assigned and enabled modules.
-  Current keys are `users`, `devices`, `licenses`, and `exchange`. The route
-  type also contains reserved keys for future authentication campaigns,
-  license hygiene, About, and Feedback; that type union does not activate
-  those features.
+  Current keys are `users`, `devices`, `licenses`, `exchange`, and the
+  deliberately opt-in `license-hygiene`. The route type also contains
+  reserved keys for future authentication campaigns, About, and Feedback;
+  those type-union entries do not activate those features.
 - `workspaceAccess` checks workspace-management privileges (`members`,
   `settings`, `modules`, or `any`). It is not a substitute for a module or
   capability check.
 - `capability` is evaluated from the workspace-scoped capability snapshot.
   `App.tsx` fails closed while that snapshot is loading, unavailable, not
   Graph-authoritative, belongs to a different workspace, or does not
-  allow/read-only the requested capability.
+  allow/read-only the requested capability. License Hygiene additionally
+  requires both an enabled and assigned `license-hygiene` module.
 - `navigation` controls presentation only. `PrimaryNav` applies its visibility
   rules (`always`, `module`, `device-module-or-settings-manager`,
   `audit-not-hidden`, or `workspace-manager`); hiding a link is not
@@ -30,19 +31,28 @@ can declare a `path`, `label`, optional `pageTitle`, `module`, `capability`,
 
 Add each new route deliberately: select its module and capability contracts,
 decide whether workspace-management access applies, and set navigation
-metadata only if the route belongs in the sidebar. The API endpoint must
-enforce its own authorization and workspace context; client route metadata
-does not protect an API. Verify the route and API with the feature's tests.
+metadata only if the route belongs in the sidebar. The active
+`/licenses/hygiene` route deliberately has no sidebar entry; the Licenses-page
+link is shown only when the hygiene capability is allowed/read-only and the
+module is enabled and assigned. The corresponding API endpoint separately
+requires authentication and the `license-hygiene` module, and its service
+checks `licenses.hygiene.view` before reading either source. Route or
+navigation metadata is not authorization: API endpoints must enforce their
+own authorization and workspace context. Verify the route and API with the
+feature's tests.
 
 ## Reserved capabilities and future activation
 
 `src/Web/src/capabilities/capabilityTypes.ts` and
 `src/Api/Authorization/Capability.cs` keep matching reserved capability
-identifiers for authentication campaigns, license hygiene, About, and
-Feedback. The reserved lists are design reservations, not active capability
-decisions. Likewise, a candidate module name in the `AppRoute` type is not an
-enabled workspace module. Do not add placeholder pages, navigation entries,
-or effective grants merely because an identifier exists.
+identifiers for authentication campaigns, About, and Feedback.
+`licenses.hygiene.view` is deliberately active, while the remaining reserved
+list entries are design reservations rather than active capability
+decisions. A module or capability definition does not enable a workspace
+module or grant access to any member. License Hygiene is opt-in; it receives
+no automatic module enablement or member assignment. Do not add placeholder
+pages, navigation entries, or effective grants merely because an identifier
+exists.
 
 Before a future feature is activated, its owner must intentionally validate
 and wire its authoritative source, least-privilege permissions, applicable
