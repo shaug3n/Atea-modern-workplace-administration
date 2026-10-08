@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { appRoutes, capabilityDecisionFor, type AppRoute } from '../../../src/Web/src/app/routes';
 import type { Capability } from '../../../src/Web/src/capabilities/capabilityTypes';
 import { reservedCapabilities } from '../../../src/Web/src/capabilities/capabilityTypes';
+import { accessSummaryCapabilityGroups } from '../../../src/Web/src/features/my-access/accessSummary';
 
 const typedReservedCapabilities: Capability[] = [
   'authentication.campaigns.manage',
@@ -40,5 +41,11 @@ describe('reserved contracts', () => {
       module: 'authentication-campaigns',
       capability: 'authentication.campaigns.view',
     });
+  });
+
+  it('keeps reserved capabilities out of access-summary mappings while including workspace member management', () => {
+    const mapped = accessSummaryCapabilityGroups.flatMap(group => [...group.read, ...group.write]);
+    expect(mapped).toContain('workspace.members.manage');
+    expect(mapped.some(capability => reservedCapabilities.includes(capability as typeof reservedCapabilities[number]))).toBe(false);
   });
 });
