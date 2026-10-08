@@ -9,6 +9,8 @@ public static class OverviewFeatureServiceCollectionExtensions
     {
         services.AddSingleton<OverviewDataCache>();
         services.AddScoped<IOverviewDataReader, GraphOverviewDataReader>();
+        services.AddScoped<IOverviewGraphReader, OverviewGraphReader>();
+        services.AddScoped<IOverviewActivityReader, OverviewActivityReader>();
         services.AddScoped<IOverviewService, OverviewService>();
         return services;
     }

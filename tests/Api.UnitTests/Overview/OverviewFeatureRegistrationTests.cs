@@ -23,6 +23,14 @@ public sealed class OverviewFeatureRegistrationTests
             && descriptor.ImplementationType == typeof(GraphOverviewDataReader)
             && descriptor.Lifetime == ServiceLifetime.Scoped);
         services.Should().ContainSingle(descriptor =>
+            descriptor.ServiceType == typeof(IOverviewGraphReader)
+            && descriptor.ImplementationType == typeof(OverviewGraphReader)
+            && descriptor.Lifetime == ServiceLifetime.Scoped);
+        services.Should().ContainSingle(descriptor =>
+            descriptor.ServiceType == typeof(IOverviewActivityReader)
+            && descriptor.ImplementationType == typeof(OverviewActivityReader)
+            && descriptor.Lifetime == ServiceLifetime.Scoped);
+        services.Should().ContainSingle(descriptor =>
             descriptor.ServiceType == typeof(IOverviewService)
             && descriptor.ImplementationType == typeof(OverviewService)
             && descriptor.Lifetime == ServiceLifetime.Scoped);
