@@ -117,6 +117,63 @@ describe('DevicesPage', () => {
     expect(screen.getByText('Management state')).toBeTruthy();
   });
 
+  it('compliance_tiles_toggle_and_clear_only_their_filter', async () => {
+    const loader = vi.fn(async () => ({
+      ...devices,
+      items: [
+        { ...devices.items[0], deviceName: 'LAPTOP-01', complianceState: 'compliant' },
+        { ...devices.items[0], id: 'device-2', deviceName: 'LAPTOP-02', complianceState: 'noncompliant' },
+      ],
+    }));
+    render(<DevicesPage capabilities={[{ capability: 'devices.view', state: 'allowed', reasonCode: 'active_role' }]} loadDevices={loader} />);
+    await screen.findByRole('link', { name: 'LAPTOP-01' });
+    fireEvent.change(screen.getByLabelText('Search devices'), { target: { value: 'LAP' } });
+    fireEvent.change(screen.getByLabelText('Operating system'), { target: { value: 'Windows' } });
+    await waitFor(() => expect(loader).toHaveBeenLastCalledWith({ search: 'LAP', complianceState: '', operatingSystem: 'Windows' }, null));
+
+    let compliantTile = screen.getByRole('button', { name: /Compliant/ });
+    expect(compliantTile.tagName).toBe('BUTTON');
+    expect((compliantTile as HTMLButtonElement).type).toBe('button');
+    fireEvent.click(compliantTile);
+    await waitFor(() => expect(loader).toHaveBeenLastCalledWith({ search: 'LAP', complianceState: 'compliant', operatingSystem: 'Windows' }, null));
+    compliantTile = await screen.findByRole('button', { name: /Compliant/ });
+    expect(compliantTile.getAttribute('aria-pressed')).toBe('true');
+
+    fireEvent.click(compliantTile);
+    await waitFor(() => expect(loader).toHaveBeenLastCalledWith({ search: 'LAP', complianceState: '', operatingSystem: 'Windows' }, null));
+    compliantTile = await screen.findByRole('button', { name: /Compliant/ });
+    expect(compliantTile.getAttribute('aria-pressed')).toBe('false');
+
+    const noncompliantTile = screen.getByRole('button', { name: /Noncompliant/ });
+    fireEvent.click(noncompliantTile);
+    await waitFor(() => expect(loader).toHaveBeenLastCalledWith({ search: 'LAP', complianceState: 'noncompliant', operatingSystem: 'Windows' }, null));
+    expect((await screen.findByRole('button', { name: /Noncompliant/ })).getAttribute('aria-pressed')).toBe('true');
+    expect((await screen.findByRole('button', { name: /^Compliant/ })).getAttribute('aria-pressed')).toBe('false');
+
+    fireEvent.change(screen.getByLabelText('Compliance'), { target: { value: 'compliant' } });
+    await waitFor(() => expect(loader).toHaveBeenLastCalledWith({ search: 'LAP', complianceState: 'compliant', operatingSystem: 'Windows' }, null));
+    expect((await screen.findByRole('button', { name: /^Compliant/ })).getAttribute('aria-pressed')).toBe('true');
+    expect((await screen.findByRole('button', { name: /Noncompliant/ })).getAttribute('aria-pressed')).toBe('false');
+  });
+
+  it('compliance_tiles_are_labeled_as_current_page_counts', async () => {
+    render(<DevicesPage
+      capabilities={[{ capability: 'devices.view', state: 'allowed', reasonCode: 'active_role' }]}
+      loadDevices={async () => ({
+        ...devices,
+        total: 42,
+        items: [
+          { ...devices.items[0], deviceName: 'LAPTOP-01', complianceState: 'compliant' },
+          { ...devices.items[0], id: 'device-2', deviceName: 'LAPTOP-02', complianceState: 'noncompliant' },
+        ],
+      })}
+    />);
+
+    const compliantTile = await screen.findByRole('button', { name: /Compliant/ });
+    expect(within(compliantTile).getByText('1')).toBeTruthy();
+    expect(within(compliantTile).getByText(/loaded page/i)).toBeTruthy();
+  });
+
   it('surfaces an embedded Graph permission error instead of showing an empty result', async () => {
     render(<DevicesPage
       capabilities={[{ capability: 'devices.view', state: 'allowed', reasonCode: 'active_role' }]}

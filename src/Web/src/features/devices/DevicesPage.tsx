@@ -3,6 +3,7 @@ import { messages } from '../../app/messages';
 import { useApi } from '../../auth/useApi';
 import { DataFreshness } from '../../components/DataFreshness';
 import { MetricCard } from '../../components/MetricCard';
+import { KpiFilterTile } from '../../components/KpiFilterTile';
 import { StatusBadge } from '../../components/StatusBadge';
 import { TechnicalDetails } from '../../components/TechnicalDetails';
 import { formatDateTime, formatRelative } from '../../format/dateTime';
@@ -18,6 +19,7 @@ import { ResponsiveDataView } from '../../components/ResponsiveDataView';
 import { WorkspacePageHeader } from '../../components/WorkspacePageHeader';
 import { WorkspaceDataState } from '../../components/WorkspaceDataState';
 import { useWorkspaceIssueReporter } from '../../notifications/WorkspaceNotifications';
+import { devicesMessages } from './devicesMessages';
 
 const emptyFilters: DeviceFilters = { search: '', complianceState: '', operatingSystem: '' };
 
@@ -169,8 +171,8 @@ export function DevicesPage({ loadDevices, capabilities = [], moduleAssigned = t
 
       {!currentFailed && currentResult && !currentResult.error && <div className="device-summary-grid" aria-label="Device summary">
         <MetricCard label="Managed devices" value={currentResult.total} detail="In the current result" />
-        <MetricCard label="Compliant" value={summary?.compliant ?? 0} detail="Ready for work" />
-        <MetricCard label="Noncompliant" value={summary?.noncompliant ?? 0} detail="Needs attention" />
+        <KpiFilterTile label={devicesMessages.devicesCompliantTileLabel} value={summary?.compliant ?? 0} detail={devicesMessages.devicesComplianceTileDetail} selected={filters.complianceState === 'compliant'} onClick={() => setFilters((current) => ({ ...current, complianceState: current.complianceState === 'compliant' ? '' : 'compliant' }))} />
+        <KpiFilterTile label={devicesMessages.devicesNoncompliantTileLabel} value={summary?.noncompliant ?? 0} detail={devicesMessages.devicesComplianceTileDetail} selected={filters.complianceState === 'noncompliant'} onClick={() => setFilters((current) => ({ ...current, complianceState: current.complianceState === 'noncompliant' ? '' : 'noncompliant' }))} />
         <MetricCard label="Last check-in" value={summary?.lastCheckInRelative ?? messages.devicesNotSynced} valueTitle={summary?.lastCheckInAbsolute ?? undefined} detail="Most recent device signal" />
       </div>}
 
