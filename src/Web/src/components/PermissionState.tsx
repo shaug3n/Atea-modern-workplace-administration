@@ -14,7 +14,7 @@ const explanations: Record<string, string> = {
   temporarily_unavailable: 'Microsoft Graph authorization could not be verified. Try again later.',
 };
 
-export function PermissionState({ decision, children }: { decision: CapabilityDecision; children: ReactNode }) {
+export function PermissionState({ decision, children, reasonText }: { decision: CapabilityDecision; children: ReactNode; reasonText?: string }) {
   if (decision.state === 'hidden') {
     return null;
   }
@@ -34,7 +34,7 @@ export function PermissionState({ decision, children }: { decision: CapabilityDe
   return (
     <span data-capability={decision.capability} data-capability-state={decision.state}>
       {content}
-      <span role="status">{explanations[decision.state] ?? 'This action is not available.'}{scopeStatus}</span>
+      <span role="status">{reasonText ?? explanations[decision.state] ?? 'This action is not available.'}{scopeStatus}</span>
       {decision.nextStep?.href && (interactiveConsent
         ? <InteractiveConsentNextStep label={decision.nextStep.label} />
         : <a href={decision.nextStep.href}>{decision.nextStep.label}</a>)}

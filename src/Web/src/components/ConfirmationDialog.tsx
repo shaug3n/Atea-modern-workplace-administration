@@ -15,6 +15,7 @@ export type ConfirmationDialogProps = {
   destructivePhrase?: string | null;
   destructivePhraseLabel?: string;
   busy?: boolean;
+  confirmBlocked?: boolean;
   onConfirm: () => void;
   onCancel?: () => void;
   children?: React.ReactNode;
@@ -35,6 +36,7 @@ export function ConfirmationDialog({
   destructivePhrase,
   destructivePhraseLabel = messages.userMutationDestructivePhraseLabel,
   busy = false,
+  confirmBlocked = false,
   onConfirm,
   onCancel,
   children,
@@ -48,7 +50,7 @@ export function ConfirmationDialog({
   const [phrase, setPhrase] = useState('');
   const consequenceId = useId();
   const phraseMatches = !destructivePhrase || phrase === destructivePhrase;
-  const canConfirm = reviewed && phraseMatches && !busy && !sourceLimitation;
+  const canConfirm = reviewed && phraseMatches && !busy && !sourceLimitation && !confirmBlocked;
   const dialogRef = useFocusContainment<HTMLElement>(!embedded, onCancel && !busy ? onCancel : undefined);
 
   useEffect(() => {

@@ -20,8 +20,21 @@ export type Capability =
   | 'devices.laps.reveal'
   | 'authentication.methods.view'
   | 'authentication.methods.manage'
+  | 'authentication.campaigns.view'
+  | 'authentication.campaigns.manage'
+  | 'licenses.hygiene.view'
+  | 'platform.about.view'
+  | 'feedback.submit'
   | 'audit.view'
   | 'workspace.settings.manage';
+
+export const reservedCapabilities = [
+  'authentication.campaigns.view',
+  'authentication.campaigns.manage',
+  'licenses.hygiene.view',
+  'platform.about.view',
+  'feedback.submit',
+] as const satisfies readonly Capability[];
 
 export const workspaceSettingsCapability: Capability = 'workspace.settings.manage';
 

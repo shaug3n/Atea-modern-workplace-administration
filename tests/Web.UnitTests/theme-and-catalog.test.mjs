@@ -50,3 +50,56 @@ test('table foundations replace the global anchor wrapping and define one pagina
   assert.equal((all.match(/\.pagination-controls \{/g) ?? []).length, 1);
   assert.equal((all.match(/\.filter-chips \{/g) ?? []).length, 1);
 });
+
+test('skeleton convention disables shimmer for reduced motion', async () => {
+  const components = await readFile('../../src/Web/src/styles/components.css', 'utf8');
+  assert.match(components, /\.loading-skeleton[\s\S]*?animation:/);
+  assert.match(components, /@media\s*\(prefers-reduced-motion:\s*reduce\)[\s\S]*?\.loading-skeleton[\s\S]*?animation:\s*none/);
+});
+
+test('reserved capability names match FE and BE', async () => {
+  const frontend = await readFile('../../src/Web/src/capabilities/capabilityTypes.ts', 'utf8');
+  const backend = await readFile('../../src/Api/Authorization/Capability.cs', 'utf8');
+  const frontendEntries = frontend.match(/export const reservedCapabilities\s*=\s*\[([\s\S]*?)\]\s*as const/)?.[1];
+  const backendEntries = backend.match(/public static readonly IReadOnlyList<string> Reserved\s*=\s*\[([\s\S]*?)\];/)?.[1];
+  assert.ok(frontendEntries, 'frontend reserved capability list should exist');
+  assert.ok(backendEntries, 'backend reserved capability list should exist');
+
+  const frontendValues = [...frontendEntries.matchAll(/'([^']+)'/g)].map(([, value]) => value);
+  const backendNames = [...backendEntries.matchAll(/\b([A-Z][A-Za-z0-9]*)\b/g)].map(([, name]) => name);
+  const backendConstants = new Map(
+    [...backend.matchAll(/public const string ([A-Z][A-Za-z0-9]*)\s*=\s*"([^"]+)";/g)]
+      .map(([, name, value]) => [name, value]),
+  );
+  const backendValues = backendNames.map((name) => {
+    assert.ok(backendConstants.has(name), `backend reserved entry ${name} should reference a Capability constant`);
+    return backendConstants.get(name);
+  });
+
+  assert.deepEqual(frontendValues, [
+    'authentication.campaigns.view',
+    'authentication.campaigns.manage',
+    'licenses.hygiene.view',
+    'platform.about.view',
+    'feedback.submit',
+  ]);
+  assert.deepEqual(backendValues, frontendValues);
+});
+
+test('module inventory labels reserved candidates planned and not active', async () => {
+  const inventory = await readFile('../../docs/module-inventory.md', 'utf8');
+  const plannedCandidates = [
+    'Passkeys',
+    'MFA campaigns',
+    'License Hygiene',
+    'About',
+    'Feedback',
+  ];
+
+  for (const candidate of plannedCandidates) {
+    const row = inventory.split('\n').find((line) => line.startsWith(`| ${candidate} |`));
+    assert.ok(row, `${candidate} should have an inventory row`);
+    assert.match(row, /planned wave 1/i, `${candidate} should be planned for wave 1`);
+    assert.match(row, /not shipped, enabled, validated, or granted/i, `${candidate} should be explicitly inactive`);
+  }
+});

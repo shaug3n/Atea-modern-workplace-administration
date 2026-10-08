@@ -2,6 +2,8 @@ import React from 'react';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { OverviewPage } from '../../../../src/Web/src/features/overview/OverviewPage';
+import { overviewMessages } from '../../../../src/Web/src/features/overview/messages';
+import { messages } from '../../../../src/Web/src/messages/en';
 
 const overview = {
   freshness: 'live', fetchedAt: '2026-09-25T08:00:00Z', totalUsers: 42,
@@ -13,6 +15,27 @@ const overview = {
 
 describe('OverviewPage', () => {
   afterEach(cleanup);
+
+  it('renders the existing Overview English copy from the feature message composition', () => {
+    expect(overviewMessages).toEqual({
+      overviewEyebrow: 'Operational overview',
+      overviewTitle: 'Overview',
+      overviewLoading: 'Loading overview…',
+      overviewUnavailable: 'Overview data is unavailable. Try again later.',
+      overviewPermissionHealth: 'Permission health',
+      overviewPimAttention: 'PIM attention needed',
+    });
+    expect(messages.overviewEyebrow).toBe(overviewMessages.overviewEyebrow);
+    expect(messages.overviewTitle).toBe(overviewMessages.overviewTitle);
+    expect(messages.overviewLoading).toBe(overviewMessages.overviewLoading);
+    expect(messages.overviewUnavailable).toBe(overviewMessages.overviewUnavailable);
+    expect(messages.overviewPermissionHealth).toBe(overviewMessages.overviewPermissionHealth);
+    expect(messages.overviewPimAttention).toBe(overviewMessages.overviewPimAttention);
+
+    render(<OverviewPage loadOverview={() => new Promise(() => {})} />);
+    expect(screen.getByRole('heading', { name: 'Overview' })).toBeTruthy();
+    expect(screen.getByText('Loading overview…')).toBeTruthy();
+  });
 
   it('renders the state returned by the connection-health loader', async () => {
     render(<OverviewPage loadConnectionHealth={async () => ({ status: 'permission_incomplete', lastVerifiedAt: null })} />);

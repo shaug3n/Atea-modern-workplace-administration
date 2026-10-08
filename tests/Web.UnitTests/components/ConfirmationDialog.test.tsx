@@ -26,6 +26,16 @@ describe('ConfirmationDialog', () => {
     expect(screen.getByRole('button', { name: 'Wipe device…' })).toBeTruthy();
   });
 
+  it('keeps confirmation disabled while the caller blocks it', () => {
+    const { rerender } = render(<ConfirmationDialog {...base} confirmLabel="Wipe device" confirmBlocked />);
+    const confirm = screen.getByRole('button', { name: 'Wipe device' }) as HTMLButtonElement;
+    fireEvent.click(screen.getByRole('checkbox'));
+    expect(confirm.disabled).toBe(true);
+
+    rerender(<ConfirmationDialog {...base} confirmLabel="Wipe device" confirmBlocked={false} />);
+    expect(confirm.disabled).toBe(false);
+  });
+
   it('shows a human permission name and keeps the raw key inside collapsed technical details', () => {
     const { container } = render(<ConfirmationDialog {...base} requiredCapability="users.update" confirmLabel="Save changes" />);
     expect(screen.getByText('Requires permission')).toBeTruthy();
@@ -50,5 +60,31 @@ describe('ConfirmationDialog', () => {
     rerender(<ConfirmationDialog {...base} confirmLabel="Wipe device" onCancel={onCancel} busy />);
     fireEvent.keyDown(window, { key: 'Escape' });
     expect(onCancel).toHaveBeenCalledTimes(1);
+  });
+
+  it('traps keyboard focus and restores it after cancel', () => {
+    const onConfirm = vi.fn();
+    function DialogHarness() {
+      const [open, setOpen] = React.useState(false);
+      return (
+        <>
+          <button type="button" onClick={() => setOpen(true)}>Open dialog</button>
+          {open && <ConfirmationDialog {...base} onConfirm={onConfirm} confirmLabel="Wipe device" onCancel={() => setOpen(false)} />}
+        </>
+      );
+    }
+
+    render(<DialogHarness />);
+    const trigger = screen.getByRole('button', { name: 'Open dialog' });
+    trigger.focus();
+    fireEvent.click(trigger);
+    const cancel = screen.getByRole('button', { name: 'Cancel' });
+    const confirm = screen.getByRole('button', { name: 'Wipe device' });
+    confirm.focus();
+    fireEvent.keyDown(confirm, { key: 'Tab' });
+    expect(document.activeElement).toBe(screen.getByRole('checkbox'));
+
+    fireEvent.click(cancel);
+    expect(document.activeElement).toBe(trigger);
   });
 });
