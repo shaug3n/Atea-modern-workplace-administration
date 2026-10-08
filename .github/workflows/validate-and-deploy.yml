@@ -294,13 +294,18 @@ jobs:
           exit 1
       - name: Deploy candidate revision after migration
         id: candidate
+        env:
+          ENTRA_API_AUDIENCE: ${{ vars.ENTRA_API_AUDIENCE }}
         run: |
           if test "${{ steps.current.outputs.first }}" = true; then
             fqdn="$(az containerapp show --name "$AZURE_CONTAINER_APP_NAME" --resource-group "$AZURE_RESOURCE_GROUP" --query properties.latestRevisionFqdn -o tsv)"
             revision="$(az containerapp show --name "$AZURE_CONTAINER_APP_NAME" --resource-group "$AZURE_RESOURCE_GROUP" --query properties.latestRevisionName -o tsv)"
           else
             az containerapp update --name "$AZURE_CONTAINER_APP_NAME" --resource-group "$AZURE_RESOURCE_GROUP" \
-              --image "$AZURE_ACR_NAME.azurecr.io/$IMAGE_REPOSITORY:$IMAGE_TAG" --revision-suffix "${IMAGE_TAG:0:12}-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" --output none
+              --image "$AZURE_ACR_NAME.azurecr.io/$IMAGE_REPOSITORY:$IMAGE_TAG" --revision-suffix "${IMAGE_TAG:0:12}-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" \
+              --set-env-vars "Onboarding__CustomerClientId=$CUSTOMER_SPA_CLIENT_ID" \
+                "Onboarding__ApiApplicationIdUri=$ENTRA_API_AUDIENCE" \
+                "Onboarding__TrustedProxyAddresses=$TRUSTED_PROXY_ADDRESSES" --output none
             revision="$(az containerapp show --name "$AZURE_CONTAINER_APP_NAME" --resource-group "$AZURE_RESOURCE_GROUP" --query properties.latestRevisionName -o tsv)"
             fqdn="$(az containerapp show --name "$AZURE_CONTAINER_APP_NAME" --resource-group "$AZURE_RESOURCE_GROUP" --query properties.latestRevisionFqdn -o tsv)"
             old="${{ steps.current.outputs.previous }}"

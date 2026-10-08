@@ -243,6 +243,9 @@ def main() -> int:
     if "template-file infra/main.bicep" in workflow:
         errors.append("release workflow must not redeploy the foundation on every application release")
     migration_position = workflow.find("Database migration job")
+    require_text(workflow, r"az containerapp update[\s\S]{0,600}--set-env-vars[\s\S]{0,300}Onboarding__CustomerClientId=", "existing candidate customer consent configuration", errors)
+    require_text(workflow, r"az containerapp update[\s\S]{0,600}--set-env-vars[\s\S]{0,400}Onboarding__ApiApplicationIdUri=", "existing candidate API consent resource configuration", errors)
+    require_text(workflow, r"az containerapp update[\s\S]{0,600}--set-env-vars[\s\S]{0,500}Onboarding__TrustedProxyAddresses=", "existing candidate trusted proxy configuration", errors)
     revision_position = workflow.find("Deploy candidate revision")
     smoke_position = workflow.find("Smoke test candidate")
     route_position = workflow.find("Route traffic after smoke")
