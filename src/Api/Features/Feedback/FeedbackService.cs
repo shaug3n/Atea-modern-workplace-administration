@@ -22,11 +22,15 @@ public interface IFeedbackService
     Task<FeedbackPageResponse> GetMineAsync(WorkspaceContext context, string? cursor, CancellationToken cancellationToken);
 }
 
-public sealed class FeedbackService(WorkplaceDbContext db, IAuditWriter auditWriter) : IFeedbackService
+public sealed class FeedbackService(
+    WorkplaceDbContext db,
+    IAuditWriter auditWriter,
+    Func<DateTimeOffset>? utcNow = null) : IFeedbackService
 {
     private const string RetryKeyIndex = "IX_FeedbackSubmissions_RetryKey";
     private const int PageSize = 20;
     private static readonly TimeSpan RetentionPeriod = TimeSpan.FromDays(90);
+    private readonly Func<DateTimeOffset> getUtcNow = utcNow ?? (() => DateTimeOffset.UtcNow);
 
     public async Task<FeedbackCreateResult> CreateAsync(
         WorkspaceContext context,
@@ -36,7 +40,7 @@ public sealed class FeedbackService(WorkplaceDbContext db, IAuditWriter auditWri
     {
         var retryKeyHash = Hash(idempotencyKey);
         var fingerprint = Fingerprint(request);
-        var nowUtc = DateTimeOffset.UtcNow;
+        var nowUtc = getUtcNow().ToUniversalTime();
         FeedbackSubmission? submission = null;
         try
         {
@@ -106,7 +110,7 @@ public sealed class FeedbackService(WorkplaceDbContext db, IAuditWriter auditWri
         string? cursor,
         CancellationToken cancellationToken)
     {
-        var nowUtc = DateTimeOffset.UtcNow;
+        var nowUtc = getUtcNow().ToUniversalTime();
         var query = db.FeedbackSubmissions
             .AsNoTracking()
             .Where(submission =>

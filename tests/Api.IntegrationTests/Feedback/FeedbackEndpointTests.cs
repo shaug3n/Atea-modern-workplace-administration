@@ -343,6 +343,31 @@ public sealed class FeedbackEndpointTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Expired_pending_cleanup_key_never_replays_a_success_receipt_at_the_exact_expiry_boundary()
+    {
+        var nowUtc = DateTimeOffset.UtcNow;
+        using var factory = CreateFactory(
+            new TestIdentity(TenantA, UserA, WorkspaceA),
+            utcNow: () => nowUtc);
+        using var client = AuthorizedClient(factory);
+        var created = await PostAsync(client, "exact-expiry-key", "Bug", "Subject", "Message");
+        created.StatusCode.Should().Be(HttpStatusCode.Created);
+        var receipt = JsonSerializer.Deserialize<FeedbackSubmissionReceipt>(
+            await created.Content.ReadAsStringAsync(),
+            new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
+
+        nowUtc = receipt.ExpiresAt;
+        var retry = await PostAsync(client, "exact-expiry-key", "Bug", "Subject", "Message");
+        var body = await retry.Content.ReadAsStringAsync();
+
+        retry.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        body.Should().Contain("idempotency_key_expired").And.NotContain("exact-expiry-key");
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<WorkplaceDbContext>();
+        (await SubmissionCountAsync(db)).Should().Be(1);
+    }
+
+    [Fact]
     public async Task List_uses_fixed_twenty_item_keyset_pages_and_rejects_malformed_cursors()
     {
         using var factory = CreateFactory(new TestIdentity(TenantA, UserA, WorkspaceA));
@@ -440,7 +465,8 @@ public sealed class FeedbackEndpointTests : IAsyncLifetime
     private WebApplicationFactory<Program> CreateFactory(
         TestIdentity identity,
         IReadOnlyCollection<string>? enabledModules = null,
-        DbCommandInterceptor? retryLookupInterceptor = null)
+        DbCommandInterceptor? retryLookupInterceptor = null,
+        Func<DateTimeOffset>? utcNow = null)
     {
         var databaseConnectionString = postgres.GetConnectionString();
         return new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
@@ -470,6 +496,14 @@ public sealed class FeedbackEndpointTests : IAsyncLifetime
                     if (retryLookupInterceptor is not null)
                         options.AddInterceptors(retryLookupInterceptor);
                 });
+                if (utcNow is not null)
+                {
+                    services.RemoveAll<IFeedbackService>();
+                    services.AddScoped<IFeedbackService>(provider => new FeedbackService(
+                        provider.GetRequiredService<WorkplaceDbContext>(),
+                        provider.GetRequiredService<IAuditWriter>(),
+                        utcNow));
+                }
             });
         });
     }

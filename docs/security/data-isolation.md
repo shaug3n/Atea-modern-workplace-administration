@@ -9,3 +9,5 @@ The platform stores only metadata: workspace identity and status, membership met
 Platform administrators are limited to the configured allowlist of Atea object IDs and may provision workspaces and change platform membership metadata. This role is separate from Microsoft Graph capabilities and never grants Microsoft 365 directory authority. Directory operations require the later Graph capability boundary and customer-granted permissions.
 
 EF migrations run automatically only in Development. Production startup never mutates the database; production migrations are a deployment responsibility.
+
+Feedback submissions are isolated by both the active workspace and the authenticated submitter; request data cannot select either identity. A submission expires exactly 90 days after creation, calculated in UTC, and reads hide it as soon as its expiry is reached. A hosted cleanup removes expired submissions from the active database at startup and every 24 hours in batches. This active-database deletion does not guarantee erasure from backups; backup retention is separate.

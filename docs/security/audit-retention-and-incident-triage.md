@@ -13,6 +13,7 @@ The platform audit stream records workspace-scoped activity performed through At
 
 - Store only safe metadata in `safeMetadataJson`.
 - Do not store access tokens, refresh tokens, client secrets, authorization headers, temporary passwords, raw Microsoft Graph payloads, or full exception messages.
+- Never include feedback content, including its subject or message, or diagnostic payloads in audit events, logs, or telemetry.
 - Redact sensitive keys before writing audit metadata. Safe examples include non-secret changed field names, high-level request status, role display names, SKU identifiers, and `[REDACTED]` markers.
 - UI and API error responses must use stable codes and safe messages. Use the correlation ID for investigation instead of exposing upstream Graph messages to operators.
 
