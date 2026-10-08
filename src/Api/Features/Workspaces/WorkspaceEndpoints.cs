@@ -308,12 +308,19 @@ public static class WorkspaceEndpoints
         var correlationId = httpContext.TraceIdentifier;
         if (request?.IncludePermissionCoverage == true)
         {
-            var verification = await verifier.VerifyAsync(context, includePermissionCoverage: true, cancellationToken);
-            return Results.Ok(verification.Health with
+            try
             {
-                CorrelationId = correlationId,
-                PermissionCoverage = verification.PermissionCoverage
-            });
+                var verification = await verifier.VerifyAsync(context, includePermissionCoverage: true, cancellationToken);
+                return Results.Ok(verification.Health with
+                {
+                    CorrelationId = correlationId,
+                    PermissionCoverage = verification.PermissionCoverage
+                });
+            }
+            catch (InvalidOperationException)
+            {
+                return Results.Conflict(new { error = "connection_state_transition_invalid", correlationId });
+            }
         }
 
         var result = await reader.ReadAsync(context.User.TenantId, cancellationToken);

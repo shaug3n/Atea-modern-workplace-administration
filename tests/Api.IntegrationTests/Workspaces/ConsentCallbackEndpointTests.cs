@@ -172,6 +172,21 @@ public sealed class ConsentCallbackEndpointTests
         verifier.IncludePermissionCoverage.Should().BeTrue();
     }
 
+    [Fact]
+    public async Task Comprehensive_connection_check_returns_conflict_when_workspace_awaits_invitation()
+    {
+        using var factory = CreateFactory(out _, verifier: new InvalidTransitionConnectionVerifier());
+        using var client = AuthenticatedClient(factory);
+
+        var response = await client.PostAsJsonAsync(
+            "/api/workspaces/current/connection-health/check",
+            new { includePermissionCoverage = true });
+        var body = await response.Content.ReadAsStringAsync();
+
+        response.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        body.Should().Contain("\"error\":\"connection_state_transition_invalid\"");
+    }
+
     private static async Task<ConsentStartResponse> StartAsync(HttpClient client)
     {
         var response = await client.PostAsync("/api/workspaces/current/consent/start", null);
@@ -306,6 +321,15 @@ public sealed class ConsentCallbackEndpointTests
                 string.Empty);
             return Task.FromResult(new WorkspaceConnectionVerification(health, coverage));
         }
+    }
+
+    private sealed class InvalidTransitionConnectionVerifier : IWorkspaceConnectionVerifier
+    {
+        public Task<WorkspaceConnectionVerification> VerifyAsync(
+            WorkspaceContext context,
+            bool includePermissionCoverage,
+            CancellationToken cancellationToken = default) =>
+            throw new InvalidOperationException("Invalid connection state transition from 'awaiting_invitation' to 'connected'.");
     }
 
     private sealed class FixtureMembershipReader : IWorkspaceMembershipReader
