@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import React, { Profiler, StrictMode } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { readPendingFlow, writePendingFlow } from '../../../../src/Web/src/features/invitations/pendingFlow';
@@ -13,6 +13,7 @@ vi.mock('../../../../src/Web/src/auth/AuthProvider', () => ({ useAuth: () => aut
 
 describe('InvitationRedemptionPage', () => {
   afterEach(() => {
+    cleanup();
     window.sessionStorage.clear();
     vi.unstubAllGlobals();
     vi.clearAllMocks();
@@ -107,5 +108,39 @@ describe('InvitationRedemptionPage', () => {
       '/api/workspaces/current/consent/complete',
       '/api/workspaces/current/connection-health/check',
     ]);
+  });
+
+  it('shows definite and unknown invitation scopes with distinct recovery guidance', async () => {
+    const nonce = 'C'.repeat(43);
+    const challenge = 'signed-challenge';
+    const tenantId = '11111111-1111-1111-1111-111111111111';
+    writePendingFlow({
+      kind: 'invitation', nonce, challenge, tenantId,
+      expiresAt: new Date(Date.now() + 60_000).toISOString(), step: 'tenant_sign_in_started',
+    });
+    vi.stubGlobal('fetch', vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        status: 'consent_required', workspaceId: 'workspace-1', workspaceName: 'Demo', nextStep: '/overview',
+      }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        valid: true,
+        status: 'consent_received',
+        correlationId: 'correlation',
+        health: {
+          status: 'permission_incomplete',
+          permissionCoverage: {
+            availableScopes: [],
+            missingScopes: ['Directory.Read.All'],
+            unknownScopes: ['MailboxSettings.Read'],
+          },
+        },
+      }), { status: 200 })));
+
+    render(<InvitationRedemptionPage nonce={nonce} challenge={challenge} tenantId={tenantId} />);
+
+    expect(await screen.findByText('Directory.Read.All')).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Review permissions and consent' })).toBeTruthy();
+    expect(screen.getByText('MailboxSettings.Read')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Try again' })).toBeTruthy();
   });
 });

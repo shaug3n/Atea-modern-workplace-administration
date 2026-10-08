@@ -51,6 +51,27 @@ describe('ConsentCallbackPage', () => {
     expect(complete).toHaveBeenCalledOnce();
   });
 
+  it('keeps definite missing permissions primary while showing unknown scopes and retry guidance', async () => {
+    prepare();
+    const check = vi.fn().mockResolvedValue({
+      status: 'permission_incomplete',
+      permissionCoverage: {
+        availableScopes: [],
+        missingScopes: ['Directory.Read.All'],
+        unknownScopes: ['MailboxSettings.Read'],
+      },
+    });
+    render(<ConsentCallbackPage api={{
+      complete: vi.fn().mockResolvedValue({ valid: true, status: 'consent_received' }),
+      check,
+    }} />);
+
+    expect(await screen.findByText('Directory.Read.All')).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Review permissions and consent' })).toBeTruthy();
+    expect(screen.getByText('MailboxSettings.Read')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Try again' })).toBeTruthy();
+  });
+
   it('does not send the provider error description to the API', async () => {
     const state = prepare('access_denied');
     const complete = vi.fn().mockResolvedValue({ valid: true, status: 'consent_denied' });
