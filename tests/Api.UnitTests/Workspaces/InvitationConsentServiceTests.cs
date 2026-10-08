@@ -67,7 +67,7 @@ public sealed class InvitationConsentServiceTests
         var result = await service.StartAsync(Nonce);
         var query = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(new Uri(result.AuthorizationUrl).Query);
 
-        query["client_id"].ToString().Should().Be("spa-client");
+        query["client_id"].ToString().Should().Be("22222222-2222-2222-2222-222222222222");
         query["scope"].ToString().Should().Be("api://customer-api/.default");
         new Uri(result.AuthorizationUrl).AbsolutePath.Should().Be($"/{TenantId}/v2.0/adminconsent");
         result.Scopes.Should().Contain("User.Read.All");
@@ -288,7 +288,7 @@ public sealed class InvitationConsentServiceTests
             PublicBaseUrl = "https://workplace.example",
             ConsentRedirectUri = "https://workplace.example/onboarding/consent/callback",
             ConsentSigningKey = Base64SigningKey,
-            CustomerClientId = "spa-client",
+            CustomerClientId = "22222222-2222-2222-2222-222222222222",
             ApiApplicationIdUri = "api://customer-api"
         };
         return new InvitationConsentService(
