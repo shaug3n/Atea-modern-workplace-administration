@@ -54,6 +54,16 @@ function statusFor(state: AccessSummaryState) {
   return stateLabels[state] ?? stateLabels.unavailable;
 }
 
+function isWorkspaceDecision(action: AccessActionSummary): boolean {
+  return action.decision?.reasonCode.startsWith('workspace_platform_') ?? false;
+}
+
+function displayedActionState(action: AccessActionSummary, sourceAvailable: boolean): AccessSummaryState {
+  return !sourceAvailable && action.decision && !isWorkspaceDecision(action)
+    ? 'unavailable'
+    : action.state;
+}
+
 function apiDecisionLabel(decision: CapabilityDecision): string {
   if (decision.state === 'allowed') return 'The API explicitly allowed this action.';
   if (decision.state === 'read_only') return 'The API reported read-only access for this action.';
@@ -116,7 +126,7 @@ function roleAndPimEvidence(action: AccessActionSummary) {
   }
   const evidence = decision.roleEvidence;
   const requiredRoleId = decision.requiredRoleTemplateId ?? evidence?.requiredRoleTemplateIds[0] ?? null;
-  const roleAssignments = evidence?.assignments ?? [];
+  const roleAssignments = evidence?.state === 'available' ? evidence.assignments : [];
   const unknownRoles = [...new Set([
     ...(requiredRoleId && !roleNames[requiredRoleId] ? [requiredRoleId] : []),
     ...roleAssignments.map(assignment => assignment.roleTemplateId).filter(roleId => !roleNames[roleId]),
@@ -170,10 +180,10 @@ function ActionEvidence({
   onNavigate?: (path: string) => void;
 }) {
   const decision = action.decision;
-  const status = statusFor(action.state);
-  const destination = supportedDestination(action);
-  const workspaceDecision = decision?.reasonCode.startsWith('workspace_platform_') ?? false;
+  const workspaceDecision = isWorkspaceDecision(action);
   const graphEvidenceUnavailable = !sourceAvailable && !workspaceDecision;
+  const status = statusFor(displayedActionState(action, sourceAvailable));
+  const destination = supportedDestination(action);
 
   return (
     <li className="my-access-action">
@@ -181,8 +191,12 @@ function ActionEvidence({
         <h4>{humanizeCapability(action.capability)}</h4>
         <StatusBadge tone={status.tone} label={status.label} />
       </div>
-      <p className="my-access-action__reason">{action.reasonLabel}</p>
-      {decision && <p>{apiDecisionLabel(decision)}</p>}
+      <p className="my-access-action__reason">{graphEvidenceUnavailable && decision
+        ? `The API returned ${decision.state} (${decision.reasonCode}), but Microsoft authorization evidence is unavailable; this result is not verified.`
+        : action.reasonLabel}</p>
+      {decision && <p>{graphEvidenceUnavailable
+        ? 'The returned Microsoft decision cannot be treated as verified authorization.'
+        : apiDecisionLabel(decision)}</p>}
       <dl className="my-access-evidence">
         <div className="my-access-evidence__layer">
           <dt>Workspace grant</dt>
@@ -236,7 +250,15 @@ function AccessGroup({
   sourceAvailable: boolean;
   onNavigate?: (path: string) => void;
 }) {
-  const status = statusFor(state);
+  const graphDecisionUnavailable = !sourceAvailable && actions.some(action => action.decision && !isWorkspaceDecision(action));
+  const displayedState = graphDecisionUnavailable
+    ? state === 'partial' || actions.some(action => action.state === 'partial')
+      ? 'partial'
+      : new Set(actions.map(action => displayedActionState(action, sourceAvailable))).size > 1
+        ? 'mixed'
+        : displayedActionState(actions[0], sourceAvailable)
+    : state;
+  const status = statusFor(displayedState);
   const label = groupType === 'read' ? 'Read access' : 'Write access';
   const headingId = `my-access-${moduleKey}-${groupType}`;
   return (

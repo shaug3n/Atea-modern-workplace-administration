@@ -112,6 +112,54 @@ describe('MyAccessPage', () => {
     expect(screen.queryByText(/Workspace grant: denied/)).toBeNull();
   });
 
+  it('marks_graph_authoritative_workspace_administration_actions_unavailable_without_hiding_platform_decisions', () => {
+    const currentSnapshot = snapshot({
+      sourceState: 'temporarily_unavailable',
+      capabilities: capabilities.map(capability => decision(capability,
+        capability === 'audit.view'
+          ? { state: 'allowed', reasonCode: 'graph_authoritative' }
+          : capability === 'workspace.settings.manage' || capability === 'workspace.members.manage'
+            ? { state: 'allowed', reasonCode: 'workspace_platform_role' }
+            : {})),
+    });
+    renderPage({ currentSnapshot });
+
+    const workspaceAdmin = screen.getByRole('heading', { name: 'Workspace administration' }).closest('article')!;
+    const graphAction = within(workspaceAdmin).getByRole('heading', { name: 'View activity' }).closest('li')!;
+    const platformAction = within(workspaceAdmin).getAllByText('The API evaluated this action from the workspace role.')[0].closest('li')!;
+
+    expect(within(graphAction).getByText('Unavailable')).toBeTruthy();
+    expect(within(platformAction).getByText('Allowed')).toBeTruthy();
+    expect(within(workspaceAdmin).getByRole('heading', { name: 'Read access' }).closest('section')?.textContent).toContain('Unavailable');
+    expect(within(workspaceAdmin).getByRole('heading', { name: 'Write access' }).closest('section')?.textContent).toContain('Allowed');
+  });
+
+  it('does_not_present_assignments_as_verified_when_role_evidence_is_unavailable', () => {
+    const currentSnapshot = snapshot({
+      capabilities: capabilities.map(capability => decision(capability, capability === 'users.create'
+        ? {
+          state: 'pim_activation_required',
+          reasonCode: 'directory_role_required',
+          roleEvidence: {
+            state: 'unavailable',
+            requiredRoleTemplateIds: ['fe930be7-5e62-47db-91af-98c3a49a38b1'],
+            assignments: [
+              { roleTemplateId: 'custom-role-id', assignmentState: 'active', scope: 'tenant' },
+              { roleTemplateId: 'fe930be7-5e62-47db-91af-98c3a49a38b1', assignmentState: 'eligible', scope: 'tenant' },
+            ],
+          },
+        }
+        : {})),
+    });
+    renderPage({ currentSnapshot });
+
+    const createAction = screen.getByText('The API reported that a qualifying Microsoft role is required.').closest('li')!;
+    expect(within(createAction).getByText('Role assignment evidence is unavailable.')).toBeTruthy();
+    expect(within(createAction).queryAllByText(/Active assignment|Eligible assignment/)).toHaveLength(0);
+    expect(within(createAction).queryByText(/PIM eligibility is not an active role assignment/)).toBeNull();
+    expect(within(createAction).queryAllByText(/custom-role-id/)).toHaveLength(0);
+  });
+
   it('marks_retained_snapshot_stale_during_refresh_or_after_failure', () => {
     const { rerender } = renderPage({ currentSnapshot: snapshot(), error: true });
     expect(screen.getAllByText(/previous access check|stale/i).length).toBeGreaterThan(0);

@@ -86,3 +86,42 @@ this page.
 Task 4 still owns route and shell integration. The page must be rendered
 inside `AccessTransparencyProvider` with the current App-supplied capability
 snapshot/loading/error/refresh values.
+
+## Reviewer findings — round 1
+
+Verified both findings against the approved spec, `CapabilityEvaluator`, its
+unit tests, the snapshot DTO, `summarizeAccess`, and the page:
+
+- The evaluator preserves platform-only `audit.view`,
+  `workspace.settings.manage`, and `workspace.members.manage` decisions with
+  `workspace_platform_*` reason codes when Graph is unavailable. Other
+  capabilities are Graph-dependent; an unavailable Graph snapshot does not
+  produce `graph_authoritative` decisions. The page nevertheless trusted an
+  inconsistent Graph-backed `allowed` decision for the ungated Workspace
+  administration group. It now renders that action and its group as
+  unavailable, while retaining independently evaluated platform decisions.
+- The API evaluator emits no assignments for `roleEvidence.state ===
+  'unavailable'`, but the DTO carries state and assignments separately. The
+  page now renders assignment assertions and assignment-derived technical
+  details only when role evidence is `available`; an unavailable state remains
+  explicitly labeled.
+
+### Fix TDD and verification evidence
+
+- RED:
+  `npm run test:behavior --prefix src/Web -- --run ../../tests/Web.UnitTests/features/my-access/MyAccessPage.test.tsx --reporter=dot`
+  — **failed as expected: 2 new regression tests failed, 8 existing tests
+  passed**. The Graph-backed action badge was `Allowed`; unavailable role
+  evidence still rendered active/eligible assignments.
+- Focused GREEN:
+  `npm run test:behavior --prefix src/Web -- --run ../../tests/Web.UnitTests/features/my-access/MyAccessPage.test.tsx ../../tests/Web.UnitTests/features/my-access/accessSummary.test.tsx --reporter=dot`
+  — **passed: 2 files, 25 tests**.
+- Full behavior:
+  `npm run test:behavior --prefix src/Web -- --reporter=dot`
+  — **passed: 73 files, 487 tests**.
+- Build:
+  `npm run build --prefix src/Web`
+  — **passed** (`tsc -b` and Vite production build). Vite reported the existing
+  `AuthProvider.tsx` ineffective dynamic-import warning and large-chunk warning.
+- Diff hygiene:
+  `git diff --check` — **passed**.
