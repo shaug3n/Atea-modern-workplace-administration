@@ -1,5 +1,5 @@
 import React from 'react';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { PrimaryNav } from '../../../src/Web/src/components/PrimaryNav';
 import { App } from '../../../src/Web/src/app/App';
@@ -24,7 +24,7 @@ describe('customer workspace redesign', () => {
   it('renders grouped navigation from effective session modules and role access', () => {
     render(<PrimaryNav capabilities={null} session={session} currentPath="/overview" />);
     expect(screen.getByRole('link', { name: 'Overview' })).toBeTruthy();
-    expect(screen.getByText('People')).toBeTruthy();
+    expect(screen.getByText('Identity & Access')).toBeTruthy();
     expect(screen.getByRole('link', { name: 'Users' })).toBeTruthy();
     expect(screen.getByRole('link', { name: 'Licenses' })).toBeTruthy();
     expect(screen.getByRole('link', { name: 'Devices' })).toBeTruthy();
@@ -52,7 +52,8 @@ describe('customer workspace redesign', () => {
   it('allows Devices read-only and PIM-eligible states without treating them as hidden', async () => {
     window.history.replaceState({}, '', '/devices');
     render(<App loadSession={async () => session} loadCapabilities={async () => ({ evaluatedAt: '2026-09-25T00:00:00Z', capabilities: [{ capability: 'devices.view', state: 'read_only', reasonCode: 'role_read_only' }] })} />);
-    expect(await screen.findByRole('heading', { name: 'Devices' })).toBeTruthy();
+    const main = await screen.findByRole('main');
+    expect(await within(main).findByRole('heading', { name: 'Devices', level: 1 })).toBeTruthy();
     expect(screen.queryByText('Permission required')).toBeNull();
   });
 
