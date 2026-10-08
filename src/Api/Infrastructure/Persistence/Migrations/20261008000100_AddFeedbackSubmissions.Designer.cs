@@ -3,6 +3,7 @@ using System;
 using Atea.UnifiedWorkplace.Api.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Atea.UnifiedWorkplace.Api.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(WorkplaceDbContext))]
-    partial class WorkplaceDbContextModelSnapshot : ModelSnapshot
+    [Migration("20261008000100_AddFeedbackSubmissions")]
+    partial class AddFeedbackSubmissions
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder

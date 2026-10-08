@@ -16,6 +16,7 @@ public sealed class WorkplaceDbContext(DbContextOptions<WorkplaceDbContext> opti
     public DbSet<AuditEvent> AuditEvents => Set<AuditEvent>();
     public DbSet<ConsentChallenge> ConsentChallenges => Set<ConsentChallenge>();
     public DbSet<PlatformWorkspaceGrant> PlatformWorkspaceGrants => Set<PlatformWorkspaceGrant>();
+    public DbSet<FeedbackSubmission> FeedbackSubmissions => Set<FeedbackSubmission>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -120,6 +121,22 @@ public sealed class WorkplaceDbContext(DbContextOptions<WorkplaceDbContext> opti
             entity.HasIndex(x => new { x.OperatorTenantId, x.OperatorObjectId });
             ConfigureUtc(entity.Property(x => x.CreatedAt));
             entity.HasOne(x => x.Workspace).WithMany().HasForeignKey(x => x.WorkspaceId).OnDelete(DeleteBehavior.Cascade);
+        });
+        modelBuilder.Entity<FeedbackSubmission>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.HasIndex(x => new { x.WorkspaceId, x.SubmitterObjectId, x.RetryKeyHash })
+                .HasDatabaseName("IX_FeedbackSubmissions_RetryKey")
+                .IsUnique();
+            entity.HasIndex(x => x.ExpiresAt);
+            entity.Property(x => x.Category).HasMaxLength(32).IsRequired();
+            entity.Property(x => x.Subject).HasMaxLength(120).IsRequired();
+            entity.Property(x => x.Message).HasMaxLength(4_000).IsRequired();
+            entity.Property(x => x.RetryKeyHash).HasMaxLength(64).IsRequired();
+            entity.Property(x => x.PayloadFingerprint).HasMaxLength(64).IsRequired();
+            ConfigureUtc(entity.Property(x => x.CreatedAt));
+            ConfigureUtc(entity.Property(x => x.ExpiresAt));
+            entity.HasOne<Workspace>().WithMany().HasForeignKey(x => x.WorkspaceId).OnDelete(DeleteBehavior.Cascade);
         });
     }
 
