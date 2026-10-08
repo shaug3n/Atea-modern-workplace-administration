@@ -1,3 +1,4 @@
+using Atea.UnifiedWorkplace.Api.Authorization;
 using Atea.UnifiedWorkplace.Api.Infrastructure.Graph;
 
 namespace Atea.UnifiedWorkplace.Api.Features.Devices;
@@ -87,3 +88,48 @@ public interface IDevice360GraphReader
         string managedDeviceId,
         CancellationToken cancellationToken);
 }
+
+public interface IDevice360Service
+{
+    Task<Device360SectionResponse<IReadOnlyList<DeviceCompliancePolicyState>>> GetCompliancePolicyStatesAsync(
+        WorkspaceContext context, string managedDeviceId, CancellationToken cancellationToken);
+
+    Task<Device360SectionResponse<IReadOnlyList<DeviceConfigurationState>>> GetDeviceConfigurationStatesAsync(
+        WorkspaceContext context, string managedDeviceId, CancellationToken cancellationToken);
+
+    Task<Device360SectionResponse<IReadOnlyList<DeviceConfigurationAssignmentTarget>>> GetConfigurationAssignmentsAsync(
+        WorkspaceContext context, string managedDeviceId, CancellationToken cancellationToken);
+
+    Task<Device360SectionResponse<IReadOnlyList<DeviceDetectedApp>>> GetDetectedAppsAsync(
+        WorkspaceContext context, string managedDeviceId, CancellationToken cancellationToken);
+
+    Task<Device360SectionResponse<DeviceWindowsProtectionState>> GetWindowsProtectionStateAsync(
+        WorkspaceContext context, string managedDeviceId, CancellationToken cancellationToken);
+}
+
+public static class Device360Status
+{
+    public const string Succeeded = "succeeded";
+    public const string Partial = "partial";
+    public const string Unsupported = "unsupported";
+    public const string NoReportedPolicies = "no_reported_policies";
+    public const string InvalidTarget = "invalid_target";
+    public const string DeviceNotFound = "device_not_found";
+    public const string CapabilityRequired = "capability_required";
+    public const string MissingScope = "missing_scope";
+    public const string ConsentRequired = "consent_required";
+    public const string GraphForbidden = "graph_forbidden";
+    public const string Throttled = "throttled";
+    public const string TemporarilyUnavailable = "temporarily_unavailable";
+    public const string Failed = "failed";
+}
+
+public sealed record Device360SectionResponse<T>(
+    string Status,
+    T? Data = default,
+    DateTimeOffset? RetrievedAt = null,
+    bool PartialData = false,
+    DeviceError? Error = null,
+    int? RetryAfterSeconds = null,
+    string? GraphCorrelationId = null,
+    string? GraphRequestId = null);
