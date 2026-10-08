@@ -252,7 +252,7 @@ function LoadedLicenseHygienePage({ workspaceId, loader, capabilities = [], enab
               {showAccounts && <section aria-labelledby="hygiene-accounts-title">
                 <h2 id="hygiene-accounts-title">{messages.licenseHygieneAccountsTable}</h2>
                 {!userSourceAvailable ? <p>{messages.licenseHygieneNoAccountAssessment}</p>
-                  : baseFiltered.accounts.length === 0 ? <p>{userEvidencePartial ? 'No disabled-account findings in the observed partial scan.' : messages.licenseHygieneNoAccounts}</p>
+                  : baseFiltered.accounts.length === 0 ? <p>{userEvidencePartial ? messages.licenseHygieneNoPartialAccounts : messages.licenseHygieneNoAccounts}</p>
                     : <div className="users-table-wrap"><table className="users-table">
                       <thead><tr><th scope="col">{messages.licenseHygieneAccount}</th><th scope="col">{messages.licenseHygieneAccountStatus}</th><th scope="col">{messages.licenseHygieneAssignedLicenses}</th><th scope="col">{messages.licenseHygieneEvidenceAt}</th><th scope="col">{messages.licenseHygieneEvidenceSource}</th></tr></thead>
                       <tbody>{pageAccounts.map(account => <AccountRow key={account.id} account={account} userDetailsAllowed={userDetailsAllowed} />)}</tbody>

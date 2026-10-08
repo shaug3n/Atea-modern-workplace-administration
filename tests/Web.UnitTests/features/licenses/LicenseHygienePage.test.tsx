@@ -185,6 +185,29 @@ describe('LicenseHygienePage', () => {
     expect(screen.getByText(/Coverage totals describe the full observed scan/)).toBeTruthy();
   });
 
+  it('keeps filter-empty account copy scoped to matching findings without hiding partial coverage', async () => {
+    const partial = response({
+      userEvidence: { freshness: 'live', partialData: true, fetchedAt: stamp, error: null },
+      coverage: { recordsAssessed: 2, completed: false, stopReason: 'page_limit', missingEvidenceRecords: 0 },
+    });
+    const { rerender } = render(<LicenseHygienePage workspaceId="workspace-1" loadHygiene={async () => partial} />);
+    await screen.findByText('Ada Lovelace');
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search license evidence' }), { target: { value: 'not-observed' } });
+
+    expect(screen.getByText('No matching disabled-account findings in the observed partial scan.')).toBeTruthy();
+    expect(screen.getByText(/Records assessed: 2/)).toBeTruthy();
+    expect(screen.getAllByText(/Partial scan/).length).toBeGreaterThan(0);
+    expect(screen.getByText(/Coverage totals describe the full observed scan/)).toBeTruthy();
+
+    rerender(<LicenseHygienePage
+      workspaceId="workspace-1"
+      loadHygiene={async () => response()}
+    />);
+    await screen.findByText('Ada Lovelace');
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search license evidence' }), { target: { value: 'not-observed' } });
+    expect(screen.getByText('No disabled accounts match the current filters.')).toBeTruthy();
+  });
+
   it('keeps verified account evidence visible when the inventory source fails', async () => {
     render(<LicenseHygienePage workspaceId="workspace-1" loadHygiene={async () => response({
       inventory: { freshness: 'unavailable', partialData: true, fetchedAt: null, error: { category: 'permission_denied', message: 'Inventory source denied' } },

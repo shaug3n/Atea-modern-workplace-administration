@@ -22,6 +22,7 @@ export const licenseHygieneMessages = {
   licenseHygieneAccountsTable: 'Disabled-account review',
   licenseHygieneNoCapacity: 'No matching capacity results.',
   licenseHygieneNoAccounts: 'No disabled accounts match the current filters.',
+  licenseHygieneNoPartialAccounts: 'No matching disabled-account findings in the observed partial scan.',
   licenseHygieneNoCapacityAssessment: 'No capacity assessment is available for this snapshot.',
   licenseHygieneNoAccountAssessment: 'No account assessment is available for this snapshot.',
   licenseHygieneCoverage: 'Coverage',
