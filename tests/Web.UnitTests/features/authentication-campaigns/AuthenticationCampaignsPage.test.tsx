@@ -127,10 +127,37 @@ describe('AuthenticationCampaignsPage', () => {
     fireEvent.change(population, { target: { value: 'member' } });
     const emptyMembersTile = await screen.findByRole('button', { name: /Passkey registrations/i });
     expect(emptyMembersTile.textContent).toContain('Not applicable');
-    expect(screen.getByText(/member accounts in observed report/i)).not.toBeNull();
+    expect(emptyMembersTile.textContent).toMatch(/0 of member accounts had known passkey registration/i);
+    expect(emptyMembersTile.textContent).toMatch(/0 accounts were excluded because passkey registration state is unknown/i);
     fireEvent.change(population, { target: { value: 'guest' } });
     expect(screen.getByRole('button', { name: /Passkey registrations/i }).textContent).toContain('1');
-    expect(screen.getAllByText(/of 1 guest account/i).length).toBeGreaterThan(0);
+    expect(screen.getByRole('button', { name: /Passkey registrations/i }).textContent).toMatch(/1 of guest accounts had known passkey registration/i);
+  });
+
+  it('shows known and excluded unknown counts for Passkeys and SMS/Phone metrics', async () => {
+    renderPage([
+      account({ id: 'known-passkey', passkeyRegistrationState: 'registered', isGenericFido2Registered: true, isMfaRegistered: true, phonePreferenceState: 'phone' }),
+      account({ id: 'not-reported-passkey', passkeyRegistrationState: 'not_reported', isGenericFido2Registered: false, isMfaRegistered: false, phonePreferenceState: 'not_phone' }),
+      account({ id: 'unknown-member-states', passkeyRegistrationState: 'unknown', isGenericFido2Registered: null, isMfaRegistered: null, phonePreferenceState: 'unknown', phoneRegistrationState: 'unknown' }),
+      account({ id: 'unknown-population-states', userType: null, passkeyRegistrationState: 'unknown', isGenericFido2Registered: null, isMfaRegistered: null, phonePreferenceState: 'unknown', phoneRegistrationState: 'unknown' }),
+    ]);
+
+    const passkeyTile = await screen.findByRole('button', { name: /Passkey registrations/i });
+    expect(passkeyTile.textContent).toMatch(/2 of member accounts had known passkey registration/i);
+    expect(passkeyTile.textContent).toMatch(/1 account was excluded because passkey registration state is unknown/i);
+    expect(screen.getByRole('button', { name: /Generic FIDO2 registrations/i }).textContent).toMatch(/1 account was excluded because generic FIDO2 registration state is unknown/i);
+    expect(screen.getByRole('button', { name: /MFA-registered accounts/i }).textContent).toMatch(/1 account was excluded because MFA registration state is unknown/i);
+
+    fireEvent.click(screen.getByRole('tab', { name: 'SMS/Phone' }));
+    const phonePreferenceTile = screen.getByRole('button', { name: /Phone-preference candidates/i });
+    expect(phonePreferenceTile.textContent).toMatch(/2 of member accounts had known phone preference/i);
+    expect(phonePreferenceTile.textContent).toMatch(/1 account was excluded because phone preference state is unknown/i);
+    expect(screen.getByRole('button', { name: /All phone-registered accounts/i }).textContent).toMatch(/1 account was excluded because phone registration state is unknown/i);
+    fireEvent.change(screen.getByLabelText('Account population'), { target: { value: 'unknown' } });
+    const zeroDenominatorPhoneTile = screen.getByRole('button', { name: /Phone-preference candidates/i });
+    expect(zeroDenominatorPhoneTile.textContent).toContain('Not applicable');
+    expect(zeroDenominatorPhoneTile.textContent).toMatch(/0 of unknown or unspecified user types had known phone preference/i);
+    expect(zeroDenominatorPhoneTile.textContent).toMatch(/1 account was excluded because phone preference state is unknown/i);
   });
 
   it('uses reported preference candidates by default and keeps all phone-registered accounts as a separate filter', async () => {
@@ -161,6 +188,12 @@ describe('AuthenticationCampaignsPage', () => {
 
     fireEvent.click(await screen.findByRole('tab', { name: 'SMS/Phone' }));
     expect(screen.getByRole('heading', { name: 'Deadline not configured' })).not.toBeNull();
+    const heroReviewLink = screen.getByRole('link', { name: 'Review SMS/Phone candidates' });
+    expect(heroReviewLink.getAttribute('href')).toBe('#authentication-campaigns-account-results');
+    const resultsHeading = screen.getByRole('heading', { name: 'SMS/Phone account results' });
+    expect(resultsHeading.getAttribute('tabindex')).toBe('-1');
+    fireEvent.click(heroReviewLink);
+    expect(document.activeElement).toBe(resultsHeading);
     fireEvent.click(screen.getByRole('tab', { name: 'Passkeys' }));
     fireEvent.click(screen.getByRole('button', { name: 'Review SMS/Phone candidates' }));
     expect(screen.getByRole('tab', { name: 'SMS/Phone' }).getAttribute('aria-selected')).toBe('true');
@@ -239,15 +272,31 @@ describe('AuthenticationCampaignsPage', () => {
 
     const noSourceTime = makeResponse([baseRegistration], { sourceLastUpdatedFrom: null, sourceLastUpdatedTo: null });
     cleanup();
-    const { rerender } = render(<AuthenticationCampaignsPage loadRegistrations={vi.fn().mockResolvedValue(noSourceTime)} capabilities={allowed} />);
+    const { rerender, container } = render(<AuthenticationCampaignsPage loadRegistrations={vi.fn().mockResolvedValue(noSourceTime)} capabilities={allowed} />);
     expect(await screen.findByText(/source freshness is unknown/i)).not.toBeNull();
     expect(screen.queryByText(/Data is fresh/)).toBeNull();
+    expect(screen.queryByText(/Latest source update is within 36 hours/i)).toBeNull();
+    expect(container.querySelector('.data-freshness')).toBeNull();
 
     const staleTime = new Date(Date.now() - 37 * 60 * 60 * 1000).toISOString();
-    rerender(<AuthenticationCampaignsPage loadRegistrations={vi.fn().mockResolvedValue(makeResponse([baseRegistration], { sourceLastUpdatedFrom: staleTime, sourceLastUpdatedTo: new Date().toISOString(), partialData: true, reportErrorCategory: 'unavailable', directoryErrorCategory: 'unavailable' }))} capabilities={allowed} />);
-    expect(await screen.findByText(/source report may be stale/i)).not.toBeNull();
+    const recentTime = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    rerender(<AuthenticationCampaignsPage loadRegistrations={vi.fn().mockResolvedValue(makeResponse([baseRegistration], { sourceLastUpdatedFrom: staleTime, sourceLastUpdatedTo: null }))} capabilities={allowed} />);
+    expect(await screen.findByText(/source freshness is unknown/i)).not.toBeNull();
+    expect(screen.queryByText(/Latest source update is within 36 hours/i)).toBeNull();
+    expect(screen.getByText(/source records are older than 36 hours/i)).not.toBeNull();
+
+    rerender(<AuthenticationCampaignsPage loadRegistrations={vi.fn().mockResolvedValue(makeResponse([baseRegistration], { sourceLastUpdatedFrom: staleTime, sourceLastUpdatedTo: recentTime, partialData: true, reportErrorCategory: 'unavailable', directoryErrorCategory: 'unavailable' }))} capabilities={allowed} />);
+    expect(await screen.findByText(/source records are older than 36 hours/i)).not.toBeNull();
+    expect(screen.queryByText(/source report may be stale/i)).toBeNull();
+    expect(screen.getByText(/Latest source update is within 36 hours/i)).not.toBeNull();
     expect(screen.getByText(/Source report timestamp range/)).not.toBeNull();
     expect(screen.getByText(/partial results/i)).not.toBeNull();
+
+    rerender(<AuthenticationCampaignsPage loadRegistrations={vi.fn().mockResolvedValue(makeResponse([baseRegistration], { sourceLastUpdatedFrom: staleTime, sourceLastUpdatedTo: staleTime, partialData: true, reportErrorCategory: 'unavailable', directoryErrorCategory: 'unavailable' }))} capabilities={allowed} />);
+    expect(await screen.findByText(/source records are older than 36 hours/i)).not.toBeNull();
+    expect(screen.getAllByText(/source report may be stale/i).length).toBeGreaterThan(0);
+    expect(screen.getByText(/Source report timestamp range/)).not.toBeNull();
+    expect(screen.getAllByText(/latest source update is more than 36 hours old/i).length).toBeGreaterThan(0);
   });
 
   it('renders access diagnostics and never requests registrations when authorization is unavailable', async () => {

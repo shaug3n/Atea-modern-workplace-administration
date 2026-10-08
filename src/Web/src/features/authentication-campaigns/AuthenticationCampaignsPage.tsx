@@ -161,8 +161,10 @@ function CampaignsDataPanel({ loadRegistrations, capabilities, session, onNaviga
   }
   if (!response) return null;
 
-  const stale = isStale(response.sourceLastUpdatedFrom ?? response.sourceLastUpdatedTo);
-  const sourceKnown = response.sourceLastUpdatedFrom !== null || response.sourceLastUpdatedTo !== null;
+  const latestSourceTimestamp = response.sourceLastUpdatedTo ?? response.sourceLastUpdatedFrom;
+  const sourceFreshnessKnown = response.sourceLastUpdatedTo !== null && Number.isFinite(Date.parse(response.sourceLastUpdatedTo));
+  const stale = sourceFreshnessKnown && isStale(latestSourceTimestamp);
+  const olderRecords = isStale(response.sourceLastUpdatedFrom);
   const panelTitle = view === 'passkeys' ? copy.authenticationCampaignsPasskeysTab : copy.authenticationCampaignsPhoneTab;
   return <section id="authentication-campaigns-panel" className="authentication-campaigns__panel" role="tabpanel" aria-labelledby={`authentication-campaigns-tab-${view}`}>
     {view === 'passkeys'
@@ -170,13 +172,14 @@ function CampaignsDataPanel({ loadRegistrations, capabilities, session, onNaviga
       : <PhoneKpis accounts={populationAccounts} filter={phoneFilter} setFilter={setPhoneFilter} population={population} />}
     {view === 'passkeys'
       ? <div className="authentication-campaigns__view-intro"><p>{copy.authenticationCampaignsPasskeysIntro} <strong>{copy.authenticationCampaignsEligibility}</strong></p><button className="button button--secondary" type="button" onClick={onNavigateToPhone}>{copy.authenticationCampaignsPhoneCandidateAction}</button></div>
-      : <section className="authentication-campaigns__deadline"><h2>{copy.authenticationCampaignsDeadline}</h2><p>{copy.authenticationCampaignsPhoneIntro}</p></section>}
+      : <section className="authentication-campaigns__deadline"><h2>{copy.authenticationCampaignsDeadline}</h2><p>{copy.authenticationCampaignsPhoneIntro}</p><a className="button button--secondary" href="#authentication-campaigns-account-results" onClick={() => document.getElementById('authentication-campaigns-account-results')?.focus()}>{copy.authenticationCampaignsPhoneCandidateAction}</a></section>}
     <div className="authentication-campaigns__freshness">
-      {sourceKnown
-        ? <DataFreshness fetchedAt={response.fetchedAt} freshness={stale ? 'stale' : 'fresh'} partialData={response.partialData} source={stale ? copy.authenticationCampaignsSourceStale : `Source report update within 36 hours`} />
+      {sourceFreshnessKnown
+        ? <DataFreshness fetchedAt={response.fetchedAt} freshness={stale ? 'stale' : 'fresh'} partialData={response.partialData} labels={{ fresh: copy.authenticationCampaignsLatestUpdateRecent, stale: copy.authenticationCampaignsSourceStale }} source={response.partialData ? (stale ? copy.authenticationCampaignsSourceStale : copy.authenticationCampaignsLatestUpdateRecent) : undefined} />
         : <p role="status">{copy.authenticationCampaignsSourceUnknown} {copy.authenticationCampaignsFetched} <DateTime value={response.fetchedAt} />.</p>}
       {(response.sourceLastUpdatedFrom || response.sourceLastUpdatedTo) &&
         <p>{copy.authenticationCampaignsSourceRange}: {response.sourceLastUpdatedFrom ? <DateTime value={response.sourceLastUpdatedFrom} /> : copy.authenticationCampaignsUnknown} – {response.sourceLastUpdatedTo ? <DateTime value={response.sourceLastUpdatedTo} /> : copy.authenticationCampaignsUnknown}. Fetch time is shown separately.</p>}
+      {olderRecords && <p role="status">{copy.authenticationCampaignsOlderRecords}</p>}
     </div>
     {response.partialData && <p className="authentication-campaigns__partial" role="status">{copy.authenticationCampaignsPartial}{response.reportErrorCategory ? ` Report: ${response.reportErrorCategory}.` : ''}{response.directoryErrorCategory ? ` Directory: ${response.directoryErrorCategory}.` : ''}</p>}
     <div className="authentication-campaigns__coverage" aria-label="Report and directory coverage">
@@ -198,7 +201,7 @@ function CampaignsDataPanel({ loadRegistrations, capabilities, session, onNaviga
         <input aria-label={copy.authenticationCampaignsSearch} placeholder={copy.authenticationCampaignsSearchPlaceholder} value={search} onChange={event => setSearch(event.target.value)} />
       </label>
     </div>
-    <h2 className="authentication-campaigns__section-title">{panelTitle} account results</h2>
+    <h2 id="authentication-campaigns-account-results" tabIndex={-1} className="authentication-campaigns__section-title">{panelTitle} account results</h2>
     <p aria-live="polite">{copy.authenticationCampaignsResultCount(searchedAccounts.length)}</p>
     {response.items.length === 0 && !search.trim()
       ? <WorkspaceDataState state="empty" message={copy.authenticationCampaignsNoAccounts} />
@@ -227,9 +230,9 @@ function PasskeyKpis({ accounts, filter, setFilter, population }: { accounts: Au
   const knownMfa = accounts.filter(item => item.isMfaRegistered !== null).length;
   return <div className="authentication-campaigns__kpis" aria-label="Passkey registration metrics">
     <KpiFilterTile label={copy.authenticationCampaignsAllPopulation} value={accounts.length} detail={`${accounts.length} ${groupLabel} in observed report`} selected={filter === 'all'} onClick={() => setFilter('all')} />
-    <KpiFilterTile label={copy.authenticationCampaignsPasskeyKpi} value={metricValue(knownPasskey, accounts.filter(item => item.passkeyRegistrationState === 'registered').length)} detail={metricDetail(knownPasskey, groupLabel)} selected={filter === 'passkey'} onClick={() => setFilter('passkey')} />
-    <KpiFilterTile label={copy.authenticationCampaignsFidoKpi} value={metricValue(knownFido, accounts.filter(item => item.isGenericFido2Registered === true).length)} detail={metricDetail(knownFido, groupLabel)} selected={filter === 'fido2'} onClick={() => setFilter('fido2')} />
-    <KpiFilterTile label={copy.authenticationCampaignsMfaKpi} value={metricValue(knownMfa, accounts.filter(item => item.isMfaRegistered === true).length)} detail={metricDetail(knownMfa, groupLabel)} selected={filter === 'mfa'} onClick={() => setFilter('mfa')} />
+    <KpiFilterTile label={copy.authenticationCampaignsPasskeyKpi} value={metricValue(knownPasskey, accounts.filter(item => item.passkeyRegistrationState === 'registered').length)} detail={metricDetail(knownPasskey, accounts.length - knownPasskey, groupLabel, 'passkey registration')} selected={filter === 'passkey'} onClick={() => setFilter('passkey')} />
+    <KpiFilterTile label={copy.authenticationCampaignsFidoKpi} value={metricValue(knownFido, accounts.filter(item => item.isGenericFido2Registered === true).length)} detail={metricDetail(knownFido, accounts.length - knownFido, groupLabel, 'generic FIDO2 registration')} selected={filter === 'fido2'} onClick={() => setFilter('fido2')} />
+    <KpiFilterTile label={copy.authenticationCampaignsMfaKpi} value={metricValue(knownMfa, accounts.filter(item => item.isMfaRegistered === true).length)} detail={metricDetail(knownMfa, accounts.length - knownMfa, groupLabel, 'MFA registration')} selected={filter === 'mfa'} onClick={() => setFilter('mfa')} />
   </div>;
 }
 
@@ -240,8 +243,8 @@ function PhoneKpis({ accounts, filter, setFilter, population }: { accounts: Auth
   const preferred = accounts.filter(item => item.phonePreferenceState === 'phone');
   const registered = accounts.filter(item => item.phoneRegistrationState === 'registered');
   return <div className="authentication-campaigns__kpis" aria-label="SMS and phone metrics">
-    <KpiFilterTile label={copy.authenticationCampaignsPhoneCandidates} value={metricValue(knownPreferences, preferred.length)} detail={metricDetail(knownPreferences, groupLabel)} selected={filter === 'preference'} onClick={() => setFilter('preference')} />
-    <KpiFilterTile label={copy.authenticationCampaignsPhoneRegistered} value={metricValue(knownPhoneRegistrations, registered.length)} detail={metricDetail(knownPhoneRegistrations, groupLabel)} selected={filter === 'registered'} onClick={() => setFilter('registered')} />
+    <KpiFilterTile label={copy.authenticationCampaignsPhoneCandidates} value={metricValue(knownPreferences, preferred.length)} detail={metricDetail(knownPreferences, accounts.length - knownPreferences, groupLabel, 'phone preference')} selected={filter === 'preference'} onClick={() => setFilter('preference')} />
+    <KpiFilterTile label={copy.authenticationCampaignsPhoneRegistered} value={metricValue(knownPhoneRegistrations, registered.length)} detail={metricDetail(knownPhoneRegistrations, accounts.length - knownPhoneRegistrations, groupLabel, 'phone registration')} selected={filter === 'registered'} onClick={() => setFilter('registered')} />
   </div>;
 }
 
@@ -325,8 +328,8 @@ function metricValue(denominator: number, numerator: number) {
   return denominator > 0 ? numerator : 'Not applicable';
 }
 
-function metricDetail(denominator: number, groupLabel: string) {
-  return denominator > 0 ? `of ${denominator} ${groupLabel} in observed report` : `${groupLabel} denominator is zero`;
+function metricDetail(denominator: number, excluded: number, groupLabel: string, metric: string) {
+  return copy.authenticationCampaignsKnownDenominator(denominator, groupLabel, metric, excluded);
 }
 
 function populationLabel(population: Population) {
