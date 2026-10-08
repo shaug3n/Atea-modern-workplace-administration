@@ -50,3 +50,9 @@ test('table foundations replace the global anchor wrapping and define one pagina
   assert.equal((all.match(/\.pagination-controls \{/g) ?? []).length, 1);
   assert.equal((all.match(/\.filter-chips \{/g) ?? []).length, 1);
 });
+
+test('skeleton convention disables shimmer for reduced motion', async () => {
+  const components = await readFile('../../src/Web/src/styles/components.css', 'utf8');
+  assert.match(components, /\.loading-skeleton[\s\S]*?animation:/);
+  assert.match(components, /@media\s*\(prefers-reduced-motion:\s*reduce\)[\s\S]*?\.loading-skeleton[\s\S]*?animation:\s*none/);
+});
