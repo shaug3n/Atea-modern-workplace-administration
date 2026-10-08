@@ -587,7 +587,7 @@ git commit -m "feat: track reviewed Graph delegated permissions"
 - Consumes: existing `AzureAd:Audience`, customer SPA client ID and customer consent callback configuration.
 - Produces: customer `VITE_ENTRA_AUTHORITY` default/documentation `https://login.microsoftonline.com/organizations`; tenant authority override only from validated server resume.
 
-- [ ] **Step 1: Add failing configuration/contract assertions.**
+- [x] **Step 1: Add failing configuration/contract assertions.**
 
 ```csharp
 [Fact] public void Missing_consent_first_registration_values_disable_only_anonymous_start()
@@ -600,28 +600,28 @@ git commit -m "feat: track reviewed Graph delegated permissions"
 Extend infra checks to require `Onboarding__CustomerClientId` and `Onboarding__ApiApplicationIdUri` as runtime configuration, reject these values from secret-bearing parameter blocks, and require the `organizations` default without changing platform-admin authority.
 Add options assertions that trusted forwarded-header processing is disabled unless the configured proxy allowlist is valid, and that the invitation consent feature remains disabled when any required public consent setting is absent.
 
-- [ ] **Step 2: Run the targeted tests.**
+- [x] **Step 2: Run the targeted tests.**
 
 Run: `dotnet test tests/Api.UnitTests/Api.UnitTests.csproj --filter FullyQualifiedName~OnboardingOptionsTests`
 Run: `python3 infra/tests/validate_contract.py`
 Expected: FAIL because the new settings are absent from API options and deployment contract.
 
-- [ ] **Step 3: Implement optional, fail-safe consent-first option validation.**
+- [x] **Step 3: Implement optional, fail-safe consent-first option validation.**
 
 Do not make missing new values break unrelated startup/dev routes or legacy re-consent. Return sanitized configuration-unavailable for anonymous consent start until the new settings are complete. Require HTTPS and exact configured callback/public origins outside explicit localhost Development.
 
-- [ ] **Step 4: Wire `.env.example`, Compose, Bicep, parameter examples, workflow variables and infra contract checks.**
+- [x] **Step 4: Wire `.env.example`, Compose, Bicep, parameter examples, workflow variables and infra contract checks.**
 
 Map `Onboarding__ApiApplicationIdUri` from the actual configured API audience/application URI, `Onboarding__CustomerClientId` from the customer SPA ID, and `Onboarding__TrustedProxyAddresses` only from explicitly configured ingress proxy addresses. Trust forwarded headers only from that allowlist; do not infer trust from `X-Forwarded-For`. Set the customer authority default to `https://login.microsoftonline.com/organizations`; do not change platform-admin authority. Do not place credentials, app secrets, tenant-specific runtime IDs, or permission consent in source or parameters.
 
-- [ ] **Step 5: Run configuration and contract checks.**
+- [x] **Step 5: Run configuration and contract checks.**
 
 Run: `dotnet test tests/Api.UnitTests/Api.UnitTests.csproj --filter FullyQualifiedName~OnboardingOptionsTests`
 Run: `python3 infra/tests/validate_contract.py`
 Run: `docker compose config --quiet`
 Expected: PASS; both local and hosted configuration pass validation and platform-admin values remain unchanged.
 
-- [ ] **Step 6: Commit.**
+- [x] **Step 6: Commit.**
 
 ```bash
 git add src/Api/Features/Workspaces/OnboardingOptions.cs .env.example docker-compose.yml infra/application.bicep infra/modules/container-apps.bicep infra/parameters/application-dev.example.json infra/parameters/application-prod.example.json .github/workflows/validate-and-deploy.yml infra/tests/validate_contract.py tests/Api.UnitTests/Workspaces/OnboardingOptionsTests.cs
@@ -639,7 +639,7 @@ git commit -m "feat: configure consent-first customer registration"
 - Produces: CLI requiring expected home tenant ID, API app ID, customer SPA app ID, API application-ID URI, exact sign-in/consent redirect URIs; defaults to a sanitized dry-run diff and writes only with `--apply`.
 - Consumes: `az account show`, Microsoft Graph `az rest`, checked permission manifest, and enabled live Graph `oauth2PermissionScopes`; no live tenant writes during tests.
 
-- [ ] **Step 1: Write failing fake-Azure-CLI tests.**
+- [x] **Step 1: Write failing fake-Azure-CLI tests.**
 
 ```python
 def test_default_is_sanitized_dry_run_and_apply_is_explicit(self):
@@ -651,21 +651,21 @@ def test_default_is_sanitized_dry_run_and_apply_is_explicit(self):
 
 Also test tenant mismatch, missing/disabled/ambiguous scopes, unexpected Graph application permissions, refusal of SPA Graph or `platform.admin`, preservation of non-Graph blocks/redirects, idempotent rerun, `--apply`, and a re-read failure after a partial write.
 
-- [ ] **Step 2: Run the Python tests.**
+- [x] **Step 2: Run the Python tests.**
 
 Run: `python3 infra/tests/test_configure_entra_onboarding.py`
 Expected: FAIL because the configuration script is missing.
 
-- [ ] **Step 3: Implement the registration convergence script.**
+- [x] **Step 3: Implement the registration convergence script.**
 
 Verify the current CLI tenant and both existing app objects before proposing changes. Resolve enabled Graph delegated scope IDs and the API's enabled `access_as_user` scope from live service-principal data. Set both registrations to `AzureADMultipleOrgs`, link only the customer SPA in API `knownClientApplications`, replace the API Graph block with manifest `Scope` permissions, set customer SPA API access to `access_as_user` only, merge the exact SPA/Web callbacks, preserve unrelated resource blocks, and re-read/verify after writes. Never grant consent, create secrets, alter customer tenants, assign roles, or modify the separate platform-admin SPA.
 
-- [ ] **Step 4: Run fake CLI/Graph tests.**
+- [x] **Step 4: Run fake CLI/Graph tests.**
 
 Run: `python3 infra/tests/test_configure_entra_onboarding.py`
 Expected: PASS without Azure credentials/network; dry-run is default and repeated apply converges.
 
-- [ ] **Step 5: Commit.**
+- [x] **Step 5: Commit.**
 
 ```bash
 git add infra/scripts/configure-entra-onboarding.py infra/tests/test_configure_entra_onboarding.py
