@@ -3,6 +3,7 @@ import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { App } from '../../../../src/Web/src/app/App';
 import type { AppSession } from '../../../../src/Web/src/components/TenantContextHeader';
+import { clearPendingFlow, writePendingFlow } from '../../../../src/Web/src/features/invitations/pendingFlow';
 
 const api = vi.hoisted(() => vi.fn());
 vi.mock('../../../../src/Web/src/auth/useApi', () => ({ useApi: () => api }));
@@ -18,7 +19,7 @@ function renderAt(path: string, session: AppSession = owner) {
   return render(<App loadSession={async () => session} loadCapabilities={async () => ({ workspaceId: 'w-1', evaluatedAt: '2026-09-25T00:00:00Z', sourceState: 'graph_authoritative', capabilities: [] })} />);
 }
 
-afterEach(() => { cleanup(); api.mockReset(); window.history.replaceState(null, '', '/'); });
+afterEach(() => { cleanup(); api.mockReset(); clearPendingFlow(); window.history.replaceState(null, '', '/'); });
 
 describe('Workspace Settings hub', () => {
   it('shows one page heading and independently loaded sections for an owner', async () => {
@@ -109,15 +110,23 @@ describe('Workspace Settings hub', () => {
     await waitFor(() => expect(document.activeElement).toBe(heading));
   });
 
-  it('keeps the consent callback route and its query available with a trailing slash', async () => {
+  it('validates persisted workspace callback state and clears query data with a trailing slash', async () => {
     api.mockImplementation(async (path: string) => {
       if (path.endsWith('/consent/complete')) return Response.json({ valid: true, status: 'consent_received' });
       if (path.endsWith('/connection-health/check')) return Response.json({ status: 'connected' });
       return new Response(null, { status: 404 });
     });
-    renderAt('/onboarding/consent/callback/?state=signed&tenant=tenant-1#old');
+    writePendingFlow({
+      kind: 'workspace',
+      challenge: 'signed',
+      tenantId: '11111111-1111-1111-1111-111111111111',
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      step: 'workspace_callback',
+    });
+    renderAt('/onboarding/consent/callback/?state=signed&tenant=11111111-1111-1111-1111-111111111111#old');
     await waitFor(() => expect(api.mock.calls.some(([path]) => path === '/api/workspaces/current/consent/complete')).toBe(true));
     expect(window.location.pathname).toBe('/onboarding/consent/callback/');
-    expect(window.location.search).toBe('?state=signed&tenant=tenant-1');
+    expect(window.location.search).toBe('');
+    expect(window.location.hash).toBe('');
   });
 });
