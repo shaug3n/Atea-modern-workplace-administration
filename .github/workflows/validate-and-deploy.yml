@@ -94,7 +94,11 @@ jobs:
           python3 -c 'import ipaddress,sys; net=ipaddress.ip_network(sys.argv[1], strict=False); assert net.version == 4 and net.prefixlen > 0' "$SMOKE_TEST_SOURCE_CIDR"
       - name: Build the immutable hosted image
         run: |
+          PRODUCT_VERSION="$(node -p "require('./src/Web/package.json').version")"
           docker build \
+            --build-arg ATEA_BUILD_PRODUCT_VERSION="$PRODUCT_VERSION" \
+            --build-arg ATEA_BUILD_COMMIT="$GITHUB_SHA" \
+            --build-arg ATEA_BUILD_BRANCH="$GITHUB_REF_NAME" \
             --build-arg VITE_ENTRA_CLIENT_ID="$VITE_ENTRA_CLIENT_ID" \
             --build-arg VITE_ENTRA_API_SCOPE="$VITE_ENTRA_API_SCOPE" \
             --build-arg VITE_ENTRA_AUTHORITY="$VITE_ENTRA_AUTHORITY" \
