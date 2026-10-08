@@ -78,14 +78,13 @@ test('reserved capability names match FE and BE', async () => {
 
   assert.deepEqual(frontendValues, [
     'authentication.campaigns.manage',
-    'licenses.hygiene.view',
     'platform.about.view',
     'feedback.submit',
   ]);
   assert.deepEqual(backendValues, frontendValues);
 });
 
-test('module inventory labels reserved candidates planned and not active', async () => {
+test('module inventory distinguishes active hygiene access from pending feature delivery', async () => {
   const inventory = await readFile('../../docs/module-inventory.md', 'utf8');
   const campaigns = inventory.split('\n').find(line => line.startsWith('| Authentication campaigns |'));
   assert.ok(campaigns, 'Authentication campaigns should be an active workspace module');
@@ -98,7 +97,6 @@ test('module inventory labels reserved candidates planned and not active', async
   assert.match(campaigns, /authentication\.campaigns\.manage.*reserved and denied/);
 
   const plannedCandidates = [
-    'License Hygiene',
     'About',
     'Feedback',
   ];
@@ -112,4 +110,10 @@ test('module inventory labels reserved candidates planned and not active', async
   for (const retiredCandidate of ['Passkeys', 'MFA campaigns']) {
     assert.equal(inventory.split('\n').some(line => line.startsWith(`| ${retiredCandidate} |`)), false);
   }
+
+  const hygiene = inventory.split('\n').find((line) => line.startsWith('| License Hygiene |'));
+  assert.ok(hygiene, 'License Hygiene should have an inventory row');
+  assert.match(hygiene, /Task 1 activation only/i);
+  assert.match(hygiene, /page and evidence flow remain pending/i);
+  assert.doesNotMatch(inventory, /licenses\.hygiene\.view[^.\n]*reserved/i);
 });

@@ -8,6 +8,7 @@ export const workspaceModules = [
   { key: 'devices', label: 'Devices', description: 'Managed device inventory and compliance.' },
   { key: 'licenses', label: 'Licenses', description: 'License catalog and seat utilization.' },
   { key: 'exchange', label: 'Exchange', description: 'Read-only mailbox directory and lookup details.' },
+  { key: 'license-hygiene', label: 'License Hygiene', description: 'Opt-in, read-only license allocation review.' },
 ] as const;
 
 export type WorkspaceModulesResponse = { enabledModules: string[]; dormantGrantCount?: number; restoredDormantGrants?: boolean };

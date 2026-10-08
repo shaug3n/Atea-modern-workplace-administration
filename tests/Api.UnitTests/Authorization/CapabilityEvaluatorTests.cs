@@ -98,12 +98,11 @@ public sealed class CapabilityEvaluatorTests
     }
 
     [Fact]
-    public void Unsupported_reserved_capabilities_are_not_evaluated_or_granted()
+    public void Active_hygiene_capability_is_evaluated_and_other_reserved_capabilities_remain_inactive()
     {
-        var expected = new[]
+        var reserved = new[]
         {
             Capability.AuthenticationCampaignsManage,
-            Capability.LicensesHygieneView,
             Capability.PlatformAboutView,
             Capability.FeedbackSubmit
         };
@@ -111,12 +110,81 @@ public sealed class CapabilityEvaluatorTests
             GraphAuthorizationSnapshot.Unavailable("temporarily_unavailable"),
             Member());
 
-        Capability.Reserved.Should().Equal(expected);
-        foreach (var capability in expected)
+        Capability.Reserved.Should().Equal(reserved);
+        Capability.All.Should().Contain(Capability.LicensesHygieneView);
+        decisions.Capabilities.Select(decision => decision.Capability).Should().Contain(Capability.LicensesHygieneView);
+        foreach (var capability in reserved)
         {
             Capability.All.Should().NotContain(capability);
             decisions.Capabilities.Select(decision => decision.Capability).Should().NotContain(capability);
         }
+    }
+
+    [Fact]
+    public void Hygiene_view_uses_the_existing_license_read_contract()
+    {
+        var readerRoles = new[]
+        {
+            EntraRoleCatalog.GlobalReaderTemplateId,
+            EntraRoleCatalog.LicenseAdministratorTemplateId
+        };
+        foreach (var roleTemplateId in readerRoles)
+        {
+            var withReadScope = CapabilityEvaluator.Evaluate(
+                AvailableSnapshot(
+                    ["Directory.Read.All"],
+                    [ActiveRole(roleTemplateId)]),
+                Member());
+
+            withReadScope[Capability.LicensesView].State.Should().Be(withReadScope[Capability.LicensesHygieneView].State);
+            withReadScope[Capability.LicensesView].ReasonCode.Should().Be(withReadScope[Capability.LicensesHygieneView].ReasonCode);
+            withReadScope[Capability.LicensesHygieneView].State.Should().Be(CapabilityState.Allowed);
+            withReadScope[Capability.LicensesAssign].State.Should().Be(
+                roleTemplateId == EntraRoleCatalog.GlobalReaderTemplateId
+                    ? CapabilityState.ReadOnly
+                    : CapabilityState.ConsentRequired);
+
+            var withoutReadScope = CapabilityEvaluator.Evaluate(
+                AvailableSnapshot(["LicenseAssignment.ReadWrite.All"], [ActiveRole(roleTemplateId)]),
+                Member());
+            withoutReadScope[Capability.LicensesView].State.Should().Be(withoutReadScope[Capability.LicensesHygieneView].State);
+            withoutReadScope[Capability.LicensesView].ReasonCode.Should().Be(withoutReadScope[Capability.LicensesHygieneView].ReasonCode);
+            withoutReadScope[Capability.LicensesHygieneView].State.Should().Be(CapabilityState.Hidden);
+            withoutReadScope[Capability.LicensesAssign].State.Should().Be(CapabilityState.Hidden);
+
+            var withWriteScope = CapabilityEvaluator.Evaluate(
+                AvailableSnapshot(["Directory.Read.All", "LicenseAssignment.ReadWrite.All"], [ActiveRole(roleTemplateId)]),
+                Member());
+            withWriteScope[Capability.LicensesHygieneView].State.Should().Be(CapabilityState.Allowed);
+            withWriteScope[Capability.LicensesAssign].State.Should().Be(
+                roleTemplateId == EntraRoleCatalog.GlobalReaderTemplateId
+                    ? CapabilityState.ReadOnly
+                    : CapabilityState.Allowed);
+        }
+    }
+
+    [Theory]
+    [InlineData(PimRequirement.ActivationRequired, CapabilityState.PimActivationRequired)]
+    [InlineData(PimRequirement.ApprovalRequired, CapabilityState.PimApprovalRequired)]
+    [InlineData(PimRequirement.MfaRequired, CapabilityState.PimMfaRequired)]
+    [InlineData(PimRequirement.EligibilityExpired, CapabilityState.PimEligibilityExpired)]
+    public void Hygiene_PIM_decisions_match_license_view(string pimRequirement, string expectedState)
+    {
+        var snapshot = AvailableSnapshot(
+            ["Directory.Read.All"],
+            [EligibleRole(EntraRoleCatalog.LicenseAdministratorTemplateId, pimRequirement)]);
+
+        var capabilities = CapabilityEvaluator.Evaluate(snapshot, Member());
+
+        var licensesView = capabilities[Capability.LicensesView];
+        var hygieneView = capabilities[Capability.LicensesHygieneView];
+        licensesView.State.Should().Be(expectedState);
+        hygieneView.State.Should().Be(licensesView.State);
+        hygieneView.ReasonCode.Should().Be(licensesView.ReasonCode);
+        hygieneView.RequiredRoleTemplateId.Should().Be(licensesView.RequiredRoleTemplateId);
+        hygieneView.Pim.Should().Be(licensesView.Pim);
+        hygieneView.NextStep.Should().Be(licensesView.NextStep);
+        capabilities[Capability.LicensesAssign].State.Should().Be(CapabilityState.ConsentRequired);
     }
 
     [Fact]
