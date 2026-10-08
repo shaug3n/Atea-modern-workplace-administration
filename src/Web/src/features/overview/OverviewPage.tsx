@@ -6,18 +6,92 @@ import { useApi } from '../../auth/useApi';
 import type { AppSession } from '../../components/TenantContextHeader';
 import { WorkspacePageHeader } from '../../components/WorkspacePageHeader';
 import { DataFreshness } from '../../components/DataFreshness';
-import { MetricCard } from '../../components/MetricCard';
+import { KpiFilterTile } from '../../components/KpiFilterTile';
+import { InfoTip } from '../../components/InfoTip';
 import { WorkspaceDataState } from '../../components/WorkspaceDataState';
+import { DateTime } from '../../components/DateTime';
 import { useWorkspaceIssueReporter } from '../../notifications/WorkspaceNotifications';
 
 export type ConnectionHealth = { status: ConnectionState; lastVerifiedAt: string | null };
 export type ConsentDescriptor = { authorizationUrl: string };
 export type ConnectionHealthLoader = () => Promise<ConnectionHealth>;
 export type ConnectionHealthActions = { check: ConnectionHealthLoader; startConsent: () => Promise<ConsentDescriptor> };
-export type OverviewData = { freshness: string; fetchedAt: string; totalUsers: number; licenseCoverage: { assigned: number; available: number; percentage: number }; permissionHealth: { state: string; allowedCount: number; totalCount: number }; pimAttention: { requiresAttention: boolean; count: number }; partialData: boolean; access: { state: string } };
+export type OverviewSource<T> = {
+  state: string;
+  fetchedAt: string | null;
+  partialData: boolean;
+  data: T | null;
+  scope: string;
+};
+export type OverviewCapability = {
+  capability: string;
+  state: string;
+  reasonCode?: string;
+  pim?: { state: string; activationUrl?: string | null } | null;
+  nextStep?: { label: string; href?: string | null } | null;
+  missingScopes?: string[] | null;
+};
+export type OverviewActivityItem = { action: string; outcome: string; timestamp: string };
+export type OverviewData = {
+  effectiveModules: string[];
+  effectiveCapabilities: OverviewCapability[];
+  users: OverviewSource<{ totalUsers: number }>;
+  licenseCoverage: OverviewSource<{ assignedUsers: number; totalUsers: number; percentage: number }>;
+  activity: OverviewSource<{ items: OverviewActivityItem[] }>;
+};
 export type OverviewLoader = () => Promise<OverviewData>;
 
-export function OverviewPage({ loadConnectionHealth, actions, loadOverview, session, onNavigate }: { loadConnectionHealth?: ConnectionHealthLoader; actions?: ConnectionHealthActions; loadOverview?: OverviewLoader; session?: AppSession; onNavigate?: (path: string) => void }) {
+type FreshnessState = 'fresh' | 'stale' | 'unavailable';
+type Action = { id: string; label: string; rank: number; order: number; href?: string; onClick?: () => void; text?: string };
+
+const supportedFreshness = new Set(['fresh', 'stale', 'unavailable']);
+const validCount = (value: unknown): value is number => Number.isSafeInteger(value) && Number(value) >= 0;
+
+function sourceFreshness(state: string): FreshnessState {
+  return state === 'fresh' || state === 'stale' ? state : 'unavailable';
+}
+
+function sourceScope(scope: string, activity = false) {
+  if (activity && scope !== 'workspace') return overviewMessages.overviewUnverifiedScope;
+  if (scope === 'tenant_wide_verified') return overviewMessages.overviewTenantWideScope;
+  if (scope === 'workspace') return overviewMessages.overviewWorkspaceScope;
+  return overviewMessages.overviewUnverifiedScope;
+}
+
+function capabilityFor(overview: OverviewData, capability: string) {
+  return overview.effectiveCapabilities.find(item => item.capability === capability);
+}
+
+function sourceMessage(source: OverviewSource<unknown>, label: string) {
+  if (source.state === 'restricted') return overviewMessages.overviewRestricted.replace('{section}', label);
+  if (source.state === 'empty') return overviewMessages.overviewEmpty.replace('{section}', label);
+  if (source.state === 'unavailable' || !supportedFreshness.has(source.state)) {
+    return overviewMessages.overviewSourceUnavailable.replace('{section}', label);
+  }
+  return null;
+}
+
+function metricStateKind(source: OverviewSource<unknown>, capabilityAllowed: boolean, scopeVerified: boolean) {
+  if (!capabilityAllowed || source.state === 'restricted' || !scopeVerified) return 'permission' as const;
+  if (source.state === 'empty') return 'empty' as const;
+  if (source.state === 'stale') return 'stale' as const;
+  return 'unavailable' as const;
+}
+
+function metricStateMessage(source: OverviewSource<unknown>, label: string, capabilityAllowed: boolean, scopeVerified: boolean) {
+  if (!capabilityAllowed || source.state === 'restricted') return overviewMessages.overviewRestricted.replace('{section}', label.toLowerCase());
+  if (source.state === 'empty') return overviewMessages.overviewEmpty.replace('{section}', label.toLowerCase());
+  if (!scopeVerified) return overviewMessages.overviewUnverifiedSource.replace('{section}', label.toLowerCase());
+  return sourceMessage(source, label) ?? overviewMessages.overviewSourceUnavailable.replace('{section}', label.toLowerCase());
+}
+
+export function OverviewPage({ loadConnectionHealth, actions, loadOverview, session, onNavigate }: {
+  loadConnectionHealth?: ConnectionHealthLoader;
+  actions?: ConnectionHealthActions;
+  loadOverview?: OverviewLoader;
+  session?: AppSession;
+  onNavigate?: (path: string) => void;
+}) {
   if (loadOverview) return <LoadedOverviewMetrics loadOverview={loadOverview} session={session} onNavigate={onNavigate} />;
   if (loadConnectionHealth) return <LoadedConnectionHealth loadConnectionHealth={loadConnectionHealth} actions={actions} />;
   return <AuthenticatedOverview session={session} onNavigate={onNavigate} />;
@@ -38,50 +112,182 @@ function LoadedOverviewMetrics({ loadOverview, session, onNavigate }: { loadOver
   const [overview, setOverview] = useState<OverviewData | null>(null);
   const [failed, setFailed] = useState(false);
   const [retry, setRetry] = useState(0);
-  useEffect(() => { let cancelled = false; setFailed(false); loadOverview().then(value => { if (!cancelled) { setOverview(value); if (value.freshness === 'unavailable' || value.partialData) issueReporter.report({ key: 'overview:read', area: 'services', kind: 'service', severity: 'warning', title: 'Summary unavailable', detail: 'Try loading the overview again.' }); else issueReporter.clear('overview:read'); } }).catch(() => { if (!cancelled) { setFailed(true); issueReporter.report({ key: 'overview:read', area: 'services', kind: 'service', severity: 'warning', title: 'Summary unavailable', detail: 'Try loading the overview again.' }); } }); return () => { cancelled = true; }; }, [loadOverview, retry, issueReporter]);
-  if (failed) return <div className="overview-page"><WorkspacePageHeader eyebrow={overviewMessages.overviewEyebrow} title={overviewMessages.overviewTitle} /><WorkspaceDataState state="unavailable" message={overviewMessages.overviewUnavailable} onRetry={() => setRetry(value => value + 1)} /></div>;
+
+  useEffect(() => {
+    let cancelled = false;
+    setFailed(false);
+    loadOverview().then(value => {
+      if (cancelled) return;
+      setOverview(value);
+      const sourceIssue = [value.users, value.licenseCoverage, value.activity].some(source =>
+        source.state === 'unavailable' || source.state === 'stale' || source.partialData,
+      );
+      if (sourceIssue) issueReporter.report({ key: 'overview:read', area: 'services', kind: 'service', severity: 'warning', title: 'Summary unavailable', detail: 'Try loading the overview again.' });
+      else issueReporter.clear('overview:read');
+    }).catch(() => {
+      if (!cancelled) {
+        setFailed(true);
+        issueReporter.report({ key: 'overview:read', area: 'services', kind: 'service', severity: 'warning', title: 'Summary unavailable', detail: 'Try loading the overview again.' });
+      }
+    });
+    return () => { cancelled = true; };
+  }, [loadOverview, retry, issueReporter]);
+
+  const retryOverview = () => setRetry(value => value + 1);
+  if (failed) return <div className="overview-page"><WorkspacePageHeader eyebrow={overviewMessages.overviewEyebrow} title={overviewMessages.overviewTitle} /><WorkspaceDataState state="unavailable" message={overviewMessages.overviewUnavailable} onRetry={retryOverview} /></div>;
   if (!overview) return <div className="overview-page"><WorkspacePageHeader eyebrow={overviewMessages.overviewEyebrow} title={overviewMessages.overviewTitle} /><WorkspaceDataState state="loading" message={overviewMessages.overviewLoading} /></div>;
-  const assignedModules = session?.workspace.moduleAccess ?? ['users', 'devices', 'licenses'];
-  const modules = session?.workspace.enabledModules ? assignedModules.filter(module => session.workspace.enabledModules?.includes(module)) : assignedModules;
-  const usersVisible = modules.includes('users');
-  const devicesVisible = modules.includes('devices');
-  const licensesVisible = modules.includes('licenses');
-  const accessReadable = overview.access.state === 'allowed' || overview.access.state === 'read_only';
-  const summaryAvailable = accessReadable && overview.freshness !== 'unavailable';
-  const permissionGuidance = overview.access.state === 'hidden' || overview.access.state === 'consent_required' || overview.access.state.startsWith('pim_');
-  const unavailableSummaryMessage = permissionGuidance ? 'Entra permission needed' : 'Summary data temporarily unavailable.';
-  const validCount = (value: number) => Number.isSafeInteger(value) && value >= 0;
-  const canManageSettings = Boolean(session?.workspaceAccess?.canManageSettings);
-  const permissionsPartial = usersVisible && overview.permissionHealth.state === 'incomplete' && validCount(overview.permissionHealth.allowedCount) && validCount(overview.permissionHealth.totalCount) && overview.permissionHealth.allowedCount <= overview.permissionHealth.totalCount;
-  type Attention = { key: string; text: string; action: { label: string; href?: string; onClick?: () => void } | null };
-  const attention: Attention[] = [
-    ...(usersVisible && overview.pimAttention.requiresAttention ? [{ key: 'pim', text: overviewMessages.overviewPimAttention, action: { label: 'Open PIM guidance', href: '/identity' } }] : []),
-    ...(permissionsPartial ? [{ key: 'consent', text: `Workspace permissions need attention (${overview.permissionHealth.allowedCount} of ${overview.permissionHealth.totalCount} available).`, action: canManageSettings ? { label: 'Open setup', href: '/settings#connection' } : null }] : []),
-    ...(overview.partialData ? [{ key: 'partial', text: 'Some summary data is unavailable.', action: { label: 'Retry', onClick: () => setRetry(value => value + 1) } }] : []),
-  ];
-  const go = (href: string) => (event: React.MouseEvent) => { if (onNavigate) { event.preventDefault(); onNavigate(href); } };
-  const licenseValue = summaryAvailable && validCount(overview.licenseCoverage.assigned) && validCount(overview.licenseCoverage.available) ? `${overview.licenseCoverage.assigned} of ${overview.licenseCoverage.assigned + overview.licenseCoverage.available}` : null;
-  const permissionValue = summaryAvailable && ['healthy', 'incomplete'].includes(overview.permissionHealth.state) && (validCount(overview.permissionHealth.allowedCount) && validCount(overview.permissionHealth.totalCount) && overview.permissionHealth.allowedCount <= overview.permissionHealth.totalCount) ? `${overview.permissionHealth.allowedCount}/${overview.permissionHealth.totalCount}` : null;
+
+  const modules = new Set(overview.effectiveModules);
+  const usersCapability = capabilityFor(overview, 'users.view');
+  const licensesCapability = capabilityFor(overview, 'licenses.view');
+  const devicesCapability = capabilityFor(overview, 'devices.view');
+  const auditCapability = capabilityFor(overview, 'audit.view');
+  const canManageSettings = session?.workspaceAccess?.canManageSettings === true;
+  const usersAllowed = modules.has('users') && usersCapability?.state === 'allowed';
+  const licensesAllowed = modules.has('licenses') && licensesCapability?.state === 'allowed';
+  const devicesAllowed = modules.has('devices') && devicesCapability?.state === 'allowed';
+  const activityScopeVerified = overview.activity.scope === 'workspace';
+  const activityAllowed = auditCapability?.state === 'allowed' && activityScopeVerified;
+  const usersScopeVerified = overview.users.scope === 'tenant_wide_verified';
+  const licensesScopeVerified = overview.licenseCoverage.scope === 'tenant_wide_verified';
+  const usersDataValid = overview.users.data !== null && validCount(overview.users.data.totalUsers);
+  const licensesDataValid = overview.licenseCoverage.data !== null
+    && validCount(overview.licenseCoverage.data.assignedUsers)
+    && validCount(overview.licenseCoverage.data.totalUsers)
+    && overview.licenseCoverage.data.assignedUsers <= overview.licenseCoverage.data.totalUsers;
+  const usersHaveCurrentData = usersAllowed && usersScopeVerified && usersDataValid && ['fresh', 'stale'].includes(overview.users.state);
+  const licensesHaveCurrentData = licensesAllowed && licensesScopeVerified && licensesDataValid && ['fresh', 'stale'].includes(overview.licenseCoverage.state);
+
+  const actionsList: Action[] = [];
+  const addAccessAction = (capability: OverviewCapability | undefined, id: string, label: string, order: number) => {
+    if (!capability || capability.state === 'allowed') return;
+    const pimRequired = capability.state.startsWith('pim_');
+    const consentRequired = capability.state === 'consent_required';
+    const href = pimRequired ? '/identity' : consentRequired && canManageSettings ? '/settings#connection' : undefined;
+    actionsList.push({
+      id,
+      label: pimRequired ? overviewMessages.overviewOpenPim : consentRequired ? overviewMessages.overviewOpenSetup : overviewMessages.overviewAccessRestricted,
+      rank: 0,
+      order,
+      ...(href ? { href } : {}),
+      text: `${label}: ${capability.state}`,
+    });
+  };
+  addAccessAction(usersCapability, 'users-access', overviewMessages.overviewUsers, 0);
+  addAccessAction(licensesCapability, 'licenses-access', overviewMessages.overviewLicenses, 1);
+  if (auditCapability?.state !== 'allowed' && auditCapability) {
+    actionsList.push({ id: 'activity-access', label: overviewMessages.overviewAccessRestricted, rank: 0, order: 2, text: `${overviewMessages.overviewActivity}: ${auditCapability.state}` });
+  }
+
+  const addFreshnessAction = (source: OverviewSource<unknown>, key: string, label: string, order: number, invalidData = false) => {
+    if (source.state !== 'restricted' && source.state !== 'empty'
+      && (source.state === 'stale' || source.state === 'unavailable' || !supportedFreshness.has(source.state) || invalidData)) {
+      actionsList.push({ id: key, label: overviewMessages.overviewRetry, rank: 1, order, onClick: retryOverview, text: overviewMessages.overviewRetrySource.replace('{section}', label) });
+    }
+  };
+  if (usersAllowed) addFreshnessAction(overview.users, 'users-retry', overviewMessages.overviewUsers, 0, usersScopeVerified && !usersDataValid);
+  if (licensesAllowed) addFreshnessAction(overview.licenseCoverage, 'licenses-retry', overviewMessages.overviewLicenses, 1, licensesScopeVerified && !licensesDataValid);
+  if (activityAllowed) addFreshnessAction(overview.activity, 'activity-retry', overviewMessages.overviewActivity, 2);
+  else if (auditCapability?.state === 'allowed' && !activityScopeVerified) {
+    actionsList.push({ id: 'activity-scope-retry', label: overviewMessages.overviewRetry, rank: 1, order: 2, onClick: retryOverview, text: overviewMessages.overviewRetrySource.replace('{section}', overviewMessages.overviewActivity) });
+  }
+
+  if (devicesAllowed) actionsList.push({ id: 'devices-navigation', label: overviewMessages.overviewOpenDevices, href: '/devices', rank: 2, order: 0 });
+  if (activityAllowed) actionsList.push({ id: 'activity-navigation', label: overviewMessages.overviewOpenActivity, href: '/activity', rank: 2, order: 1 });
+  actionsList.sort((left, right) => left.rank - right.rank || left.order - right.order);
+
+  const navigate = (path: string) => (event: React.MouseEvent) => {
+    if (onNavigate) {
+      event.preventDefault();
+      onNavigate(path);
+    }
+  };
+  const capabilityRows = [
+    [overviewMessages.overviewUsers, usersCapability],
+    [overviewMessages.overviewLicenses, licensesCapability],
+    [overviewMessages.overviewDevices, devicesCapability],
+    [overviewMessages.overviewActivity, auditCapability],
+  ] as const;
+  const sourceRows = [
+    [overviewMessages.overviewUsers, overview.users, overviewMessages.overviewGraphSummary],
+    [overviewMessages.overviewLicenseCoverage, overview.licenseCoverage, overviewMessages.overviewGraphSummary],
+    [overviewMessages.overviewActivity, overview.activity, overviewMessages.overviewWorkspaceActivity],
+  ] as const;
+  const activityItems = activityAllowed && overview.activity.state !== 'restricted' && overview.activity.data?.items
+    ? overview.activity.data.items.slice(0, 5)
+    : [];
+  const activityEmpty = activityAllowed && overview.activity.state === 'empty';
+  const activityUnavailable = auditCapability?.state === 'allowed' && (!activityScopeVerified || overview.activity.state === 'unavailable' || !supportedFreshness.has(overview.activity.state));
+  const activityRestricted = auditCapability?.state !== 'allowed' || overview.activity.state === 'restricted';
+
   return <div className="overview-page">
-    <WorkspacePageHeader eyebrow={overviewMessages.overviewEyebrow} title={overviewMessages.overviewTitle} meta={<DataFreshness fetchedAt={overview.fetchedAt} freshness={overview.freshness === 'unavailable' ? 'unavailable' : overview.freshness === 'stale' ? 'stale' : 'fresh'} partialData={overview.partialData} source="Microsoft Graph" onRefresh={() => setRetry(value => value + 1)} />} />
-    <section className="content-panel" aria-label="Summary">
-      <div className="metric-grid">
-        {usersVisible && <MetricCard label="Users" value={summaryAvailable && validCount(overview.totalUsers) ? overview.totalUsers : null} unavailableReason={unavailableSummaryMessage} href="/users" onNavigate={onNavigate} linkLabel="users" />}
-        {licensesVisible && <MetricCard label="Licenses" value={licenseValue} detail={licenseValue ? 'assigned' : undefined} unavailableReason={unavailableSummaryMessage} href="/licenses" onNavigate={onNavigate} linkLabel="licenses" />}
-        {devicesVisible && <MetricCard label="Managed devices" detail="View compliance and remote actions" href="/devices" onNavigate={onNavigate} linkLabel="devices" />}
-        {usersVisible && <MetricCard label={overviewMessages.overviewPermissionHealth} value={permissionValue} unavailableReason={unavailableSummaryMessage} />}
-      </div>
-      {!modules.length && <p>You do not currently have an operational module assigned. Ask a workspace administrator to grant access.</p>}
+    <WorkspacePageHeader eyebrow={overviewMessages.overviewEyebrow} title={overviewMessages.overviewTitle} />
+
+    <section className="overview-card" aria-labelledby="overview-context-title">
+      <h2 id="overview-context-title">{overviewMessages.overviewContext}</h2>
+      <dl className="overview-facts">
+        <div><dt>{overviewMessages.overviewRole}</dt><dd>{session?.workspaceAccess?.role ?? overviewMessages.overviewUnknownRole}</dd></div>
+        <div><dt>{overviewMessages.overviewEffectiveCapabilities}</dt><dd>{capabilityRows.map(([label, capability]) => <div className="overview-card__muted" key={label}>{label} access: {capability?.state ?? overviewMessages.overviewUnknownState}</div>)}</dd></div>
+        <div><dt>{overviewMessages.overviewScope}</dt><dd>{sourceRows.map(([label, source, sourceName]) => <div className="overview-card__muted" key={label}>{label}: {sourceScope(source.scope, sourceName === overviewMessages.overviewWorkspaceActivity)}</div>)}</dd></div>
+        <div><dt>{overviewMessages.overviewFreshness}</dt><dd>{sourceRows.map(([label, source, sourceName]) => <div className="overview-card__muted" key={label}>
+          {label}:{' '}
+          {source.state === 'restricted'
+            ? overviewMessages.overviewRestricted.replace('{section}', label.toLowerCase())
+            : source.state === 'empty'
+              ? overviewMessages.overviewEmpty.replace('{section}', label.toLowerCase())
+              : <DataFreshness fetchedAt={source.fetchedAt} freshness={sourceFreshness(source.state)} partialData={source.partialData} presentation="pill" source={sourceName} onRefresh={retryOverview} />}
+        </div>)}</dd></div>
+      </dl>
     </section>
+
+    <section className="content-panel" aria-label={overviewMessages.overviewMetrics}>
+      <div className="overview-card__heading">
+        <h2>{overviewMessages.overviewMetrics}</h2>
+        {licensesHaveCurrentData && <InfoTip label={overviewMessages.overviewLicenseInfoLabel} content={overviewMessages.overviewLicenseInfo} />}
+      </div>
+      <div className="metric-grid">
+        {usersHaveCurrentData && <KpiFilterTile label={overviewMessages.overviewUsers} value={overview.users.data!.totalUsers} selected={false} onClick={() => onNavigate?.('/users')} />}
+        {licensesHaveCurrentData && <KpiFilterTile label={overviewMessages.overviewLicenseCoverage} value={`${overview.licenseCoverage.data!.assignedUsers} of ${overview.licenseCoverage.data!.totalUsers}`} detail={overviewMessages.overviewAssignedUsersOfTotal} selected={false} onClick={() => onNavigate?.('/licenses')} />}
+      </div>
+      {!usersHaveCurrentData && <WorkspaceDataState kind={metricStateKind(overview.users, usersAllowed, usersScopeVerified)} compact title={overviewMessages.overviewUsers} message={metricStateMessage(overview.users, overviewMessages.overviewUsers, usersAllowed, usersScopeVerified)} onRetry={usersAllowed && (overview.users.state === 'stale' || overview.users.state === 'unavailable' || !supportedFreshness.has(overview.users.state) || (usersScopeVerified && !usersDataValid)) ? retryOverview : undefined} />}
+      {!licensesHaveCurrentData && <WorkspaceDataState kind={metricStateKind(overview.licenseCoverage, licensesAllowed, licensesScopeVerified)} compact title={overviewMessages.overviewLicenseCoverage} message={metricStateMessage(overview.licenseCoverage, overviewMessages.overviewLicenseCoverage, licensesAllowed, licensesScopeVerified)} onRetry={licensesAllowed && (overview.licenseCoverage.state === 'stale' || overview.licenseCoverage.state === 'unavailable' || !supportedFreshness.has(overview.licenseCoverage.state) || (licensesScopeVerified && !licensesDataValid)) ? retryOverview : undefined} />}
+    </section>
+
     <section className="overview-card overview-card--attention" aria-labelledby="overview-attention-title">
-      <h2 id="overview-attention-title">Needs attention</h2>
-      {attention.length ? <ul className="record-list">{attention.map(item => <li key={item.key}><span className="record-list__main">{item.text}</span>{item.action && (item.action.href ? <a className="button button--secondary" href={item.action.href} onClick={go(item.action.href)}>{item.action.label}</a> : <button type="button" className="button button--secondary" onClick={item.action.onClick}>{item.action.label}</button>)}</li>)}</ul> : <WorkspaceDataState kind="empty" compact title="Nothing needs your attention." message="No issues need attention right now." />}
+      <h2 id="overview-attention-title">{overviewMessages.overviewPriorityActions}</h2>
+      {actionsList.length ? <ul className="record-list overview-priority-actions">{actionsList.map(item => <li key={item.id}>
+        {item.text && <span className="record-list__main">{item.text}</span>}
+        {item.href
+          ? <a className="button button--secondary" href={item.href} onClick={navigate(item.href)}>{item.label}</a>
+          : item.onClick
+            ? <button type="button" className="button button--secondary" onClick={item.onClick}>{item.label}</button>
+            : <span className="overview-card__muted">{item.label}</span>}
+      </li>)}</ul> : <WorkspaceDataState kind="empty" compact title={overviewMessages.overviewNoPriorityActions} message={overviewMessages.overviewNoPriorityActionsBody} />}
+    </section>
+
+    <section className="overview-card" aria-label={overviewMessages.overviewRecentActivity}>
+      <div className="overview-card__heading"><h2>{overviewMessages.overviewRecentActivity}</h2><span className="overview-card__muted">{overviewMessages.overviewWorkspaceActivityNotice}</span></div>
+      {activityRestricted
+        ? <WorkspaceDataState kind="permission" compact message={overviewMessages.overviewActivityRestricted} />
+        : activityEmpty
+          ? <WorkspaceDataState kind="empty" compact message={overviewMessages.overviewEmpty.replace('{section}', overviewMessages.overviewActivity.toLowerCase())} />
+          : activityUnavailable
+            ? <WorkspaceDataState kind="unavailable" compact message={overviewMessages.overviewSourceUnavailable.replace('{section}', overviewMessages.overviewActivity.toLowerCase())} onRetry={retryOverview} />
+            : activityItems.length
+              ? <ul className="record-list">{activityItems.map((item, index) => <li key={`${item.timestamp}-${index}`}>
+                <span className="record-list__main">{item.action}</span><span>{item.outcome}</span><DateTime value={item.timestamp} />
+              </li>)}</ul>
+              : <WorkspaceDataState kind="unavailable" compact message={overviewMessages.overviewSourceUnavailable.replace('{section}', overviewMessages.overviewActivity.toLowerCase())} onRetry={retryOverview} />}
     </section>
   </div>;
 }
 
 function LoadedConnectionHealth({ loadConnectionHealth, actions }: { loadConnectionHealth: ConnectionHealthLoader; actions?: ConnectionHealthActions }) {
-  const [health, setHealth] = useState<ConnectionHealth | null>(null); const [failed, setFailed] = useState(false); const [actionPending, setActionPending] = useState(false); const [actionError, setActionError] = useState<string | null>(null); const [consentUrl, setConsentUrl] = useState<string | null>(null);
+  const [health, setHealth] = useState<ConnectionHealth | null>(null);
+  const [failed, setFailed] = useState(false);
+  const [actionPending, setActionPending] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [consentUrl, setConsentUrl] = useState<string | null>(null);
   useEffect(() => { loadConnectionHealth().then(setHealth).catch(() => setFailed(true)); }, [loadConnectionHealth]);
   if (failed) return <section className="content-panel"><p role="alert">{messages.connectionUnavailable}</p></section>;
   if (!health) return <section className="content-panel"><p>{messages.connectionLoading}</p></section>;
