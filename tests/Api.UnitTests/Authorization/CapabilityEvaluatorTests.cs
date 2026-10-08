@@ -6,6 +6,29 @@ namespace Atea.UnifiedWorkplace.Api.UnitTests.Authorization;
 public sealed class CapabilityEvaluatorTests
 {
     [Fact]
+    public void Reserved_capabilities_are_not_evaluated_or_granted()
+    {
+        var expected = new[]
+        {
+            Capability.AuthenticationCampaignsView,
+            Capability.AuthenticationCampaignsManage,
+            Capability.LicensesHygieneView,
+            Capability.PlatformAboutView,
+            Capability.FeedbackSubmit
+        };
+        var decisions = CapabilityEvaluator.Evaluate(
+            GraphAuthorizationSnapshot.Unavailable("temporarily_unavailable"),
+            Member());
+
+        Capability.Reserved.Should().Equal(expected);
+        foreach (var capability in expected)
+        {
+            Capability.All.Should().NotContain(capability);
+            decisions.Capabilities.Select(decision => decision.Capability).Should().NotContain(capability);
+        }
+    }
+
+    [Fact]
     public void Recovery_capabilities_separate_basic_and_secret_scopes_without_requiring_a_known_role()
     {
         var snapshot = AvailableSnapshot(scopes: ["BitlockerKey.ReadBasic.All", "DeviceLocalCredential.Read.All"], roles: []);

@@ -8,6 +8,7 @@ public static class WorkspaceModuleCatalog
 {
     private static readonly string[] KnownModules = ["users", "devices", "licenses", "exchange"];
 
+    public static IReadOnlyList<string> ReservedModules => ["authentication-campaigns", "license-hygiene", "about", "feedback"];
     public static IReadOnlyList<string> All => KnownModules;
     public static IReadOnlyList<string> Core => ["users", "devices", "licenses"];
 

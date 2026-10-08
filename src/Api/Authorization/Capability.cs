@@ -23,9 +23,23 @@ public static class Capability
     public const string DevicesLapsReveal = "devices.laps.reveal";
     public const string AuthenticationMethodsView = "authentication.methods.view";
     public const string AuthenticationMethodsManage = "authentication.methods.manage";
+    public const string AuthenticationCampaignsView = "authentication.campaigns.view";
+    public const string AuthenticationCampaignsManage = "authentication.campaigns.manage";
+    public const string LicensesHygieneView = "licenses.hygiene.view";
+    public const string PlatformAboutView = "platform.about.view";
+    public const string FeedbackSubmit = "feedback.submit";
     public const string AuditView = "audit.view";
     public const string WorkspaceSettingsManage = "workspace.settings.manage";
     public const string WorkspaceMembersManage = "workspace.members.manage";
+
+    public static readonly IReadOnlyList<string> Reserved =
+    [
+        AuthenticationCampaignsView,
+        AuthenticationCampaignsManage,
+        LicensesHygieneView,
+        PlatformAboutView,
+        FeedbackSubmit
+    ];
 
     public static readonly IReadOnlyList<string> All =
     [

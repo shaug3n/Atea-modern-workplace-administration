@@ -29,7 +29,7 @@ export type AppRoute = {
   label: string;
   pageTitle?: string;
   capability?: Capability;
-  module?: 'users' | 'devices' | 'licenses' | 'exchange';
+  module?: 'users' | 'devices' | 'licenses' | 'exchange' | 'authentication-campaigns' | 'license-hygiene' | 'about' | 'feedback';
   workspaceAccess?: 'members' | 'settings' | 'modules' | 'any';
   navigation?: { group: NavigationGroup; order: number; icon: IconName; visibility: NavigationVisibility };
   render: (options?: { loadConnectionHealth?: ConnectionHealthLoader; loadOverview?: OverviewLoader; capabilities?: CapabilityDecision[]; navigate?: (path: string) => void; session?: AppSession; authorizationUnavailable?: boolean; onAuthorizationRetry?: () => Promise<void>; onRefreshAccess?: () => Promise<void> }) => ReactNode;
