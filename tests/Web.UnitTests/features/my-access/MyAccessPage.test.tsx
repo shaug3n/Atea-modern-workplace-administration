@@ -1,0 +1,202 @@
+import React from 'react';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { AccessTransparencyProvider } from '../../../../src/Web/src/features/my-access/accessContext';
+import { MyAccessPage } from '../../../../src/Web/src/features/my-access/MyAccessPage';
+import type { AppSession } from '../../../../src/Web/src/components/TenantContextHeader';
+import type { Capability, CapabilityDecision, CapabilitySnapshot } from '../../../../src/Web/src/capabilities/capabilityTypes';
+
+const session: AppSession = { user: { displayName: 'Avery Member' }, workspace: { id: 'workspace-1', name: 'Workspace One' } };
+const capabilities: Capability[] = [
+  'users.view', 'authentication.methods.view', 'pim.view', 'users.create', 'users.update', 'users.disable',
+  'users.reset_password', 'users.sessions.revoke', 'groups.manage_members', 'authentication.methods.manage',
+  'roles.assign', 'pim.activate', 'devices.view', 'devices.bitlocker.metadata', 'devices.laps.metadata',
+  'devices.manage', 'devices.privileged.manage', 'devices.bitlocker.reveal', 'devices.laps.reveal',
+  'licenses.view', 'licenses.assign', 'audit.view', 'workspace.settings.manage', 'workspace.members.manage',
+];
+
+function decision(capability: Capability, overrides: Partial<CapabilityDecision> = {}): CapabilityDecision {
+  return {
+    capability,
+    state: 'allowed',
+    reasonCode: 'graph_authoritative',
+    roleEvidence: { state: 'not_applicable', requiredRoleTemplateIds: [], assignments: [] },
+    ...overrides,
+  };
+}
+
+function snapshot(overrides: Partial<CapabilitySnapshot> = {}): CapabilitySnapshot {
+  return {
+    workspaceId: 'workspace-1',
+    evaluatedAt: '2026-10-08T12:00:00Z',
+    sourceState: 'graph_authoritative',
+    capabilities: capabilities.map(capability => decision(capability)),
+    workspaceModules: [
+      { module: 'users', grantSource: 'explicit', enabled: true, effective: true },
+      { module: 'devices', grantSource: 'explicit', enabled: true, effective: true },
+      { module: 'licenses', grantSource: 'explicit', enabled: true, effective: true },
+      { module: 'exchange', grantSource: 'explicit', enabled: true, effective: true },
+    ],
+    ...overrides,
+  };
+}
+
+function renderPage({
+  currentSession = session,
+  currentSnapshot = snapshot(),
+  loading = false,
+  error = false,
+  refresh = vi.fn().mockResolvedValue(undefined),
+  onNavigate,
+}: {
+  currentSession?: AppSession;
+  currentSnapshot?: CapabilitySnapshot | null;
+  loading?: boolean;
+  error?: boolean;
+  refresh?: () => Promise<void>;
+  onNavigate?: (path: string) => void;
+} = {}) {
+  return render(
+    <AccessTransparencyProvider
+      session={currentSession}
+      value={{ snapshot: currentSnapshot, loading, error, refresh }}
+    >
+      <MyAccessPage session={currentSession} onNavigate={onNavigate} />
+    </AccessTransparencyProvider>,
+  );
+}
+
+afterEach(() => cleanup());
+
+describe('MyAccessPage', () => {
+  it('renders_initial_loading_with_busy_semantics', () => {
+    renderPage({ currentSnapshot: null, loading: true });
+
+    expect(screen.getByRole('region', { name: 'My access evidence' }).getAttribute('aria-busy')).toBe('true');
+    expect(screen.getByText(/Loading access information/)).toBeTruthy();
+  });
+
+  it('renders_unavailable_and_retry_after_initial_failure', () => {
+    const refresh = vi.fn().mockResolvedValue(undefined);
+    renderPage({ currentSnapshot: null, error: true, refresh });
+
+    fireEvent.click(screen.getByRole('button', { name: /retry/i }));
+    expect(refresh).toHaveBeenCalledTimes(1);
+    expect(screen.getByText(/Access information could not be loaded/)).toBeTruthy();
+  });
+
+  it('does_not_render_snapshot_for_another_workspace', () => {
+    const oldSnapshot = snapshot({
+      workspaceId: 'workspace-old',
+      evaluatedAt: '2020-01-01T00:00:00Z',
+      workspaceModules: [{ module: 'users', grantSource: 'explicit', enabled: true, effective: true }],
+      capabilities: [decision('users.view', {
+        state: 'allowed',
+        requiredRoleTemplateId: 'role-from-old-workspace',
+        nextStep: { label: 'Old decision', href: 'https://invalid.example' },
+      })],
+    });
+    renderPage({ currentSnapshot: oldSnapshot });
+
+    expect(screen.getByText(/another workspace cannot be shown here/)).toBeTruthy();
+    expect(screen.queryByText(/role-from-old-workspace|Old decision|January 1, 2020/i)).toBeNull();
+    expect(screen.queryByText(/Access to users/)).toBeNull();
+    expect(screen.getByRole('button', { name: /retry/i })).toBeTruthy();
+  });
+
+  it('keeps_workspace_grants_visible_when_graph_evidence_is_unavailable', () => {
+    renderPage({ currentSnapshot: snapshot({ sourceState: 'temporarily_unavailable' }) });
+
+    expect(screen.getAllByText(/Workspace grant: granted/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Microsoft authorization evidence is unavailable/).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/Workspace grant: denied/)).toBeNull();
+  });
+
+  it('marks_retained_snapshot_stale_during_refresh_or_after_failure', () => {
+    const { rerender } = renderPage({ currentSnapshot: snapshot(), error: true });
+    expect(screen.getAllByText(/previous access check|stale/i).length).toBeGreaterThan(0);
+
+    rerender(
+      <AccessTransparencyProvider session={session} value={{ snapshot: snapshot(), loading: false, error: true, refresh: vi.fn() }}>
+        <MyAccessPage session={session} />
+      </AccessTransparencyProvider>,
+    );
+    expect(screen.getAllByText(/previous access check|stale/i).length).toBeGreaterThan(0);
+  });
+
+  it('renders_partial_missing_and_mixed_action_evidence_without_allowed_summary', () => {
+    const currentSnapshot = snapshot({
+      capabilities: capabilities.filter(item => item !== 'users.sessions.revoke').map(capability => decision(capability, capability === 'users.update'
+        ? { state: 'consent_required', reasonCode: 'delegated_scope_required', missingScopes: ['User.ReadWrite.All'] }
+        : capability === 'users.disable'
+          ? { state: 'temporarily_unavailable', reasonCode: 'scope_probe_unavailable' }
+          : {})),
+    });
+    renderPage({ currentSnapshot });
+
+    const usersModule = screen.getByRole('heading', { name: 'Users' }).closest('article')!;
+    const writeGroup = within(usersModule).getByRole('group', { name: 'Write access' });
+    expect(within(writeGroup).getAllByText('Partial evidence').length).toBeGreaterThan(0);
+    expect(within(writeGroup).getByText(/Edit users/)).toBeTruthy();
+    expect(within(writeGroup).getByText(/The API reported these missing Microsoft scopes: User.ReadWrite.All/)).toBeTruthy();
+    expect(within(writeGroup).getByText(/Microsoft authorization could not be verified/)).toBeTruthy();
+    expect(within(writeGroup).getAllByText(/The API did not return a decision for this action/).length).toBeGreaterThan(0);
+    expect(writeGroup.querySelector('.my-access-group__heading')?.textContent).toContain('Partial evidence');
+    expect(writeGroup.querySelector('.my-access-group__heading')?.textContent).not.toContain('Allowed');
+  });
+
+  it('shows_active_and_eligible_roles_and_scope_separately', () => {
+    const currentSnapshot = snapshot({
+      capabilities: capabilities.map(capability => decision(capability, capability === 'users.create' ? {
+        state: 'pim_activation_required',
+        reasonCode: 'directory_role_required',
+        requiredRoleTemplateId: 'fe930be7-5e62-47db-91af-98c3a49a38b1',
+        roleEvidence: {
+          state: 'available',
+          requiredRoleTemplateIds: ['fe930be7-5e62-47db-91af-98c3a49a38b1'],
+          assignments: [
+            { roleTemplateId: 'fe930be7-5e62-47db-91af-98c3a49a38b1', assignmentState: 'eligible', scope: 'tenant', pimState: 'eligible' },
+            { roleTemplateId: 'custom-role-id', assignmentState: 'active', scope: '/administrativeUnits/au-1' },
+          ],
+        },
+        nextStep: { label: 'Open PIM guidance', href: '/identity' },
+      } : {})),
+    });
+    renderPage({ currentSnapshot });
+
+    expect(screen.getAllByText(/User Administrator/).length).toBeGreaterThan(0);
+    expect(screen.getByText(/Eligible/)).toBeTruthy();
+    expect(screen.getByText(/Active/)).toBeTruthy();
+    expect(screen.getByText(/Scope reported: administrative unit/)).toBeTruthy();
+    fireEvent.click(screen.getByText(/Technical details/i));
+    expect(screen.getByText('custom-role-id')).toBeTruthy();
+    expect(screen.getByText(/PIM eligibility is not an active role/)).toBeTruthy();
+  });
+
+  it('uses_only_supported_next_steps_and_never_submits_consent_or_activation', () => {
+    const fetchSpy = vi.fn();
+    vi.stubGlobal('fetch', fetchSpy);
+    const navigate = vi.fn();
+    const currentSnapshot = snapshot({
+      capabilities: capabilities.map(capability => decision(capability,
+        capability === 'users.create'
+          ? { state: 'consent_required', reasonCode: 'consent_required', missingScopes: ['User.ReadWrite.All'], nextStep: { label: 'Arbitrary consent', href: '/api/workspaces/current/consent/start' } }
+          : capability === 'users.update'
+            ? { state: 'pim_activation_required', reasonCode: 'directory_role_required', requiredRoleTemplateId: 'role-1', nextStep: { label: 'Unsupported handoff', href: 'https://evil.example/activate' } }
+            : capability === 'users.reset_password'
+              ? { state: 'pim_activation_required', reasonCode: 'directory_role_required', nextStep: { label: 'Open PIM guidance', href: '/identity' } }
+            : capability === 'users.disable'
+              ? { state: 'pim_activation_required', reasonCode: 'directory_role_required', requiredRoleTemplateId: 'fe930be7-5e62-47db-91af-98c3a49a38b1', nextStep: { label: 'Open Microsoft Entra PIM', href: 'https://entra.microsoft.com/#view/Microsoft_Azure_PIMCommon/ActivationMenuBlade' } }
+              : {})),
+    });
+    renderPage({ currentSnapshot, onNavigate: navigate });
+
+    fireEvent.click(screen.getByRole('link', { name: /review Microsoft permission setup/i }));
+    expect(navigate).toHaveBeenCalledWith('/onboarding');
+    expect(screen.queryByRole('link', { name: 'Arbitrary consent' })).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Unsupported handoff' })).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Open PIM guidance' })).toBeNull();
+    expect(screen.getByRole('link', { name: /Open Microsoft Entra PIM/ }).getAttribute('href')).toBe('https://entra.microsoft.com/#view/Microsoft_Azure_PIMCommon/ActivationMenuBlade');
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+});
