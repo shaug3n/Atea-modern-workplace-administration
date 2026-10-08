@@ -51,25 +51,46 @@ describe('OverviewPage', () => {
   it('shows_workspace_role_and_section_specific_scope', async () => {
     render(<OverviewPage loadOverview={async () => completeOverview} session={session} />);
     expect(await screen.findByText('workspace_owner')).toBeTruthy();
-    expect(screen.getByText('Users access: allowed')).toBeTruthy();
-    expect(screen.getByText('Licenses access: allowed')).toBeTruthy();
+    expect(screen.getByText('Users access: Allowed')).toBeTruthy();
+    expect(screen.getByText('Licenses access: Allowed')).toBeTruthy();
     expect(screen.getByText(/users.*verified tenant-wide/i)).toBeTruthy();
     expect(screen.getByText(/license coverage.*verified tenant-wide/i)).toBeTruthy();
     expect(screen.getByText(/app activity.*workspace/i)).toBeTruthy();
   });
 
-  it('shows_only_verified_user_and_user_license_coverage', async () => {
+  it('shows_only_verified_user_and_user_license_coverage_as_destination_links', async () => {
     const navigate = vi.fn();
     render(<OverviewPage loadOverview={async () => completeOverview} session={session} onNavigate={navigate} />);
-    const users = await screen.findByRole('button', { name: /Users.*42/i });
-    const licenses = screen.getByRole('button', { name: /License coverage.*30 of 42/i });
-    expect(users.getAttribute('aria-pressed')).toBe('false');
+    const users = await screen.findByRole('link', { name: 'Users: 42, open Users page' });
+    const licenses = screen.getByRole('link', { name: 'License coverage: 30 of 42, open Licenses page' });
+    expect(users.getAttribute('aria-pressed')).toBeNull();
+    expect(licenses.getAttribute('aria-pressed')).toBeNull();
+    expect(screen.queryByRole('button', { name: /Users.*42/i })).toBeNull();
     expect(screen.getByText('assigned users of total users')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'About license coverage' }));
     expect(screen.getByRole('dialog', { name: 'About license coverage' }).textContent).toMatch(/not.*purchased-seat/i);
     fireEvent.click(users);
     fireEvent.click(licenses);
     expect(navigate.mock.calls).toEqual([['/users'], ['/licenses']]);
+  });
+
+  it('preserves_modified_native_link_navigation', async () => {
+    const navigate = vi.fn();
+    render(<OverviewPage loadOverview={async () => completeOverview} session={session} onNavigate={navigate} />);
+    const users = await screen.findByRole('link', { name: 'Users: 42, open Users page' });
+    let defaultPreventedByOverview = false;
+    const stopNavigation = (event: MouseEvent) => {
+      defaultPreventedByOverview = event.defaultPrevented;
+      event.preventDefault();
+    };
+    document.addEventListener('click', stopNavigation);
+    try {
+      fireEvent.click(users, { ctrlKey: true });
+    } finally {
+      document.removeEventListener('click', stopNavigation);
+    }
+    expect(defaultPreventedByOverview).toBe(false);
+    expect(navigate).not.toHaveBeenCalled();
   });
 
   it('does_not_render_links_or_numbers_for_restricted_sections', async () => {
@@ -86,8 +107,8 @@ describe('OverviewPage', () => {
       activity: source('restricted', null, 'workspace'),
     };
     render(<OverviewPage loadOverview={async () => restricted} session={session} />);
-    await screen.findByText('Users access: read_only');
-    expect(screen.queryByRole('button', { name: /Users.*42/i })).toBeNull();
+    await screen.findByText('Users access: Read-only');
+    expect(screen.queryByRole('link', { name: /Users.*42/i })).toBeNull();
     expect(screen.queryByRole('button', { name: /License coverage/i })).toBeNull();
     expect(screen.queryByRole('link', { name: /Open devices/i })).toBeNull();
     expect(screen.queryByText('42')).toBeNull();
@@ -103,7 +124,7 @@ describe('OverviewPage', () => {
       activity: source('empty', { items: [] }, 'workspace'),
     };
     render(<OverviewPage loadOverview={async () => mixed} session={session} />);
-    expect(await screen.findByRole('button', { name: /Users.*42/i })).toBeTruthy();
+    expect(await screen.findByRole('link', { name: 'Users: 42, open Users page' })).toBeTruthy();
     expect(screen.getAllByText(/may be out of date/i).length).toBeGreaterThan(0);
     expect(screen.getByText(/partly loaded/i)).toBeTruthy();
     expect(screen.getByText('No recent app activity.')).toBeTruthy();
@@ -115,6 +136,24 @@ describe('OverviewPage', () => {
     const activityRegion = await screen.findByRole('region', { name: 'Recent app activity' });
     expect(await within(activityRegion).findByText(/app activity is restricted/i)).toBeTruthy();
     expect(screen.queryByText('No recent app activity.')).toBeNull();
+  });
+
+  it('renders_unknown_capability_states_as_readable_unknown_without_exposing_identifiers', async () => {
+    const unknown = {
+      ...completeOverview,
+      effectiveCapabilities: [
+        decision('users.view', 'future_state'),
+        decision('licenses.view', 'allowed'),
+        decision('devices.view', 'allowed'),
+        decision('audit.view', 'constructor'),
+      ],
+    };
+    render(<OverviewPage loadOverview={async () => unknown} session={session} />);
+    expect(await screen.findByText('Users access: unknown')).toBeTruthy();
+    expect(screen.getByText('App activity access: unknown')).toBeTruthy();
+    expect(document.body.textContent).not.toContain('future_state');
+    expect(document.body.textContent).not.toContain('constructor');
+    expect(screen.queryByRole('link', { name: /Users.*42/i })).toBeNull();
   });
 
   it('ranks_access_then_freshness_then_supported_navigation_stably', async () => {
@@ -132,6 +171,9 @@ describe('OverviewPage', () => {
     };
     render(<OverviewPage loadOverview={async () => overview} session={session} />);
     await screen.findByRole('link', { name: 'Open PIM guidance' });
+    expect(screen.getByText('Users access: PIM activation required')).toBeTruthy();
+    expect(document.body.textContent).not.toContain('pim_activation_required');
+    expect(document.body.textContent).not.toContain('consent_required');
     const actions = Array.from(document.querySelectorAll('.overview-priority-actions a, .overview-priority-actions button'));
     expect(actions.map(item => item.textContent?.trim())).toEqual(['Open PIM guidance', 'Open setup', 'Retry', 'Open devices', 'Open activity']);
     expect(screen.queryByRole('link', { name: /Unsafe API/i })).toBeNull();
@@ -158,11 +200,11 @@ describe('OverviewPage', () => {
     };
     const limitedSession = { ...session, workspaceAccess: { role: 'member', canManageMembers: false, canManageSettings: false } };
     render(<OverviewPage loadOverview={async () => restrictedSettings} session={limitedSession} />);
-    expect(await screen.findByText('Licenses access: allowed')).toBeTruthy();
+    expect(await screen.findByText('Licenses access: Allowed')).toBeTruthy();
     expect(screen.queryByRole('link', { name: 'Open setup' })).toBeNull();
     expect(screen.queryByRole('link', { name: 'Unsafe' })).toBeNull();
     expect(screen.queryByRole('link', { name: 'Open devices' })).toBeNull();
-    expect(screen.getAllByRole('button', { name: /License coverage/i }).length).toBeGreaterThan(0);
+    expect(screen.getByRole('link', { name: 'License coverage: 30 of 42, open Licenses page' })).toBeTruthy();
   });
 
   it('unknown_source_state_fails_closed', async () => {
@@ -174,7 +216,7 @@ describe('OverviewPage', () => {
     };
     render(<OverviewPage loadOverview={async () => unknown} session={session} />);
     await screen.findByText(/users.*unavailable/i);
-    expect(screen.queryByRole('button', { name: /Users.*42/i })).toBeNull();
+    expect(screen.queryByRole('link', { name: /Users.*42/i })).toBeNull();
     expect(screen.queryByRole('link', { name: /Users/i })).toBeNull();
     expect(screen.queryByRole('button', { name: /License coverage 42 of 30/i })).toBeNull();
     expect(screen.getByText('Retry Licenses')).toBeTruthy();
@@ -186,7 +228,7 @@ describe('OverviewPage', () => {
       .mockResolvedValueOnce({ ...completeOverview, users: source('stale', { totalUsers: 42 }, 'tenant_wide_verified') })
       .mockResolvedValueOnce(completeOverview);
     render(<OverviewPage loadOverview={loadOverview} session={session} />);
-    await screen.findByRole('button', { name: /Users.*42/i });
+    await screen.findByRole('link', { name: 'Users: 42, open Users page' });
     fireEvent.click(screen.getAllByRole('button', { name: 'Retry' })[0]);
     await waitFor(() => expect(loadOverview).toHaveBeenCalledTimes(2));
   });

@@ -41,7 +41,7 @@ describe('overview and settings browser states', () => {
   it('renders_authorized_overview_and_safe_recent_activity', async () => {
     render(<OverviewPage loadOverview={async () => overview()} session={session} />);
     expect(await screen.findByText('workspace_admin')).toBeTruthy();
-    expect(screen.getByText('Users access: allowed')).toBeTruthy();
+    expect(screen.getByText('Users access: Allowed')).toBeTruthy();
     expect(screen.getAllByText(/verified tenant-wide/i).length).toBeGreaterThan(0);
     expect(screen.getByText('assigned users of total users')).toBeTruthy();
     const activity = screen.getByRole('region', { name: 'Recent app activity' });
@@ -68,6 +68,8 @@ describe('overview and settings browser states', () => {
     render(<OverviewPage loadOverview={loadOverview} session={session} />);
     const pim = await screen.findByRole('link', { name: 'Open PIM guidance' });
     expect(pim.getAttribute('href')).toBe('/identity');
+    expect(screen.getByText('Users access: PIM activation required')).toBeTruthy();
+    expect(document.body.textContent).not.toContain('pim_activation_required');
     const actions = screen.getAllByRole('button', { name: 'Retry' });
     expect(document.querySelector('.overview-priority-actions')?.firstElementChild?.textContent).toContain('PIM');
     fireEvent.click(actions[0]);
@@ -99,13 +101,17 @@ describe('overview and settings browser states', () => {
     Object.defineProperty(window, 'innerWidth', { configurable: true, value: 360 });
     const navigate = vi.fn();
     render(<OverviewPage loadOverview={async () => overview()} session={session} onNavigate={navigate} />);
-    const users = await screen.findByRole('button', { name: /Users.*120/i });
+    const users = await screen.findByRole('link', { name: 'Users: 120, open Users page' });
+    const licenses = screen.getByRole('link', { name: 'License coverage: 90 of 120, open Licenses page' });
     const licenseInfo = screen.getByRole('button', { name: 'About license coverage' });
-    for (const control of [users, licenseInfo, screen.getByRole('link', { name: /Open devices/i }), screen.getByRole('link', { name: /Open activity/i })]) {
+    for (const control of [users, licenses, licenseInfo, screen.getByRole('link', { name: /Open devices/i }), screen.getByRole('link', { name: /Open activity/i })]) {
       expect(control.tabIndex).toBe(0);
       control.focus();
       expect(document.activeElement).toBe(control);
     }
+    expect(users.getAttribute('aria-pressed')).toBeNull();
+    expect(licenses.getAttribute('aria-pressed')).toBeNull();
+    expect(screen.queryByRole('button', { name: /Users.*120/i })).toBeNull();
     licenseInfo.focus();
     fireEvent.keyDown(licenseInfo, { key: 'Enter' });
     expect(screen.getByRole('dialog', { name: 'About license coverage' })).toBeTruthy();

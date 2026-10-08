@@ -19,7 +19,7 @@ Success means every visible metric has an authorized source, every destination w
 
 Owned implementation: `src/Web/src/features/overview/**`, `src/Api/Features/Overview/**`, and corresponding Web/API unit and owned-page E2E tests.
 
-Follow `docs/contributing/feature-extension-contracts.md`. Shared integration files permit only minimal additive edits. Reuse `KpiFilterTile`, `InfoTip`, and `DataFreshness`; do not modify `src/Web/src/components/`. Escalate missing primitive functionality to the coordinator.
+Follow `docs/contributing/feature-extension-contracts.md`. Shared integration files permit only minimal additive edits. Reuse `InfoTip` and `DataFreshness`; do not modify `src/Web/src/components/`. For Overview's authorized KPI destinations, the coordinator approved feature-local native linked cards instead of the shared toggle button, with no new generic primitive.
 
 Do not implement Users/User360, Devices/Device360, Licenses/Hygiene, MFA campaigns, About/Feedback, Access transparency, or the later Exchange/Activity/Settings sweep. Do not access prism.orklait.no. Do not deploy or merge.
 
@@ -79,7 +79,7 @@ Order:
 3. Ranked priority actions.
 4. Recent app activity.
 
-Use controlled `KpiFilterTile` interactions for supported navigation. Bind tiles only to real, authorized routes. Do not introduce local filtering without a defined useful result. Disabled or blocked summaries do not masquerade as working links.
+For supported KPI navigation, use one native link per verified card with an accessible name containing its value and destination. This coordinator-approved feature-local linked-card exception replaces the shared `KpiFilterTile` toggle semantics because these cards navigate rather than select; retain existing card styles/tokens where possible and do not add a generic primitive. Bind links only to real, authorized routes. Do not introduce local filtering without a defined useful result. Disabled or blocked summaries do not masquerade as working links.
 
 Present total users and user-based assigned-license coverage only when their contracts permit it. Explain the coverage denominator and scope with `InfoTip`; never call this purchased-seat usage. Do not add device totals, security scores, or inferred tenant-health metrics.
 

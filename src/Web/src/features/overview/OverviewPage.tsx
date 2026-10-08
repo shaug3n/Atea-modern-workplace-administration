@@ -6,7 +6,6 @@ import { useApi } from '../../auth/useApi';
 import type { AppSession } from '../../components/TenantContextHeader';
 import { WorkspacePageHeader } from '../../components/WorkspacePageHeader';
 import { DataFreshness } from '../../components/DataFreshness';
-import { KpiFilterTile } from '../../components/KpiFilterTile';
 import { InfoTip } from '../../components/InfoTip';
 import { WorkspaceDataState } from '../../components/WorkspaceDataState';
 import { DateTime } from '../../components/DateTime';
@@ -46,9 +45,40 @@ type Action = { id: string; label: string; rank: number; order: number; href?: s
 
 const supportedFreshness = new Set(['fresh', 'stale', 'unavailable']);
 const validCount = (value: unknown): value is number => Number.isSafeInteger(value) && Number(value) >= 0;
+const capabilityStateLabels: Record<string, string> = {
+  allowed: overviewMessages.overviewCapabilityAllowed,
+  read_only: overviewMessages.overviewCapabilityReadOnly,
+  hidden: overviewMessages.overviewCapabilityHidden,
+  disabled: overviewMessages.overviewCapabilityDisabled,
+  consent_required: overviewMessages.overviewCapabilityConsentRequired,
+  pim_activation_required: overviewMessages.overviewCapabilityPimActivationRequired,
+  pim_approval_required: overviewMessages.overviewCapabilityPimApprovalRequired,
+  pim_mfa_required: overviewMessages.overviewCapabilityPimMfaRequired,
+  pim_eligibility_expired: overviewMessages.overviewCapabilityPimEligibilityExpired,
+  temporarily_unavailable: overviewMessages.overviewCapabilityTemporarilyUnavailable,
+};
+const pimCapabilityStates = new Set([
+  'pim_activation_required',
+  'pim_approval_required',
+  'pim_mfa_required',
+  'pim_eligibility_expired',
+]);
 
 function sourceFreshness(state: string): FreshnessState {
   return state === 'fresh' || state === 'stale' ? state : 'unavailable';
+}
+
+function capabilityStateLabel(state: string) {
+  return Object.prototype.hasOwnProperty.call(capabilityStateLabels, state)
+    ? capabilityStateLabels[state]
+    : overviewMessages.overviewUnknownState;
+}
+
+function kpiLinkLabel(label: string, value: string | number, destination: string) {
+  return overviewMessages.overviewKpiLinkLabel
+    .replace('{label}', label)
+    .replace('{value}', String(value))
+    .replace('{destination}', destination);
 }
 
 function sourceScope(scope: string, activity = false) {
@@ -161,7 +191,7 @@ function LoadedOverviewMetrics({ loadOverview, session, onNavigate }: { loadOver
   const actionsList: Action[] = [];
   const addAccessAction = (capability: OverviewCapability | undefined, id: string, label: string, order: number) => {
     if (!capability || capability.state === 'allowed') return;
-    const pimRequired = capability.state.startsWith('pim_');
+    const pimRequired = pimCapabilityStates.has(capability.state);
     const consentRequired = capability.state === 'consent_required';
     const href = pimRequired ? '/identity' : consentRequired && canManageSettings ? '/settings#connection' : undefined;
     actionsList.push({
@@ -170,13 +200,13 @@ function LoadedOverviewMetrics({ loadOverview, session, onNavigate }: { loadOver
       rank: 0,
       order,
       ...(href ? { href } : {}),
-      text: `${label}: ${capability.state}`,
+      text: `${label}: ${capabilityStateLabel(capability.state)}`,
     });
   };
   addAccessAction(usersCapability, 'users-access', overviewMessages.overviewUsers, 0);
   addAccessAction(licensesCapability, 'licenses-access', overviewMessages.overviewLicenses, 1);
   if (auditCapability?.state !== 'allowed' && auditCapability) {
-    actionsList.push({ id: 'activity-access', label: overviewMessages.overviewAccessRestricted, rank: 0, order: 2, text: `${overviewMessages.overviewActivity}: ${auditCapability.state}` });
+    actionsList.push({ id: 'activity-access', label: overviewMessages.overviewAccessRestricted, rank: 0, order: 2, text: `${overviewMessages.overviewActivity}: ${capabilityStateLabel(auditCapability.state)}` });
   }
 
   const addFreshnessAction = (source: OverviewSource<unknown>, key: string, label: string, order: number, invalidData = false) => {
@@ -198,6 +228,12 @@ function LoadedOverviewMetrics({ loadOverview, session, onNavigate }: { loadOver
 
   const navigate = (path: string) => (event: React.MouseEvent) => {
     if (onNavigate) {
+      event.preventDefault();
+      onNavigate(path);
+    }
+  };
+  const navigateKpi = (path: string) => (event: React.MouseEvent<HTMLAnchorElement>) => {
+    if (onNavigate && event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey) {
       event.preventDefault();
       onNavigate(path);
     }
@@ -227,7 +263,7 @@ function LoadedOverviewMetrics({ loadOverview, session, onNavigate }: { loadOver
       <h2 id="overview-context-title">{overviewMessages.overviewContext}</h2>
       <dl className="overview-facts">
         <div><dt>{overviewMessages.overviewRole}</dt><dd>{session?.workspaceAccess?.role ?? overviewMessages.overviewUnknownRole}</dd></div>
-        <div><dt>{overviewMessages.overviewEffectiveCapabilities}</dt><dd>{capabilityRows.map(([label, capability]) => <div className="overview-card__muted" key={label}>{label} access: {capability?.state ?? overviewMessages.overviewUnknownState}</div>)}</dd></div>
+        <div><dt>{overviewMessages.overviewEffectiveCapabilities}</dt><dd>{capabilityRows.map(([label, capability]) => <div className="overview-card__muted" key={label}>{label} access: {capability ? capabilityStateLabel(capability.state) : overviewMessages.overviewUnknownState}</div>)}</dd></div>
         <div><dt>{overviewMessages.overviewScope}</dt><dd>{sourceRows.map(([label, source, sourceName]) => <div className="overview-card__muted" key={label}>{label}: {sourceScope(source.scope, sourceName === overviewMessages.overviewWorkspaceActivity)}</div>)}</dd></div>
         <div><dt>{overviewMessages.overviewFreshness}</dt><dd>{sourceRows.map(([label, source, sourceName]) => <div className="overview-card__muted" key={label}>
           {label}:{' '}
@@ -246,8 +282,12 @@ function LoadedOverviewMetrics({ loadOverview, session, onNavigate }: { loadOver
         {licensesHaveCurrentData && <InfoTip label={overviewMessages.overviewLicenseInfoLabel} content={overviewMessages.overviewLicenseInfo} />}
       </div>
       <div className="metric-grid">
-        {usersHaveCurrentData && <KpiFilterTile label={overviewMessages.overviewUsers} value={overview.users.data!.totalUsers} selected={false} onClick={() => onNavigate?.('/users')} />}
-        {licensesHaveCurrentData && <KpiFilterTile label={overviewMessages.overviewLicenseCoverage} value={`${overview.licenseCoverage.data!.assignedUsers} of ${overview.licenseCoverage.data!.totalUsers}`} detail={overviewMessages.overviewAssignedUsersOfTotal} selected={false} onClick={() => onNavigate?.('/licenses')} />}
+        {usersHaveCurrentData && <a className="metric-card metric-card--filter metric-card__link" href="/users" aria-label={kpiLinkLabel(overviewMessages.overviewUsers, overview.users.data!.totalUsers, overviewMessages.overviewUsersDestination)} onClick={navigateKpi('/users')}>
+          <span className="metric-card__content"><span className="metric-card__label">{overviewMessages.overviewUsers}</span><strong className="metric-card__value">{overview.users.data!.totalUsers}</strong></span>
+        </a>}
+        {licensesHaveCurrentData && <a className="metric-card metric-card--filter metric-card__link" href="/licenses" aria-label={kpiLinkLabel(overviewMessages.overviewLicenseCoverage, `${overview.licenseCoverage.data!.assignedUsers} of ${overview.licenseCoverage.data!.totalUsers}`, overviewMessages.overviewLicensesDestination)} onClick={navigateKpi('/licenses')}>
+          <span className="metric-card__content"><span className="metric-card__label">{overviewMessages.overviewLicenseCoverage}</span><strong className="metric-card__value">{overview.licenseCoverage.data!.assignedUsers} of {overview.licenseCoverage.data!.totalUsers}</strong><span className="metric-card__detail">{overviewMessages.overviewAssignedUsersOfTotal}</span></span>
+        </a>}
       </div>
       {!usersHaveCurrentData && <WorkspaceDataState kind={metricStateKind(overview.users, usersAllowed, usersScopeVerified)} compact title={overviewMessages.overviewUsers} message={metricStateMessage(overview.users, overviewMessages.overviewUsers, usersAllowed, usersScopeVerified)} onRetry={usersAllowed && (overview.users.state === 'stale' || overview.users.state === 'unavailable' || !supportedFreshness.has(overview.users.state) || (usersScopeVerified && !usersDataValid)) ? retryOverview : undefined} />}
       {!licensesHaveCurrentData && <WorkspaceDataState kind={metricStateKind(overview.licenseCoverage, licensesAllowed, licensesScopeVerified)} compact title={overviewMessages.overviewLicenseCoverage} message={metricStateMessage(overview.licenseCoverage, overviewMessages.overviewLicenseCoverage, licensesAllowed, licensesScopeVerified)} onRetry={licensesAllowed && (overview.licenseCoverage.state === 'stale' || overview.licenseCoverage.state === 'unavailable' || !supportedFreshness.has(overview.licenseCoverage.state) || (licensesScopeVerified && !licensesDataValid)) ? retryOverview : undefined} />}
