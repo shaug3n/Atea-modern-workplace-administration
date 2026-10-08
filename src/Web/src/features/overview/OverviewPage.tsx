@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { ConnectionStatusCard } from '../../components/ConnectionStatusCard';
+import { overviewMessages } from './messages';
 import { messages, type ConnectionState } from '../../messages/en';
 import { useApi } from '../../auth/useApi';
 import type { AppSession } from '../../components/TenantContextHeader';
@@ -38,8 +39,8 @@ function LoadedOverviewMetrics({ loadOverview, session, onNavigate }: { loadOver
   const [failed, setFailed] = useState(false);
   const [retry, setRetry] = useState(0);
   useEffect(() => { let cancelled = false; setFailed(false); loadOverview().then(value => { if (!cancelled) { setOverview(value); if (value.freshness === 'unavailable' || value.partialData) issueReporter.report({ key: 'overview:read', area: 'services', kind: 'service', severity: 'warning', title: 'Summary unavailable', detail: 'Try loading the overview again.' }); else issueReporter.clear('overview:read'); } }).catch(() => { if (!cancelled) { setFailed(true); issueReporter.report({ key: 'overview:read', area: 'services', kind: 'service', severity: 'warning', title: 'Summary unavailable', detail: 'Try loading the overview again.' }); } }); return () => { cancelled = true; }; }, [loadOverview, retry, issueReporter]);
-  if (failed) return <div className="overview-page"><WorkspacePageHeader eyebrow={messages.overviewEyebrow} title={messages.overviewTitle} /><WorkspaceDataState state="unavailable" message={messages.overviewUnavailable} onRetry={() => setRetry(value => value + 1)} /></div>;
-  if (!overview) return <div className="overview-page"><WorkspacePageHeader eyebrow={messages.overviewEyebrow} title={messages.overviewTitle} /><WorkspaceDataState state="loading" message={messages.overviewLoading} /></div>;
+  if (failed) return <div className="overview-page"><WorkspacePageHeader eyebrow={overviewMessages.overviewEyebrow} title={overviewMessages.overviewTitle} /><WorkspaceDataState state="unavailable" message={overviewMessages.overviewUnavailable} onRetry={() => setRetry(value => value + 1)} /></div>;
+  if (!overview) return <div className="overview-page"><WorkspacePageHeader eyebrow={overviewMessages.overviewEyebrow} title={overviewMessages.overviewTitle} /><WorkspaceDataState state="loading" message={overviewMessages.overviewLoading} /></div>;
   const assignedModules = session?.workspace.moduleAccess ?? ['users', 'devices', 'licenses'];
   const modules = session?.workspace.enabledModules ? assignedModules.filter(module => session.workspace.enabledModules?.includes(module)) : assignedModules;
   const usersVisible = modules.includes('users');
@@ -54,7 +55,7 @@ function LoadedOverviewMetrics({ loadOverview, session, onNavigate }: { loadOver
   const permissionsPartial = usersVisible && overview.permissionHealth.state === 'incomplete' && validCount(overview.permissionHealth.allowedCount) && validCount(overview.permissionHealth.totalCount) && overview.permissionHealth.allowedCount <= overview.permissionHealth.totalCount;
   type Attention = { key: string; text: string; action: { label: string; href?: string; onClick?: () => void } | null };
   const attention: Attention[] = [
-    ...(usersVisible && overview.pimAttention.requiresAttention ? [{ key: 'pim', text: messages.overviewPimAttention, action: { label: 'Open PIM guidance', href: '/identity' } }] : []),
+    ...(usersVisible && overview.pimAttention.requiresAttention ? [{ key: 'pim', text: overviewMessages.overviewPimAttention, action: { label: 'Open PIM guidance', href: '/identity' } }] : []),
     ...(permissionsPartial ? [{ key: 'consent', text: `Workspace permissions need attention (${overview.permissionHealth.allowedCount} of ${overview.permissionHealth.totalCount} available).`, action: canManageSettings ? { label: 'Open setup', href: '/settings#connection' } : null }] : []),
     ...(overview.partialData ? [{ key: 'partial', text: 'Some summary data is unavailable.', action: { label: 'Retry', onClick: () => setRetry(value => value + 1) } }] : []),
   ];
@@ -62,13 +63,13 @@ function LoadedOverviewMetrics({ loadOverview, session, onNavigate }: { loadOver
   const licenseValue = summaryAvailable && validCount(overview.licenseCoverage.assigned) && validCount(overview.licenseCoverage.available) ? `${overview.licenseCoverage.assigned} of ${overview.licenseCoverage.assigned + overview.licenseCoverage.available}` : null;
   const permissionValue = summaryAvailable && ['healthy', 'incomplete'].includes(overview.permissionHealth.state) && (validCount(overview.permissionHealth.allowedCount) && validCount(overview.permissionHealth.totalCount) && overview.permissionHealth.allowedCount <= overview.permissionHealth.totalCount) ? `${overview.permissionHealth.allowedCount}/${overview.permissionHealth.totalCount}` : null;
   return <div className="overview-page">
-    <WorkspacePageHeader eyebrow={messages.overviewEyebrow} title={messages.overviewTitle} meta={<DataFreshness fetchedAt={overview.fetchedAt} freshness={overview.freshness === 'unavailable' ? 'unavailable' : overview.freshness === 'stale' ? 'stale' : 'fresh'} partialData={overview.partialData} source="Microsoft Graph" onRefresh={() => setRetry(value => value + 1)} />} />
+    <WorkspacePageHeader eyebrow={overviewMessages.overviewEyebrow} title={overviewMessages.overviewTitle} meta={<DataFreshness fetchedAt={overview.fetchedAt} freshness={overview.freshness === 'unavailable' ? 'unavailable' : overview.freshness === 'stale' ? 'stale' : 'fresh'} partialData={overview.partialData} source="Microsoft Graph" onRefresh={() => setRetry(value => value + 1)} />} />
     <section className="content-panel" aria-label="Summary">
       <div className="metric-grid">
         {usersVisible && <MetricCard label="Users" value={summaryAvailable && validCount(overview.totalUsers) ? overview.totalUsers : null} unavailableReason={unavailableSummaryMessage} href="/users" onNavigate={onNavigate} linkLabel="users" />}
         {licensesVisible && <MetricCard label="Licenses" value={licenseValue} detail={licenseValue ? 'assigned' : undefined} unavailableReason={unavailableSummaryMessage} href="/licenses" onNavigate={onNavigate} linkLabel="licenses" />}
         {devicesVisible && <MetricCard label="Managed devices" detail="View compliance and remote actions" href="/devices" onNavigate={onNavigate} linkLabel="devices" />}
-        {usersVisible && <MetricCard label={messages.overviewPermissionHealth} value={permissionValue} unavailableReason={unavailableSummaryMessage} />}
+        {usersVisible && <MetricCard label={overviewMessages.overviewPermissionHealth} value={permissionValue} unavailableReason={unavailableSummaryMessage} />}
       </div>
       {!modules.length && <p>You do not currently have an operational module assigned. Ask a workspace administrator to grant access.</p>}
     </section>
