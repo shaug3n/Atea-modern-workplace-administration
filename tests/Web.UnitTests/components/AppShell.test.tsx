@@ -33,6 +33,19 @@ const session = {
   workspace: { id: '55555555-5555-5555-5555-555555555555', name: 'Contoso Workplace', enabledModules: ['users', 'devices', 'licenses'], moduleAccess: ['users', 'devices', 'licenses'] },
 };
 
+const overviewResponse = {
+  effectiveModules: ['users', 'licenses', 'devices'],
+  effectiveCapabilities: [
+    { capability: 'users.view', state: 'allowed', reasonCode: 'active_role' },
+    { capability: 'licenses.view', state: 'allowed', reasonCode: 'active_role' },
+    { capability: 'devices.view', state: 'allowed', reasonCode: 'active_role' },
+    { capability: 'audit.view', state: 'allowed', reasonCode: 'active_role' },
+  ],
+  users: { state: 'fresh', fetchedAt: '2026-09-25T08:00:00Z', partialData: false, data: { totalUsers: 1 }, scope: 'tenant_wide_verified' },
+  licenseCoverage: { state: 'fresh', fetchedAt: '2026-09-25T08:00:00Z', partialData: false, data: { assignedUsers: 0, totalUsers: 1, percentage: 0 }, scope: 'tenant_wide_verified' },
+  activity: { state: 'empty', fetchedAt: '2026-09-25T08:00:00Z', partialData: false, data: { items: [] }, scope: 'workspace' },
+};
+
 describe('AppShell', () => {
   afterEach(() => {
     cleanup();
@@ -268,7 +281,7 @@ describe('AppShell', () => {
 
   it('refreshes injected capabilities from the notifications menu', async () => {
     window.history.pushState(null, '', '/overview');
-    apiMock.mockResolvedValue(Response.json({ freshness: 'live', fetchedAt: '2026-09-25T08:00:00Z', totalUsers: 1, licenseCoverage: { assigned: 0, available: 0, percentage: 0 }, permissionHealth: { state: 'healthy', allowedCount: 1, totalCount: 1 }, pimAttention: { requiresAttention: false, count: 0 }, partialData: false, access: { state: 'allowed' } }));
+    apiMock.mockResolvedValue(Response.json(overviewResponse));
     let calls = 0;
     render(<App loadSession={async () => session} loadCapabilities={async () => {
       calls++;
@@ -282,7 +295,7 @@ describe('AppShell', () => {
 
   it('rechecks capabilities when returning to the workspace tab', async () => {
     window.history.pushState(null, '', '/overview');
-    apiMock.mockResolvedValue(Response.json({ freshness: 'live', fetchedAt: '2026-09-25T08:00:00Z', totalUsers: 1, licenseCoverage: { assigned: 0, available: 0, percentage: 0 }, permissionHealth: { state: 'healthy', allowedCount: 1, totalCount: 1 }, pimAttention: { requiresAttention: false, count: 0 }, partialData: false, access: { state: 'allowed' } }));
+    apiMock.mockResolvedValue(Response.json(overviewResponse));
     let calls = 0;
     render(<App loadSession={async () => session} loadCapabilities={async () => {
       calls++;
