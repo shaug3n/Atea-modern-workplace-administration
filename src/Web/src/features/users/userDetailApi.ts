@@ -137,5 +137,5 @@ export async function revokeUserSessions(api: ApiFetch, userId: string) {
   });
   const body = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(body.error ?? 'revoke_sessions_failed');
-  return body as { status: string; replayed?: boolean };
+  return body as { status: string; replayed?: boolean; auditWarning?: string | null };
 }

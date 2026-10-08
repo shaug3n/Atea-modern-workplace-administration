@@ -5,16 +5,21 @@ import { ConfirmationDialog } from '../../components/ConfirmationDialog';
 import type { UserDetails } from './userDetailApi';
 import { mutateUser, type UserCommandResponse } from './userMutationApi';
 
-export function PasswordResetDialog({ user, onClose }: { user: UserDetails; onClose: () => void }) {
+export function PasswordResetDialog({ user, onClose, onAuditWarning }: { user: UserDetails; onClose: () => void; onAuditWarning?: (warning: string | null) => void }) {
   const api = useApi();
   const [pending, setPending] = useState(false);
   const [result, setResult] = useState<UserCommandResponse | null>(null);
+  const [auditWarning, setAuditWarning] = useState<string | null>(null);
 
   const submit = async () => {
     if (pending) return;
     setPending(true);
     try {
-      setResult(await mutateUser(api, `/api/users/${encodeURIComponent(user.id)}/reset-password`, 'POST', {}));
+      const response = await mutateUser(api, `/api/users/${encodeURIComponent(user.id)}/reset-password`, 'POST', {});
+      setResult(response);
+      const warning = readAuditWarning(response);
+      setAuditWarning(warning);
+      onAuditWarning?.(warning);
     } catch {
       setResult({ status: 'temporarily_unavailable', requiredCapability: 'users.reset_password', replayed: false, error: 'user_mutation_failed' });
     } finally {
@@ -27,6 +32,7 @@ export function PasswordResetDialog({ user, onClose }: { user: UserDetails; onCl
       <section className="mutation-dialog" role="dialog" aria-modal="true" aria-labelledby="password-reset-result-title">
         <h2 id="password-reset-result-title">{messages.userResetPasswordSucceeded}</h2>
         <p>{messages.userResetPasswordCopyWarning}</p>
+        {auditWarning && <p role="alert" className="audit-warning">{auditWarning}</p>}
         <section className="temporary-credential" role="status" aria-label={messages.userTemporaryPasswordNotice}>
           <strong>{messages.userTemporaryPasswordNotice}</strong>
           <code>{result.temporaryCredentialNotice.temporaryPassword}</code>
@@ -54,6 +60,11 @@ export function PasswordResetDialog({ user, onClose }: { user: UserDetails; onCl
       {result && <p role="alert">{formatResetError(result)}</p>}
     </div>
   );
+}
+
+function readAuditWarning(response: UserCommandResponse) {
+  const warning = (response as UserCommandResponse & { auditWarning?: unknown }).auditWarning;
+  return typeof warning === 'string' && warning.trim() ? warning : null;
 }
 
 function formatResetError(response: UserCommandResponse) {

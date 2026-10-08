@@ -45,7 +45,7 @@ export async function resetAuthenticationMethods(api: ApiFetch, userId: string) 
   return body as { status: string; removedCount: number };
 }
 
-export type TemporaryAccessPassResponse = { status: string; temporaryAccessPass?: string | null; replayed?: boolean };
+export type TemporaryAccessPassResponse = { status: string; temporaryAccessPass?: string | null; replayed?: boolean; auditWarning?: string | null };
 
 export async function grantTemporaryAccessPass(api: ApiFetch, userId: string) {
   const response = await api(`/api/users/${encodeURIComponent(userId)}/authentication-methods/temporary-access-pass`, {

@@ -57,7 +57,7 @@ describe('AuthenticationMethodsSection', () => {
 
   it('reveals a temporary access pass only on the first successful response', async () => {
     apiMock.mockImplementation(async (path: string) => path.includes('temporary-access-pass')
-      ? new Response(JSON.stringify({ status: 'succeeded', temporaryAccessPass: 'fixture-tap-value' }), { status: 200 })
+      ? new Response(JSON.stringify({ status: 'succeeded', temporaryAccessPass: 'fixture-tap-value', auditWarning: 'Pass issued, but its audit record could not be written.' }), { status: 200 })
       : new Response(JSON.stringify({ userObjectId: 'user-1', items: [], fetchedAt: '2026-09-23T08:00:00Z', freshness: 'live', partialData: false, access: { state: 'allowed' } }), { status: 200 }));
     render(<AuthenticationMethodsSection userId="user-1" userLabel="Ada Lovelace" decision={allowed} manageDecision={manage} />);
 
@@ -66,6 +66,7 @@ describe('AuthenticationMethodsSection', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Issue Temporary Access Pass' }));
 
     expect(await screen.findByText('fixture-tap-value')).toBeTruthy();
+    expect((await screen.findByRole('alert')).textContent).toContain('Pass issued, but its audit record could not be written.');
     fireEvent.click(screen.getByRole('button', { name: 'Close' }));
     expect(screen.queryByText('fixture-tap-value')).toBeNull();
   });
@@ -84,5 +85,50 @@ describe('AuthenticationMethodsSection', () => {
     expect(screen.getByText(/Other method/)).toBeTruthy();
     expect(screen.getByRole('heading', { name: 'Danger zone' })).toBeTruthy();
     expect(screen.getByText(/The user must register again/)).toBeTruthy();
+  });
+
+  it('reports its single read to the profile summary without fetching separately', async () => {
+    apiMock.mockResolvedValue(new Response(JSON.stringify({
+      userObjectId: 'user-1',
+      items: [{ id: 'method-1', type: 'fido2AuthenticationMethod', displayName: 'YubiKey' }],
+      fetchedAt: '2026-09-22T08:00:00Z', freshness: 'live', partialData: false, access: { state: 'allowed' },
+    }), { status: 200 }));
+    const onResult = vi.fn();
+    render(<AuthenticationMethodsSection userId="user-1" decision={allowed} onResult={onResult} />);
+
+    await screen.findByText('YubiKey');
+    expect(apiMock).toHaveBeenCalledTimes(1);
+    expect(onResult).toHaveBeenLastCalledWith({ status: 'available', items: [{ id: 'method-1', type: 'fido2AuthenticationMethod', displayName: 'YubiKey' }] });
+  });
+
+  it('retries an unavailable request inside its own busy region', async () => {
+    apiMock.mockRejectedValueOnce(new Error('offline')).mockResolvedValueOnce(new Response(JSON.stringify({
+      userObjectId: 'user-1',
+      items: [],
+      fetchedAt: '2026-09-22T08:00:00Z', freshness: 'live', partialData: false, access: { state: 'allowed' },
+    }), { status: 200 }));
+    render(<AuthenticationMethodsSection userId="user-1" decision={allowed} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Retry authentication methods' }));
+    expect(await screen.findByText('No authentication methods were returned.')).toBeTruthy();
+    expect(apiMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps an audit warning visible after a successful security write', async () => {
+    apiMock.mockImplementation(async (path: string, init?: RequestInit) => {
+      if (init?.method === 'DELETE') return new Response(JSON.stringify({ status: 'succeeded', auditWarning: 'Audit record could not be written.' }), { status: 200 });
+      return new Response(JSON.stringify({
+        userObjectId: 'user-1',
+        items: [{ id: 'method-1', type: 'fido2AuthenticationMethod', displayName: 'YubiKey' }],
+        fetchedAt: '2026-09-22T08:00:00Z', freshness: 'live', partialData: false, access: { state: 'allowed' },
+      }), { status: 200 });
+    });
+    render(<AuthenticationMethodsSection userId="user-1" decision={allowed} manageDecision={manage} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Remove' }));
+    fireEvent.click(screen.getByLabelText('I reviewed the target, change and required capability.'));
+    fireEvent.click(screen.getByRole('button', { name: 'Remove method' }));
+
+    expect((await screen.findByRole('alert')).textContent).toContain('Audit record could not be written.');
   });
 });

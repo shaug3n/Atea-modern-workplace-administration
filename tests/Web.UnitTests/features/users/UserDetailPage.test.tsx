@@ -67,6 +67,126 @@ const detail: UserDetailResponse = {
 describe('UserDetailPage', () => {
   afterEach(() => { cleanup(); apiMock.mockReset(); issueReporter.report.mockClear(); issueReporter.clear.mockClear(); });
 
+  it('renders accessible tabs and supports roving keyboard navigation', async () => {
+    render(<UserDetailPage userId="user-1" modules={['users', 'devices', 'licenses']} loadUserDetail={async () => detail} />);
+    const tabs = await screen.findAllByRole('tab');
+    expect(tabs.map(tab => tab.textContent)).toEqual(['Identity', 'Devices', 'Activity']);
+    expect(tabs[0].getAttribute('aria-selected')).toBe('true');
+    expect(tabs[0].getAttribute('aria-controls')).toBe('user-profile-panel-identity');
+    expect(screen.getByRole('tabpanel', { name: 'Identity' }).id).toBe('user-profile-panel-identity');
+
+    tabs[0].focus();
+    fireEvent.keyDown(tabs[0], { key: 'ArrowRight' });
+    expect(tabs[1].getAttribute('aria-selected')).toBe('true');
+    expect(document.activeElement).toBe(tabs[1]);
+    fireEvent.keyDown(tabs[1], { key: 'ArrowLeft' });
+    expect(tabs[0].getAttribute('aria-selected')).toBe('true');
+    expect(document.activeElement).toBe(tabs[0]);
+    fireEvent.keyDown(tabs[0], { key: 'ArrowRight' });
+    fireEvent.keyDown(tabs[1], { key: 'End' });
+    expect(tabs[2].getAttribute('aria-selected')).toBe('true');
+    expect(document.activeElement).toBe(tabs[2]);
+    fireEvent.keyDown(tabs[2], { key: 'Home' });
+    expect(tabs[0].getAttribute('aria-selected')).toBe('true');
+    expect(document.activeElement).toBe(tabs[0]);
+  });
+
+  it('shows explicit unavailable summaries and activity without invented records', async () => {
+    render(<UserDetailPage userId="user-1" modules={['users', 'licenses']} loadUserDetail={async () => ({
+      ...detail,
+      user: { ...detail.user!, accountEnabled: null },
+      licenses: { ...detail.licenses, access: { ...detail.licenses.access, authorization: { capability: 'licenses.assign', state: 'disabled', reasonCode: 'module_disabled' } } },
+    })} />);
+    const heading = await screen.findByRole('heading', { name: 'Ada Lovelace' });
+    expect(heading).toBeTruthy();
+    const summary = screen.getByRole('region', { name: 'User summary' });
+    expect(summary.textContent).toContain('Account status unavailable');
+    expect(summary.textContent).toContain('Phishing status is unavailable.');
+    expect(summary.textContent).toContain('Last sign-in is unavailable.');
+    expect(summary.textContent).toContain('Authentication methods are unavailable.');
+    expect(summary.textContent).not.toMatch(/MFA (registered|compliant|compliance)/i);
+    expect(summary.textContent).not.toContain('1 assigned');
+    const activityTab = screen.getByRole('tab', { name: 'Activity' });
+    fireEvent.click(activityTab);
+    const activity = screen.getByRole('tabpanel', { name: 'Activity' });
+    expect(activity.textContent).toContain('This workspace does not have a supported user activity source.');
+    expect(within(activity).queryByRole('list')).toBeNull();
+  });
+
+  it('summarizes returned authentication methods from the section single-read callback', async () => {
+    apiMock.mockResolvedValue(new Response(JSON.stringify({
+      userObjectId: 'user-1',
+      items: [{ id: 'method-1', type: 'fido2AuthenticationMethod', displayName: 'YubiKey' }],
+      fetchedAt: '2026-09-22T08:00:00Z', freshness: 'live', partialData: false, access: { state: 'allowed' },
+    }), { status: 200 }));
+    render(<UserDetailPage userId="user-1" loadUserDetail={async () => detail} capabilities={[
+      { capability: 'authentication.methods.view', state: 'allowed', reasonCode: 'active_role' },
+    ]} />);
+
+    const summary = await screen.findByRole('region', { name: 'User summary' });
+    await waitFor(() => expect(summary.textContent).toContain('YubiKey'));
+    expect(apiMock.mock.calls.filter(([path]) => path === '/api/users/user-1/authentication-methods')).toHaveLength(1);
+    expect(summary.textContent).not.toMatch(/MFA (registered|compliant|compliance)/i);
+  });
+
+  it('uses actual view and update decisions in the domain access chip', async () => {
+    render(<UserDetailPage userId="user-1" modules={['users']} loadUserDetail={async () => detail} capabilities={[
+      { capability: 'users.view', state: 'allowed', reasonCode: 'active_role' },
+      { capability: 'users.update', state: 'allowed', reasonCode: 'active_role' },
+    ]} />);
+    await screen.findByRole('heading', { name: 'Ada Lovelace' });
+    expect(screen.getByText('Read / write')).toBeTruthy();
+  });
+
+  it('keeps independently authorized security actions available for a read-only profile source', async () => {
+    render(<UserDetailPage userId="user-1" loadUserDetail={async () => detail} capabilities={[
+      { capability: 'users.sessions.revoke', state: 'allowed', reasonCode: 'active_role' },
+    ]} />);
+    await screen.findByRole('heading', { name: 'Ada Lovelace' });
+    fireEvent.click(screen.getByRole('button', { name: 'More actions' }));
+    expect(screen.getByRole('menuitem', { name: 'Revoke sessions' })).toBeTruthy();
+  });
+
+  it('keeps a returned audit warning visible after a successful quick action', async () => {
+    apiMock.mockResolvedValue(new Response(JSON.stringify({ status: 'succeeded', auditWarning: 'Audit record could not be written.' }), { status: 200 }));
+    render(<UserDetailPage userId="user-1" loadUserDetail={async () => ({ ...detail, user: { ...detail.user!, isReadOnly: false } })} capabilities={[
+      { capability: 'users.disable', state: 'allowed', reasonCode: 'active_role' },
+    ]} />);
+
+    await screen.findByRole('heading', { name: 'Ada Lovelace' });
+    fireEvent.click(screen.getByRole('button', { name: 'More actions' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Disable user' }));
+    fireEvent.change(screen.getByLabelText('Type DISABLE to confirm'), { target: { value: 'DISABLE' } });
+    fireEvent.click(screen.getByLabelText('I reviewed the target, change and required capability.'));
+    fireEvent.click(screen.getByRole('button', { name: 'Disable user' }));
+
+    expect((await screen.findByRole('alert')).textContent).toContain('Audit record could not be written.');
+  });
+
+  it('keeps a session-revocation audit warning visible after success', async () => {
+    apiMock.mockResolvedValue(new Response(JSON.stringify({ status: 'succeeded', auditWarning: 'Sessions were revoked, but the audit record could not be written.' }), { status: 200 }));
+    render(<UserDetailPage userId="user-1" loadUserDetail={async () => detail} capabilities={[
+      { capability: 'users.sessions.revoke', state: 'allowed', reasonCode: 'active_role' },
+    ]} />);
+
+    await screen.findByRole('heading', { name: 'Ada Lovelace' });
+    fireEvent.click(screen.getByRole('button', { name: 'More actions' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Revoke sessions' }));
+    fireEvent.click(screen.getByLabelText('I reviewed the target, change and required capability.'));
+    fireEvent.click(screen.getByRole('button', { name: 'Revoke sessions' }));
+
+    expect((await screen.findByRole('alert')).textContent).toContain('Sessions were revoked, but the audit record could not be written.');
+  });
+
+  it('offers card-level profile editing through the existing editor only when source editing is allowed', async () => {
+    render(<UserDetailPage userId="user-1" loadUserDetail={async () => ({ ...detail, user: { ...detail.user!, isReadOnly: false } })} capabilities={[
+      { capability: 'users.update', state: 'allowed', reasonCode: 'active_role' },
+    ]} />);
+    await screen.findByRole('heading', { name: 'Ada Lovelace' });
+    fireEvent.click(screen.getByRole('button', { name: 'Edit job information' }));
+    expect(screen.getByRole('dialog', { name: 'Edit user' })).toBeTruthy();
+  });
+
   it('omits license and device sections when their modules are unassigned, including nested fetches', async () => {
     render(<UserDetailPage userId="user-1" modules={['users']} loadUserDetail={async () => detail} capabilities={[{ capability: 'devices.view', state: 'allowed', reasonCode: 'active_role' }]} />);
     expect(await screen.findByRole('heading', { name: 'Ada Lovelace' })).toBeTruthy();
@@ -90,15 +210,15 @@ describe('UserDetailPage', () => {
     expect(apiMock).toHaveBeenCalledWith('/api/users/user-1');
   });
 
-  it('summarizes only verified account and license data and guides MFA review', async () => {
+  it('summarizes verified account and license data with explicit unavailable security signals', async () => {
     render(<UserDetailPage userId="user-1" modules={['users', 'licenses']} loadUserDetail={async () => detail} />);
     await screen.findByRole('heading', { name: 'Ada Lovelace' });
-    const strip = screen.getByRole('region', { name: 'User status summary' });
+    const strip = screen.getByRole('region', { name: 'User summary' });
     expect(strip.textContent).toContain('Account');
-    expect(strip.textContent).toContain('Enabled');
+    expect(strip.textContent).toContain('Account enabled');
     expect(strip.textContent).toContain('1 assigned');
-    expect(strip.textContent).toContain('MFA');
-    expect(strip.textContent).not.toMatch(/last sign.in/i);
+    expect(strip.textContent).toContain('Known authentication methods');
+    expect(strip.textContent).toContain('Last sign-in is unavailable.');
   });
 
   it('explains each unavailable quick action using its own capability decision', async () => {
@@ -127,7 +247,9 @@ describe('UserDetailPage', () => {
     expect(screen.getByText('Justification required')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Request activation for User Administrator' }));
     expect(screen.getByRole('dialog', { name: 'Request PIM activation' })).toBeTruthy();
-    expect(screen.getByText(/synchronized from an on-premises directory/)).toBeTruthy();
+    expect(screen.getAllByText(/synchronized from an on-premises directory/).length).toBeGreaterThan(0);
+    const lockedReason = screen.getAllByText('Profile fields cannot be edited here because this account is managed by its source of authority.')[0];
+    expect(lockedReason.closest('.disabled-reason')?.tabIndex).toBe(0);
     expect(screen.queryByRole('button', { name: /Edit user/i })).toBeNull();
   });
 
@@ -165,6 +287,47 @@ describe('UserDetailPage', () => {
     await waitFor(() => expect(screen.queryByText("Some sections couldn't load")).toBeNull());
     expect(issueReporter.clear).toHaveBeenCalledWith('users:detail');
     expect(screen.getByRole('heading', { name: 'Ada Lovelace' })).toBeTruthy();
+  });
+
+  it('refreshes only the failed license section while leaving the profile usable', async () => {
+    const stale = { ...detail, licenses: { ...detail.licenses, access: { ...detail.licenses.access, freshness: 'stale' as const, partialData: true } } };
+    let finishRetry: ((value: UserDetailResponse) => void) | undefined;
+    let attempts = 0;
+    render(<UserDetailPage userId="user-1" modules={['users', 'licenses']} loadUserDetail={async () => ++attempts === 1 ? stale : new Promise<UserDetailResponse>(resolve => { finishRetry = resolve; })} />);
+    await screen.findByRole('heading', { name: 'Ada Lovelace' });
+    const licenses = screen.getByRole('region', { name: 'Assigned licenses' });
+    fireEvent.click(within(licenses).getByRole('button', { name: 'Refresh' }));
+    await waitFor(() => expect(attempts).toBe(2));
+
+    expect(licenses.getAttribute('aria-busy')).toBe('true');
+    expect(screen.getByRole('region', { name: 'User summary' }).getAttribute('aria-busy')).toBeNull();
+    finishRetry?.({ ...detail, user: { ...detail.user!, displayName: 'Grace Hopper' }, licenses: { ...detail.licenses, items: [] } });
+    await waitFor(() => expect(licenses.getAttribute('aria-busy')).toBe('false'));
+    expect(screen.getByRole('heading', { name: 'Ada Lovelace' })).toBeTruthy();
+    expect(screen.queryByRole('heading', { name: 'Grace Hopper' })).toBeNull();
+    expect(screen.getByRole('tabpanel', { name: 'Identity' })).toBeTruthy();
+  });
+
+  it('ignores a section retry response after navigating to another user', async () => {
+    const stale = { ...detail, licenses: { ...detail.licenses, access: { ...detail.licenses.access, freshness: 'stale' as const, partialData: true } } };
+    let userOneLoads = 0;
+    let finishRetry: ((value: UserDetailResponse) => void) | undefined;
+    const loadUserDetail = (id: string) => {
+      if (id === 'user-2') return Promise.resolve({ ...detail, user: { ...detail.user!, id, displayName: 'Grace Hopper' }, licenses: { ...detail.licenses, items: [{ skuId: 'new-sku', skuPartNumber: 'NEW', displayName: 'User Two License' }] } });
+      if (++userOneLoads === 1) return Promise.resolve(stale);
+      return new Promise<UserDetailResponse>(resolve => { finishRetry = resolve; });
+    };
+    const view = render(<UserDetailPage userId="user-1" modules={['users', 'licenses']} loadUserDetail={loadUserDetail} />);
+    await screen.findByRole('heading', { name: 'Ada Lovelace' });
+    const licenses = screen.getByRole('region', { name: 'Assigned licenses' });
+    fireEvent.click(within(licenses).getByRole('button', { name: 'Refresh' }));
+    await waitFor(() => expect(userOneLoads).toBe(2));
+    view.rerender(<UserDetailPage userId="user-2" modules={['users', 'licenses']} loadUserDetail={loadUserDetail} />);
+    await screen.findByRole('heading', { name: 'Grace Hopper' });
+    finishRetry?.({ ...detail, licenses: { ...detail.licenses, items: [{ skuId: 'old-sku', skuPartNumber: 'OLD', displayName: 'Late User One License' }] } });
+
+    expect(await screen.findByText('User Two License')).toBeTruthy();
+    await waitFor(() => expect(screen.queryByText('Late User One License')).toBeNull());
   });
 
   it('wraps a long principal name in the shared user detail header', async () => {
@@ -214,6 +377,8 @@ describe('UserDetailPage', () => {
     apiMock.mockResolvedValue(new Response(JSON.stringify({ status: 'succeeded', requiredCapability: 'users.reactivate', replayed: false }), { status: 200 }));
 
     render(<UserDetailPage userId="user-1" loadUserDetail={loadUserDetail} capabilities={[{ capability: 'users.update', state: 'hidden', reasonCode: 'not_returned' }, { capability: 'users.disable', state: 'allowed', reasonCode: 'active_role' }]} />);
+    await screen.findByRole('heading', { name: 'Ada Lovelace' });
+    expect(screen.getByRole('region', { name: 'User summary' }).textContent).toContain('Account disabled');
     fireEvent.click(await screen.findByRole('button', { name: 'Reactivate user' }));
     fireEvent.click(screen.getByLabelText('I reviewed the target, change and required capability.'));
     fireEvent.click(screen.getByRole('button', { name: 'Enable user' }));
@@ -227,6 +392,7 @@ describe('UserDetailPage', () => {
       status: 'succeeded',
       requiredCapability: 'users.reset_password',
       replayed: false,
+      auditWarning: 'Password reset completed, but its audit record could not be written.',
       temporaryCredentialNotice: { temporaryPassword: 'Temp-Password-12345!', forceChangePasswordNextSignIn: true },
     }), { status: 200 }));
 
@@ -238,6 +404,7 @@ describe('UserDetailPage', () => {
     await waitFor(() => expect(apiMock).toHaveBeenCalledWith('/api/users/user-1/reset-password', expect.objectContaining({ method: 'POST' })));
     expect(await screen.findByText('Temp-Password-12345!')).toBeTruthy();
     expect(screen.getByText('The user must change this password at next sign-in.')).toBeTruthy();
+    expect((await screen.findByRole('alert')).textContent).toContain('Password reset completed, but its audit record could not be written.');
   });
 
   it('does not render group or license mutation controls for read-only sections', async () => {
