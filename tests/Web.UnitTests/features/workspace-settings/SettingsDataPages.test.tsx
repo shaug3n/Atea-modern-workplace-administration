@@ -19,6 +19,10 @@ describe('Settings data pages', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
     await waitFor(() => expect(screen.getByRole('switch', { name: 'Users' })).toBeTruthy());
     expect(screen.getByRole('switch', { name: 'Users' })).toBeTruthy();
+    expect(screen.getByRole('switch', { name: 'About' })).toBeTruthy();
+    expect(screen.getByRole('switch', { name: 'Feedback' })).toBeTruthy();
+    expect((screen.getByRole('switch', { name: 'About' }) as HTMLInputElement).checked).toBe(false);
+    expect((screen.getByRole('switch', { name: 'Feedback' }) as HTMLInputElement).checked).toBe(false);
   });
 
   it('lets the owner deliberately enable the license hygiene module', async () => {

@@ -31,8 +31,6 @@ export type Capability =
 
 export const reservedCapabilities = [
   'authentication.campaigns.manage',
-  'platform.about.view',
-  'feedback.submit',
 ] as const satisfies readonly Capability[];
 
 export const workspaceSettingsCapability: Capability = 'workspace.settings.manage';

@@ -6,10 +6,18 @@ namespace Atea.UnifiedWorkplace.Api.UnitTests.Authorization;
 public sealed class WorkspaceModuleCatalogTests
 {
     [Fact]
-    public void Authentication_campaigns_is_known_but_is_not_a_core_module()
+    public void Shipped_modules_are_known_without_changing_the_core_set()
     {
-        WorkspaceModuleCatalog.All.Should().Contain("authentication-campaigns");
-        WorkspaceModuleCatalog.All.Should().Contain("license-hygiene");
+    {
+        WorkspaceModuleCatalog.All.Should().Equal(
+            "users",
+            "devices",
+            "licenses",
+            "exchange",
+            "authentication-campaigns",
+            "license-hygiene",
+            "about",
+            "feedback");
         WorkspaceModuleCatalog.Core.Should().Equal("users", "devices", "licenses");
         WorkspaceModuleCatalog.Core.Should().NotContain("authentication-campaigns");
         WorkspaceModuleCatalog.IsKnown("authentication-campaigns").Should().BeTrue();
@@ -38,7 +46,7 @@ public sealed class WorkspaceModuleCatalogTests
     [Fact]
     public void Hygiene_module_is_opt_in_and_existing_grants_do_not_gain_it()
     {
-        WorkspaceModuleCatalog.ReservedModules.Should().Equal("about", "feedback");
+        WorkspaceModuleCatalog.ReservedModules.Should().NotContain("license-hygiene");
         WorkspaceModuleCatalog.All.Should().Contain("license-hygiene");
         WorkspaceModuleCatalog.Core.Should().Equal("users", "devices", "licenses");
         WorkspaceModuleCatalog.IsKnown("license-hygiene").Should().BeTrue();
@@ -82,15 +90,27 @@ public sealed class WorkspaceModuleCatalogTests
     }
 
     [Fact]
-    public void Other_reserved_modules_remain_unknown_and_ungrantable()
+    public void Shipped_modules_are_not_reserved()
     {
-        WorkspaceModuleCatalog.ReservedModules.Should().Equal("about", "feedback");
-        foreach (var module in WorkspaceModuleCatalog.ReservedModules)
-        {
-            WorkspaceModuleCatalog.All.Should().NotContain(module);
-            WorkspaceModuleCatalog.Core.Should().NotContain(module);
-            WorkspaceModuleCatalog.IsKnown(module).Should().BeFalse();
-        }
+        WorkspaceModuleCatalog.ReservedModules.Should().BeEmpty();
         WorkspaceModuleCatalog.Normalize(WorkspaceModuleCatalog.ReservedModules).Should().BeEmpty();
+    }
+
+    [Fact]
+    public void About_and_feedback_are_known_and_normalized_but_not_implicitly_enabled()
+    {
+        WorkspaceModuleCatalog.IsKnown("about").Should().BeTrue();
+        WorkspaceModuleCatalog.IsKnown("feedback").Should().BeTrue();
+        WorkspaceModuleCatalog.All.Should().Equal("users", "devices", "licenses", "exchange", "about", "feedback");
+        WorkspaceModuleCatalog.Core.Should().Equal("users", "devices", "licenses");
+        WorkspaceModuleCatalog.Normalize(["FEEDBACK", " About ", "unknown"])
+            .Should().Equal("about", "feedback");
+
+        WorkspaceModuleCatalog.EffectiveModules("owner", ["users", "devices", "licenses", "exchange"], [])
+            .Should().Equal("users", "devices", "licenses", "exchange");
+        WorkspaceModuleCatalog.EffectiveModules("member", ["about", "feedback"], [])
+            .Should().BeEmpty();
+        WorkspaceModuleCatalog.EffectiveModules("member", ["about", "feedback"], ["feedback"])
+            .Should().Equal("feedback");
     }
 }
