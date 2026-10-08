@@ -129,7 +129,9 @@ function LoadedWorkspaceExperience({ path, navigate, capabilities, capabilitiesL
   const availableModules = session.workspace.moduleAccess ?? session.workspace.enabledModules;
   const isDeviceSetupAdmin = route.module === 'devices' && canManageSettings;
   const hasAssignedModuleAccess = !route.module || !availableModules || ((!session.workspace.enabledModules || session.workspace.enabledModules.includes(route.module)) && availableModules.includes(route.module));
-  const hasModuleAccess = hasAssignedModuleAccess || isDeviceSetupAdmin;
+  const hasModuleAccess = route.module === 'license-hygiene'
+    ? session.workspace.enabledModules?.includes('license-hygiene') === true && session.workspace.moduleAccess?.includes('license-hygiene') === true
+    : hasAssignedModuleAccess || isDeviceSetupAdmin;
   const unavailableSnapshot = capabilities ?? { workspaceId: session.workspace.id, evaluatedAt: new Date().toISOString(), sourceState: 'unavailable', capabilities: [] } satisfies CapabilitySnapshot;
   let routeContent: React.ReactNode;
   if (!hasWorkspaceAccess) {

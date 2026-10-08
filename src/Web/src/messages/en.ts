@@ -1,5 +1,6 @@
 import { overviewMessages } from '../features/overview/messages';
 import { authenticationCampaignMessages } from '../features/authentication-campaigns/messages';
+import { licenseHygieneMessages } from '../features/licenses/hygiene/messages';
 
 export type ConnectionState = 'awaiting_invitation' | 'consent_required' | 'connected' | 'permission_incomplete' | 'temporarily_unavailable' | 'consent_revoked' | 'connection_failed';
 
@@ -9,6 +10,7 @@ export const moduleMessages = {
 } as const;
 
 export const messages = {
+  ...licenseHygieneMessages,
   appTitle: 'Atea Unified Workplace',
   devicesNotProvisionedTitle: 'Intune is not provisioned for this tenant',
   homeLinkLabel: 'Atea Unified Workplace home', skipToContent: 'Skip to main content', shellLoading: 'Loading workspace shell…', shellUnavailable: 'Workspace shell is unavailable. Try again later.',

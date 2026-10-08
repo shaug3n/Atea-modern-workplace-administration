@@ -6,6 +6,7 @@ import { NotFoundPage } from '../components/NotFoundPage';
 import { OverviewPage, type ConnectionHealthLoader, type OverviewLoader } from '../features/overview/OverviewPage';
 import { AuditActivityPage } from '../features/audit/AuditActivityPage';
 import { LicensesPage } from '../features/licenses/LicensesPage';
+import { LicenseHygienePage } from '../features/licenses/hygiene/LicenseHygienePage';
 import { WorkspaceSettingsPage } from '../features/workspace-settings/WorkspaceSettingsPage';
 import { ConsentCallbackPage } from '../features/workspace-settings/ConsentCallbackPage';
 import { OnboardingPage } from '../features/workspace-settings/OnboardingPage';
@@ -93,7 +94,23 @@ export const appRoutes: AppRoute[] = [
     module: 'licenses',
     capability: 'licenses.view',
     navigation: { group: 'licenses', order: 0, icon: 'licenses', visibility: 'module' },
-    render: () => <LicensesPage />,
+    render: (options) => <LicensesPage
+      capabilities={options?.capabilities}
+      moduleEnabled={options?.session?.workspace.enabledModules}
+      moduleAssigned={options?.session?.workspace.moduleAccess}
+    />,
+  },
+  {
+    path: '/licenses/hygiene',
+    label: messages.navLicenseHygiene,
+    module: 'license-hygiene',
+    capability: 'licenses.hygiene.view',
+    render: (options) => <LicenseHygienePage
+      workspaceId={options?.session?.workspace.id ?? ''}
+      capabilities={options?.capabilities}
+      enabledModules={options?.session?.workspace.enabledModules}
+      assignedModules={options?.session?.workspace.moduleAccess}
+    />,
   },
   {
     path: '/audit',
