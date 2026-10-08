@@ -10,7 +10,7 @@ import { RolesAndPimSection } from './RolesAndPimSection';
 import { fetchUserDetail, type ApiFetch, type UserDetailResponse } from './userDetailApi';
 import { UserEditDialog } from './UserEditDialog';
 import { mutateUser, type UserCommandResponse } from './userMutationApi';
-import { ReasonDialog } from '../../components/ReasonDialog';
+import { ConfirmationDialog } from '../../components/ConfirmationDialog';
 import { GroupMembershipDialog } from './GroupMembershipDialog';
 import { LicenseAssignmentDialog } from './LicenseAssignmentDialog';
 import { PasswordResetDialog } from './PasswordResetDialog';
@@ -25,7 +25,7 @@ import { WorkspacePageHeader } from '../../components/WorkspacePageHeader';
 import { StatusBadge } from '../../components/StatusBadge';
 import { DataFreshness } from '../../components/DataFreshness';
 import { SectionRetryContext, type UserDetailSectionKey } from './IdentitySection';
-import { getUserWriteReasonErrorMessage, getUserWriteReasonHint, normalizeUserWriteReason } from './UserWriteReasonField';
+import { normalizeUserWriteReason, UserWriteReasonField, type UserWriteReasonError } from './UserWriteReasonField';
 import { WorkspaceDataState } from '../../components/WorkspaceDataState';
 import { useWorkspaceIssueReporter } from '../../notifications/WorkspaceNotifications';
 
@@ -54,7 +54,8 @@ export function UserDetailPage({ userId, loadUserDetail, capabilities = [], modu
   const [reactivateOpen, setReactivateOpen] = useState(false);
   const [resetPasswordOpen, setResetPasswordOpen] = useState(false);
   const [mutationError, setMutationError] = useState<string | null>(null);
-  const [reasonValidationError, setReasonValidationError] = useState<string | null>(null);
+  const [reasonValidationError, setReasonValidationError] = useState<UserWriteReasonError>(null);
+  const [reason, setReason] = useState('');
   const [auditWarning, setAuditWarning] = useState<string | null>(null);
   const [mutationPending, setMutationPending] = useState(false);
   const [groupAction, setGroupAction] = useState<{ id: string | null; target?: string; mode: 'add' | 'remove' } | null>(null);
@@ -187,7 +188,7 @@ export function UserDetailPage({ userId, loadUserDetail, capabilities = [], modu
   ].filter((value): value is string => Boolean(value));
   const moreActions = [
     revokeSessionsDecision.state === 'allowed' ? { label: 'Revoke sessions', description: 'Signs the user out everywhere.', onSelect: () => setRevokeSessionsOpen(true) } : null,
-    disableDecision.state === 'allowed' && user.accountEnabled !== false ? { label: 'Disable user', description: 'Blocks sign-in for this user.', danger: true, separatorBefore: true, onSelect: () => { setMutationError(null); setReasonValidationError(null); setDisableOpen(true); } } : null,
+    disableDecision.state === 'allowed' && user.accountEnabled !== false ? { label: 'Disable user', description: 'Blocks sign-in for this user.', danger: true, separatorBefore: true, onSelect: () => { setMutationError(null); setReasonValidationError(null); setReason(''); setDisableOpen(true); } } : null,
   ].filter((item): item is NonNullable<typeof item> => item !== null);
 
   const selectTab = (tab: ProfileTab, focus = false) => {
@@ -212,9 +213,7 @@ export function UserDetailPage({ userId, loadUserDetail, capabilities = [], modu
   const submitDisable = async (value: string) => {
     const normalizedReason = normalizeUserWriteReason(value);
     if (normalizedReason.error) {
-      const reasonError = getUserWriteReasonErrorMessage(normalizedReason.error);
-      setReasonValidationError(reasonError);
-      setMutationError(reasonError);
+      setReasonValidationError(normalizedReason.error);
       return;
     }
     setReasonValidationError(null);
@@ -234,9 +233,7 @@ export function UserDetailPage({ userId, loadUserDetail, capabilities = [], modu
   const submitReactivate = async (value: string) => {
     const normalizedReason = normalizeUserWriteReason(value);
     if (normalizedReason.error) {
-      const reasonError = getUserWriteReasonErrorMessage(normalizedReason.error);
-      setReasonValidationError(reasonError);
-      setMutationError(reasonError);
+      setReasonValidationError(normalizedReason.error);
       return;
     }
     setReasonValidationError(null);
@@ -274,7 +271,7 @@ export function UserDetailPage({ userId, loadUserDetail, capabilities = [], modu
           </>}
           actions={<div className="page-action-bar user-detail-hero__actions" role="group" aria-label="User management actions">
             {updateDecision.state === 'allowed' && !user.isReadOnly && <button className="button button--secondary" type="button" onClick={() => { setMutationError(null); setReasonValidationError(null); setEditOpen(true); }}>Edit user</button>}
-            {disableDecision.state === 'allowed' && user.accountEnabled === false && <button className="button button--secondary" type="button" onClick={() => { setMutationError(null); setReasonValidationError(null); setReactivateOpen(true); }}>Reactivate user</button>}
+            {disableDecision.state === 'allowed' && user.accountEnabled === false && <button className="button button--secondary" type="button" onClick={() => { setMutationError(null); setReasonValidationError(null); setReason(''); setReactivateOpen(true); }}>Reactivate user</button>}
             {disableDecision.state !== 'allowed' && disableDecision.state !== 'hidden' && user.accountEnabled === false && <DisabledReason reason={actionDecisionReason(disableDecision)}><button className="button button--secondary" type="button" disabled>Reactivate user</button></DisabledReason>}
             {disableDecision.state !== 'allowed' && disableDecision.state !== 'hidden' && user.accountEnabled !== false && <DisabledReason reason={actionDecisionReason(disableDecision)}><button className="button button--secondary" type="button" disabled>Disable user</button></DisabledReason>}
             {resetPasswordDecision.state === 'allowed' && <button className="button button--secondary" type="button" onClick={() => { setMutationError(null); setReasonValidationError(null); setResetPasswordOpen(true); }}>Reset password</button>}
@@ -297,12 +294,18 @@ export function UserDetailPage({ userId, loadUserDetail, capabilities = [], modu
         <div><span>Last sign-in</span><strong>{messages.userProfileLastSignInUnavailable}</strong></div>
         {(modules === undefined || modules.includes('licenses')) && <div><span>Licenses</span><strong>{!detail.licenses.access.partialData && detail.licenses.access.freshness !== 'unavailable' && !detail.licenses.access.error && ['allowed', 'read_only'].includes(detail.licenses.access.authorization.state) ? `${detail.licenses.items.length} assigned` : messages.usersUnavailableValue}</strong></div>}
       </div>
-      {mutationError && <p role="alert">{mutationError}</p>}
+      {mutationError && !disableOpen && !reactivateOpen && <p role="alert">{mutationError}</p>}
       {auditWarning && !resetPasswordOpen && !revokeSessionsOpen && !temporaryAccessPassOpen && <p role="alert" className="audit-warning">{auditWarning}</p>}
       {editOpen && <UserEditDialog user={user} onCancel={() => { if (!mutationPending) setEditOpen(false); }} onCompleted={(response) => response.status === 'succeeded' ? refreshAfterAuditedSuccess(response) : (retainAuditWarning(response), setMutationError(formatMutationError(response)))} />}
-      {reactivateOpen && <ReasonDialog title="Reactivate user" target={user.displayName || user.userPrincipalName || user.id} proposedChange="Restore sign-in for this user." requiredCapability="users.disable" confirmLabel={messages.confirmEnableUser} busy={mutationPending} reasonHint={getUserWriteReasonHint(reasonValidationError)} onConfirm={submitReactivate} onCancel={() => { if (!mutationPending) { setReactivateOpen(false); setMutationError(null); setReasonValidationError(null); } }} />}
+      {reactivateOpen && <ConfirmationDialog title="Reactivate user" target={user.displayName || user.userPrincipalName || user.id} proposedChange="Restore sign-in for this user." requiredCapability="users.disable" confirmLabel={messages.confirmEnableUser} busy={mutationPending} confirmBlocked={Boolean(reasonValidationError) || !reason.trim()} onConfirm={() => void submitReactivate(reason)} onCancel={() => { if (!mutationPending) { setReactivateOpen(false); setMutationError(null); setReasonValidationError(null); setReason(''); } }}>
+        <UserWriteReasonField value={reason} onChange={(value) => { setReason(value); setReasonValidationError(null); setMutationError(null); }} error={reasonValidationError} />
+        {mutationError && <p role="alert">{mutationError}</p>}
+      </ConfirmationDialog>}
       {resetPasswordOpen && <PasswordResetDialog user={user} onClose={() => setResetPasswordOpen(false)} onAuditWarning={setAuditWarning} />}
-      {disableOpen && <ReasonDialog title={messages.userDisableDialogTitle} target={displayName} proposedChange={messages.userDisableProposedChange} requiredCapability="users.disable" destructivePhrase="DISABLE" confirmLabel={messages.confirmDisableUser} consequence={messages.confirmDisableUserConsequence(displayName)} tone="danger" busy={mutationPending} reasonHint={getUserWriteReasonHint(reasonValidationError)} onConfirm={submitDisable} onCancel={() => { if (!mutationPending) { setDisableOpen(false); setMutationError(null); setReasonValidationError(null); } }} />}
+      {disableOpen && <ConfirmationDialog title={messages.userDisableDialogTitle} target={displayName} proposedChange={messages.userDisableProposedChange} requiredCapability="users.disable" destructivePhrase="DISABLE" confirmLabel={messages.confirmDisableUser} consequence={messages.confirmDisableUserConsequence(displayName)} tone="danger" busy={mutationPending} confirmBlocked={Boolean(reasonValidationError) || !reason.trim()} onConfirm={() => void submitDisable(reason)} onCancel={() => { if (!mutationPending) { setDisableOpen(false); setMutationError(null); setReasonValidationError(null); setReason(''); } }}>
+        <UserWriteReasonField value={reason} onChange={(value) => { setReason(value); setReasonValidationError(null); setMutationError(null); }} error={reasonValidationError} />
+        {mutationError && <p role="alert">{mutationError}</p>}
+      </ConfirmationDialog>}
       {revokeSessionsOpen && <RevokeSessionsDialog userId={user.id} target={user.displayName || user.userPrincipalName || user.id} onClose={() => setRevokeSessionsOpen(false)} onAuditWarning={setAuditWarning} />}
       <SectionRetryContext.Provider value={(section) => { void retrySection(section); }}>
       <div className="user-profile-tabs">

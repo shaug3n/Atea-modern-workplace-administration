@@ -387,8 +387,9 @@ describe('UsersPage', () => {
     fireEvent.change(screen.getByLabelText('Type DISABLE to confirm'), { target: { value: 'DISABLE' } });
     fireEvent.click(screen.getByRole('button', { name: 'Disable user' }));
 
-    expect((await screen.findByRole('alert')).textContent).toContain('idempotency key');
-    expect(screen.getByRole('dialog', { name: 'Disable user' })).toBeTruthy();
+    const dialog = screen.getByRole('dialog', { name: 'Disable user' });
+    expect((await within(dialog).findByRole('alert')).textContent).toContain('idempotency key');
+    expect((within(dialog).getByLabelText('Reason') as HTMLTextAreaElement).value).toBe('Offboarding');
   });
 
   it('keeps an overlength reason in the disable review and does not send a request', async () => {

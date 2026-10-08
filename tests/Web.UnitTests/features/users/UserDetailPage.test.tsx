@@ -430,6 +430,20 @@ describe('UserDetailPage', () => {
     expect((await screen.findByRole('alert')).textContent).toContain('Account enabled, but the audit record could not be written.');
   });
 
+  it('keeps a failed reactivation alert and entered reason inside its dialog', async () => {
+    apiMock.mockRejectedValue(new Error('offline'));
+    render(<UserDetailPage userId="user-1" loadUserDetail={async () => ({ ...detail, user: { ...detail.user, accountEnabled: false, isReadOnly: false, sourceOfAuthorityReason: null } })} capabilities={[{ capability: 'users.update', state: 'hidden', reasonCode: 'not_returned' }, { capability: 'users.disable', state: 'allowed', reasonCode: 'active_role' }]} />);
+    await screen.findByRole('heading', { name: 'Ada Lovelace' });
+    fireEvent.click(await screen.findByRole('button', { name: 'Reactivate user' }));
+    const dialog = screen.getByRole('dialog', { name: 'Reactivate user' });
+    fireEvent.change(within(dialog).getByLabelText('Reason'), { target: { value: 'Access restored' } });
+    fireEvent.click(within(dialog).getByLabelText('I reviewed the target, change and required capability.'));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Enable user' }));
+
+    expect((await within(dialog).findByRole('alert')).textContent).toContain('Sign-in could not be restored');
+    expect((within(dialog).getByLabelText('Reason') as HTMLTextAreaElement).value).toBe('Access restored');
+  });
+
   it('resets a user password and displays the temporary credential once', async () => {
     apiMock.mockResolvedValue(new Response(JSON.stringify({
       status: 'succeeded',

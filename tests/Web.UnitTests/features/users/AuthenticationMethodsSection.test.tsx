@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import React from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AuthenticationMethodsSection } from '../../../../src/Web/src/features/users/AuthenticationMethodsSection';
@@ -45,6 +45,27 @@ describe('AuthenticationMethodsSection', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Reset MFA' }));
 
     await waitFor(() => expect(apiMock).toHaveBeenCalledWith('/api/users/user-1/authentication-methods/reset-mfa', expect.objectContaining({ method: 'POST', body: '{"reason":"Lost authenticator"}' })));
+  });
+
+  it('keeps authentication-method mutation failures inside the reason dialog', async () => {
+    apiMock.mockImplementation(async (_path: string, init?: RequestInit) => {
+      if (init?.method === 'DELETE') throw new Error('offline');
+      return new Response(JSON.stringify({
+        userObjectId: 'user-1',
+        items: [{ id: 'method-1', type: 'fido2AuthenticationMethod', displayName: 'YubiKey' }],
+        fetchedAt: '2026-09-22T08:00:00Z', freshness: 'live', partialData: false, access: { state: 'allowed' },
+      }), { status: 200 });
+    });
+    render(<AuthenticationMethodsSection userId="user-1" decision={allowed} manageDecision={manage} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Remove' }));
+    const dialog = screen.getByRole('dialog');
+    fireEvent.change(within(dialog).getByLabelText('Reason'), { target: { value: 'Retired device' } });
+    fireEvent.click(within(dialog).getByLabelText('I reviewed the target, change and required capability.'));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Remove method' }));
+
+    expect((await within(dialog).findByRole('alert')).textContent).toContain('offline');
+    expect((within(dialog).getByLabelText('Reason') as HTMLTextAreaElement).value).toBe('Retired device');
   });
 
   it('explains missing authentication-method consent without making a Graph request', () => {

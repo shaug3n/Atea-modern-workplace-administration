@@ -33,8 +33,8 @@ describe('user security dialogs', () => {
     confirmDialog();
 
     const dialog = await screen.findByRole('dialog', { name: 'Revoke user sessions' });
-    expect(dialog).toBeTruthy();
-    expect((await screen.findByRole('alert')).textContent).toContain('Sessions could not be revoked');
+    expect(within(dialog).getByRole('alert').textContent).toContain('Sessions could not be revoked');
+    expect((within(dialog).getByLabelText('Reason') as HTMLTextAreaElement).value).toBe('  Session compromise  ');
   });
 
   it('posts a trimmed TAP reason without storage and never reveals replayed code', async () => {

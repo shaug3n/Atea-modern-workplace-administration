@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import React from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ConfirmationDialog } from '../../../../src/Web/src/components/ConfirmationDialog';
@@ -157,6 +157,25 @@ describe('UserMutationDialogs', () => {
     expect(screen.getByText('The user must change this password at next sign-in.')).toBeTruthy();
   });
 
+  it('keeps the entire create form inside the keyboard-contained confirmation dialog', () => {
+    render(<UserCreateDialog />);
+
+    const dialog = screen.getByRole('dialog', { name: 'Create user' });
+    const name = within(dialog).getByLabelText('Name');
+    const upn = within(dialog).getByLabelText('User principal name');
+    const location = within(dialog).getByLabelText('Usage location');
+    const reason = within(dialog).getByLabelText('Reason');
+    expect(name).toBeTruthy();
+    expect(upn).toBeTruthy();
+    expect(location).toBeTruthy();
+    expect(reason).toBeTruthy();
+
+    const reviewed = within(dialog).getByLabelText('I reviewed the target, change and required capability.');
+    reviewed.focus();
+    fireEvent.keyDown(dialog, { key: 'Tab' });
+    expect(document.activeElement).toBe(name);
+  });
+
   it('opens the password reset confirmation and cancels without calling the API', () => {
     const onClose = vi.fn();
 
@@ -206,8 +225,9 @@ describe('UserMutationDialogs', () => {
     fireEvent.click(screen.getByLabelText('I reviewed the target, change and required capability.'));
     fireEvent.click(screen.getByRole('button', { name: 'Reset password' }));
 
-    expect((await screen.findByRole('alert')).textContent).toContain('Microsoft Graph consent is required before this action can be completed.');
-    expect(screen.getByRole('dialog')).toBeTruthy();
+    const dialog = screen.getByRole('dialog', { name: 'Reset password' });
+    expect((await within(dialog).findByRole('alert')).textContent).toContain('Microsoft Graph consent is required before this action can be completed.');
+    expect((within(dialog).getByLabelText('Reason') as HTMLTextAreaElement).value).toBe('Account recovery');
   });
 
   it('preserves edited profile fields and adds a trimmed reason to the update body', async () => {
@@ -254,17 +274,37 @@ describe('UserMutationDialogs', () => {
     fireEvent.click(screen.getByLabelText('I reviewed the target, change and required capability.'));
     fireEvent.click(screen.getByRole('button', { name: 'Create user' }));
     expect(screen.getByText('Enter a reason before continuing.')).toBeTruthy();
+    const dialog = screen.getByRole('dialog', { name: 'Create user' });
+    expect(within(dialog).getByRole('alert').textContent).toContain('Enter a reason');
+    expect(document.activeElement).toBe(within(dialog).getByLabelText('Reason'));
     expect(apiMock).not.toHaveBeenCalled();
 
     fireEvent.change(screen.getByLabelText('Reason'), { target: { value: '😀'.repeat(501) } });
     fireEvent.click(screen.getByRole('button', { name: 'Create user' }));
-    expect(screen.getByText('Keep the reason to 1,000 characters or fewer.')).toBeTruthy();
+    expect(within(dialog).getByRole('alert').textContent).toContain('Keep the reason to 1,000 characters or fewer.');
+    expect(document.activeElement).toBe(within(dialog).getByLabelText('Reason'));
     expect(apiMock).not.toHaveBeenCalled();
 
     fireEvent.change(screen.getByLabelText('Reason'), { target: { value: '😀'.repeat(500) } });
     fireEvent.click(screen.getByRole('button', { name: 'Create user' }));
     await waitFor(() => expect(apiMock).toHaveBeenCalledTimes(1));
     expect(JSON.parse(apiMock.mock.calls[0][1].body).reason).toBe('😀'.repeat(500));
+  });
+
+  it('keeps create form values and its failure alert inside the active dialog', async () => {
+    apiMock.mockRejectedValue(new Error('offline'));
+    render(<UserCreateDialog />);
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Ada Lovelace' } });
+    fireEvent.change(screen.getByLabelText('User principal name'), { target: { value: 'ada@example.com' } });
+    fireEvent.change(screen.getByLabelText('Reason'), { target: { value: 'New employee onboarding' } });
+    fireEvent.click(screen.getByLabelText('I reviewed the target, change and required capability.'));
+    fireEvent.click(screen.getByRole('button', { name: 'Create user' }));
+
+    const dialog = screen.getByRole('dialog', { name: 'Create user' });
+    expect((await within(dialog).findByRole('alert')).textContent).toContain('User creation could not be completed');
+    expect((within(dialog).getByLabelText('Name') as HTMLInputElement).value).toBe('Ada Lovelace');
+    expect((within(dialog).getByLabelText('User principal name') as HTMLInputElement).value).toBe('ada@example.com');
+    expect((within(dialog).getByLabelText('Reason') as HTMLTextAreaElement).value).toBe('New employee onboarding');
   });
 
   it('sends reason with the existing group-add request body', async () => {

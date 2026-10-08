@@ -50,21 +50,20 @@ export function UserCreateDialog({ onCompleted }: { onCompleted?: (result: UserC
   };
 
   return (
-    <div role="dialog" aria-modal="true" aria-labelledby="user-create-dialog-title">
+    <ConfirmationDialog
+      title={messages.userCreateDialogTitle}
+      target={displayName || userPrincipalName || messages.usersUnnamedUser}
+      proposedChange={messages.userCreateProposedChange}
+      requiredCapability="users.create"
+      confirmLabel={messages.confirmCreateUser}
+      busy={pending}
+      confirmBlocked={Boolean(reasonError)}
+      onConfirm={submit}
+    >
       <label>{messages.usersNameColumn}<input value={displayName} onChange={(event) => { setDisplayName(event.target.value); setResult(null); }} /></label>
       <label>{messages.usersUpnColumn}<input value={userPrincipalName} onChange={(event) => { setUserPrincipalName(event.target.value); setResult(null); }} /></label>
       <label>{messages.userUsageLocation}<input value={usageLocation} onChange={(event) => { setUsageLocation(event.target.value.toUpperCase()); setResult(null); }} /></label>
       <UserWriteReasonField value={reason} onChange={(value) => { setReason(value); setReasonError(null); }} error={reasonError} />
-      <ConfirmationDialog
-        title={messages.userCreateDialogTitle}
-        target={displayName || userPrincipalName || messages.usersUnnamedUser}
-        proposedChange={messages.userCreateProposedChange}
-        requiredCapability="users.create"
-        confirmLabel={messages.confirmCreateUser}
-        busy={pending}
-        confirmBlocked={Boolean(reasonError)}
-        onConfirm={submit}
-      />
       {result?.auditWarning && <p role="alert" className="audit-warning">{result.auditWarning}</p>}
       {result?.temporaryCredentialNotice && (
         <section role="status" aria-label={messages.userTemporaryPasswordNotice}>
@@ -77,6 +76,6 @@ export function UserCreateDialog({ onCompleted }: { onCompleted?: (result: UserC
       {result?.error === 'throttled' && <p role="alert">{messages.userMutationThrottled}</p>}
       {result?.error === 'user_mutation_failed' && <p role="alert">User creation could not be completed. Review the details and try again.</p>}
       {result && result.status !== 'succeeded' && result.error !== 'idempotency_key_reused' && result.error !== 'throttled' && result.error !== 'user_mutation_failed' && <p role="alert">User creation could not be completed. Review the details and try again.</p>}
-    </div>
+    </ConfirmationDialog>
   );
 }

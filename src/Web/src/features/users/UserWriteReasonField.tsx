@@ -1,4 +1,4 @@
-import React, { useId } from 'react';
+import React, { useEffect, useId, useRef } from 'react';
 import { userFeatureMessages } from './messages';
 
 export type UserWriteReasonError = 'reason_required' | 'reason_too_long' | null;
@@ -14,14 +14,20 @@ export function UserWriteReasonField({ value, onChange, error = null }: { value:
   const inputId = useId();
   const hintId = useId();
   const errorId = useId();
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   const errorMessage = error === 'reason_too_long'
     ? userFeatureMessages.userFeatureReasonTooLong
     : error === 'reason_required' ? userFeatureMessages.userFeatureReasonRequired : null;
+
+  useEffect(() => {
+    if (errorMessage) inputRef.current?.focus();
+  }, [errorMessage]);
 
   return (
     <div className="mutation-phrase">
       <label htmlFor={inputId}>{userFeatureMessages.userFeatureReasonLabel}</label>
       <textarea
+        ref={inputRef}
         id={inputId}
         value={value}
         required
@@ -30,7 +36,7 @@ export function UserWriteReasonField({ value, onChange, error = null }: { value:
         onChange={(event) => onChange(event.target.value)}
       />
       <span id={hintId} className="mutation-reason-hint">{userFeatureMessages.userFeatureReasonHint}</span>
-      {errorMessage && <span id={errorId} className="mutation-reason-required">{errorMessage}</span>}
+      {errorMessage && <span id={errorId} className="mutation-reason-required" role="alert">{errorMessage}</span>}
     </div>
   );
 }

@@ -3,7 +3,7 @@ import type { CapabilityDecision } from '../../capabilities/capabilityTypes';
 import { WorkspaceDataState } from '../../components/WorkspaceDataState';
 import { WorkspacePageHeader } from '../../components/WorkspacePageHeader';
 import { useWorkspaceIssueReporter } from '../../notifications/WorkspaceNotifications';
-import { ReasonDialog } from '../../components/ReasonDialog';
+import { ConfirmationDialog } from '../../components/ConfirmationDialog';
 import { DataFreshness } from '../../components/DataFreshness';
 import { PermissionState } from '../../components/PermissionState';
 import { useApi } from '../../auth/useApi';
@@ -14,8 +14,7 @@ import { UsersTable } from './UsersTable';
 import { mutateUser, type UserCommandResponse } from './userMutationApi';
 import { fetchUsers, type ApiFetch, type UserFiltersState, type UsersDirectoryResponse, type UserSummary } from './usersApi';
 import { downloadCsv, exportStatus } from '../exports/csvExport';
-import { getUserWriteReasonErrorMessage, getUserWriteReasonHint, normalizeUserWriteReason } from './UserWriteReasonField';
-import { userFeatureMessages } from './messages';
+import { normalizeUserWriteReason, UserWriteReasonField, type UserWriteReasonError } from './UserWriteReasonField';
 
 const emptyFilters: UserFiltersState = {
   search: '',
@@ -40,7 +39,8 @@ export function UsersPage({ capabilities, onNavigate, loadUsers, authorizationUn
   const [disableTarget, setDisableTarget] = useState<UserSummary | null>(null);
   const [disablePending, setDisablePending] = useState(false);
   const [disableError, setDisableError] = useState<string | null>(null);
-  const [disableReasonError, setDisableReasonError] = useState<string | null>(null);
+  const [disableReasonError, setDisableReasonError] = useState<UserWriteReasonError>(null);
+  const [disableReason, setDisableReason] = useState('');
   const [disableStatus, setDisableStatus] = useState<string | null>(null);
   const [auditWarning, setAuditWarning] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
@@ -145,6 +145,7 @@ export function UsersPage({ capabilities, onNavigate, loadUsers, authorizationUn
 
   const startDisable = useCallback((user: UserSummary) => {
     setDisableTarget(user);
+    setDisableReason('');
     setDisableError(null);
     setDisableReasonError(null);
     setDisableStatus(null);
@@ -154,6 +155,7 @@ export function UsersPage({ capabilities, onNavigate, loadUsers, authorizationUn
   const cancelDisable = useCallback(() => {
     if (disablePending) return;
     setDisableTarget(null);
+    setDisableReason('');
     setDisableError(null);
     setDisableReasonError(null);
   }, [disablePending]);
@@ -162,9 +164,7 @@ export function UsersPage({ capabilities, onNavigate, loadUsers, authorizationUn
     if (!disableTarget) return;
     const normalizedReason = normalizeUserWriteReason(value);
     if (normalizedReason.error) {
-      const reasonError = getUserWriteReasonErrorMessage(normalizedReason.error);
-      setDisableReasonError(reasonError);
-      setDisableError(reasonError);
+      setDisableReasonError(normalizedReason.error);
       return;
     }
     setDisableReasonError(null);
@@ -270,7 +270,7 @@ export function UsersPage({ capabilities, onNavigate, loadUsers, authorizationUn
       {disableStatus && <p role="status">{disableStatus}</p>}
       {auditWarning && <p role="alert" className="audit-warning">{auditWarning}</p>}
       {disableTarget && (
-        <ReasonDialog
+        <ConfirmationDialog
           title={messages.userDisableDialogTitle}
           target={disableTargetName}
           proposedChange={messages.userDisableProposedChange}
@@ -280,12 +280,15 @@ export function UsersPage({ capabilities, onNavigate, loadUsers, authorizationUn
           consequence={messages.confirmDisableUserConsequence(disableTargetName)}
           tone="danger"
           busy={disablePending}
-          reasonHint={getUserWriteReasonHint(disableReasonError)}
-          onConfirm={submitDisable}
+          confirmBlocked={Boolean(disableReasonError) || !disableReason.trim()}
+          onConfirm={() => void submitDisable(disableReason)}
           onCancel={cancelDisable}
-        />
+        >
+          <UserWriteReasonField value={disableReason} onChange={(value) => { setDisableReason(value); setDisableReasonError(null); }} error={disableReasonError} />
+          {disableError && <p role="alert">{disableError}</p>}
+        </ConfirmationDialog>
       )}
-      {disableError && <p role="alert">{disableError}</p>}
+      {disableError && !disableTarget && <p role="alert">{disableError}</p>}
       {createOpen && <UserCreateDialog onCompleted={(response) => {
         setAuditWarning(typeof response.auditWarning === 'string' && response.auditWarning.trim() ? response.auditWarning : null);
         if (response.status === 'succeeded') {

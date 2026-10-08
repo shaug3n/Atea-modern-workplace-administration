@@ -1,23 +1,24 @@
 import React, { useState } from 'react';
 import { messages } from '../../app/messages';
 import { useApi } from '../../auth/useApi';
-import { ReasonDialog } from '../../components/ReasonDialog';
+import { ConfirmationDialog } from '../../components/ConfirmationDialog';
 import type { UserDetails } from './userDetailApi';
 import { mutateUser, type UserCommandResponse } from './userMutationApi';
-import { getUserWriteReasonErrorMessage, getUserWriteReasonHint, normalizeUserWriteReason } from './UserWriteReasonField';
+import { normalizeUserWriteReason, UserWriteReasonField } from './UserWriteReasonField';
 
 export function PasswordResetDialog({ user, onClose, onAuditWarning }: { user: UserDetails; onClose: () => void; onAuditWarning?: (warning: string | null) => void }) {
   const api = useApi();
   const [pending, setPending] = useState(false);
   const [result, setResult] = useState<UserCommandResponse | null>(null);
   const [auditWarning, setAuditWarning] = useState<string | null>(null);
-  const [reasonError, setReasonError] = useState<string | null>(null);
+  const [reason, setReason] = useState('');
+  const [reasonError, setReasonError] = useState<'reason_required' | 'reason_too_long' | null>(null);
 
   const submit = async (value: string) => {
     if (pending) return;
     const normalizedReason = normalizeUserWriteReason(value);
     if (normalizedReason.error) {
-      setReasonError(getUserWriteReasonErrorMessage(normalizedReason.error));
+      setReasonError(normalizedReason.error);
       return;
     }
     setReasonError(null);
@@ -54,21 +55,20 @@ export function PasswordResetDialog({ user, onClose, onAuditWarning }: { user: U
   }
 
   return (
-    <div>
-      <ReasonDialog
-        title={messages.userResetPasswordDialogTitle}
-        target={user.displayName || user.userPrincipalName || user.id}
-        proposedChange={messages.userResetPasswordProposedChange}
-        requiredCapability="users.reset_password"
-        confirmLabel={messages.confirmResetPassword}
-        busy={pending}
-        reasonHint={getUserWriteReasonHint(reasonError)}
-        onConfirm={submit}
-        onCancel={onClose}
-      />
-      {reasonError && <p role="alert">{reasonError}</p>}
+    <ConfirmationDialog
+      title={messages.userResetPasswordDialogTitle}
+      target={user.displayName || user.userPrincipalName || user.id}
+      proposedChange={messages.userResetPasswordProposedChange}
+      requiredCapability="users.reset_password"
+      confirmLabel={messages.confirmResetPassword}
+      busy={pending}
+      confirmBlocked={Boolean(reasonError) || !reason.trim()}
+      onConfirm={() => void submit(reason)}
+      onCancel={onClose}
+    >
+      <UserWriteReasonField value={reason} onChange={(value) => { setReason(value); setReasonError(null); }} error={reasonError} />
       {result && <p role="alert">{formatResetError(result)}</p>}
-    </div>
+    </ConfirmationDialog>
   );
 }
 
