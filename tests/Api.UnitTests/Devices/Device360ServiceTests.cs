@@ -1,3 +1,4 @@
+using System.Net;
 using Atea.UnifiedWorkplace.Api.Authorization;
 using Atea.UnifiedWorkplace.Api.Features.Devices;
 using Atea.UnifiedWorkplace.Api.Infrastructure.Graph;
@@ -104,6 +105,42 @@ public sealed class Device360ServiceTests
         response.Status.Should().Be(expected);
         response.Data.Should().BeNull();
         response.Error.Should().NotBeNull();
+    }
+
+    [Theory]
+    [InlineData(400, "temporarily_unavailable", Device360Status.Failed)]
+    [InlineData(503, "temporarily_unavailable", Device360Status.TemporarilyUnavailable)]
+    [InlineData(429, "throttled", Device360Status.Throttled)]
+    public async Task graph_status_classifies_errors_by_upstream_status(int statusCode, string expectedCategory, string expected)
+    {
+        var graphError = GraphErrorMapper.FromResponse(new HttpResponseMessage((HttpStatusCode)statusCode));
+        var reader = new RecordingReader
+        {
+            DetectedAppsResult = new Device360GraphResult<IReadOnlyList<DeviceDetectedApp>>(null, graphError)
+        };
+        var service = CreateService(reader, Snapshot());
+
+        var response = await service.GetDetectedAppsAsync(Context(), ManagedDeviceId, CancellationToken.None);
+
+        graphError.Category.Should().Be(expectedCategory);
+        graphError.StatusCode.Should().Be(statusCode);
+        response.Status.Should().Be(expected);
+    }
+
+    [Fact]
+    public async Task graph_transport_error_without_status_remains_temporarily_unavailable()
+    {
+        var graphError = GraphErrorMapper.FromException(new HttpRequestException());
+        var reader = new RecordingReader
+        {
+            DetectedAppsResult = new Device360GraphResult<IReadOnlyList<DeviceDetectedApp>>(null, graphError)
+        };
+        var service = CreateService(reader, Snapshot());
+
+        var response = await service.GetDetectedAppsAsync(Context(), ManagedDeviceId, CancellationToken.None);
+
+        graphError.StatusCode.Should().BeNull();
+        response.Status.Should().Be(Device360Status.TemporarilyUnavailable);
     }
 
     [Fact]

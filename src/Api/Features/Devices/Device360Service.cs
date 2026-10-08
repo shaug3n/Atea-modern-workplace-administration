@@ -252,7 +252,8 @@ public sealed class Device360Service(
         if (IsNotFound(error))
             return Device360Status.Unsupported;
         if (error.StatusCode is >= 500 or 408
-            || error.Category is "temporarily_unavailable" or "timeout" or "service_unavailable")
+            || error.Category is "timeout" or "service_unavailable"
+            || error.Category == "temporarily_unavailable" && error.StatusCode is null)
             return Device360Status.TemporarilyUnavailable;
         return Device360Status.Failed;
     }
