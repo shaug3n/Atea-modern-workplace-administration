@@ -8,7 +8,7 @@ namespace Atea.UnifiedWorkplace.Api.UnitTests.Overview;
 public sealed class OverviewFeatureRegistrationTests
 {
     [Fact]
-    public void AddOverviewFeature_preserves_existing_service_lifetimes()
+    public void AddOverviewFeature_registers_source_readers_and_service_with_expected_lifetimes()
     {
         var services = new ServiceCollection();
 
@@ -18,10 +18,8 @@ public sealed class OverviewFeatureRegistrationTests
             descriptor.ServiceType == typeof(OverviewDataCache)
             && descriptor.ImplementationType == typeof(OverviewDataCache)
             && descriptor.Lifetime == ServiceLifetime.Singleton);
-        services.Should().ContainSingle(descriptor =>
-            descriptor.ServiceType == typeof(IOverviewDataReader)
-            && descriptor.ImplementationType == typeof(GraphOverviewDataReader)
-            && descriptor.Lifetime == ServiceLifetime.Scoped);
+        services.Should().NotContain(descriptor => descriptor.ServiceType == typeof(IOverviewDataReader));
+        services.Should().NotContain(descriptor => descriptor.ImplementationType == typeof(GraphOverviewDataReader));
         services.Should().ContainSingle(descriptor =>
             descriptor.ServiceType == typeof(IOverviewGraphReader)
             && descriptor.ImplementationType == typeof(OverviewGraphReader)
