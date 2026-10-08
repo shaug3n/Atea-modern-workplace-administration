@@ -330,6 +330,53 @@
   color: var(--uw-muted);
 }
 
+.metric-card--filter {
+  width: 100%;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.metric-card--filter[aria-pressed='true'] {
+  border-color: var(--uw-primary);
+}
+
+.metric-card--filter:focus-visible,
+.status-pill-filter__option:focus-visible {
+  outline: 2px solid var(--uw-primary);
+  outline-offset: 2px;
+}
+
+.status-pill-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--uw-gap-xs);
+}
+
+.status-pill-filter__option {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--uw-gap-xs);
+  padding: var(--uw-gap-xs) var(--uw-gap-sm);
+  border: 1px solid var(--uw-border);
+  border-radius: var(--uw-radius-sm);
+  background: var(--uw-surface);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.status-pill-filter__option[aria-pressed='true'] {
+  border-color: var(--uw-primary);
+  background: var(--uw-surface-subtle);
+}
+
+.status-pill-filter__count {
+  color: var(--uw-muted);
+  font-variant-numeric: tabular-nums;
+}
+
 /* Action groups and menus */
 .action-group {
   display: grid;
