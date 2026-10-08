@@ -43,6 +43,7 @@ export function UsersPage({ capabilities, onNavigate, loadUsers, authorizationUn
   const [exportPending, setExportPending] = useState(false);
   const [exportMessage, setExportMessage] = useState<string | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
+  const historyModeRef = useRef<'push' | 'replace'>('replace');
   const activeQueryKey = JSON.stringify([filters, continuationToken, refreshVersion]);
   const activeQueryKeyRef = useRef(activeQueryKey);
   activeQueryKeyRef.current = activeQueryKey;
@@ -56,7 +57,14 @@ export function UsersPage({ capabilities, onNavigate, loadUsers, authorizationUn
   const disableTargetName = disableTarget ? displayName(disableTarget) : '';
 
   useEffect(() => {
-    const restore = () => setFilters(filtersFromUrl());
+    const restore = () => {
+      const restored = filtersFromUrl();
+      historyModeRef.current = 'replace';
+      setFilters(restored);
+      setDebouncedFilters(restored);
+      setPreviousTokens([]);
+      setContinuationToken(null);
+    };
     window.addEventListener('popstate', restore);
     return () => window.removeEventListener('popstate', restore);
   }, []);
@@ -64,20 +72,27 @@ export function UsersPage({ capabilities, onNavigate, loadUsers, authorizationUn
   useEffect(() => {
     const url = new URL(window.location.href);
     for (const key of ['search', 'accountStatus', 'license', 'userType', 'tenantRole']) url.searchParams.delete(key);
-    for (const key of ['search', 'accountStatus', 'license', 'userType'] as const) {
+    for (const key of ['search', 'accountStatus', 'userType', 'license'] as const) {
       if (filters[key].trim()) url.searchParams.set(key, filters[key].trim());
     }
-    window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`);
+    const mode = historyModeRef.current;
+    window.history[mode === 'push' ? 'pushState' : 'replaceState'](window.history.state, '', `${url.pathname}${url.search}${url.hash}`);
+    historyModeRef.current = 'replace';
   }, [filters]);
 
   useEffect(() => {
-    const timeout = window.setTimeout(() => {
-      setPreviousTokens([]);
-      setContinuationToken(null);
-      setDebouncedFilters(filters);
-    }, 300);
+    if (JSON.stringify(filters) === JSON.stringify(debouncedFilters)) return;
+    const timeout = window.setTimeout(() => setDebouncedFilters(filters), 300);
     return () => window.clearTimeout(timeout);
-  }, [filters]);
+  }, [filters, debouncedFilters]);
+
+  const changeFilters = useCallback((next: UserFiltersState, historyMode: 'push' | 'replace') => {
+    historyModeRef.current = historyMode;
+    setPreviousTokens([]);
+    setContinuationToken(null);
+    setFilters(next);
+    if (historyMode === 'push') setDebouncedFilters(next);
+  }, []);
 
   useEffect(() => {
     if (usersView.state !== 'allowed' && usersView.state !== 'read_only') {
@@ -206,7 +221,7 @@ export function UsersPage({ capabilities, onNavigate, loadUsers, authorizationUn
       {exportMessage && <p role="status">{exportMessage}</p>}
       {exportError && <p role="alert">{exportError}</p>}
 
-      <UserFilters filters={filters} onChange={setFilters} />
+      <UserFilters filters={filters} onChange={changeFilters} />
 
       {readable && currentResult && !(currentResult.error && currentResult.items.length === 0) && (
         <DataFreshness

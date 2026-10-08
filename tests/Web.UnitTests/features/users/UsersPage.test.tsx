@@ -118,12 +118,84 @@ describe('UsersPage', () => {
   it('loads supported filters from the URL and writes edits back without unsupported role filters', async () => {
     window.history.replaceState(null, '', '/users?search=Ada&accountStatus=enabled&userType=Member&license=E3&tenantRole=Global');
     const loadUsers = vi.fn(async () => usersResponse);
+    const pushState = vi.spyOn(window.history, 'pushState');
+    const replaceState = vi.spyOn(window.history, 'replaceState');
     render(<UsersPage capabilities={allowedCapabilities} loadUsers={loadUsers} />);
 
     await waitFor(() => expect(loadUsers).toHaveBeenCalledWith(expect.objectContaining({ search: 'Ada', accountStatus: 'enabled', userType: 'Member', license: 'E3', tenantRole: '' }), null));
     expect(window.location.search).not.toContain('tenantRole');
+    pushState.mockClear();
+    replaceState.mockClear();
     fireEvent.change(screen.getByRole('searchbox', { name: 'Search users' }), { target: { value: 'Grace' } });
     await waitFor(() => expect(new URLSearchParams(window.location.search).get('search')).toBe('Grace'));
+    expect(replaceState).toHaveBeenCalled();
+    expect(pushState).not.toHaveBeenCalled();
+  });
+
+  it('pushes a shortcut view, preserves compatible filters, and resets paging immediately', async () => {
+    window.history.replaceState(null, '', '/users?search=Ada&license=E3');
+    const loadUsers = vi.fn()
+      .mockResolvedValueOnce({ ...usersResponse, continuationToken: 'next-token' })
+      .mockResolvedValue(usersResponse);
+    const pushState = vi.spyOn(window.history, 'pushState');
+    render(<UsersPage capabilities={allowedCapabilities} loadUsers={loadUsers} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Next page' }));
+    await waitFor(() => expect(loadUsers).toHaveBeenCalledTimes(2));
+    expect(screen.getByText('Page 2')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: /Enabled/ }));
+
+    await waitFor(() => expect(loadUsers).toHaveBeenCalledTimes(3));
+    expect(loadUsers).toHaveBeenLastCalledWith({
+      search: 'Ada',
+      accountStatus: 'enabled',
+      tenantRole: '',
+      license: 'E3',
+      userType: '',
+    }, null);
+    expect(screen.getByText('Page 1')).toBeTruthy();
+    expect(new URLSearchParams(window.location.search).get('search')).toBe('Ada');
+    expect(new URLSearchParams(window.location.search).get('license')).toBe('E3');
+    expect(new URLSearchParams(window.location.search).get('accountStatus')).toBe('enabled');
+    expect(pushState).toHaveBeenCalled();
+    expect(screen.queryByText(/total users/i)).toBeNull();
+  });
+
+  it('restores a prior shortcut from popstate and loads its filters from page one', async () => {
+    window.history.replaceState(null, '', '/users?search=Ada&license=E3&accountStatus=disabled');
+    const loadUsers = vi.fn(async () => usersResponse);
+    render(<UsersPage capabilities={allowedCapabilities} loadUsers={loadUsers} />);
+    fireEvent.click(await screen.findByRole('button', { name: /Guests/ }));
+    await waitFor(() => expect(loadUsers).toHaveBeenCalledTimes(2));
+    expect(screen.getByRole('button', { name: /Guests/ }).getAttribute('aria-pressed')).toBe('true');
+
+    window.history.replaceState(null, '', '/users?search=Ada&license=E3&accountStatus=disabled&tenantRole=Global');
+    window.dispatchEvent(new PopStateEvent('popstate'));
+
+    await waitFor(() => expect(loadUsers).toHaveBeenCalledTimes(3));
+    expect(loadUsers).toHaveBeenLastCalledWith({
+      search: 'Ada',
+      accountStatus: 'disabled',
+      tenantRole: '',
+      license: 'E3',
+      userType: '',
+    }, null);
+    expect(screen.getByRole('button', { name: /Guests/ }).getAttribute('aria-pressed')).toBe('false');
+    expect(screen.getByRole('button', { name: /Disabled/ }).getAttribute('aria-pressed')).toBe('true');
+    expect(window.location.search).not.toContain('tenantRole');
+
+    window.history.replaceState(null, '', '/users?search=Ada&license=E3&userType=Guest');
+    window.dispatchEvent(new PopStateEvent('popstate'));
+    await waitFor(() => expect(loadUsers).toHaveBeenCalledTimes(4));
+    expect(loadUsers).toHaveBeenLastCalledWith({
+      search: 'Ada',
+      accountStatus: '',
+      tenantRole: '',
+      license: 'E3',
+      userType: 'Guest',
+    }, null);
+    expect(screen.getByRole('button', { name: /Guests/ }).getAttribute('aria-pressed')).toBe('true');
   });
 
   it('keeps optional filters open and focused when the last license character is cleared', async () => {
