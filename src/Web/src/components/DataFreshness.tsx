@@ -55,7 +55,7 @@ export function DataFreshness({ fetchedAt, freshness, partialData, message, labe
           <span>{copy.fetched} <DateTime value={fetchedAt} relative /></span>
           {source && <span>{source}</span>}
           {message && <span className="data-freshness__message">{message}</span>}
-          {onRefresh && <button type="button" className="button button--tertiary button--sm" onClick={onRefresh} disabled={refreshing}>{refreshing ? 'Refreshing…' : 'Refresh'}</button>}
+          {onRefresh && <button type="button" className="button button--tertiary button--sm" onClick={onRefresh} disabled={refreshing}>{refreshing ? messages.statusRefreshing : messages.statusRefreshAction}</button>}
         </div>
       </div>
     );
@@ -70,7 +70,7 @@ export function DataFreshness({ fetchedAt, freshness, partialData, message, labe
       {source && <><span className="data-freshness__sep" aria-hidden="true">·</span><span>{source}</span></>}
       {message && !ok && <span className="data-freshness__message">{message}</span>}
       {throttled && <StatusBadge tone="warning" label={copy.throttled} density="compact" />}
-      {onRefresh && <button type="button" className="button button--tertiary button--sm" onClick={onRefresh} disabled={refreshing}>{refreshing ? 'Refreshing…' : 'Refresh'}</button>}
+      {onRefresh && <button type="button" className="button button--tertiary button--sm" onClick={onRefresh} disabled={refreshing}>{refreshing ? messages.statusRefreshing : messages.statusRefreshAction}</button>}
     </div>
   );
 }
