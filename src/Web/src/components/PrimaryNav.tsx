@@ -16,13 +16,13 @@ export function PrimaryNav({ capabilities, session = { user: {}, workspace: { id
   const enabled = (key: string) => enabledModules.includes(key);
   const settings = session.workspaceAccess?.canManageSettings === true || session.workspaceAccess?.canManageMembers === true || session.workspaceAccess?.canManageModules === true;
   const groupDefinitions: NavGroup[] = [
-    { key: 'overview', label: 'Overview' },
-    { key: 'identity-access', label: 'Identity & Access', disclosure: true },
-    { key: 'devices', label: 'Devices' },
-    { key: 'licenses', label: 'Licenses' },
-    { key: 'services', label: 'Services', disclosure: true },
-    { key: 'operations', label: 'Operations' },
-    { key: 'platform', label: 'Platform' },
+    { key: 'overview', label: messages.navGroupOverview },
+    { key: 'identity-access', label: messages.navGroupIdentityAccess, disclosure: true },
+    { key: 'devices', label: messages.navGroupDevices },
+    { key: 'licenses', label: messages.navGroupLicenses },
+    { key: 'services', label: messages.navGroupServices, disclosure: true },
+    { key: 'operations', label: messages.navGroupOperations },
+    { key: 'platform', label: messages.navGroupPlatform },
   ];
   const items = appRoutes
     .filter(route => route.navigation)

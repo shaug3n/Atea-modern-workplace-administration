@@ -1,9 +1,7 @@
-import { reservedCapabilities, type Capability } from '../capabilities/capabilityTypes';
+import type { Capability } from '../capabilities/capabilityTypes';
 import type { StatusTone } from '../components/StatusBadge';
 
-type ActiveCapability = Exclude<Capability, (typeof reservedCapabilities)[number]>;
-
-export const CAPABILITY_LABELS: Record<ActiveCapability, string> = {
+export const CAPABILITY_LABELS: Record<Capability, string> = {
   'users.view': 'View users',
   'users.create': 'Create users',
   'users.update': 'Edit users',
@@ -25,12 +23,17 @@ export const CAPABILITY_LABELS: Record<ActiveCapability, string> = {
   'devices.laps.reveal': 'Reveal local admin passwords',
   'authentication.methods.view': 'View sign-in methods',
   'authentication.methods.manage': 'Manage sign-in methods',
+  'authentication.campaigns.view': 'View authentication campaigns',
+  'authentication.campaigns.manage': 'Manage authentication campaigns',
+  'licenses.hygiene.view': 'View license hygiene',
+  'platform.about.view': 'View system information',
+  'feedback.submit': 'Submit feedback',
   'audit.view': 'View activity',
   'workspace.settings.manage': 'Manage workspace settings'
 };
 
 export function humanizeCapability(key: string): string {
-  return Object.prototype.hasOwnProperty.call(CAPABILITY_LABELS, key) ? CAPABILITY_LABELS[key as ActiveCapability] : 'Additional permission';
+  return Object.prototype.hasOwnProperty.call(CAPABILITY_LABELS, key) ? CAPABILITY_LABELS[key as Capability] : 'Additional permission';
 }
 
 const AUTH_METHOD_LABELS: Record<string, string> = {

@@ -7,6 +7,11 @@ describe('humanize helpers', () => {
     expect(humanizeCapability('users.update')).toBe('Edit users');
     expect(humanizeCapability('users.reset_password')).toBe('Reset passwords');
     expect(humanizeCapability('devices.privileged.manage')).toBe('Manage devices (remote actions)');
+    expect(humanizeCapability('authentication.campaigns.view')).toBe('View authentication campaigns');
+    expect(humanizeCapability('authentication.campaigns.manage')).toBe('Manage authentication campaigns');
+    expect(humanizeCapability('licenses.hygiene.view')).toBe('View license hygiene');
+    expect(humanizeCapability('platform.about.view')).toBe('View system information');
+    expect(humanizeCapability('feedback.submit')).toBe('Submit feedback');
     expect(humanizeCapability('totally.unknown')).toBe('Additional permission');
   });
 
