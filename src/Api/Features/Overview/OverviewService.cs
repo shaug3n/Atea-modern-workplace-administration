@@ -73,7 +73,7 @@ public sealed class OverviewService(
         var scope = SelectUserReadScope(snapshot);
         if (scope is null)
         {
-            return Unavailable<OverviewUserMetrics>("tenant_wide", "required_scope_unavailable");
+            return Unavailable<OverviewUserMetrics>("tenant_wide_verified", "required_scope_unavailable");
         }
 
         var fingerprint = Fingerprint(decision, snapshot.UserObjectId, scope, "module:users");
@@ -81,7 +81,7 @@ public sealed class OverviewService(
         var now = utcNow();
         if (cache.TryGet(key, now, cacheLifetime, out var cached))
         {
-            return Source("fresh", cached.FetchedAt, false, (OverviewUserMetrics)cached.Data, "tenant_wide");
+            return Source("fresh", cached.FetchedAt, false, (OverviewUserMetrics)cached.Data, "tenant_wide_verified");
         }
 
         try
@@ -92,7 +92,7 @@ public sealed class OverviewService(
                 var fetchedAt = utcNow();
                 var data = new OverviewUserMetrics(result.Value);
                 cache.Set(key, new OverviewCacheEntry(data, fetchedAt));
-                return Source("fresh", fetchedAt, false, data, "tenant_wide");
+                return Source("fresh", fetchedAt, false, data, "tenant_wide_verified");
             }
 
             var category = result.Error?.Category ?? "invalid_response";
@@ -121,7 +121,7 @@ public sealed class OverviewService(
     {
         if (!HasScope(snapshot, "Directory.Read.All"))
         {
-            return Unavailable<OverviewLicenseCoverage>("tenant_wide", "required_scope_unavailable");
+            return Unavailable<OverviewLicenseCoverage>("tenant_wide_verified", "required_scope_unavailable");
         }
 
         var fingerprint = Fingerprint(decision, snapshot.UserObjectId, "Directory.Read.All", "module:licenses");
@@ -129,7 +129,7 @@ public sealed class OverviewService(
         var now = utcNow();
         if (cache.TryGet(key, now, cacheLifetime, out var cached))
         {
-            return Source("fresh", cached.FetchedAt, false, (OverviewLicenseCoverage)cached.Data, "tenant_wide");
+            return Source("fresh", cached.FetchedAt, false, (OverviewLicenseCoverage)cached.Data, "tenant_wide_verified");
         }
 
         try
@@ -159,7 +159,7 @@ public sealed class OverviewService(
             var data = new OverviewLicenseCoverage(counts.AssignedUsers, counts.TotalUsers, percentage);
             var fetchedAt = utcNow();
             cache.Set(key, new OverviewCacheEntry(data, fetchedAt));
-            return Source("fresh", fetchedAt, false, data, "tenant_wide");
+            return Source("fresh", fetchedAt, false, data, "tenant_wide_verified");
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -214,20 +214,20 @@ public sealed class OverviewService(
     {
         if (cache.TryGetAny(key, out var stale))
         {
-            return Source("stale", stale.FetchedAt, true, (OverviewUserMetrics)stale.Data, "tenant_wide", category);
+            return Source("stale", stale.FetchedAt, true, (OverviewUserMetrics)stale.Data, "tenant_wide_verified", category);
         }
 
-        return Unavailable<OverviewUserMetrics>("tenant_wide", category);
+        return Unavailable<OverviewUserMetrics>("tenant_wide_verified", category);
     }
 
     private OverviewSource<OverviewLicenseCoverage> LicenseFailure(CacheKey key, string category)
     {
         if (cache.TryGetAny(key, out var stale))
         {
-            return Source("stale", stale.FetchedAt, true, (OverviewLicenseCoverage)stale.Data, "tenant_wide", category);
+            return Source("stale", stale.FetchedAt, true, (OverviewLicenseCoverage)stale.Data, "tenant_wide_verified", category);
         }
 
-        return Unavailable<OverviewLicenseCoverage>("tenant_wide", category);
+        return Unavailable<OverviewLicenseCoverage>("tenant_wide_verified", category);
     }
 
     private static OverviewSource<T> Restricted<T>(CapabilityDecision decision, string scope, string? reason = null)

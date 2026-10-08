@@ -23,6 +23,7 @@ public sealed class OverviewServiceTests
 
         userOnly.Users.State.Should().Be("fresh");
         userOnly.Users.Data!.TotalUsers.Should().Be(120);
+        userOnly.Users.Scope.Should().Be("tenant_wide_verified");
         userOnly.LicenseCoverage.State.Should().Be("restricted");
         graph.UserScopes.Should().Equal("User.Read.All");
         graph.LicenseCalls.Should().Be(0);
@@ -33,6 +34,7 @@ public sealed class OverviewServiceTests
         licenseOnly.Users.State.Should().Be("restricted");
         licenseOnly.Users.Data.Should().BeNull();
         licenseOnly.LicenseCoverage.State.Should().Be("fresh");
+        licenseOnly.LicenseCoverage.Scope.Should().Be("tenant_wide_verified");
         licenseOnly.LicenseCoverage.Data!.Percentage.Should().Be(75);
         graph.UserCalls.Should().Be(1);
         graph.LicenseCalls.Should().Be(1);
@@ -90,9 +92,18 @@ public sealed class OverviewServiceTests
         var activity = new RecordingActivityReader();
         var service = CreateService(new RecordingOverviewGraphReader(), activity,
             new StaticAuthorizationReader(AllowedSnapshot()));
+
+        var empty = await service.GetAsync(Context(), AllModules, CancellationToken.None);
+        empty.Activity.State.Should().Be("empty");
+        empty.Activity.Data!.Items.Should().BeEmpty();
+        activity.Calls.Should().Be(1);
+
+        service = CreateService(new RecordingOverviewGraphReader(), activity,
+            new StaticAuthorizationReader(AllowedSnapshot()));
         var restricted = await service.GetAsync(Context("member"), AllModules, CancellationToken.None);
         restricted.Activity.State.Should().Be("restricted");
-        activity.Calls.Should().Be(0);
+        restricted.Activity.Data.Should().BeNull();
+        activity.Calls.Should().Be(1);
 
         service = CreateService(new RecordingOverviewGraphReader(), activity,
             new StaticAuthorizationReader(AllowedSnapshot()));
@@ -274,6 +285,39 @@ public sealed class OverviewServiceTests
         result.Users.Data.Should().BeNull();
         result.Users.ErrorCategory.Should().Be("required_scope_unavailable");
         graph.UserCalls.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Missing_actual_query_scopes_skip_graph_source_and_cached_reads()
+    {
+        var graph = new RecordingOverviewGraphReader();
+        var authorization = new StaticAuthorizationReader(AllowedSnapshot());
+        var cache = new OverviewDataCache();
+        var service = CreateService(graph, new RecordingActivityReader(), authorization, cache: cache);
+        var context = Context();
+
+        var initiallyAuthorized = await service.GetAsync(context, AllModules, CancellationToken.None);
+        initiallyAuthorized.Users.Data.Should().NotBeNull();
+        initiallyAuthorized.LicenseCoverage.Data.Should().NotBeNull();
+
+        authorization.Snapshot = GraphAuthorizationSnapshot.Available(
+            "user-1",
+            ["Directory.Read.All", "User.Read.All"],
+            [new DirectoryRoleSnapshot(EntraRoleCatalog.GlobalReaderTemplateId, "Global Reader", DirectoryRoleAssignmentState.Active, "/")],
+            scopeAvailability: new Dictionary<string, bool>
+            {
+                ["Directory.Read.All"] = false,
+                ["User.Read.All"] = false
+            });
+
+        var missingScopes = await service.GetAsync(context, AllModules, CancellationToken.None);
+
+        missingScopes.Users.State.Should().Be("restricted");
+        missingScopes.Users.Data.Should().BeNull();
+        missingScopes.LicenseCoverage.State.Should().Be("restricted");
+        missingScopes.LicenseCoverage.Data.Should().BeNull();
+        graph.UserCalls.Should().Be(1);
+        graph.LicenseCalls.Should().Be(1);
     }
 
     [Fact]
