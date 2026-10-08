@@ -133,11 +133,12 @@ describe('AppShell', () => {
     window.history.pushState(null, '', '/devices');
     const snapshot: CapabilitySnapshot = { ...allowedCapabilities, capabilities: [{ capability: 'devices.view', state: 'hidden', reasonCode: 'role_required' }] };
     render(<App loadCapabilities={async () => snapshot} loadSession={async () => session} />);
-    await screen.findByRole('heading', { name: 'Devices' });
+    const main = await screen.findByRole('main');
+    await within(main).findByRole('heading', { name: 'Devices' });
     expect(screen.getByLabelText('Device filters')).toBeTruthy();
     const warning = await screen.findByRole('button', { name: 'Notifications, 1 need attention' });
     fireEvent.click(screen.getByRole('link', { name: 'Overview' }));
-    await screen.findByRole('heading', { name: 'Overview' });
+    await within(main).findByRole('heading', { name: 'Overview' });
     fireEvent.click(screen.getByRole('button', { name: /Notifications, \d+ need attention/i }));
     expect(screen.getByText('Access needs attention')).toBeTruthy();
     expect(apiMock).not.toHaveBeenCalledWith('/api/devices');
