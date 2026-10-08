@@ -13,6 +13,7 @@ public static class GraphScopeCatalog
     public static readonly IReadOnlyList<string> LicenseWriteScopes = ["LicenseAssignment.ReadWrite.All"];
     public static readonly IReadOnlyList<string> RoleAndPimScopes = ["RoleManagement.ReadWrite.Directory"];
     public static readonly IReadOnlyList<string> DeviceReadScopes = ["DeviceManagementManagedDevices.Read.All"];
+    public static readonly IReadOnlyList<string> DeviceConfigurationReadScopes = ["DeviceManagementConfiguration.Read.All"];
     public static readonly IReadOnlyList<string> DeviceWriteScopes = ["DeviceManagementManagedDevices.ReadWrite.All"];
     public static readonly IReadOnlyList<string> DevicePrivilegedOperationScopes = ["DeviceManagementManagedDevices.PrivilegedOperations.All"];
     public static readonly IReadOnlyList<string> BitlockerMetadataScopes = ["BitlockerKey.ReadBasic.All"];
@@ -45,6 +46,7 @@ public static class GraphScopeCatalog
         "RoleManagement.Read.Directory",
         "RoleManagement.ReadWrite.Directory",
         "DeviceManagementManagedDevices.Read.All",
+        "DeviceManagementConfiguration.Read.All",
         "DeviceManagementManagedDevices.ReadWrite.All",
         "DeviceManagementManagedDevices.PrivilegedOperations.All",
         "BitlockerKey.ReadBasic.All",
