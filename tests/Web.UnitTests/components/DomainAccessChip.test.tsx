@@ -58,4 +58,70 @@ describe('DomainAccessChip', () => {
     expect(screen.getByText('Read-only')).toBeTruthy();
     expect(screen.queryByText('Read / write')).toBeNull();
   });
+
+  it.each(['consent_required', 'temporarily_unavailable', 'read_only'] as const)(
+    'does not claim read/write when view access is %s, even if manage is allowed',
+    (state) => {
+      render(
+        <DomainAccessChip
+          label="Devices"
+          viewDecision={{
+            capability: 'devices.view',
+            state,
+            reasonCode: 'view_not_allowed',
+          }}
+          viewReason="Device viewing is unavailable."
+          writeDecision={{
+            capability: 'devices.manage',
+            state: 'allowed',
+            reasonCode: 'active_role',
+          }}
+        />,
+      );
+
+      expect(screen.getByText('Devices')).toBeTruthy();
+      expect(screen.getByText('Unavailable')).toBeTruthy();
+      expect(screen.queryByText('Read / write')).toBeNull();
+      expect(document.querySelector('.status-badge')?.getAttribute('data-tone')).toBe('neutral');
+    },
+  );
+
+  it('shows read/write with success tone when both view and manage are allowed', () => {
+    render(
+      <DomainAccessChip
+        label="Devices"
+        viewDecision={{
+          capability: 'devices.view',
+          state: 'allowed',
+          reasonCode: 'active_role',
+        }}
+        viewReason="Device viewing is available."
+        writeDecision={{
+          capability: 'devices.manage',
+          state: 'allowed',
+          reasonCode: 'active_role',
+        }}
+      />,
+    );
+
+    expect(screen.getByText('Read / write')).toBeTruthy();
+    expect(document.querySelector('.status-badge')?.getAttribute('data-tone')).toBe('success');
+  });
+
+  it('shows read-only when no manage decision is supplied', () => {
+    render(
+      <DomainAccessChip
+        label="Devices"
+        viewDecision={{
+          capability: 'devices.view',
+          state: 'allowed',
+          reasonCode: 'active_role',
+        }}
+        viewReason="Device viewing is available."
+      />,
+    );
+
+    expect(screen.getByText('Read-only')).toBeTruthy();
+    expect(screen.queryByText('Read / write')).toBeNull();
+  });
 });

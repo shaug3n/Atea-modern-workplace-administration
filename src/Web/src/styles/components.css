@@ -206,6 +206,11 @@
   opacity: 1;
 }
 
+.disabled-reason--tooltip-dismissed .disabled-reason__tooltip {
+  visibility: hidden;
+  opacity: 0;
+}
+
 /* Technical details and copy */
 .technical-details {
   margin-top: var(--uw-gap-sm);

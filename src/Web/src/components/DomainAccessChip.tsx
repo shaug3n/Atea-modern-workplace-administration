@@ -23,7 +23,8 @@ export function DomainAccessChip({
 
   const writeAllowed = writeDecision?.state === 'allowed';
   const viewAllowed = viewDecision.state === 'allowed';
-  const accessLabel = writeAllowed
+  const readWriteAllowed = viewAllowed && writeAllowed;
+  const accessLabel = readWriteAllowed
     ? messages.domainAccessReadWrite
     : viewAllowed
       ? messages.domainAccessReadOnly
@@ -34,7 +35,7 @@ export function DomainAccessChip({
       <span className="domain-access-chip">
         <span className="domain-access-chip__label">{label}</span>
         <StatusBadge
-          tone={writeAllowed ? 'success' : viewAllowed ? 'info' : 'neutral'}
+          tone={readWriteAllowed ? 'success' : viewAllowed ? 'info' : 'neutral'}
           label={accessLabel}
           density="compact"
         />
