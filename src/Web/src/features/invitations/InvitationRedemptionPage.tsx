@@ -29,7 +29,10 @@ export function InvitationRedemptionPage({
   tenantId?: string;
 }) {
   const { account, getApiToken, signInForTenant } = useAuth();
-  const redeemAction = redeem ?? ((value: string) => defaultRedeem(value, getApiToken, challenge, tenantId));
+  const redeemAction = useCallback(
+    (value: string) => redeem ? redeem(value) : defaultRedeem(value, getApiToken, challenge, tenantId),
+    [challenge, getApiToken, redeem, tenantId],
+  );
   const [result, setResult] = useState<InvitationRedemption | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(Boolean(challenge));
@@ -114,11 +117,11 @@ export function InvitationRedemptionPage({
       setError(null);
       setAutoFailed(false);
     } catch {
+      onboardingRuns.delete(key);
       const latest = readPendingFlow();
       if (latest?.step === 'completion_submitted') {
         setAutoResult({ status: 'temporarily_unavailable' });
       } else {
-        onboardingRuns.delete(key);
         setAutoFailed(true);
       }
     } finally {

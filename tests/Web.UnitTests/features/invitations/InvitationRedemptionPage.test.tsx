@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import React, { StrictMode } from 'react';
+import React, { Profiler, StrictMode } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { readPendingFlow, writePendingFlow } from '../../../../src/Web/src/features/invitations/pendingFlow';
 import { InvitationRedemptionPage } from '../../../../src/Web/src/features/invitations/InvitationRedemptionPage';
@@ -85,10 +85,19 @@ describe('InvitationRedemptionPage', () => {
         permissionCoverage: { availableScopes: [], missingScopes: [], unknownScopes: ['User.Read.All'] },
       }), { status: 200 }));
     vi.stubGlobal('fetch', fetchMock);
+    let commits = 0;
 
-    render(<InvitationRedemptionPage nonce={nonce} challenge={challenge} tenantId={tenantId} />);
+    render(
+      <StrictMode>
+        <Profiler id="invitation-redemption" onRender={() => { commits += 1; }}>
+          <InvitationRedemptionPage nonce={nonce} challenge={challenge} tenantId={tenantId} />
+        </Profiler>
+      </StrictMode>,
+    );
 
     expect(await screen.findByText(/Connection coverage could not be verified/)).toBeTruthy();
+    await new Promise(resolve => setTimeout(resolve, 250));
+    expect(commits).toBeLessThan(12);
     expect(readPendingFlow()?.step).toBe('completion_submitted');
     fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
 
