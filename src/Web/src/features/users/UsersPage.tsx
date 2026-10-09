@@ -14,6 +14,7 @@ import { UsersTable } from './UsersTable';
 import { mutateUser, type UserCommandResponse } from './userMutationApi';
 import { fetchUsers, type ApiFetch, type UserFiltersState, type UsersDirectoryResponse, type UserSummary } from './usersApi';
 import { downloadCsv, exportStatus } from '../exports/csvExport';
+import { normalizeUserWriteReason, UserWriteReasonField, type UserWriteReasonError } from './UserWriteReasonField';
 
 const emptyFilters: UserFiltersState = {
   search: '',
@@ -38,11 +39,15 @@ export function UsersPage({ capabilities, onNavigate, loadUsers, authorizationUn
   const [disableTarget, setDisableTarget] = useState<UserSummary | null>(null);
   const [disablePending, setDisablePending] = useState(false);
   const [disableError, setDisableError] = useState<string | null>(null);
+  const [disableReasonError, setDisableReasonError] = useState<UserWriteReasonError>(null);
+  const [disableReason, setDisableReason] = useState('');
   const [disableStatus, setDisableStatus] = useState<string | null>(null);
+  const [auditWarning, setAuditWarning] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [exportPending, setExportPending] = useState(false);
   const [exportMessage, setExportMessage] = useState<string | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
+  const historyModeRef = useRef<'push' | 'replace'>('replace');
   const activeQueryKey = JSON.stringify([filters, continuationToken, refreshVersion]);
   const activeQueryKeyRef = useRef(activeQueryKey);
   activeQueryKeyRef.current = activeQueryKey;
@@ -56,7 +61,14 @@ export function UsersPage({ capabilities, onNavigate, loadUsers, authorizationUn
   const disableTargetName = disableTarget ? displayName(disableTarget) : '';
 
   useEffect(() => {
-    const restore = () => setFilters(filtersFromUrl());
+    const restore = () => {
+      const restored = filtersFromUrl();
+      historyModeRef.current = 'replace';
+      setFilters(restored);
+      setDebouncedFilters(restored);
+      setPreviousTokens([]);
+      setContinuationToken(null);
+    };
     window.addEventListener('popstate', restore);
     return () => window.removeEventListener('popstate', restore);
   }, []);
@@ -64,20 +76,27 @@ export function UsersPage({ capabilities, onNavigate, loadUsers, authorizationUn
   useEffect(() => {
     const url = new URL(window.location.href);
     for (const key of ['search', 'accountStatus', 'license', 'userType', 'tenantRole']) url.searchParams.delete(key);
-    for (const key of ['search', 'accountStatus', 'license', 'userType'] as const) {
+    for (const key of ['search', 'accountStatus', 'userType', 'license'] as const) {
       if (filters[key].trim()) url.searchParams.set(key, filters[key].trim());
     }
-    window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`);
+    const mode = historyModeRef.current;
+    window.history[mode === 'push' ? 'pushState' : 'replaceState'](window.history.state, '', `${url.pathname}${url.search}${url.hash}`);
+    historyModeRef.current = 'replace';
   }, [filters]);
 
   useEffect(() => {
-    const timeout = window.setTimeout(() => {
-      setPreviousTokens([]);
-      setContinuationToken(null);
-      setDebouncedFilters(filters);
-    }, 300);
+    if (JSON.stringify(filters) === JSON.stringify(debouncedFilters)) return;
+    const timeout = window.setTimeout(() => setDebouncedFilters(filters), 300);
     return () => window.clearTimeout(timeout);
-  }, [filters]);
+  }, [filters, debouncedFilters]);
+
+  const changeFilters = useCallback((next: UserFiltersState, historyMode: 'push' | 'replace') => {
+    historyModeRef.current = historyMode;
+    setPreviousTokens([]);
+    setContinuationToken(null);
+    setFilters(next);
+    if (historyMode === 'push') setDebouncedFilters(next);
+  }, []);
 
   useEffect(() => {
     if (usersView.state !== 'allowed' && usersView.state !== 'read_only') {
@@ -126,18 +145,29 @@ export function UsersPage({ capabilities, onNavigate, loadUsers, authorizationUn
 
   const startDisable = useCallback((user: UserSummary) => {
     setDisableTarget(user);
+    setDisableReason('');
     setDisableError(null);
+    setDisableReasonError(null);
     setDisableStatus(null);
+    setAuditWarning(null);
   }, []);
 
   const cancelDisable = useCallback(() => {
     if (disablePending) return;
     setDisableTarget(null);
+    setDisableReason('');
     setDisableError(null);
+    setDisableReasonError(null);
   }, [disablePending]);
 
-  const submitDisable = useCallback(async () => {
+  const submitDisable = useCallback(async (value: string) => {
     if (!disableTarget) return;
+    const normalizedReason = normalizeUserWriteReason(value);
+    if (normalizedReason.error) {
+      setDisableReasonError(normalizedReason.error);
+      return;
+    }
+    setDisableReasonError(null);
     if (resultKey !== activeQueryKey || loading || loadFailed) { setDisableTarget(null); return; }
     if (usersDisable.state !== 'allowed') {
       setDisableTarget(null);
@@ -152,7 +182,7 @@ export function UsersPage({ capabilities, onNavigate, loadUsers, authorizationUn
         api as ApiFetch,
         `/api/users/${encodeURIComponent(disableTarget.id)}/disable`,
         'POST',
-        {},
+        { reason: normalizedReason.reason },
       );
       if (response.status !== 'succeeded') {
         setDisableError(formatMutationError(response));
@@ -160,6 +190,7 @@ export function UsersPage({ capabilities, onNavigate, loadUsers, authorizationUn
       }
 
       setDisableStatus(`${displayName(disableTarget)} ${messages.userDisableSucceeded}`);
+      setAuditWarning(typeof response.auditWarning === 'string' && response.auditWarning.trim() ? response.auditWarning : null);
       setDisableTarget(null);
       setRefreshVersion((version) => version + 1);
     } catch {
@@ -206,7 +237,7 @@ export function UsersPage({ capabilities, onNavigate, loadUsers, authorizationUn
       {exportMessage && <p role="status">{exportMessage}</p>}
       {exportError && <p role="alert">{exportError}</p>}
 
-      <UserFilters filters={filters} onChange={setFilters} />
+      <UserFilters filters={filters} onChange={changeFilters} />
 
       {readable && currentResult && !(currentResult.error && currentResult.items.length === 0) && (
         <DataFreshness
@@ -237,6 +268,7 @@ export function UsersPage({ capabilities, onNavigate, loadUsers, authorizationUn
       )}
 
       {disableStatus && <p role="status">{disableStatus}</p>}
+      {auditWarning && <p role="alert" className="audit-warning">{auditWarning}</p>}
       {disableTarget && (
         <ConfirmationDialog
           title={messages.userDisableDialogTitle}
@@ -248,12 +280,17 @@ export function UsersPage({ capabilities, onNavigate, loadUsers, authorizationUn
           consequence={messages.confirmDisableUserConsequence(disableTargetName)}
           tone="danger"
           busy={disablePending}
-          onConfirm={submitDisable}
+          confirmBlocked={Boolean(disableReasonError) || !disableReason.trim()}
+          onConfirm={() => void submitDisable(disableReason)}
           onCancel={cancelDisable}
-        />
+        >
+          <UserWriteReasonField value={disableReason} onChange={(value) => { setDisableReason(value); setDisableReasonError(null); }} error={disableReasonError} />
+          {disableError && <p role="alert">{disableError}</p>}
+        </ConfirmationDialog>
       )}
-      {disableError && <p role="alert">{disableError}</p>}
-      {createOpen && <UserCreateDialog onCompleted={(response) => {
+      {disableError && !disableTarget && <p role="alert">{disableError}</p>}
+      {createOpen && <UserCreateDialog onCancel={() => setCreateOpen(false)} onCompleted={(response) => {
+        setAuditWarning(typeof response.auditWarning === 'string' && response.auditWarning.trim() ? response.auditWarning : null);
         if (response.status === 'succeeded') {
           setCreateOpen(false);
           setRefreshVersion((version) => version + 1);

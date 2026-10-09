@@ -6,10 +6,12 @@ import { NotFoundPage } from '../components/NotFoundPage';
 import { OverviewPage, type ConnectionHealthLoader, type OverviewLoader } from '../features/overview/OverviewPage';
 import { AuditActivityPage } from '../features/audit/AuditActivityPage';
 import { LicensesPage } from '../features/licenses/LicensesPage';
+import { LicenseHygienePage } from '../features/licenses/hygiene/LicenseHygienePage';
 import { WorkspaceSettingsPage } from '../features/workspace-settings/WorkspaceSettingsPage';
 import { ConsentCallbackPage } from '../features/workspace-settings/ConsentCallbackPage';
 import { OnboardingPage } from '../features/workspace-settings/OnboardingPage';
 import { WorkspaceAccessPage } from '../features/workspace-access/WorkspaceAccessPage';
+import { MyAccessPage } from '../features/my-access/MyAccessPage';
 import { UserDetailPage } from '../features/users/UserDetailPage';
 import { UsersPage } from '../features/users/UsersPage';
 import { DevicesPage } from '../features/devices/DevicesPage';
@@ -17,17 +19,27 @@ import { DeviceDetailPage } from '../features/devices/DeviceDetailPage';
 import { ExchangeOverviewPage } from '../features/exchange/ExchangeOverviewPage';
 import { WorkspaceModulesPage } from '../features/workspace-settings/WorkspaceModulesPage';
 import { WorkspaceSettingsHub } from '../features/workspace-settings/WorkspaceSettingsHub';
+import { AuthenticationCampaignsPage, type AuthenticationCampaignsLoader } from '../features/authentication-campaigns/AuthenticationCampaignsPage';
 import { messages } from './messages';
 import type { AppSession } from '../components/TenantContextHeader';
+import type { IconName } from '../components/icons';
+import { AboutPage } from '../features/about/AboutPage';
+import { SystemVersionsPage } from '../features/about/SystemVersionsPage';
+import { FeedbackPage } from '../features/feedback/FeedbackPage';
+
+export type NavigationGroup = 'overview' | 'identity-access' | 'devices' | 'licenses' | 'services' | 'operations' | 'platform';
+export type NavigationVisibility = 'always' | 'module' | 'device-module-or-settings-manager' | 'audit-not-hidden' | 'workspace-manager';
 
 export type AppRoute = {
   path: string;
   label: string;
   pageTitle?: string;
   capability?: Capability;
-  module?: 'users' | 'devices' | 'licenses' | 'exchange';
+  includeInSystemInventory?: boolean;
+  module?: 'users' | 'devices' | 'licenses' | 'exchange' | 'authentication-campaigns' | 'license-hygiene' | 'about' | 'feedback';
   workspaceAccess?: 'members' | 'settings' | 'modules' | 'any';
-  render: (options?: { loadConnectionHealth?: ConnectionHealthLoader; loadOverview?: OverviewLoader; capabilities?: CapabilityDecision[]; navigate?: (path: string) => void; session?: AppSession; authorizationUnavailable?: boolean; onAuthorizationRetry?: () => Promise<void>; onRefreshAccess?: () => Promise<void> }) => ReactNode;
+  navigation?: { group: NavigationGroup; order: number; icon: IconName; visibility: NavigationVisibility };
+  render: (options?: { loadConnectionHealth?: ConnectionHealthLoader; loadOverview?: OverviewLoader; loadAuthenticationCampaigns?: AuthenticationCampaignsLoader; capabilities?: CapabilityDecision[]; navigate?: (path: string) => void; session?: AppSession; authorizationUnavailable?: boolean; onAuthorizationRetry?: () => Promise<void>; onRefreshAccess?: () => Promise<void>; authorizedRoutes?: Array<{ path: string; label: string }>; feedbackRefreshRevision?: number; onOpenFeedbackDialog?: () => void }) => ReactNode;
 };
 
 export function isInvitationPath(pathname: string) {
@@ -39,11 +51,34 @@ export function isConsentCallbackPath(pathname: string) {
 }
 
 export const appRoutes: AppRoute[] = [
-  { path: '/consent-callback', label: messages.connectionTitle, render: () => <ConsentCallbackPage /> },
-  { path: '/onboarding/consent/callback', label: messages.connectionTitle, render: () => <ConsentCallbackPage /> },
-  { path: '/onboarding', label: messages.navOnboarding, render: (options) => <OnboardingPage onNavigate={options?.navigate} /> },
+  { path: '/consent-callback', label: messages.connectionTitle, includeInSystemInventory: false, render: () => <ConsentCallbackPage /> },
+  { path: '/onboarding/consent/callback', label: messages.connectionTitle, includeInSystemInventory: false, render: () => <ConsentCallbackPage /> },
+  { path: '/onboarding', label: messages.navOnboarding, includeInSystemInventory: false, render: (options) => <OnboardingPage onNavigate={options?.navigate} /> },
   { path: '/identity', label: 'PIM guidance', render: (options) => <PimGuidancePage onRefreshAccess={options?.onRefreshAccess} /> },
-  { path: '/settings', label: 'Workspace Settings', workspaceAccess: 'any', render: (options) => options?.session ? <WorkspaceSettingsHub session={options.session} /> : null },
+  { path: '/settings', label: 'Workspace Settings', workspaceAccess: 'any', navigation: { group: 'platform', order: 0, icon: 'settings', visibility: 'workspace-manager' }, render: (options) => options?.session ? <WorkspaceSettingsHub session={options.session} /> : null },
+  {
+    path: '/about',
+    label: messages.navAbout,
+    module: 'about',
+    capability: 'platform.about.view',
+    navigation: { group: 'platform', order: 1, icon: 'overview', visibility: 'module' },
+    render: () => <AboutPage />,
+  },
+  {
+    path: '/about/system-versions',
+    label: messages.aboutSystemVersionsTitle,
+    module: 'about',
+    capability: 'platform.about.view',
+    render: (options) => <SystemVersionsPage authorizedRoutes={options?.authorizedRoutes ?? []} />,
+  },
+  {
+    path: '/feedback',
+    label: messages.navFeedback,
+    module: 'feedback',
+    capability: 'feedback.submit',
+    navigation: { group: 'platform', order: 2, icon: 'activity', visibility: 'module' },
+    render: (options) => <FeedbackPage refreshRevision={options?.feedbackRefreshRevision ?? 0} onOpenFeedbackDialog={options?.onOpenFeedbackDialog ?? (() => {})} />,
+  },
   { path: '/settings/setup', label: 'Setup', workspaceAccess: 'settings', render: (options) => <OnboardingPage onNavigate={options?.navigate} /> },
   { path: '/settings/general', label: 'General', workspaceAccess: 'settings', render: () => <WorkspaceSettingsPage /> },
   { path: '/settings/modules', label: 'Modules', workspaceAccess: 'modules', render: () => <WorkspaceModulesPage /> },
@@ -51,6 +86,7 @@ export const appRoutes: AppRoute[] = [
   {
     path: '/overview',
     label: messages.navOverview,
+    navigation: { group: 'overview', order: 0, icon: 'overview', visibility: 'always' },
     render: (options) => <OverviewPage loadOverview={options?.loadOverview} session={options?.session} onNavigate={options?.navigate} />,
   },
   {
@@ -58,7 +94,23 @@ export const appRoutes: AppRoute[] = [
     label: messages.navUsers,
     module: 'users',
     capability: 'users.view',
+    navigation: { group: 'identity-access', order: 0, icon: 'users', visibility: 'module' },
     render: (options) => <UsersPage capabilities={options?.capabilities ?? []} onNavigate={options?.navigate} authorizationUnavailable={options?.authorizationUnavailable} onAuthorizationRetry={options?.onAuthorizationRetry} />,
+  },
+  {
+    path: '/authentication-campaigns',
+    label: messages.navAuthenticationCampaigns,
+    module: 'authentication-campaigns',
+    capability: 'authentication.campaigns.view',
+    navigation: { group: 'identity-access', order: 1, icon: 'lock', visibility: 'module' },
+    render: (options) => <AuthenticationCampaignsPage
+      loadRegistrations={options?.loadAuthenticationCampaigns ?? (() => Promise.reject(new Error('authentication_campaigns_loader_unavailable')))}
+      capabilities={options?.capabilities}
+      session={options?.session}
+      onNavigate={options?.navigate}
+      authorizationUnavailable={options?.authorizationUnavailable}
+      onAuthorizationRetry={options?.onAuthorizationRetry}
+    />,
   },
   {
     path: '/users/:userId',
@@ -73,7 +125,24 @@ export const appRoutes: AppRoute[] = [
     label: messages.navLicenses,
     module: 'licenses',
     capability: 'licenses.view',
-    render: () => <LicensesPage />,
+    navigation: { group: 'licenses', order: 0, icon: 'licenses', visibility: 'module' },
+    render: (options) => <LicensesPage
+      capabilities={options?.capabilities}
+      moduleEnabled={options?.session?.workspace.enabledModules}
+      moduleAssigned={options?.session?.workspace.moduleAccess}
+    />,
+  },
+  {
+    path: '/licenses/hygiene',
+    label: messages.navLicenseHygiene,
+    module: 'license-hygiene',
+    capability: 'licenses.hygiene.view',
+    render: (options) => <LicenseHygienePage
+      workspaceId={options?.session?.workspace.id ?? ''}
+      capabilities={options?.capabilities}
+      enabledModules={options?.session?.workspace.enabledModules}
+      assignedModules={options?.session?.workspace.moduleAccess}
+    />,
   },
   {
     path: '/audit',
@@ -85,6 +154,7 @@ export const appRoutes: AppRoute[] = [
     path: '/activity',
     label: 'Activity',
     capability: 'audit.view',
+    navigation: { group: 'operations', order: 0, icon: 'activity', visibility: 'audit-not-hidden' },
     render: (options) => <AuditActivityPage authorizationUnavailable={options?.authorizationUnavailable} onAuthorizationRetry={options?.onAuthorizationRetry} />,
   },
   {
@@ -100,12 +170,14 @@ export const appRoutes: AppRoute[] = [
     label: messages.navDevices,
     module: 'devices',
     capability: 'devices.view',
+    navigation: { group: 'devices', order: 0, icon: 'devices', visibility: 'device-module-or-settings-manager' },
     render: (options) => <DevicesPage capabilities={options?.capabilities} moduleAssigned={options?.session?.workspace.moduleAccess?.includes('devices') ?? true} moduleEnabled={options?.session?.workspace.enabledModules?.includes('devices') ?? true} onNavigate={options?.navigate} authorizationUnavailable={options?.authorizationUnavailable} onAuthorizationRetry={options?.onAuthorizationRetry} />,
   },
   {
     path: '/services/exchange',
     label: 'Exchange',
     module: 'exchange',
+    navigation: { group: 'services', order: 0, icon: 'mail', visibility: 'module' },
     render: () => <ExchangeOverviewPage />,
   },
   {
@@ -113,6 +185,11 @@ export const appRoutes: AppRoute[] = [
     label: messages.navWorkspaceAccess,
     workspaceAccess: 'members',
     render: (options) => <WorkspaceAccessPage isOwner={options?.session?.workspaceAccess?.isOwner === true} canManageModules={options?.session?.workspaceAccess?.canManageMemberModules === true} availableModules={options?.session?.workspace.moduleAccess ?? []} />,
+  },
+  {
+    path: '/my-access',
+    label: 'My access',
+    render: (options) => options?.session ? <MyAccessPage session={options.session} onNavigate={options.navigate} /> : null,
   },
   {
     path: '/workspace-settings',

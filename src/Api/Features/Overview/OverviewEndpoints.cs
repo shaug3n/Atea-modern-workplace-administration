@@ -22,13 +22,9 @@ public static class OverviewEndpoints
             return Results.Json(new { error = "workspace_membership_required" }, statusCode: StatusCodes.Status403Forbidden);
         }
 
-        var response = await service.GetAsync(context, cancellationToken);
         var configuration = await settings.GetConfigurationAsync(context, cancellationToken);
         var modules = WorkspaceModuleCatalog.EffectiveModules(context.Membership.PlatformRole, configuration.EnabledModules, context.Membership.ModuleKeys);
-        if (!modules.Contains("users", StringComparer.OrdinalIgnoreCase))
-            response = response with { TotalUsers = 0, PermissionHealth = new PermissionHealthSummary("hidden", 0, 0), PimAttention = new PimAttentionSummary(false, 0) };
-        if (!modules.Contains("licenses", StringComparer.OrdinalIgnoreCase))
-            response = response with { LicenseCoverage = new LicenseCoverageSummary(0, 0, 0) };
+        var response = await service.GetAsync(context, modules, cancellationToken);
         return Results.Ok(response);
     }
 }

@@ -30,7 +30,10 @@ public sealed record ManagedDeviceSummary(
     string? AzureAdDeviceId,
     string? SerialNumber,
     string? Manufacturer,
-    string? Model);
+    string? Model,
+    string? UserDisplayName = null,
+    string? UserPrincipalName = null,
+    bool? IsEncrypted = null);
 
 public sealed record DeviceAccess(
     string State,

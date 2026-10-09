@@ -210,7 +210,7 @@ public sealed class ConsentCallbackEndpointTests
     {
         var configuredRepository = new RecordingConsentChallengeRepository();
         repository = configuredRepository;
-        return new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
+        return new ApiIntegrationTestFactory().WithWebHostBuilder(builder =>
         {
             builder.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
             {

@@ -1,13 +1,20 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import React from 'react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CapabilitySnapshot } from '../../../src/Web/src/capabilities/capabilityTypes';
 import { App } from '../../../src/Web/src/app/App';
 import { AppShell } from '../../../src/Web/src/components/AppShell';
 import { ThemeProvider } from '../../../src/Web/src/components/ThemeToggle';
 
 const apiMock = vi.hoisted(() => vi.fn());
-vi.mock('../../../src/Web/src/auth/useApi', () => ({ useApi: () => apiMock }));
+const authMock = vi.hoisted(() => ({
+  getApiToken: vi.fn(async () => 'test-token'),
+  signIn: vi.fn(),
+  switchAccount: vi.fn(),
+}));
+vi.mock('../../../src/Web/src/auth/AuthProvider', () => ({
+  useAuth: () => authMock,
+}));
 
 const allowedCapabilities: CapabilitySnapshot = {
   workspaceId: '55555555-5555-5555-5555-555555555555',
@@ -33,9 +40,27 @@ const session = {
   workspace: { id: '55555555-5555-5555-5555-555555555555', name: 'Contoso Workplace', enabledModules: ['users', 'devices', 'licenses'], moduleAccess: ['users', 'devices', 'licenses'] },
 };
 
+const overviewResponse = {
+  effectiveModules: ['users', 'licenses', 'devices'],
+  effectiveCapabilities: [
+    { capability: 'users.view', state: 'allowed', reasonCode: 'active_role' },
+    { capability: 'licenses.view', state: 'allowed', reasonCode: 'active_role' },
+    { capability: 'devices.view', state: 'allowed', reasonCode: 'active_role' },
+    { capability: 'audit.view', state: 'allowed', reasonCode: 'active_role' },
+  ],
+  users: { state: 'fresh', fetchedAt: '2026-09-25T08:00:00Z', partialData: false, data: { totalUsers: 1 }, scope: 'tenant_wide_verified' },
+  licenseCoverage: { state: 'fresh', fetchedAt: '2026-09-25T08:00:00Z', partialData: false, data: { assignedUsers: 0, totalUsers: 1, percentage: 0 }, scope: 'tenant_wide_verified' },
+  activity: { state: 'empty', fetchedAt: '2026-09-25T08:00:00Z', partialData: false, data: { items: [] }, scope: 'workspace' },
+};
+
 describe('AppShell', () => {
+  beforeEach(() => {
+    vi.stubGlobal('fetch', (path: RequestInfo | URL, init?: RequestInit) => apiMock(String(path), init));
+  });
+
   afterEach(() => {
     cleanup();
+    vi.unstubAllGlobals();
     apiMock.mockReset();
     window.history.pushState(null, '', '/');
     document.documentElement.removeAttribute('data-theme');
@@ -55,6 +80,80 @@ describe('AppShell', () => {
     expect(logoLink.querySelectorAll('img[data-logo-asset="atea-logo-grey.svg"]')).toHaveLength(1);
     expect(screen.getByText('Contoso Workplace')).toBeTruthy();
     expect(screen.getByText('Alex Morgan')).toBeTruthy();
+  });
+
+  it('keeps the authorized build chip and feedback launcher separate from the account slot', () => {
+    const openFeedback = vi.fn();
+    const navigate = vi.fn();
+    const capabilities: CapabilitySnapshot = {
+      ...allowedCapabilities,
+      capabilities: [
+        ...allowedCapabilities.capabilities,
+        { capability: 'platform.about.view', state: 'allowed', reasonCode: 'workspace_member' },
+        { capability: 'feedback.submit', state: 'allowed', reasonCode: 'workspace_member' },
+      ],
+    };
+    render(
+      <ThemeProvider systemTheme={() => 'light'}>
+        <AppShell capabilities={capabilities} currentPath="/overview" session={{ ...session, workspace: { ...session.workspace, enabledModules: ['about', 'feedback'], moduleAccess: ['about', 'feedback'] } }} onNavigate={navigate} canViewAbout canSubmitFeedback onOpenFeedbackDialog={openFeedback}>
+          <p>Overview content</p>
+        </AppShell>
+      </ThemeProvider>
+    );
+
+    const account = document.querySelector('.app-header__account')!;
+    expect(screen.getByRole('link', { name: /System versions/i })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Give feedback' })).toBeTruthy();
+    expect(account.textContent).not.toContain('System versions');
+    expect(account.textContent).not.toContain('Give feedback');
+    fireEvent.click(screen.getByRole('link', { name: /System versions/i }));
+    expect(navigate).toHaveBeenCalledWith('/about/system-versions');
+    fireEvent.click(screen.getByRole('button', { name: 'Give feedback' }));
+    expect(openFeedback).toHaveBeenCalledOnce();
+  });
+
+  it('opens feedback from Alt+Shift+F only outside editable and composing contexts', () => {
+    const openFeedback = vi.fn();
+    render(
+      <ThemeProvider systemTheme={() => 'light'}>
+        <AppShell capabilities={allowedCapabilities} currentPath="/overview" session={session} canSubmitFeedback onOpenFeedbackDialog={openFeedback}>
+          <input aria-label="Text entry" />
+          <textarea aria-label="Multiline text" />
+          <select aria-label="Selection"><option>Option</option></select>
+          <div contentEditable aria-label="Editable region" />
+          <div role="textbox" aria-label="Role textbox" />
+        </AppShell>
+      </ThemeProvider>
+    );
+
+    fireEvent.keyDown(document, { key: 'f', altKey: true, shiftKey: true });
+    expect(openFeedback).toHaveBeenCalledTimes(1);
+    fireEvent.keyDown(document, { key: 'f' });
+    fireEvent.keyDown(document, { key: 'f', altKey: true, shiftKey: true, ctrlKey: true });
+    fireEvent.keyDown(document, { key: 'f', altKey: true, shiftKey: true, metaKey: true });
+    fireEvent.keyDown(document, { key: 'f', altKey: true, shiftKey: true, isComposing: true });
+    fireEvent.keyDown(document, { key: 'Process', altKey: true, shiftKey: true });
+    for (const label of ['Text entry', 'Multiline text', 'Selection', 'Editable region', 'Role textbox']) {
+      fireEvent.keyDown(screen.getByLabelText(label), { key: 'f', altKey: true, shiftKey: true });
+    }
+    expect(openFeedback).toHaveBeenCalledTimes(1);
+  });
+
+  it('hides the build chip and feedback launcher unless each capability and module are available', () => {
+    const openFeedback = vi.fn();
+    const capabilities: CapabilitySnapshot = {
+      ...allowedCapabilities,
+      capabilities: [
+        { capability: 'platform.about.view', state: 'allowed', reasonCode: 'workspace_member' },
+        { capability: 'feedback.submit', state: 'hidden', reasonCode: 'workspace_member' },
+      ],
+    };
+    render(<ThemeProvider systemTheme={() => 'light'}><AppShell capabilities={capabilities} currentPath="/overview" session={session} canViewAbout={false} canSubmitFeedback={false} onOpenFeedbackDialog={openFeedback}><p>Content</p></AppShell></ThemeProvider>);
+
+    expect(screen.queryByRole('link', { name: /System versions/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Give feedback' })).toBeNull();
+    fireEvent.keyDown(document, { key: 'f', altKey: true, shiftKey: true });
+    expect(openFeedback).not.toHaveBeenCalled();
   });
 
   it('keeps direct Workspace settings routes reachable as a permission state when navigation is hidden', async () => {
@@ -133,14 +232,40 @@ describe('AppShell', () => {
     window.history.pushState(null, '', '/devices');
     const snapshot: CapabilitySnapshot = { ...allowedCapabilities, capabilities: [{ capability: 'devices.view', state: 'hidden', reasonCode: 'role_required' }] };
     render(<App loadCapabilities={async () => snapshot} loadSession={async () => session} />);
-    await screen.findByRole('heading', { name: 'Devices' });
+    const main = await screen.findByRole('main');
+    await within(main).findByRole('heading', { name: 'Devices' });
     expect(screen.getByLabelText('Device filters')).toBeTruthy();
     const warning = await screen.findByRole('button', { name: 'Notifications, 1 need attention' });
     fireEvent.click(screen.getByRole('link', { name: 'Overview' }));
-    await screen.findByRole('heading', { name: 'Overview' });
+    await within(main).findByRole('heading', { name: 'Overview' });
     fireEvent.click(screen.getByRole('button', { name: /Notifications, \d+ need attention/i }));
     expect(screen.getByText('Access needs attention')).toBeTruthy();
-    expect(apiMock).not.toHaveBeenCalledWith('/api/devices');
+    expect(apiMock.mock.calls.some(([path]) => path === '/api/devices')).toBe(false);
+  });
+
+  it('loads and refreshes My access through the authenticated default API path without writes', async () => {
+    window.history.pushState(null, '', '/my-access');
+    apiMock.mockImplementation(async (path: string, init: RequestInit = {}) => {
+      if (path === '/api/session') return Response.json(session);
+      if (path === '/api/capabilities') return Response.json(allowedCapabilities);
+      if (path === '/api/workspaces/current/connection-health') return Response.json({ state: 'healthy' });
+      return Response.json({}, { status: 200 });
+    });
+
+    render(<App />);
+    expect(await screen.findByRole('heading', { name: 'My access' })).toBeTruthy();
+    await waitFor(() => expect(apiMock.mock.calls.filter(([path]) => path === '/api/capabilities')).toHaveLength(1));
+    fireEvent.click(within(screen.getByRole('region', { name: 'My access evidence' })).getByRole('button', { name: 'Refresh access' }));
+    await waitFor(() => expect(apiMock.mock.calls.filter(([path]) => path === '/api/capabilities')).toHaveLength(2));
+
+    const requests = apiMock.mock.calls.map(([path, init]) => ({
+      path: String(path),
+      method: String((init as RequestInit | undefined)?.method ?? 'GET').toUpperCase(),
+    }));
+    expect(requests.length).toBeGreaterThan(0);
+    expect(requests.every(request => request.path.startsWith('/api/'))).toBe(true);
+    expect(requests.every(request => request.method === 'GET')).toBe(true);
+    expect(requests.some(request => /consent|pim|graph\.microsoft\.com/i.test(request.path))).toBe(false);
   });
 
   it('keeps Activity filters and the unavailable region without requesting audit records when access is unknown', async () => {
@@ -231,7 +356,7 @@ describe('AppShell', () => {
     window.history.pushState(null, '', '/devices');
     apiMock.mockResolvedValue(Response.json({ items: [], total: 0, fetchedAt: '2026-09-25T10:00:00Z', freshness: 'live', partialData: false, access: { state } }));
     render(<App loadCapabilities={async () => ({ ...allowedCapabilities, capabilities: [{ capability: 'devices.view', state, reasonCode: 'active_role' }] })} loadSession={async () => session} />);
-    await waitFor(() => expect(apiMock).toHaveBeenCalledWith('/api/devices'));
+    await waitFor(() => expect(apiMock.mock.calls.some(([path]) => path === '/api/devices')).toBe(true));
   });
 
   it('loads direct device details with an authoritative view decision', async () => {
@@ -267,7 +392,7 @@ describe('AppShell', () => {
 
   it('refreshes injected capabilities from the notifications menu', async () => {
     window.history.pushState(null, '', '/overview');
-    apiMock.mockResolvedValue(Response.json({ freshness: 'live', fetchedAt: '2026-09-25T08:00:00Z', totalUsers: 1, licenseCoverage: { assigned: 0, available: 0, percentage: 0 }, permissionHealth: { state: 'healthy', allowedCount: 1, totalCount: 1 }, pimAttention: { requiresAttention: false, count: 0 }, partialData: false, access: { state: 'allowed' } }));
+    apiMock.mockResolvedValue(Response.json(overviewResponse));
     let calls = 0;
     render(<App loadSession={async () => session} loadCapabilities={async () => {
       calls++;
@@ -281,7 +406,7 @@ describe('AppShell', () => {
 
   it('rechecks capabilities when returning to the workspace tab', async () => {
     window.history.pushState(null, '', '/overview');
-    apiMock.mockResolvedValue(Response.json({ freshness: 'live', fetchedAt: '2026-09-25T08:00:00Z', totalUsers: 1, licenseCoverage: { assigned: 0, available: 0, percentage: 0 }, permissionHealth: { state: 'healthy', allowedCount: 1, totalCount: 1 }, pimAttention: { requiresAttention: false, count: 0 }, partialData: false, access: { state: 'allowed' } }));
+    apiMock.mockResolvedValue(Response.json(overviewResponse));
     let calls = 0;
     render(<App loadSession={async () => session} loadCapabilities={async () => {
       calls++;
@@ -330,5 +455,64 @@ describe('AppShell', () => {
     fireEvent.keyDown(document, { key: 'Escape' });
     expect(menu.getAttribute('aria-expanded')).toBe('false');
     expect(document.activeElement).toBe(menu);
+  });
+
+  it('shows the same domain access summaries in both account slots and closes the mobile drawer on My access selection', () => {
+    const navigate = vi.fn();
+    const member = { user: session.user, workspace: session.workspace };
+    const { container } = render(
+      <ThemeProvider systemTheme={() => 'light'}>
+        <AppShell capabilities={allowedCapabilities} currentPath="/overview" session={member} onNavigate={navigate}>
+          <p>Overview content</p>
+        </AppShell>
+      </ThemeProvider>,
+    );
+    const menuSummaries = container.querySelectorAll('.account-access-menu__summary');
+    expect(menuSummaries).toHaveLength(1);
+    const desktopDetails = container.querySelector('.app-header__account details') as HTMLDetailsElement;
+    const desktopText = desktopDetails.textContent;
+
+    fireEvent.click(screen.getByRole('button', { name: 'Menu' }));
+    const drawer = document.getElementById('primary-navigation')!;
+    const mobileDetails = drawer.querySelector('details') as HTMLDetailsElement;
+    expect(mobileDetails.textContent).toBe(desktopText);
+    fireEvent.click(mobileDetails.querySelector('summary')!);
+    fireEvent.click(within(mobileDetails).getByRole('link', { name: 'My access' }));
+
+    expect(navigate).toHaveBeenCalledWith('/my-access');
+    expect(screen.getByRole('button', { name: 'Menu' }).getAttribute('aria-expanded')).toBe('false');
+    expect(mobileDetails.open).toBe(false);
+  });
+
+  it('lets an ordinary member navigate to My access without Graph or workspace grants', async () => {
+    window.history.pushState(null, '', '/identity');
+    const loadCapabilities = vi.fn(async () => { throw new Error('Graph unavailable'); });
+    const member = { user: session.user, workspace: { id: session.workspace.id, name: session.workspace.name } };
+
+    render(<App loadCapabilities={loadCapabilities} loadSession={async () => member} />);
+
+    expect(await screen.findByRole('heading', { name: 'PIM guidance' })).toBeTruthy();
+    const accountDisclosure = document.querySelector('.app-header__account details')!;
+    fireEvent.click(accountDisclosure.querySelector('summary')!);
+    fireEvent.click(within(accountDisclosure as HTMLElement).getByRole('link', { name: 'My access' }));
+
+    expect(await screen.findByRole('heading', { name: 'My access' })).toBeTruthy();
+    expect(screen.getByText(/Access information could not be loaded/)).toBeTruthy();
+    expect(window.location.pathname).toBe('/my-access');
+    expect(loadCapabilities).toHaveBeenCalledOnce();
+    expect(screen.getByRole('navigation', { name: 'Primary navigation' }).querySelector('a[href="/my-access"]')).toBeNull();
+  });
+
+  it('refreshes account disclosure from the existing capability loader', async () => {
+    window.history.pushState(null, '', '/my-access');
+    const loadCapabilities = vi.fn(async () => allowedCapabilities);
+    render(<App loadCapabilities={loadCapabilities} loadSession={async () => session} />);
+    await screen.findByRole('heading', { name: 'My access' });
+
+    const desktopMenu = document.querySelector('.app-header__account details')!;
+    fireEvent.click(desktopMenu.querySelector('summary')!);
+    fireEvent.click(within(desktopMenu as HTMLElement).getByRole('button', { name: 'Refresh access' }));
+
+    await waitFor(() => expect(loadCapabilities).toHaveBeenCalledTimes(2));
   });
 });

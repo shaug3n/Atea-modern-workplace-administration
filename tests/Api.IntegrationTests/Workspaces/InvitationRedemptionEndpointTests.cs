@@ -183,7 +183,7 @@ public sealed class InvitationRedemptionEndpointTests
     {
         var fixtureRepository = new TestInvitationRepository();
         repository = fixtureRepository;
-        return new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
+        return new ApiIntegrationTestFactory().WithWebHostBuilder(builder =>
         {
             builder.UseEnvironment("Development");
             builder.ConfigureAppConfiguration((_, configuration) => configuration.AddInMemoryCollection(new Dictionary<string, string?>

@@ -1,3 +1,4 @@
+using Atea.UnifiedWorkplace.Api.Authorization;
 using Atea.UnifiedWorkplace.Api.Features.Devices;
 using Atea.UnifiedWorkplace.Api.Features.Identity;
 using Atea.UnifiedWorkplace.Api.Infrastructure.Graph;
@@ -8,6 +9,51 @@ namespace Atea.UnifiedWorkplace.Api.UnitTests.Infrastructure.Graph;
 
 public sealed class GraphDeviceAndAuthenticationReaderTests
 {
+    [Fact]
+    public async Task Device_detail_selects_and_maps_primary_user_identity_and_nullable_encryption()
+    {
+        var transport = new RecordingTransport("""
+            {"id":"device-1","userDisplayName":"Ada Lovelace","userPrincipalName":"ada@example.com","isEncrypted":true}
+            """);
+        var result = await new GraphManagedDeviceReader(new RecordingFactory(transport)).GetAsync("device-1", CancellationToken.None);
+
+        result.Value!.UserDisplayName.Should().Be("Ada Lovelace");
+        result.Value.UserPrincipalName.Should().Be("ada@example.com");
+        result.Value.IsEncrypted.Should().BeTrue();
+        transport.Requests.Single().PathAndQuery.Should().Contain("userDisplayName,userPrincipalName,isEncrypted");
+    }
+
+    [Fact]
+    public async Task Device_detail_preserves_omitted_encryption_as_unknown()
+    {
+        var transport = new RecordingTransport("""{"id":"device-1","userDisplayName":"Ada Lovelace","userPrincipalName":"ada@example.com"}""");
+        var result = await new GraphManagedDeviceReader(new RecordingFactory(transport)).GetAsync("device-1", CancellationToken.None);
+
+        result.Value!.IsEncrypted.Should().BeNull();
+    }
+
+    [Fact]
+    public void Configuration_read_scope_is_independently_evaluated_without_changing_core_device_access()
+    {
+        GraphScopeCatalog.DeviceConfigurationReadScopes.Should().Equal("DeviceManagementConfiguration.Read.All");
+        GraphScopeCatalog.CapabilityEvaluationScopes.Should().Contain("DeviceManagementConfiguration.Read.All");
+        GraphScopeCatalog.DeviceReadScopes.Should().Equal("DeviceManagementManagedDevices.Read.All");
+
+        var snapshot = GraphAuthorizationSnapshot.Available(
+            "user-1",
+            ["DeviceManagementManagedDevices.Read.All"],
+            [new DirectoryRoleSnapshot(
+                EntraRoleCatalog.IntuneAdministratorTemplateId,
+                "Intune Administrator",
+                DirectoryRoleAssignmentState.Active,
+                "/")]);
+        var membership = new WorkspaceMembership(Guid.NewGuid(), "Customer workspace", ModuleKeys: ["devices"]);
+
+        var devicesView = CapabilityEvaluator.Evaluate(snapshot, membership)[Capability.DevicesView];
+
+        devicesView.State.Should().Be(CapabilityState.Allowed);
+    }
+
     [Fact]
     public async Task Device_detail_uses_a_targeted_get_and_keeps_only_supported_fields()
     {
@@ -283,6 +329,72 @@ public sealed class GraphDeviceAndAuthenticationReaderTests
         result.Should().NotBeNull();
     }
 
+    [Theory]
+    [InlineData(60, true)]
+    [InlineData(480, true)]
+    [InlineData(1440, false)]
+    [InlineData(61, false)]
+    public async Task Temporary_access_pass_sends_requested_options_and_accepts_matching_response(int lifetimeInMinutes, bool isUsableOnce)
+    {
+        var transport = new RecordingTransport(
+            $$"""{"temporaryAccessPass":"fixture-tap-value","id":"tap-1","startDateTime":"2026-09-23T10:00:00Z","lifetimeInMinutes":{{lifetimeInMinutes}},"isUsableOnce":{{isUsableOnce.ToString().ToLowerInvariant()}},"secret":"must-not-be-exposed"}""");
+        var factory = new RecordingFactory(transport);
+
+        var result = await new GraphAuthenticationMethodCommands(factory)
+            .CreateTemporaryAccessPassAsync("user-1", "tap-options", new TemporaryAccessPassRequest(lifetimeInMinutes, isUsableOnce, "audit-only reason"), CancellationToken.None);
+
+        result.Error.Should().BeNull();
+        result.TemporaryAccessPass.Should().Be("fixture-tap-value");
+        result.LifetimeInMinutes.Should().Be(lifetimeInMinutes);
+        result.IsUsableOnce.Should().Be(isUsableOnce);
+        transport.RequestBodies.Single().Should().Be($"{{\"lifetimeInMinutes\":{lifetimeInMinutes},\"isUsableOnce\":{isUsableOnce.ToString().ToLowerInvariant()}}}");
+        transport.RequestBodies.Single().Should().NotContain("audit-only reason");
+        factory.Scopes.Single().Should().Equal(GraphScopeCatalog.AuthenticationMethodWriteScopes);
+    }
+
+    [Fact]
+    public async Task Temporary_access_pass_rejects_response_that_does_not_match_requested_policy_options()
+    {
+        var transport = new RecordingTransport("""{"temporaryAccessPass":"fixture-tap-value","id":"tap-1","lifetimeInMinutes":60,"isUsableOnce":true}""");
+        var result = await new GraphAuthenticationMethodCommands(new RecordingFactory(transport))
+            .CreateTemporaryAccessPassAsync("user-1", "tap-options", new TemporaryAccessPassRequest(61, false), CancellationToken.None);
+
+        result.Error!.Category.Should().Be("invalid_response");
+        result.TemporaryAccessPass.Should().BeNull();
+    }
+
+    [Theory]
+    [InlineData(9, true)]
+    [InlineData(1441, false)]
+    public async Task Temporary_access_pass_adapter_rejects_out_of_range_options_without_graph_dispatch(int lifetimeInMinutes, bool isUsableOnce)
+    {
+        var transport = new RecordingTransport("{}");
+        var factory = new RecordingFactory(transport);
+
+        var result = await new GraphAuthenticationMethodCommands(factory)
+            .CreateTemporaryAccessPassAsync("user-1", "tap-options", new TemporaryAccessPassRequest(lifetimeInMinutes, isUsableOnce), CancellationToken.None);
+
+        result.Error!.Category.Should().Be("invalid_request");
+        transport.Requests.Should().BeEmpty();
+        factory.Scopes.Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData("RoleAssignmentRequestPolicyValidationFailed", "The tenant policy rejected this temporary access pass lifetime.")]
+    [InlineData("Request_BadRequest", "The temporary access pass lifetime is not allowed by tenant policy.")]
+    public async Task Temporary_access_pass_maps_supported_graph_policy_error_shape_to_safe_actionable_category(string code, string message)
+    {
+        var rawError = System.Text.Json.JsonSerializer.Serialize(new { error = new { code, message } });
+        var result = await new GraphAuthenticationMethodCommands(new RecordingFactory(new FailedTransport(rawError, "corr-policy", "req-policy")))
+            .CreateTemporaryAccessPassAsync("user-1", "tap-policy", new TemporaryAccessPassRequest(480), CancellationToken.None);
+
+        result.Error!.Category.Should().Be("tenant_policy_rejected");
+        result.Error.CorrelationId.Should().Be("corr-policy");
+        result.Error.RequestId.Should().Be("req-policy");
+        result.TemporaryAccessPass.Should().BeNull();
+        result.Error.ToString().Should().NotContain("tenant policy rejected this temporary access pass lifetime");
+    }
+
     [Fact]
     public async Task Revoke_sessions_uses_the_v1_user_action_and_session_scope()
     {
@@ -373,13 +485,13 @@ public sealed class GraphDeviceAndAuthenticationReaderTests
         }
     }
 
-    private sealed class FailedTransport(string content) : IGraphTransport
+    private sealed class FailedTransport(string content, string? correlationId = null, string? requestId = null) : IGraphTransport
     {
         public IReadOnlyCollection<string> Scopes { get; } = [];
 
         public Task<GraphTransportResponse> SendAsync(GraphRequest request, CancellationToken cancellationToken) =>
             Task.FromResult(new GraphTransportResponse(
-                new GraphOperationResult(false, "temporarily_unavailable", 400),
+                new GraphOperationResult(false, "temporarily_unavailable", 400, CorrelationId: correlationId, RequestId: requestId),
                 content,
                 1,
                 new Dictionary<string, IReadOnlyCollection<string>>()));

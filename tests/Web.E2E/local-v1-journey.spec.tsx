@@ -212,6 +212,7 @@ describe('customer overview route', () => {
     expect(await screen.findByRole('heading', { name: 'Ada Lovelace' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Reset password' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'More actions' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('tab', { name: 'Devices' }));
     expect(await screen.findByRole('link', { name: 'Open device WIN-TEST-01' })).toBeTruthy();
     expect(screen.getByRole('link', { name: 'Open device WIN-TEST-01' }).getAttribute('href')).toBe('/devices?device=device-1');
     expect(requests.every((path) => path.startsWith('/api/'))).toBe(true);

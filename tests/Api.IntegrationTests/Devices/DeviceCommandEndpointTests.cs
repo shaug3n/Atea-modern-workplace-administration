@@ -175,7 +175,7 @@ public sealed class DeviceCommandEndpointTests
     }
 
     private static WebApplicationFactory<Program> CreateFactory(RecordingCommands? commands, GraphAuthorizationSnapshot snapshot, bool hasMembership = true, IDeviceRecoveryService? recoveryService = null) =>
-        new WebApplicationFactory<Program>().WithWebHostBuilder(builder => builder
+        new ApiIntegrationTestFactory().WithWebHostBuilder(builder => builder
             .ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
             {
                 ["AzureAd:Audience"] = "api://atea-unified-workplace-api",

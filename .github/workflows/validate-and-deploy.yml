@@ -93,8 +93,14 @@ jobs:
           case "$PUBLIC_URL" in https://*) ;; *) echo 'AZURE_APP_PUBLIC_URL must be HTTPS.'; exit 1 ;; esac
           python3 -c 'import ipaddress,sys; net=ipaddress.ip_network(sys.argv[1], strict=False); assert net.version == 4 and net.prefixlen > 0' "$SMOKE_TEST_SOURCE_CIDR"
       - name: Build the immutable hosted image
+        env:
+          ATEA_BUILD_BRANCH: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.ref || github.ref_name }}
         run: |
+          PRODUCT_VERSION="$(node -p "require('./src/Web/package.json').version")"
           docker build \
+            --build-arg ATEA_BUILD_PRODUCT_VERSION="$PRODUCT_VERSION" \
+            --build-arg ATEA_BUILD_COMMIT="$GITHUB_SHA" \
+            --build-arg ATEA_BUILD_BRANCH="$ATEA_BUILD_BRANCH" \
             --build-arg VITE_ENTRA_CLIENT_ID="$VITE_ENTRA_CLIENT_ID" \
             --build-arg VITE_ENTRA_API_SCOPE="$VITE_ENTRA_API_SCOPE" \
             --build-arg VITE_ENTRA_AUTHORITY="$VITE_ENTRA_AUTHORITY" \

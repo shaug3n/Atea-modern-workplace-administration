@@ -118,12 +118,84 @@ describe('UsersPage', () => {
   it('loads supported filters from the URL and writes edits back without unsupported role filters', async () => {
     window.history.replaceState(null, '', '/users?search=Ada&accountStatus=enabled&userType=Member&license=E3&tenantRole=Global');
     const loadUsers = vi.fn(async () => usersResponse);
+    const pushState = vi.spyOn(window.history, 'pushState');
+    const replaceState = vi.spyOn(window.history, 'replaceState');
     render(<UsersPage capabilities={allowedCapabilities} loadUsers={loadUsers} />);
 
     await waitFor(() => expect(loadUsers).toHaveBeenCalledWith(expect.objectContaining({ search: 'Ada', accountStatus: 'enabled', userType: 'Member', license: 'E3', tenantRole: '' }), null));
     expect(window.location.search).not.toContain('tenantRole');
+    pushState.mockClear();
+    replaceState.mockClear();
     fireEvent.change(screen.getByRole('searchbox', { name: 'Search users' }), { target: { value: 'Grace' } });
     await waitFor(() => expect(new URLSearchParams(window.location.search).get('search')).toBe('Grace'));
+    expect(replaceState).toHaveBeenCalled();
+    expect(pushState).not.toHaveBeenCalled();
+  });
+
+  it('pushes a shortcut view, preserves compatible filters, and resets paging immediately', async () => {
+    window.history.replaceState(null, '', '/users?search=Ada&license=E3');
+    const loadUsers = vi.fn()
+      .mockResolvedValueOnce({ ...usersResponse, continuationToken: 'next-token' })
+      .mockResolvedValue(usersResponse);
+    const pushState = vi.spyOn(window.history, 'pushState');
+    render(<UsersPage capabilities={allowedCapabilities} loadUsers={loadUsers} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Next page' }));
+    await waitFor(() => expect(loadUsers).toHaveBeenCalledTimes(2));
+    expect(screen.getByText('Page 2')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: /Enabled/ }));
+
+    await waitFor(() => expect(loadUsers).toHaveBeenCalledTimes(3));
+    expect(loadUsers).toHaveBeenLastCalledWith({
+      search: 'Ada',
+      accountStatus: 'enabled',
+      tenantRole: '',
+      license: 'E3',
+      userType: '',
+    }, null);
+    expect(screen.getByText('Page 1')).toBeTruthy();
+    expect(new URLSearchParams(window.location.search).get('search')).toBe('Ada');
+    expect(new URLSearchParams(window.location.search).get('license')).toBe('E3');
+    expect(new URLSearchParams(window.location.search).get('accountStatus')).toBe('enabled');
+    expect(pushState).toHaveBeenCalled();
+    expect(screen.queryByText(/total users/i)).toBeNull();
+  });
+
+  it('restores a prior shortcut from popstate and loads its filters from page one', async () => {
+    window.history.replaceState(null, '', '/users?search=Ada&license=E3&accountStatus=disabled');
+    const loadUsers = vi.fn(async () => usersResponse);
+    render(<UsersPage capabilities={allowedCapabilities} loadUsers={loadUsers} />);
+    fireEvent.click(await screen.findByRole('button', { name: /Guests/ }));
+    await waitFor(() => expect(loadUsers).toHaveBeenCalledTimes(2));
+    expect(screen.getByRole('button', { name: /Guests/ }).getAttribute('aria-pressed')).toBe('true');
+
+    window.history.replaceState(null, '', '/users?search=Ada&license=E3&accountStatus=disabled&tenantRole=Global');
+    window.dispatchEvent(new PopStateEvent('popstate'));
+
+    await waitFor(() => expect(loadUsers).toHaveBeenCalledTimes(3));
+    expect(loadUsers).toHaveBeenLastCalledWith({
+      search: 'Ada',
+      accountStatus: 'disabled',
+      tenantRole: '',
+      license: 'E3',
+      userType: '',
+    }, null);
+    expect(screen.getByRole('button', { name: /Guests/ }).getAttribute('aria-pressed')).toBe('false');
+    expect(screen.getByRole('button', { name: /Disabled/ }).getAttribute('aria-pressed')).toBe('true');
+    expect(window.location.search).not.toContain('tenantRole');
+
+    window.history.replaceState(null, '', '/users?search=Ada&license=E3&userType=Guest');
+    window.dispatchEvent(new PopStateEvent('popstate'));
+    await waitFor(() => expect(loadUsers).toHaveBeenCalledTimes(4));
+    expect(loadUsers).toHaveBeenLastCalledWith({
+      search: 'Ada',
+      accountStatus: '',
+      tenantRole: '',
+      license: 'E3',
+      userType: 'Guest',
+    }, null);
+    expect(screen.getByRole('button', { name: /Guests/ }).getAttribute('aria-pressed')).toBe('true');
   });
 
   it('keeps optional filters open and focused when the last license character is cleared', async () => {
@@ -183,12 +255,45 @@ describe('UsersPage', () => {
     expect(screen.getByLabelText('Name')).toBeTruthy();
   });
 
+  it('closes create on Cancel and Escape and restores focus to its opener', async () => {
+    render(<UsersPage capabilities={[decision('users.view', 'allowed'), decision('users.create', 'allowed'), decision('users.disable', 'hidden')]} loadUsers={async () => usersResponse} />);
+    const trigger = await screen.findByRole('button', { name: 'Create user' });
+
+    trigger.focus();
+    fireEvent.click(trigger);
+    fireEvent.click(within(screen.getByRole('dialog', { name: 'Create user' })).getByRole('button', { name: 'Cancel' }));
+    expect(screen.queryByRole('dialog', { name: 'Create user' })).toBeNull();
+    expect(document.activeElement).toBe(trigger);
+
+    trigger.focus();
+    fireEvent.click(trigger);
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(screen.queryByRole('dialog', { name: 'Create user' })).toBeNull();
+    expect(document.activeElement).toBe(trigger);
+  });
+
+  it('keeps the create audit warning visible after the form closes', async () => {
+    apiMock.mockResolvedValue(new Response(JSON.stringify({ status: 'succeeded', auditWarning: 'User created, but the audit record could not be written.' }), { status: 201 }));
+    render(<UsersPage capabilities={[decision('users.view', 'allowed'), decision('users.create', 'allowed'), decision('users.disable', 'hidden')]} loadUsers={async () => usersResponse} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Create user' }));
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Ada Lovelace' } });
+    fireEvent.change(screen.getByLabelText('User principal name'), { target: { value: 'ada@example.com' } });
+    fireEvent.change(screen.getByLabelText('Reason'), { target: { value: 'New employee onboarding' } });
+    fireEvent.click(screen.getByLabelText('I reviewed the target, change and required capability.'));
+    fireEvent.click(within(screen.getByRole('dialog', { name: 'Create user' })).getByRole('button', { name: 'Create user' }));
+
+    expect((await screen.findByRole('alert')).textContent).toContain('User created, but the audit record could not be written.');
+    expect(screen.queryByRole('dialog', { name: 'Create user' })).toBeNull();
+  });
+
   it('opens disable confirmation and mutates only after review and destructive phrase', async () => {
     const loadUsers = vi.fn(async (_filters: UserFiltersState, _continuationToken: string | null) => usersResponse);
     apiMock.mockResolvedValue(new Response(JSON.stringify({
       status: 'succeeded',
       requiredCapability: 'users.disable',
       replayed: false,
+      auditWarning: 'The user was disabled, but the audit record could not be written.',
     }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
 
     render(<UsersPage capabilities={allowedCapabilities} loadUsers={loadUsers} />);
@@ -197,6 +302,7 @@ describe('UsersPage', () => {
     expect(screen.getByRole('dialog', { name: 'Disable user' })).toBeTruthy();
     expect(screen.getByText('Disable sign-in for this user.')).toBeTruthy();
 
+    fireEvent.change(screen.getByLabelText('Reason'), { target: { value: '  Offboarding  ' } });
     const confirm = screen.getByRole('button', { name: 'Disable user' }) as HTMLButtonElement;
     expect(confirm.disabled).toBe(true);
     fireEvent.click(screen.getByLabelText('I reviewed the target, change and required capability.'));
@@ -213,7 +319,9 @@ describe('UsersPage', () => {
     expect(path).not.toMatch(/graph\.microsoft\.com/i);
     expect(init.method).toBe('POST');
     expect(init.headers['Idempotency-Key']).toBeTruthy();
+    expect(JSON.parse(init.body)).toEqual({ reason: 'Offboarding' });
     expect(await screen.findByText('Ada Lovelace sign-in was disabled.')).toBeTruthy();
+    expect((await screen.findByRole('alert')).textContent).toContain('audit record could not be written');
     await waitFor(() => expect(loadUsers).toHaveBeenCalledTimes(2));
   });
 
@@ -244,6 +352,7 @@ describe('UsersPage', () => {
     render(<UsersPage capabilities={allowedCapabilities} loadUsers={async () => usersResponse} />);
 
     await openDisable('Ada Lovelace');
+    fireEvent.change(screen.getByLabelText('Reason'), { target: { value: 'Offboarding' } });
     fireEvent.click(screen.getByLabelText('I reviewed the target, change and required capability.'));
     fireEvent.change(screen.getByLabelText('Type DISABLE to confirm'), { target: { value: 'DISABLE' } });
     expect((screen.getByRole('button', { name: 'Disable user' }) as HTMLButtonElement).disabled).toBe(false);
@@ -253,6 +362,7 @@ describe('UsersPage', () => {
     expect(within(screen.getByRole('dialog', { name: 'Disable user' })).getByText('Grace Hopper')).toBeTruthy();
     expect((screen.getByLabelText('I reviewed the target, change and required capability.') as HTMLInputElement).checked).toBe(false);
     expect((screen.getByLabelText('Type DISABLE to confirm') as HTMLInputElement).value).toBe('');
+    expect((screen.getByLabelText('Reason') as HTMLTextAreaElement).value).toBe('');
     expect((screen.getByRole('button', { name: 'Disable user' }) as HTMLButtonElement).disabled).toBe(true);
   });
 
@@ -261,6 +371,7 @@ describe('UsersPage', () => {
     const { rerender } = render(<UsersPage capabilities={allowedCapabilities} loadUsers={loadUsers} />);
 
     await openDisable('Ada Lovelace');
+    fireEvent.change(screen.getByLabelText('Reason'), { target: { value: 'Account review' } });
     fireEvent.click(screen.getByLabelText('I reviewed the target, change and required capability.'));
     fireEvent.change(screen.getByLabelText('Type DISABLE to confirm'), { target: { value: 'DISABLE' } });
 
@@ -288,11 +399,31 @@ describe('UsersPage', () => {
     render(<UsersPage capabilities={allowedCapabilities} loadUsers={async () => usersResponse} />);
 
     await openDisable('Ada Lovelace');
+    fireEvent.change(screen.getByLabelText('Reason'), { target: { value: 'Offboarding' } });
     fireEvent.click(screen.getByLabelText('I reviewed the target, change and required capability.'));
     fireEvent.change(screen.getByLabelText('Type DISABLE to confirm'), { target: { value: 'DISABLE' } });
     fireEvent.click(screen.getByRole('button', { name: 'Disable user' }));
 
-    expect((await screen.findByRole('alert')).textContent).toContain('idempotency key');
-    expect(screen.getByRole('dialog', { name: 'Disable user' })).toBeTruthy();
+    const dialog = screen.getByRole('dialog', { name: 'Disable user' });
+    expect((await within(dialog).findByRole('alert')).textContent).toContain('idempotency key');
+    expect((within(dialog).getByLabelText('Reason') as HTMLTextAreaElement).value).toBe('Offboarding');
+  });
+
+  it('keeps an overlength reason in the disable review and does not send a request', async () => {
+    render(<UsersPage capabilities={allowedCapabilities} loadUsers={async () => usersResponse} />);
+    await openDisable('Ada Lovelace');
+    fireEvent.change(screen.getByLabelText('Reason'), { target: { value: '   ' } });
+    fireEvent.click(screen.getByLabelText('I reviewed the target, change and required capability.'));
+    expect((screen.getByRole('button', { name: 'Disable user' }) as HTMLButtonElement).disabled).toBe(true);
+    expect(apiMock).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByLabelText('Reason'), { target: { value: 'r'.repeat(1001) } });
+    fireEvent.change(screen.getByLabelText('Type DISABLE to confirm'), { target: { value: 'DISABLE' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Disable user' }));
+
+    expect(await screen.findByRole('alert')).toBeTruthy();
+    const dialog = screen.getByRole('dialog', { name: 'Disable user' });
+    expect(within(dialog).getByText(/Keep the reason to 1,000 characters or fewer/)).toBeTruthy();
+    expect((within(dialog).getByLabelText('Reason') as HTMLTextAreaElement).value).toBe('r'.repeat(1001));
+    expect(apiMock).not.toHaveBeenCalled();
   });
 });

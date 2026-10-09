@@ -23,8 +23,14 @@ export const CAPABILITY_LABELS: Record<Capability, string> = {
   'devices.laps.reveal': 'Reveal local admin passwords',
   'authentication.methods.view': 'View sign-in methods',
   'authentication.methods.manage': 'Manage sign-in methods',
+  'authentication.campaigns.view': 'View authentication campaigns',
+  'authentication.campaigns.manage': 'Manage authentication campaigns',
+  'licenses.hygiene.view': 'View license hygiene',
+  'platform.about.view': 'View system information',
+  'feedback.submit': 'Submit feedback',
   'audit.view': 'View activity',
-  'workspace.settings.manage': 'Manage workspace settings'
+  'workspace.settings.manage': 'Manage workspace settings',
+  'workspace.members.manage': 'Manage workspace members'
 };
 
 export function humanizeCapability(key: string): string {

@@ -64,7 +64,7 @@ public sealed class WorkspaceSettingsEndpointTests
         patch.StatusCode.Should().Be(HttpStatusCode.Forbidden);
     }
 
-    private static WebApplicationFactory<Program> CreateFactory(AuthorizationWorkspaceMembership membership) => new WebApplicationFactory<Program>().WithWebHostBuilder(builder => builder.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
+    private static WebApplicationFactory<Program> CreateFactory(AuthorizationWorkspaceMembership membership) => new ApiIntegrationTestFactory().WithWebHostBuilder(builder => builder.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
     {
         ["AzureAd:Audience"] = "api://atea-unified-workplace-api",
         ["AzureAd:ClientId"] = "test-client-id"

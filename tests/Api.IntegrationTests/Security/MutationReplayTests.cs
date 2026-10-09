@@ -92,7 +92,7 @@ public sealed class MutationReplayTests : IAsyncLifetime
     {
         using var request = new HttpRequestMessage(HttpMethod.Patch, "/api/users/user-1")
         {
-            Content = new StringContent($"{{\"displayName\":\"{displayName}\"}}", Encoding.UTF8, "application/json")
+            Content = new StringContent($"{{\"displayName\":\"{displayName}\",\"reason\":\"Approved directory maintenance\"}}", Encoding.UTF8, "application/json")
         };
         request.Headers.Add("Idempotency-Key", key);
         return await client.SendAsync(request);
@@ -106,7 +106,7 @@ public sealed class MutationReplayTests : IAsyncLifetime
     }
 
     private WebApplicationFactory<Program> CreateFactory(TestIdentity identity, RecordingUserCommands commands) =>
-        new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
+        new ApiIntegrationTestFactory().WithWebHostBuilder(builder =>
         {
             builder.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
             {

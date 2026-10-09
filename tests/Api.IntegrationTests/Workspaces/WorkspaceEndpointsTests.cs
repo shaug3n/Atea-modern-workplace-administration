@@ -17,11 +17,11 @@ using PersistenceWorkspaceMembership = Atea.UnifiedWorkplace.Api.Infrastructure.
 
 namespace Atea.UnifiedWorkplace.Api.IntegrationTests.Workspaces;
 
-public sealed class WorkspaceEndpointsTests : IClassFixture<WebApplicationFactory<Program>>
+public sealed class WorkspaceEndpointsTests : IClassFixture<ApiIntegrationTestFactory>
 {
     private readonly HttpClient client;
 
-    public WorkspaceEndpointsTests(WebApplicationFactory<Program> factory)
+    public WorkspaceEndpointsTests(ApiIntegrationTestFactory factory)
     {
         client = factory.WithWebHostBuilder(builder => builder.ConfigureAppConfiguration((_, config) =>
         {
@@ -182,7 +182,7 @@ public sealed class WorkspaceEndpointsTests : IClassFixture<WebApplicationFactor
     }
 
     private static WebApplicationFactory<Program> CreateFactory(RecordingProvisioningService service, Guid[] scopedWorkspaces) =>
-        new WebApplicationFactory<Program>().WithWebHostBuilder(builder => builder.ConfigureAppConfiguration((_, config) =>
+        new ApiIntegrationTestFactory().WithWebHostBuilder(builder => builder.ConfigureAppConfiguration((_, config) =>
         {
             config.AddInMemoryCollection(new Dictionary<string, string?>
             {

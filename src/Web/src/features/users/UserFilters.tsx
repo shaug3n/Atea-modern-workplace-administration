@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { messages } from '../../app/messages';
+import { KpiFilterTile } from '../../components/KpiFilterTile';
 import type { UserFiltersState } from './usersApi';
 
 const emptyFilters: UserFiltersState = {
@@ -10,30 +11,52 @@ const emptyFilters: UserFiltersState = {
   userType: '',
 };
 
-export function UserFilters({ filters, onChange }: { filters: UserFiltersState; onChange: (filters: UserFiltersState) => void }) {
+export function UserFilters({ filters, onChange }: { filters: UserFiltersState; onChange: (filters: UserFiltersState, historyMode: 'push' | 'replace') => void }) {
   const [draft, setDraft] = useState(filters);
   const [moreOpen, setMoreOpen] = useState(Boolean(filters.license));
 
   useEffect(() => setDraft(filters), [filters]);
 
-  const update = (patch: Partial<UserFiltersState>) => {
+  const update = (patch: Partial<UserFiltersState>, historyMode: 'push' | 'replace' = 'push') => {
     const next = { ...draft, ...patch };
     setDraft(next);
-    onChange(next);
+    onChange(next, historyMode);
   };
 
-  const clear = (key: keyof UserFiltersState) => update({ [key]: '' });
+  const clear = (key: keyof UserFiltersState) => update({ [key]: '' }, key === 'search' ? 'replace' : 'push');
   const chips = activeChips(draft);
   const moreCount = [draft.license, draft.tenantRole].filter(Boolean).length;
 
   return (
     <form className="users-filters" role="search" onSubmit={(event) => event.preventDefault()}>
+      <div className="users-filters__views metric-grid" role="group" aria-label={messages.usersViewShortcutsLabel} style={{ gridColumn: '1 / -1' }}>
+        <KpiFilterTile
+          label={messages.usersViewAllLabel}
+          selected={!draft.accountStatus && !draft.userType}
+          onClick={() => update({ accountStatus: '', userType: '' }, 'push')}
+        />
+        <KpiFilterTile
+          label={messages.usersViewEnabledLabel}
+          selected={draft.accountStatus === 'enabled' && !draft.userType}
+          onClick={() => update({ accountStatus: 'enabled', userType: '' }, 'push')}
+        />
+        <KpiFilterTile
+          label={messages.usersViewDisabledLabel}
+          selected={draft.accountStatus === 'disabled' && !draft.userType}
+          onClick={() => update({ accountStatus: 'disabled', userType: '' }, 'push')}
+        />
+        <KpiFilterTile
+          label={messages.usersViewGuestsLabel}
+          selected={draft.userType === 'Guest' && !draft.accountStatus}
+          onClick={() => update({ accountStatus: '', userType: 'Guest' }, 'push')}
+        />
+      </div>
       <label>
         <span>{messages.usersSearchLabel}</span>
         <input
           type="search"
           value={draft.search}
-          onChange={(event) => update({ search: event.currentTarget.value })}
+          onChange={(event) => update({ search: event.currentTarget.value }, 'replace')}
           aria-label={messages.usersSearchLabel}
           placeholder={messages.usersSearchPlaceholder}
         />
@@ -75,7 +98,7 @@ export function UserFilters({ filters, onChange }: { filters: UserFiltersState; 
               {chip.label}
             </button>
           ))}
-          <button type="button" className="filter-chip filter-chip--clear" onClick={() => { setDraft(emptyFilters); onChange(emptyFilters); }}>
+          <button type="button" className="filter-chip filter-chip--clear" onClick={() => { setDraft(emptyFilters); onChange(emptyFilters, 'push'); }}>
             {messages.usersClearFilters}
           </button>
         </div>

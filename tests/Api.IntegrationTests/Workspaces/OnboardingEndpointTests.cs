@@ -4,11 +4,11 @@ using FluentAssertions;
 
 namespace Atea.UnifiedWorkplace.Api.IntegrationTests.Workspaces;
 
-public sealed class OnboardingEndpointTests : IClassFixture<WebApplicationFactory<Program>>
+public sealed class OnboardingEndpointTests : IClassFixture<ApiIntegrationTestFactory>
 {
     private readonly HttpClient client;
 
-    public OnboardingEndpointTests(WebApplicationFactory<Program> factory) => client = factory.CreateClient();
+    public OnboardingEndpointTests(ApiIntegrationTestFactory factory) => client = factory.CreateClient();
 
     [Theory]
     [InlineData("/api/workspaces/current/connection-health")]

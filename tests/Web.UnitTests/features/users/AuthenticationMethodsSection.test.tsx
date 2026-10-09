@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import React from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AuthenticationMethodsSection } from '../../../../src/Web/src/features/users/AuthenticationMethodsSection';
@@ -39,11 +39,64 @@ describe('AuthenticationMethodsSection', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: 'Reset MFA methods' }));
     expect(screen.getByRole('dialog', { name: 'Reset MFA methods' })).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('Reason'), { target: { value: '  Lost authenticator  ' } });
     fireEvent.change(screen.getByLabelText('Type DISABLE to confirm'), { target: { value: 'RESET MFA' } });
     fireEvent.click(screen.getByLabelText('I reviewed the target, change and required capability.'));
     fireEvent.click(screen.getByRole('button', { name: 'Reset MFA' }));
 
-    await waitFor(() => expect(apiMock).toHaveBeenCalledWith('/api/users/user-1/authentication-methods/reset-mfa', expect.objectContaining({ method: 'POST' })));
+    await waitFor(() => expect(apiMock).toHaveBeenCalledWith('/api/users/user-1/authentication-methods/reset-mfa', expect.objectContaining({ method: 'POST', body: '{"reason":"Lost authenticator"}' })));
+  });
+
+  it('keeps authentication-method mutation failures inside the reason dialog', async () => {
+    apiMock.mockImplementation(async (_path: string, init?: RequestInit) => {
+      if (init?.method === 'DELETE') throw new Error('offline');
+      return new Response(JSON.stringify({
+        userObjectId: 'user-1',
+        items: [{ id: 'method-1', type: 'fido2AuthenticationMethod', displayName: 'YubiKey' }],
+        fetchedAt: '2026-09-22T08:00:00Z', freshness: 'live', partialData: false, access: { state: 'allowed' },
+      }), { status: 200 });
+    });
+    render(<AuthenticationMethodsSection userId="user-1" decision={allowed} manageDecision={manage} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Remove' }));
+    const dialog = screen.getByRole('dialog');
+    fireEvent.change(within(dialog).getByLabelText('Reason'), { target: { value: 'Retired device' } });
+    fireEvent.click(within(dialog).getByLabelText('I reviewed the target, change and required capability.'));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Remove method' }));
+
+    expect((await within(dialog).findByRole('alert')).textContent).toContain('offline');
+    expect((within(dialog).getByLabelText('Reason') as HTMLTextAreaElement).value).toBe('Retired device');
+  });
+
+  it.each(['remove', 'reset'] as const)('preserves an audit failure warning inside and after a failed %s dialog', async (operation) => {
+    const auditWarning = 'The security write failed because its audit record could not be persisted.';
+    const operationError = operation === 'remove' ? 'authentication_method_remove_failed' : 'authentication_methods_reset_failed';
+    apiMock.mockImplementation(async (_path: string, init?: RequestInit) => {
+      if (init?.method === 'DELETE' || (init?.method === 'POST' && init.body)) {
+        return new Response(JSON.stringify({ error: operationError, auditWarning }), { status: 503 });
+      }
+      return new Response(JSON.stringify({
+        userObjectId: 'user-1',
+        items: [{ id: 'method-1', type: 'fido2AuthenticationMethod', displayName: 'YubiKey' }],
+        fetchedAt: '2026-09-22T08:00:00Z', freshness: 'live', partialData: false, access: { state: 'allowed' },
+      }), { status: 200 });
+    });
+    const onAuditWarning = vi.fn();
+    render(<AuthenticationMethodsSection userId="user-1" decision={allowed} manageDecision={manage} onAuditWarning={onAuditWarning} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: operation === 'remove' ? 'Remove' : 'Reset MFA methods' }));
+    const dialog = screen.getByRole('dialog');
+    fireEvent.change(within(dialog).getByLabelText('Reason'), { target: { value: 'Security response' } });
+    if (operation === 'reset') fireEvent.change(within(dialog).getByLabelText('Type DISABLE to confirm'), { target: { value: 'RESET MFA' } });
+    fireEvent.click(within(dialog).getByLabelText('I reviewed the target, change and required capability.'));
+    fireEvent.click(within(dialog).getByRole('button', { name: operation === 'remove' ? 'Remove method' : 'Reset MFA' }));
+
+    expect((await within(dialog).findByText(operationError)).textContent).toBe(operationError);
+    expect(within(dialog).getByText(auditWarning)).toBeTruthy();
+    expect(onAuditWarning).toHaveBeenCalledWith(auditWarning);
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect((await screen.findByRole('alert')).textContent).toContain(auditWarning);
   });
 
   it('explains missing authentication-method consent without making a Graph request', () => {
@@ -55,19 +108,108 @@ describe('AuthenticationMethodsSection', () => {
     expect(apiMock).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ['read_only', 'This action is read-only for your current Entra role.'],
+    ['consent_required', 'Delegated Microsoft Graph consent is required before this action can run.'],
+    ['pim_activation_required', 'Activate the required Entra role in PIM before continuing.'],
+    ['pim_approval_required', 'This action is waiting for PIM approval.'],
+    ['pim_mfa_required', 'Complete MFA for PIM activation before continuing.'],
+    ['pim_eligibility_expired', 'Your PIM eligibility has expired. Request renewed access.'],
+    ['disabled', 'This action is disabled for the current workspace.'],
+    ['temporarily_unavailable', 'Microsoft Graph authorization could not be verified. Try again later.'],
+  ] as const)('shows authentication-management actions as disabled for %s without dispatch', async (state, reason) => {
+    apiMock.mockResolvedValue(new Response(JSON.stringify({
+      userObjectId: 'user-1',
+      items: [{ id: 'method-1', type: 'fido2AuthenticationMethod', displayName: 'YubiKey' }],
+      fetchedAt: '2026-09-22T08:00:00Z', freshness: 'live', partialData: false, access: { state: 'allowed' },
+    }), { status: 200 }));
+    render(<AuthenticationMethodsSection userId="user-1" decision={allowed} manageDecision={{
+      capability: 'authentication.methods.manage', state, reasonCode: state,
+    }} />);
+
+    const tap = await screen.findByRole('button', { name: 'Grant Temporary Access Pass' }) as HTMLButtonElement;
+    const remove = await screen.findByRole('button', { name: 'Remove' }) as HTMLButtonElement;
+    const reset = await screen.findByRole('button', { name: 'Reset MFA methods' }) as HTMLButtonElement;
+    expect(tap.disabled).toBe(true);
+    expect(remove.disabled).toBe(true);
+    expect(reset.disabled).toBe(true);
+    expect(document.body.textContent).toContain(reason);
+    fireEvent.click(tap);
+    fireEvent.click(remove);
+    fireEvent.click(reset);
+    expect(apiMock.mock.calls.every(([, init]) => init?.method !== 'POST' && init?.method !== 'DELETE')).toBe(true);
+  });
+
+  it('suppresses authentication-management controls when their capability is hidden', async () => {
+    apiMock.mockResolvedValue(new Response(JSON.stringify({
+      userObjectId: 'user-1',
+      items: [{ id: 'method-1', type: 'fido2AuthenticationMethod', displayName: 'YubiKey' }],
+      fetchedAt: '2026-09-22T08:00:00Z', freshness: 'live', partialData: false, access: { state: 'allowed' },
+    }), { status: 200 }));
+    render(<AuthenticationMethodsSection userId="user-1" decision={allowed} manageDecision={{
+      capability: 'authentication.methods.manage', state: 'hidden', reasonCode: 'not_returned',
+    }} />);
+
+    await screen.findByText('YubiKey');
+    expect(screen.queryByRole('button', { name: 'Grant Temporary Access Pass' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Remove' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Reset MFA methods' })).toBeNull();
+  });
+
   it('reveals a temporary access pass only on the first successful response', async () => {
     apiMock.mockImplementation(async (path: string) => path.includes('temporary-access-pass')
-      ? new Response(JSON.stringify({ status: 'succeeded', temporaryAccessPass: 'fixture-tap-value' }), { status: 200 })
+      ? new Response(JSON.stringify({ status: 'succeeded', temporaryAccessPass: 'fixture-tap-value', auditWarning: 'Pass issued, but its audit record could not be written.' }), { status: 200 })
       : new Response(JSON.stringify({ userObjectId: 'user-1', items: [], fetchedAt: '2026-09-23T08:00:00Z', freshness: 'live', partialData: false, access: { state: 'allowed' } }), { status: 200 }));
     render(<AuthenticationMethodsSection userId="user-1" userLabel="Ada Lovelace" decision={allowed} manageDecision={manage} />);
 
     fireEvent.click(await screen.findByRole('button', { name: 'Grant Temporary Access Pass' }));
+    fireEvent.change(screen.getByLabelText('Reason'), { target: { value: '  New device access  ' } });
     fireEvent.click(screen.getByLabelText('I reviewed the target, change and required capability.'));
     fireEvent.click(screen.getByRole('button', { name: 'Issue Temporary Access Pass' }));
 
     expect(await screen.findByText('fixture-tap-value')).toBeTruthy();
+    expect((await screen.findAllByRole('alert')).some((alert) => alert.textContent?.includes('Pass issued, but its audit record could not be written.'))).toBe(true);
     fireEvent.click(screen.getByRole('button', { name: 'Close' }));
     expect(screen.queryByText('fixture-tap-value')).toBeNull();
+  });
+
+  it('refreshes the method summary after TAP issuance while retaining the one-time secret through a failed read retry', async () => {
+    let readCount = 0;
+    let finishRefresh: ((response: Response) => void) | undefined;
+    apiMock.mockImplementation(async (path: string, init?: RequestInit) => {
+      if (path.includes('temporary-access-pass')) {
+        return new Response(JSON.stringify({ status: 'succeeded', temporaryAccessPass: 'fixture-tap-once' }), { status: 200 });
+      }
+      readCount += 1;
+      if (readCount === 1) return new Response(JSON.stringify({ userObjectId: 'user-1', items: [], fetchedAt: '2026-09-23T08:00:00Z', freshness: 'live', partialData: false, access: { state: 'allowed' } }), { status: 200 });
+      if (readCount === 2) return await new Promise<Response>(resolve => { finishRefresh = resolve; });
+      return new Response(JSON.stringify({
+        userObjectId: 'user-1',
+        items: [{ id: 'method-2', type: 'temporaryAccessPassAuthenticationMethod', displayName: 'Temporary Access Pass' }],
+        fetchedAt: '2026-09-24T08:00:00Z', freshness: 'live', partialData: false, access: { state: 'allowed' },
+      }), { status: 200 });
+    });
+    const onResult = vi.fn();
+    render(<AuthenticationMethodsSection userId="user-1" userLabel="Ada Lovelace" decision={allowed} manageDecision={manage} onResult={onResult} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Grant Temporary Access Pass' }));
+    fireEvent.change(screen.getByLabelText('Reason'), { target: { value: 'New device access' } });
+    fireEvent.click(screen.getByLabelText('I reviewed the target, change and required capability.'));
+    fireEvent.click(screen.getByRole('button', { name: 'Issue Temporary Access Pass' }));
+
+    expect(await screen.findByText('fixture-tap-once')).toBeTruthy();
+    await waitFor(() => expect(readCount).toBe(2));
+    expect(screen.getByRole('dialog', { name: 'Temporary access pass issued' })).toBeTruthy();
+    expect(screen.getByText('Loading authentication methods…')).toBeTruthy();
+    finishRefresh?.(new Response('{}', { status: 503 }));
+    expect(await screen.findByRole('button', { name: 'Retry authentication methods' })).toBeTruthy();
+    expect(screen.getByText('fixture-tap-once')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Retry authentication methods' }));
+    expect((await screen.findAllByText('Temporary Access Pass')).length).toBeGreaterThan(0);
+    expect(screen.getByText('fixture-tap-once')).toBeTruthy();
+    expect(onResult).toHaveBeenLastCalledWith({ status: 'available', items: [{ id: 'method-2', type: 'temporaryAccessPassAuthenticationMethod', displayName: 'Temporary Access Pass' }] });
+    expect(apiMock.mock.calls.filter(([, init]) => init?.method === 'POST')).toHaveLength(1);
+    expect(screen.getAllByText('fixture-tap-once')).toHaveLength(1);
   });
 
   it('shows friendly method names, keeps raw types in technical details and puts reset in a danger zone', async () => {
@@ -84,5 +226,126 @@ describe('AuthenticationMethodsSection', () => {
     expect(screen.getByText(/Other method/)).toBeTruthy();
     expect(screen.getByRole('heading', { name: 'Danger zone' })).toBeTruthy();
     expect(screen.getByText(/The user must register again/)).toBeTruthy();
+  });
+
+  it('reports its single read to the profile summary without fetching separately', async () => {
+    apiMock.mockResolvedValue(new Response(JSON.stringify({
+      userObjectId: 'user-1',
+      items: [{ id: 'method-1', type: 'fido2AuthenticationMethod', displayName: 'YubiKey' }],
+      fetchedAt: '2026-09-22T08:00:00Z', freshness: 'live', partialData: false, access: { state: 'allowed' },
+    }), { status: 200 }));
+    const onResult = vi.fn();
+    render(<AuthenticationMethodsSection userId="user-1" decision={allowed} onResult={onResult} />);
+
+    await screen.findByText('YubiKey');
+    expect(apiMock).toHaveBeenCalledTimes(1);
+    expect(onResult).toHaveBeenLastCalledWith({ status: 'available', items: [{ id: 'method-1', type: 'fido2AuthenticationMethod', displayName: 'YubiKey' }] });
+  });
+
+  it('retries an unavailable request inside its own busy region', async () => {
+    apiMock.mockRejectedValueOnce(new Error('offline')).mockResolvedValueOnce(new Response(JSON.stringify({
+      userObjectId: 'user-1',
+      items: [],
+      fetchedAt: '2026-09-22T08:00:00Z', freshness: 'live', partialData: false, access: { state: 'allowed' },
+    }), { status: 200 }));
+    render(<AuthenticationMethodsSection userId="user-1" decision={allowed} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Retry authentication methods' }));
+    expect(await screen.findByText('No authentication methods were returned.')).toBeTruthy();
+    expect(apiMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('invalidates methods after a successful removal when refresh fails and retries only the read', async () => {
+    apiMock
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        userObjectId: 'user-1',
+        items: [{ id: 'method-1', type: 'fido2AuthenticationMethod', displayName: 'YubiKey' }],
+        fetchedAt: '2026-09-22T08:00:00Z', freshness: 'live', partialData: false, access: { state: 'allowed' },
+      }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ status: 'succeeded' }), { status: 200 }))
+      .mockResolvedValueOnce(new Response('{}', { status: 503 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        userObjectId: 'user-1',
+        items: [{ id: 'method-2', type: 'phoneAuthenticationMethod', displayName: 'Work phone' }],
+        fetchedAt: '2026-09-23T08:00:00Z', freshness: 'live', partialData: false, access: { state: 'allowed' },
+      }), { status: 200 }));
+    const onResult = vi.fn();
+    render(<AuthenticationMethodsSection userId="user-1" decision={allowed} manageDecision={manage} onResult={onResult} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Remove' }));
+    fireEvent.change(screen.getByLabelText('Reason'), { target: { value: '  Device retired  ' } });
+    fireEvent.click(screen.getByLabelText('I reviewed the target, change and required capability.'));
+    fireEvent.click(screen.getByRole('button', { name: 'Remove method' }));
+
+    expect(await screen.findByRole('button', { name: 'Retry authentication methods' })).toBeTruthy();
+    expect(screen.queryByText('YubiKey')).toBeNull();
+    expect(onResult).toHaveBeenLastCalledWith({ status: 'unavailable', items: [] });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Retry authentication methods' }));
+    expect(await screen.findByText('Work phone')).toBeTruthy();
+    expect(screen.queryByText('YubiKey')).toBeNull();
+    const removeRequest = apiMock.mock.calls.find(([, init]) => init?.method === 'DELETE')!;
+    expect(apiMock.mock.calls.filter(([, init]) => init?.method === 'DELETE')).toHaveLength(1);
+    expect(removeRequest[0]).toBe('/api/users/user-1/authentication-methods/method-1?type=fido2AuthenticationMethod');
+    expect(removeRequest[1].body).toBe('{"reason":"Device retired"}');
+    expect(removeRequest[1].headers['Idempotency-Key']).toBeTruthy();
+    expect(onResult).toHaveBeenLastCalledWith({ status: 'available', items: [{ id: 'method-2', type: 'phoneAuthenticationMethod', displayName: 'Work phone' }] });
+  });
+
+  it('invalidates methods after a successful reset when refresh fails and retries only the read', async () => {
+    apiMock
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        userObjectId: 'user-1',
+        items: [{ id: 'method-1', type: 'fido2AuthenticationMethod', displayName: 'YubiKey' }],
+        fetchedAt: '2026-09-22T08:00:00Z', freshness: 'live', partialData: false, access: { state: 'allowed' },
+      }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ status: 'succeeded', removedCount: 1 }), { status: 200 }))
+      .mockResolvedValueOnce(new Response('{}', { status: 503 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        userObjectId: 'user-1',
+        items: [{ id: 'method-2', type: 'phoneAuthenticationMethod', displayName: 'Work phone' }],
+        fetchedAt: '2026-09-23T08:00:00Z', freshness: 'live', partialData: false, access: { state: 'allowed' },
+      }), { status: 200 }));
+    const onResult = vi.fn();
+    render(<AuthenticationMethodsSection userId="user-1" decision={allowed} manageDecision={manage} onResult={onResult} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Reset MFA methods' }));
+    fireEvent.change(screen.getByLabelText('Reason'), { target: { value: '  User changed devices  ' } });
+    fireEvent.change(screen.getByLabelText('Type DISABLE to confirm'), { target: { value: 'RESET MFA' } });
+    fireEvent.click(screen.getByLabelText('I reviewed the target, change and required capability.'));
+    fireEvent.click(screen.getByRole('button', { name: 'Reset MFA' }));
+
+    expect(await screen.findByRole('button', { name: 'Retry authentication methods' })).toBeTruthy();
+    expect(screen.queryByText('YubiKey')).toBeNull();
+    expect(onResult).toHaveBeenLastCalledWith({ status: 'unavailable', items: [] });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Retry authentication methods' }));
+    expect(await screen.findByText('Work phone')).toBeTruthy();
+    expect(apiMock.mock.calls.filter(([, init]) => init?.method === 'POST')).toHaveLength(1);
+    const resetRequest = apiMock.mock.calls.find(([, init]) => init?.method === 'POST' && init?.body)!;
+    expect(resetRequest[1].body).toBe('{"reason":"User changed devices"}');
+    expect(resetRequest[1].headers['Idempotency-Key']).toBeTruthy();
+    expect(onResult).toHaveBeenLastCalledWith({ status: 'available', items: [{ id: 'method-2', type: 'phoneAuthenticationMethod', displayName: 'Work phone' }] });
+  });
+
+  it('keeps an audit warning visible after a successful security write', async () => {
+    apiMock.mockImplementation(async (path: string, init?: RequestInit) => {
+      if (init?.method === 'DELETE') return new Response(JSON.stringify({ status: 'succeeded', auditWarning: 'Audit record could not be written.' }), { status: 200 });
+      return new Response(JSON.stringify({
+        userObjectId: 'user-1',
+        items: [{ id: 'method-1', type: 'fido2AuthenticationMethod', displayName: 'YubiKey' }],
+        fetchedAt: '2026-09-22T08:00:00Z', freshness: 'live', partialData: false, access: { state: 'allowed' },
+      }), { status: 200 });
+    });
+    render(<AuthenticationMethodsSection userId="user-1" decision={allowed} manageDecision={manage} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Remove' }));
+    fireEvent.change(screen.getByLabelText('Reason'), { target: { value: '  Credential no longer used  ' } });
+    fireEvent.click(screen.getByLabelText('I reviewed the target, change and required capability.'));
+    fireEvent.click(screen.getByRole('button', { name: 'Remove method' }));
+
+    expect((await screen.findByRole('alert')).textContent).toContain('Audit record could not be written.');
+    const removeRequest = apiMock.mock.calls.find(([, init]) => init?.method === 'DELETE');
+    expect(removeRequest?.[1].body).toBe('{"reason":"Credential no longer used"}');
   });
 });

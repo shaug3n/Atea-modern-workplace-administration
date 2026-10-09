@@ -4,15 +4,28 @@ using System.Text.Json;
 using Atea.UnifiedWorkplace.Api.Infrastructure.Observability;
 using Atea.UnifiedWorkplace.Api.Infrastructure.Persistence.Entities;
 using Atea.UnifiedWorkplace.Api.Infrastructure.Security;
+using Atea.UnifiedWorkplace.Api.Features.Users;
 
 namespace Atea.UnifiedWorkplace.Api.Features.Identity;
 
 public interface IAuthenticationMethodService
 {
     Task<AuthenticationMethodsResponse> GetAsync(WorkspaceContext context, string userObjectId, CancellationToken cancellationToken);
-    Task<AuthenticationMethodCommandResult> RemoveAsync(WorkspaceContext context, string userObjectId, string methodObjectId, string methodType, string idempotencyKey, CancellationToken cancellationToken);
-    Task<AuthenticationMethodCommandResult> ResetMfaAsync(WorkspaceContext context, string userObjectId, string idempotencyKey, CancellationToken cancellationToken);
-    Task<TemporaryAccessPassCommandResult> CreateTemporaryAccessPassAsync(WorkspaceContext context, string userObjectId, string idempotencyKey, CancellationToken cancellationToken);
+    Task<AuthenticationMethodCommandResult> RemoveAsync(WorkspaceContext context, string userObjectId, string methodObjectId, string methodType, string idempotencyKey, CancellationToken cancellationToken, string? reason = null);
+    Task<AuthenticationMethodCommandResult> ResetMfaAsync(WorkspaceContext context, string userObjectId, string idempotencyKey, CancellationToken cancellationToken, string? reason = null);
+    Task<TemporaryAccessPassCommandResult> CreateTemporaryAccessPassAsync(WorkspaceContext context, string userObjectId, string idempotencyKey, CancellationToken cancellationToken, string? reason = null);
+    Task<TemporaryAccessPassCommandResult> CreateTemporaryAccessPassAsync(WorkspaceContext context, string userObjectId, string idempotencyKey, TemporaryAccessPassRequest request, CancellationToken cancellationToken)
+    {
+        if (request.LifetimeInMinutes != 60 || !request.IsUsableOnce)
+        {
+            return Task.FromResult(new TemporaryAccessPassCommandResult(
+                "unsupported_options",
+                Capability.AuthenticationMethodsManage,
+                Error: "unsupported_options"));
+        }
+
+        return CreateTemporaryAccessPassAsync(context, userObjectId, idempotencyKey, cancellationToken, request.Reason);
+    }
 }
 
 public sealed class AuthenticationMethodService(
@@ -47,8 +60,9 @@ public sealed class AuthenticationMethodService(
         return Response(userObjectId, authorization, result.Value, "live", false);
     }
 
-    public async Task<AuthenticationMethodCommandResult> RemoveAsync(WorkspaceContext context, string userObjectId, string methodObjectId, string methodType, string idempotencyKey, CancellationToken cancellationToken)
+    public async Task<AuthenticationMethodCommandResult> RemoveAsync(WorkspaceContext context, string userObjectId, string methodObjectId, string methodType, string idempotencyKey, CancellationToken cancellationToken, string? reason = null)
     {
+        reason = NormalizeReason(reason);
         if (string.IsNullOrWhiteSpace(userObjectId) || string.IsNullOrWhiteSpace(methodObjectId) || string.IsNullOrWhiteSpace(methodType))
         {
             return new AuthenticationMethodCommandResult("invalid_target", Capability.AuthenticationMethodsManage, "invalid_target");
@@ -76,15 +90,15 @@ public sealed class AuthenticationMethodService(
         var targetId = $"{userObjectId}:{methodObjectId}";
         var outcome = await idempotency.ExecuteAsync(
             new IdempotencyScope(context.Membership.WorkspaceId, context.User.ObjectId, operation, targetId, idempotencyKey),
-            new { methodType },
+            new { methodType, reason },
             async () =>
             {
                 var graph = await commands.RemoveAsync(userObjectId, methodObjectId, methodType, idempotencyKey, cancellationToken);
                 var result = graph.IsSuccess
-                    ? new AuthenticationMethodCommandResult("succeeded", Capability.AuthenticationMethodsManage, Authorization: authorization)
-                    : new AuthenticationMethodCommandResult(graph.Category == "not_found" ? "not_found" : "temporarily_unavailable", Capability.AuthenticationMethodsManage, graph.Category, authorization);
-                liveResult = result with { AuditWarning = await AuditAsync(context, operation, targetId, result.Status, result.Error, cancellationToken) };
-                return new IdempotentOperationResult(StatusCodeFor(liveResult), liveResult.Status, JsonSerializer.Serialize(liveResult with { AuditWarning = null }, JsonOptions));
+                    ? new AuthenticationMethodCommandResult("succeeded", Capability.AuthenticationMethodsManage, Authorization: authorization, GraphCorrelationId: graph.CorrelationId, GraphRequestId: graph.RequestId)
+                    : new AuthenticationMethodCommandResult(graph.Category == "not_found" ? "not_found" : "temporarily_unavailable", Capability.AuthenticationMethodsManage, graph.Category, authorization, GraphCorrelationId: graph.CorrelationId, GraphRequestId: graph.RequestId);
+                liveResult = result with { AuditWarning = await AuditAsync(context, operation, targetId, result.Status, result.Error, cancellationToken, reason, result.GraphCorrelationId, result.GraphRequestId) };
+                return new IdempotentOperationResult(StatusCodeFor(liveResult), liveResult.Status, JsonSerializer.Serialize(liveResult, JsonOptions));
             },
             cancellationToken);
 
@@ -92,11 +106,12 @@ public sealed class AuthenticationMethodService(
         if (outcome.Kind == IdempotencyOutcomeKind.InProgress) return new AuthenticationMethodCommandResult("temporarily_unavailable", Capability.AuthenticationMethodsManage, "idempotency_in_progress");
         var stored = JsonSerializer.Deserialize<AuthenticationMethodCommandResult>(outcome.Result.SafeResultJson, JsonOptions)
             ?? new AuthenticationMethodCommandResult("temporarily_unavailable", Capability.AuthenticationMethodsManage, "idempotency_result_unavailable");
-        return stored with { Replayed = outcome.Kind == IdempotencyOutcomeKind.Replayed, AuditWarning = liveResult?.AuditWarning };
+        return stored with { Replayed = outcome.Kind == IdempotencyOutcomeKind.Replayed };
     }
 
-    public async Task<AuthenticationMethodCommandResult> ResetMfaAsync(WorkspaceContext context, string userObjectId, string idempotencyKey, CancellationToken cancellationToken)
+    public async Task<AuthenticationMethodCommandResult> ResetMfaAsync(WorkspaceContext context, string userObjectId, string idempotencyKey, CancellationToken cancellationToken, string? reason = null)
     {
+        reason = NormalizeReason(reason);
         if (string.IsNullOrWhiteSpace(userObjectId))
         {
             return new AuthenticationMethodCommandResult("invalid_target", Capability.AuthenticationMethodsManage, "invalid_target");
@@ -118,35 +133,39 @@ public sealed class AuthenticationMethodService(
         const string operation = "users.authentication_methods.reset_mfa";
         var outcome = await idempotency.ExecuteAsync(
             new IdempotencyScope(context.Membership.WorkspaceId, context.User.ObjectId, operation, userObjectId, idempotencyKey),
-            new { },
+            new { reason },
             async () =>
             {
                 var methods = await reader.ReadAsync(userObjectId, cancellationToken);
                 if (methods.Error is not null)
                 {
                     var readFailure = new AuthenticationMethodCommandResult("temporarily_unavailable", Capability.AuthenticationMethodsManage, methods.Error.Category, authorization);
-                    liveResult = readFailure with { AuditWarning = await AuditAsync(context, operation, userObjectId, readFailure.Status, readFailure.Error, cancellationToken) };
-                    return new IdempotentOperationResult(StatusCodeFor(liveResult), liveResult.Status, JsonSerializer.Serialize(liveResult with { AuditWarning = null }, JsonOptions));
+                    liveResult = readFailure with { AuditWarning = await AuditAsync(context, operation, userObjectId, readFailure.Status, readFailure.Error, cancellationToken, reason) };
+                    return new IdempotentOperationResult(StatusCodeFor(liveResult), liveResult.Status, JsonSerializer.Serialize(liveResult, JsonOptions));
                 }
 
                 var removable = methods.Value.Where(method => AuthenticationMethodActions.CanRemove(method.Type)).ToArray();
                 var removedCount = 0;
+                string? graphCorrelationId = null;
+                string? graphRequestId = null;
                 foreach (var method in removable)
                 {
                     var graph = await commands.RemoveAsync(userObjectId, method.Id, method.Type, $"{idempotencyKey}:{method.Id}", cancellationToken);
+                    graphCorrelationId = graph.CorrelationId ?? graphCorrelationId;
+                    graphRequestId = graph.RequestId ?? graphRequestId;
                     if (!graph.IsSuccess)
                     {
-                        var partialFailure = new AuthenticationMethodCommandResult("temporarily_unavailable", Capability.AuthenticationMethodsManage, graph.Category, authorization, RemovedCount: removedCount);
-                        liveResult = partialFailure with { AuditWarning = await AuditAsync(context, operation, userObjectId, partialFailure.Status, partialFailure.Error, cancellationToken) };
-                        return new IdempotentOperationResult(StatusCodeFor(liveResult), liveResult.Status, JsonSerializer.Serialize(liveResult with { AuditWarning = null }, JsonOptions));
+                        var partialFailure = new AuthenticationMethodCommandResult("temporarily_unavailable", Capability.AuthenticationMethodsManage, graph.Category, authorization, RemovedCount: removedCount, GraphCorrelationId: graphCorrelationId, GraphRequestId: graphRequestId);
+                        liveResult = partialFailure with { AuditWarning = await AuditAsync(context, operation, userObjectId, partialFailure.Status, partialFailure.Error, cancellationToken, reason, graphCorrelationId, graphRequestId) };
+                        return new IdempotentOperationResult(StatusCodeFor(liveResult), liveResult.Status, JsonSerializer.Serialize(liveResult, JsonOptions));
                     }
 
                     removedCount++;
                 }
 
-                var succeeded = new AuthenticationMethodCommandResult("succeeded", Capability.AuthenticationMethodsManage, Authorization: authorization, RemovedCount: removedCount);
-                liveResult = succeeded with { AuditWarning = await AuditAsync(context, operation, userObjectId, succeeded.Status, null, cancellationToken) };
-                return new IdempotentOperationResult(StatusCodeFor(liveResult), liveResult.Status, JsonSerializer.Serialize(liveResult with { AuditWarning = null }, JsonOptions));
+                var succeeded = new AuthenticationMethodCommandResult("succeeded", Capability.AuthenticationMethodsManage, Authorization: authorization, RemovedCount: removedCount, GraphCorrelationId: graphCorrelationId, GraphRequestId: graphRequestId);
+                liveResult = succeeded with { AuditWarning = await AuditAsync(context, operation, userObjectId, succeeded.Status, null, cancellationToken, reason, graphCorrelationId, graphRequestId) };
+                return new IdempotentOperationResult(StatusCodeFor(liveResult), liveResult.Status, JsonSerializer.Serialize(liveResult, JsonOptions));
             },
             cancellationToken);
 
@@ -154,13 +173,19 @@ public sealed class AuthenticationMethodService(
         if (outcome.Kind == IdempotencyOutcomeKind.InProgress) return new AuthenticationMethodCommandResult("temporarily_unavailable", Capability.AuthenticationMethodsManage, "idempotency_in_progress");
         var stored = JsonSerializer.Deserialize<AuthenticationMethodCommandResult>(outcome.Result.SafeResultJson, JsonOptions)
             ?? new AuthenticationMethodCommandResult("temporarily_unavailable", Capability.AuthenticationMethodsManage, "idempotency_result_unavailable");
-        return stored with { Replayed = outcome.Kind == IdempotencyOutcomeKind.Replayed, AuditWarning = liveResult?.AuditWarning };
+        return stored with { Replayed = outcome.Kind == IdempotencyOutcomeKind.Replayed };
     }
 
-    public async Task<TemporaryAccessPassCommandResult> CreateTemporaryAccessPassAsync(WorkspaceContext context, string userObjectId, string idempotencyKey, CancellationToken cancellationToken)
+    public Task<TemporaryAccessPassCommandResult> CreateTemporaryAccessPassAsync(WorkspaceContext context, string userObjectId, string idempotencyKey, CancellationToken cancellationToken, string? reason = null) =>
+        CreateTemporaryAccessPassAsync(context, userObjectId, idempotencyKey, new TemporaryAccessPassRequest(Reason: reason), cancellationToken);
+
+    public async Task<TemporaryAccessPassCommandResult> CreateTemporaryAccessPassAsync(WorkspaceContext context, string userObjectId, string idempotencyKey, TemporaryAccessPassRequest request, CancellationToken cancellationToken)
     {
+        ArgumentNullException.ThrowIfNull(request);
+        var reason = NormalizeReason(request.Reason);
         if (string.IsNullOrWhiteSpace(userObjectId)) return new("invalid_target", Capability.AuthenticationMethodsManage, Error: "invalid_target");
         if (string.IsNullOrWhiteSpace(idempotencyKey)) return new("invalid_target", Capability.AuthenticationMethodsManage, Error: "idempotency_key_required");
+        if (request.LifetimeInMinutes is < 10 or > 1440) return new("invalid_target", Capability.AuthenticationMethodsManage, Error: "invalid_request");
 
         var snapshot = await authorizationSnapshotReader.ReadAsync(context, cancellationToken);
         var authorization = CapabilityEvaluator.Evaluate(snapshot, context.Membership)[Capability.AuthenticationMethodsManage];
@@ -173,16 +198,23 @@ public sealed class AuthenticationMethodService(
         const string operation = "users.authentication_methods.temporary_access_pass";
         var outcome = await idempotency.ExecuteAsync(
             new IdempotencyScope(context.Membership.WorkspaceId, context.User.ObjectId, operation, userObjectId, idempotencyKey),
-            new { },
+            new { request.LifetimeInMinutes, request.IsUsableOnce, reason },
             async () =>
             {
-                var graph = await commands.CreateTemporaryAccessPassAsync(userObjectId, idempotencyKey, cancellationToken);
-                var valid = graph.Error is null && !string.IsNullOrWhiteSpace(graph.TemporaryAccessPass) && !string.IsNullOrWhiteSpace(graph.Id) && graph.LifetimeInMinutes == 60 && graph.IsUsableOnce == true;
+                var graph = await commands.CreateTemporaryAccessPassAsync(userObjectId, idempotencyKey, request with { Reason = null }, cancellationToken);
+                var valid = graph.Error is null && !string.IsNullOrWhiteSpace(graph.TemporaryAccessPass) && !string.IsNullOrWhiteSpace(graph.Id)
+                    && graph.LifetimeInMinutes == request.LifetimeInMinutes && graph.IsUsableOnce == request.IsUsableOnce;
                 var result = valid
                     ? new TemporaryAccessPassCommandResult("succeeded", Capability.AuthenticationMethodsManage, graph.TemporaryAccessPass, graph.Id, graph.StartDateTime, graph.LifetimeInMinutes, graph.IsUsableOnce, GraphCorrelationId: graph.CorrelationId, GraphRequestId: graph.RequestId, Authorization: authorization)
-                    : new TemporaryAccessPassCommandResult("temporarily_unavailable", Capability.AuthenticationMethodsManage, Error: graph.Error?.Category ?? "invalid_response", GraphCorrelationId: graph.Error?.CorrelationId ?? graph.CorrelationId, GraphRequestId: graph.Error?.RequestId ?? graph.RequestId, Authorization: authorization);
-                liveResult = result with { AuditWarning = await AuditAsync(context, operation, userObjectId, result.Status, result.Error, cancellationToken, result.GraphCorrelationId, result.GraphRequestId) };
-                var safe = liveResult with { TemporaryAccessPass = null, AuditWarning = null };
+                    : new TemporaryAccessPassCommandResult(
+                        graph.Error?.Category == "tenant_policy_rejected" ? "policy_rejected" : "temporarily_unavailable",
+                        Capability.AuthenticationMethodsManage,
+                        Error: graph.Error?.Category ?? "invalid_response",
+                        GraphCorrelationId: graph.Error?.CorrelationId ?? graph.CorrelationId,
+                        GraphRequestId: graph.Error?.RequestId ?? graph.RequestId,
+                        Authorization: authorization);
+                liveResult = result with { AuditWarning = await AuditAsync(context, operation, userObjectId, result.Status, result.Error, cancellationToken, reason, result.GraphCorrelationId, result.GraphRequestId) };
+                var safe = liveResult with { TemporaryAccessPass = null };
                 return new IdempotentOperationResult(StatusCodeFor(safe), safe.Status, JsonSerializer.Serialize(safe, JsonOptions), safe.GraphCorrelationId, safe.GraphRequestId);
             },
             cancellationToken);
@@ -193,7 +225,7 @@ public sealed class AuthenticationMethodService(
             ?? new TemporaryAccessPassCommandResult("temporarily_unavailable", Capability.AuthenticationMethodsManage, Error: "idempotency_result_unavailable");
         if (outcome.Kind == IdempotencyOutcomeKind.Replayed)
         {
-            return stored with { Replayed = true, TemporaryAccessPass = null, Error = stored.Status == "succeeded" ? "temporary_access_pass_already_issued" : stored.Error, AuditWarning = null };
+            return stored with { Replayed = true, TemporaryAccessPass = null, Error = stored.Status == "succeeded" ? "temporary_access_pass_already_issued" : stored.Error };
         }
 
         return liveResult ?? stored;
@@ -202,7 +234,7 @@ public sealed class AuthenticationMethodService(
     private AuthenticationMethodsResponse Response(string userObjectId, CapabilityDecision authorization, IReadOnlyList<AuthenticationMethodItem> items, string freshness, bool partialData, AuthenticationMethodsError? error = null) =>
         new(userObjectId, items, utcNow(), freshness, partialData, new AuthenticationMethodsAccess(authorization.State, authorization.ReasonCode, authorization), error);
 
-    private async Task<string?> AuditAsync(WorkspaceContext context, string action, string targetId, string result, string? failureCategory, CancellationToken cancellationToken, string? graphCorrelationId = null, string? graphRequestId = null)
+    private async Task<string?> AuditAsync(WorkspaceContext context, string action, string targetId, string result, string? failureCategory, CancellationToken cancellationToken, string? reason = null, string? graphCorrelationId = null, string? graphRequestId = null)
     {
         try
         {
@@ -220,7 +252,7 @@ public sealed class AuthenticationMethodService(
                 GraphCorrelationId = graphCorrelationId,
                 GraphRequestId = graphRequestId,
                 FailureCategory = failureCategory,
-                SafeMetadataJson = "{}"
+                SafeMetadataJson = reason is null ? "{}" : JsonSerializer.Serialize(new { reason }, JsonOptions)
             }, cancellationToken);
             return null;
         }
@@ -243,10 +275,13 @@ public sealed class AuthenticationMethodService(
         "denied" => StatusCodes.Status403Forbidden,
         "invalid_target" => StatusCodes.Status400BadRequest,
         "idempotency_key_reused" => StatusCodes.Status409Conflict,
+        "policy_rejected" => StatusCodes.Status422UnprocessableEntity,
         _ => StatusCodes.Status503ServiceUnavailable
     };
 
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+
+    private static string? NormalizeReason(string? reason) => string.IsNullOrWhiteSpace(reason) ? null : reason.Trim();
 
     private static string MessageFor(string category) => category switch
     {

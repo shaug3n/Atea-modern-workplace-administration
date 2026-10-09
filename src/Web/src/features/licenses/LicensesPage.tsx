@@ -8,6 +8,7 @@ import { DataFreshness } from '../../components/DataFreshness';
 import { TechnicalDetails } from '../../components/TechnicalDetails';
 import { ResponsiveDataView } from '../../components/ResponsiveDataView';
 import { useWorkspaceIssueReporter } from '../../notifications/WorkspaceNotifications';
+import type { CapabilityDecision } from '../../capabilities/capabilityTypes';
 
 export type LicenseItem = { skuId: string; partNumber: string; displayName: string; purchased: number; assigned: number; available: number };
 export type LicenseOverview = { items: LicenseItem[]; total: number; page: number; pageSize: number; fetchedAt: string; freshness: string; partialData: boolean; access: { state: string }; error?: { message: string } | null };
@@ -15,12 +16,16 @@ export type LicenseLoader = (search?: string, page?: number) => Promise<LicenseO
 export type AssigneeLoader = (skuId: string, token: string | null) => Promise<UsersDirectoryResponse>;
 type Exporter = (path: string, fileName: string) => Promise<CsvExportInfo>;
 
-export function LicensesPage({ loadLicenses, loadAssignees, exportCsv }: { loadLicenses?: LicenseLoader; loadAssignees?: AssigneeLoader; exportCsv?: Exporter }) {
-  if (loadLicenses) return <LoadedLicensesPage loader={loadLicenses} loadAssignees={loadAssignees} exportCsv={exportCsv} />;
-  return <AuthenticatedLicensesPage />;
+export function LicensesPage({ loadLicenses, loadAssignees, exportCsv, capabilities, moduleEnabled, moduleAssigned }: { loadLicenses?: LicenseLoader; loadAssignees?: AssigneeLoader; exportCsv?: Exporter; capabilities?: CapabilityDecision[]; moduleEnabled?: string[]; moduleAssigned?: string[] }) {
+  const hygieneDecision = capabilities?.find(decision => decision.capability === 'licenses.hygiene.view');
+  const hygieneAllowed = (hygieneDecision?.state === 'allowed' || hygieneDecision?.state === 'read_only')
+    && moduleEnabled?.includes('license-hygiene') === true
+    && moduleAssigned?.includes('license-hygiene') === true;
+  if (loadLicenses) return <LoadedLicensesPage loader={loadLicenses} loadAssignees={loadAssignees} exportCsv={exportCsv} hygieneAllowed={hygieneAllowed} />;
+  return <AuthenticatedLicensesPage hygieneAllowed={hygieneAllowed} />;
 }
 
-function AuthenticatedLicensesPage() {
+function AuthenticatedLicensesPage({ hygieneAllowed }: { hygieneAllowed: boolean }) {
   const api = useApi() as ApiFetch;
   const loader = useCallback(async (search = '', page = 1) => {
     const params = new URLSearchParams({ page: String(page) });
@@ -37,10 +42,10 @@ function AuthenticatedLicensesPage() {
     return await response.json() as UsersDirectoryResponse;
   }, [api]);
   const exporter = useCallback((path: string, name: string) => downloadCsv(api, path, name), [api]);
-  return <LoadedLicensesPage loader={loader} loadAssignees={assignees} exportCsv={exporter} />;
+  return <LoadedLicensesPage loader={loader} loadAssignees={assignees} exportCsv={exporter} hygieneAllowed={hygieneAllowed} />;
 }
 
-function LoadedLicensesPage({ loader, loadAssignees, exportCsv }: { loader: LicenseLoader; loadAssignees?: AssigneeLoader; exportCsv?: Exporter }) {
+function LoadedLicensesPage({ loader, loadAssignees, exportCsv, hygieneAllowed }: { loader: LicenseLoader; loadAssignees?: AssigneeLoader; exportCsv?: Exporter; hygieneAllowed: boolean }) {
   const issueReporter = useWorkspaceIssueReporter();
   const [result, setResult] = useState<LicenseOverview | null>(null);
   const [loadedQueryKey, setLoadedQueryKey] = useState<string | null>(null);
@@ -115,6 +120,7 @@ function LoadedLicensesPage({ loader, loadAssignees, exportCsv }: { loader: Lice
 
   return <section className="licenses-page">
     <WorkspacePageHeader eyebrow="Licenses" title="License inventory" description="Review purchased seats, assignments, and license rosters." meta={result && loadedQueryKey === queryKey ? <DataFreshness fetchedAt={result.fetchedAt} freshness={result.freshness === 'live' ? 'fresh' : result.freshness === 'stale' ? 'stale' : result.freshness === 'unavailable' ? 'unavailable' : 'fresh'} partialData={result.partialData} source="Microsoft Graph" onRefresh={() => setRetry(value => value + 1)} /> : undefined} />
+    {hygieneAllowed && <a className="button button--secondary license-hygiene-link" href="/licenses/hygiene">{messages.licenseHygieneLink}</a>}
     {failed ? <div className="license-state"><p role="alert">License data is unavailable. Try again later.</p><button type="button" onClick={() => setRetry(value => value + 1)}>{messages.retry}</button></div>
     : !result || loadedQueryKey !== queryKey ? <p role="status">Loading licenses…</p>
     : result.access.state !== 'allowed' && result.access.state !== 'read_only' ? <div className="license-state"><h2>{messages.permissionRequiredTitle}</h2><p>{messages.permissionRequiredBody}</p></div>

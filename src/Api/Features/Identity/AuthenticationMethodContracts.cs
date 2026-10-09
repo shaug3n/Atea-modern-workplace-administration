@@ -10,6 +10,8 @@ public sealed record AuthenticationMethodItem(
     string? Model = null,
     string? AttestationLevel = null);
 
+public sealed record TemporaryAccessPassRequest(int LifetimeInMinutes = 60, bool IsUsableOnce = true, string? Reason = null);
+
 public static class AuthenticationMethodActions
 {
     public const string Remove = "remove";
@@ -25,7 +27,9 @@ public sealed record AuthenticationMethodCommandResult(
     CapabilityDecision? Authorization = null,
     bool Replayed = false,
     string? AuditWarning = null,
-    int RemovedCount = 0);
+    int RemovedCount = 0,
+    string? GraphCorrelationId = null,
+    string? GraphRequestId = null);
 
 public sealed record TemporaryAccessPassCommandResult(
     string Status,

@@ -3,14 +3,17 @@ import { messages } from '../../app/messages';
 import { useApi } from '../../auth/useApi';
 import { ConfirmationDialog } from '../../components/ConfirmationDialog';
 import { mutateUser, type CreateUserCommand, type UserCommandResponse } from './userMutationApi';
+import { UserWriteReasonField, normalizeUserWriteReason } from './UserWriteReasonField';
 
-export function UserCreateDialog({ onCompleted }: { onCompleted?: (result: UserCommandResponse) => void }) {
+export function UserCreateDialog({ onCompleted, onCancel }: { onCompleted?: (result: UserCommandResponse) => void; onCancel?: () => void }) {
   const api = useApi();
   const [displayName, setDisplayName] = useState('');
   const [userPrincipalName, setUserPrincipalName] = useState('');
   const [usageLocation, setUsageLocation] = useState('NO');
   const [result, setResult] = useState<UserCommandResponse | null>(null);
   const [pending, setPending] = useState(false);
+  const [reason, setReason] = useState('');
+  const [reasonError, setReasonError] = useState<'reason_required' | 'reason_too_long' | null>(null);
 
   const command: CreateUserCommand = {
     displayName,
@@ -28,9 +31,15 @@ export function UserCreateDialog({ onCompleted }: { onCompleted?: (result: UserC
 
   const submit = async () => {
     if (pending) return;
+    const normalizedReason = normalizeUserWriteReason(reason);
+    if (normalizedReason.error) {
+      setReasonError(normalizedReason.error);
+      return;
+    }
+    setReasonError(null);
     setPending(true);
     try {
-      const response = await mutateUser(api, '/api/users', 'POST', command);
+      const response = await mutateUser(api, '/api/users', 'POST', { ...command, reason: normalizedReason.reason });
       setResult(response);
       onCompleted?.(response);
     } catch {
@@ -41,19 +50,22 @@ export function UserCreateDialog({ onCompleted }: { onCompleted?: (result: UserC
   };
 
   return (
-    <div role="dialog" aria-modal="true" aria-labelledby="user-create-dialog-title">
+    <ConfirmationDialog
+      title={messages.userCreateDialogTitle}
+      target={displayName || userPrincipalName || messages.usersUnnamedUser}
+      proposedChange={messages.userCreateProposedChange}
+      requiredCapability="users.create"
+      confirmLabel={messages.confirmCreateUser}
+      busy={pending}
+      confirmBlocked={Boolean(reasonError)}
+      onConfirm={submit}
+      onCancel={pending ? undefined : onCancel}
+    >
       <label>{messages.usersNameColumn}<input value={displayName} onChange={(event) => { setDisplayName(event.target.value); setResult(null); }} /></label>
       <label>{messages.usersUpnColumn}<input value={userPrincipalName} onChange={(event) => { setUserPrincipalName(event.target.value); setResult(null); }} /></label>
       <label>{messages.userUsageLocation}<input value={usageLocation} onChange={(event) => { setUsageLocation(event.target.value.toUpperCase()); setResult(null); }} /></label>
-      <ConfirmationDialog
-        title={messages.userCreateDialogTitle}
-        target={displayName || userPrincipalName || messages.usersUnnamedUser}
-        proposedChange={messages.userCreateProposedChange}
-        requiredCapability="users.create"
-        confirmLabel={messages.confirmCreateUser}
-        busy={pending}
-        onConfirm={submit}
-      />
+      <UserWriteReasonField value={reason} onChange={(value) => { setReason(value); setReasonError(null); }} error={reasonError} />
+      {result?.auditWarning && <p role="alert" className="audit-warning">{result.auditWarning}</p>}
       {result?.temporaryCredentialNotice && (
         <section role="status" aria-label={messages.userTemporaryPasswordNotice}>
           <strong>{messages.userTemporaryPasswordNotice}</strong>
@@ -65,6 +77,6 @@ export function UserCreateDialog({ onCompleted }: { onCompleted?: (result: UserC
       {result?.error === 'throttled' && <p role="alert">{messages.userMutationThrottled}</p>}
       {result?.error === 'user_mutation_failed' && <p role="alert">User creation could not be completed. Review the details and try again.</p>}
       {result && result.status !== 'succeeded' && result.error !== 'idempotency_key_reused' && result.error !== 'throttled' && result.error !== 'user_mutation_failed' && <p role="alert">User creation could not be completed. Review the details and try again.</p>}
-    </div>
+    </ConfirmationDialog>
   );
 }

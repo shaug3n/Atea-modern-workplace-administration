@@ -20,8 +20,18 @@ export type Capability =
   | 'devices.laps.reveal'
   | 'authentication.methods.view'
   | 'authentication.methods.manage'
+  | 'authentication.campaigns.view'
+  | 'authentication.campaigns.manage'
+  | 'licenses.hygiene.view'
+  | 'platform.about.view'
+  | 'feedback.submit'
   | 'audit.view'
-  | 'workspace.settings.manage';
+  | 'workspace.settings.manage'
+  | 'workspace.members.manage';
+
+export const reservedCapabilities = [
+  'authentication.campaigns.manage',
+] as const satisfies readonly Capability[];
 
 export const workspaceSettingsCapability: Capability = 'workspace.settings.manage';
 
@@ -45,6 +55,27 @@ export type CapabilityDecision = {
   pim?: { state: string; activationUrl?: string | null } | null;
   nextStep?: { label: string; href?: string | null } | null;
   missingScopes?: string[] | null;
+  roleEvidence?: CapabilityRoleEvidence | null;
+};
+
+export type CapabilityRoleEvidence = {
+  state: string;
+  requiredRoleTemplateIds: string[];
+  assignments: CapabilityRoleAssignmentEvidence[];
+};
+
+export type CapabilityRoleAssignmentEvidence = {
+  roleTemplateId: string;
+  assignmentState: string;
+  scope: string;
+  pimState?: string | null;
+};
+
+export type WorkspaceModuleEvidence = {
+  module: string;
+  grantSource: string;
+  enabled: boolean;
+  effective: boolean;
 };
 
 export type CapabilitySnapshot = {
@@ -53,6 +84,7 @@ export type CapabilitySnapshot = {
   capabilities: CapabilityDecision[];
   sourceState?: string | null;
   sourceReasonCode?: string | null;
+  workspaceModules?: WorkspaceModuleEvidence[] | null;
 };
 
 export function isPimCapabilityState(state: CapabilityState) {

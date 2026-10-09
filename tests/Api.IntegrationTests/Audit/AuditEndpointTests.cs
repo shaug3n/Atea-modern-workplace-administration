@@ -115,7 +115,7 @@ public sealed class AuditEndpointTests : IAsyncLifetime
     }
 
     private WebApplicationFactory<Program> CreateFactory(string platformRole = "owner") =>
-        new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
+        new ApiIntegrationTestFactory().WithWebHostBuilder(builder =>
         {
             builder.ConfigureAppConfiguration((_, config) =>
             {

@@ -19,6 +19,7 @@ public interface IManagedDeviceDetailReader
 public sealed class GraphManagedDeviceReader(IDelegatedGraphClientFactory clientFactory) : IManagedDeviceReader, IManagedDeviceDetailReader
 {
     private const string Select = "id,deviceName,operatingSystem,osVersion,complianceState,managementState,managedDeviceOwnerType,lastSyncDateTime,userId,azureADDeviceId,serialNumber,manufacturer,model";
+    private const string DetailSelect = Select + ",userDisplayName,userPrincipalName,isEncrypted";
 
     public async Task<GraphReadResult<PagedResult<ManagedDeviceSummary>>> ReadAsync(DeviceSearchQuery query, CancellationToken cancellationToken) =>
         (await ReadPageAsync(query, cancellationToken)).Result;
@@ -31,7 +32,7 @@ public sealed class GraphManagedDeviceReader(IDelegatedGraphClientFactory client
         {
             await using var lease = await clientFactory.CreateForCurrentUserAsync(GraphScopeCatalog.DeviceReadScopes, cancellationToken);
             var response = await lease.Transport.SendAsync(new GraphRequest(HttpMethod.Get,
-                $"/v1.0/deviceManagement/managedDevices/{Uri.EscapeDataString(deviceObjectId)}?$select={Select}"), cancellationToken);
+                $"/v1.0/deviceManagement/managedDevices/{Uri.EscapeDataString(deviceObjectId)}?$select={DetailSelect}"), cancellationToken);
             if (response.Result.Category == "not_found") return GraphReadResult<ManagedDeviceSummary?>.Succeeded(null);
             if (!response.Result.IsSuccess) return GraphReadResult<ManagedDeviceSummary?>.Failed(response.Result);
             try
@@ -131,7 +132,10 @@ public sealed class GraphManagedDeviceReader(IDelegatedGraphClientFactory client
         Optional(element, "azureADDeviceId"),
         Optional(element, "serialNumber"),
         Optional(element, "manufacturer"),
-        Optional(element, "model"));
+        Optional(element, "model"),
+        Optional(element, "userDisplayName"),
+        Optional(element, "userPrincipalName"),
+        OptionalBoolean(element, "isEncrypted"));
 
     private static string EscapeOData(string value) => value.Trim().Replace("'", "''", StringComparison.Ordinal);
     private static GraphOperationResult MapAssociationError(GraphOperationResult error, string? responseContent) =>
@@ -151,6 +155,10 @@ public sealed class GraphManagedDeviceReader(IDelegatedGraphClientFactory client
             : nextLink;
     private static string Required(JsonElement element, string property) => Optional(element, property) ?? string.Empty;
     private static string? Optional(JsonElement element, string property) => element.TryGetProperty(property, out var value) && value.ValueKind != JsonValueKind.Null ? value.GetString() : null;
+    private static bool? OptionalBoolean(JsonElement element, string property) =>
+        element.TryGetProperty(property, out var value) && value.ValueKind is JsonValueKind.True or JsonValueKind.False
+            ? value.GetBoolean()
+            : null;
     private static DateTimeOffset? OptionalDate(JsonElement element, string property) => element.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.String && DateTimeOffset.TryParse(value.GetString(), out var result) ? result : null;
 
     private sealed record ReadPageResult(

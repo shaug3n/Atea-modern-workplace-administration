@@ -21,6 +21,36 @@ describe('LicensesPage', () => {
     expect(screen.getByRole('button', { name: 'View assigned users for Office 365 E3' })).toBeTruthy();
   });
 
+  it('shows the hygiene entry only when capability and both workspace module grants allow it', async () => {
+    render(<LicensesPage
+      loadLicenses={async () => ({ items: [], total: 0, page: 1, pageSize: 25, fetchedAt: '2026-09-21T10:00:00Z', freshness: 'live', partialData: false, access: { state: 'allowed' } })}
+      capabilities={[{ capability: 'licenses.hygiene.view', state: 'read_only', reasonCode: 'role_read_only' }]}
+      moduleEnabled={['licenses', 'license-hygiene']}
+      moduleAssigned={['licenses', 'license-hygiene']}
+    />);
+
+    expect((await screen.findByRole('link', { name: 'Review license hygiene' })).getAttribute('href')).toBe('/licenses/hygiene');
+  });
+
+  it('hides the hygiene entry if its capability or either module grant is missing', async () => {
+    const { rerender } = render(<LicensesPage
+      loadLicenses={async () => ({ items: [], total: 0, page: 1, pageSize: 25, fetchedAt: '2026-09-21T10:00:00Z', freshness: 'live', partialData: false, access: { state: 'allowed' } })}
+      capabilities={[{ capability: 'licenses.hygiene.view', state: 'hidden', reasonCode: 'role_required' }]}
+      moduleEnabled={['licenses', 'license-hygiene']}
+      moduleAssigned={['licenses', 'license-hygiene']}
+    />);
+    expect(await screen.findByText('No license data is available.')).toBeTruthy();
+    expect(screen.queryByRole('link', { name: 'Review license hygiene' })).toBeNull();
+
+    rerender(<LicensesPage
+      loadLicenses={async () => ({ items: [], total: 0, page: 1, pageSize: 25, fetchedAt: '2026-09-21T10:00:00Z', freshness: 'live', partialData: false, access: { state: 'allowed' } })}
+      capabilities={[{ capability: 'licenses.hygiene.view', state: 'allowed', reasonCode: 'active_role' }]}
+      moduleEnabled={['licenses', 'license-hygiene']}
+      moduleAssigned={['licenses']}
+    />);
+    expect(screen.queryByRole('link', { name: 'Review license hygiene' })).toBeNull();
+  });
+
   it('keeps an unknown long code visible and explicitly marks its product name unavailable', async () => {
     const code = 'LONG_UNKNOWN_PRODUCT_CODE_WITH_MANY_SEGMENTS_2026';
     render(<LicensesPage loadLicenses={async () => ({ items: [{ skuId: 'opaque-sku', partNumber: code, displayName: code, purchased: 1, assigned: 0, available: 1 }], total: 1, page: 1, pageSize: 25, fetchedAt: '2026-09-21T10:00:00Z', freshness: 'live', partialData: false, access: { state: 'allowed' } })} />);

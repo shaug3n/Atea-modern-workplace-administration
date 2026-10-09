@@ -36,7 +36,7 @@ Primary threats are browser-side token exfiltration, accidental direct Graph cal
 - A client cannot switch tenants by changing a URL, request body, header or workspace ID. The server joins verified `tid`/`oid` claims to the stored membership and resolves the active workspace.
 - Repositories and audit queries are workspace-scoped; tenant and membership keys are unique in persistence. Cross-workspace reads, mutations and audit reads must be rejected even when an attacker knows another ID.
 - Data returned to the UI is limited to the active workspace and to the caller's capability snapshot. The UI is not an isolation boundary; API and Graph checks repeat the authorization decision.
-- Platform storage is metadata-only: no access/refresh tokens, client secrets, passwords, raw Graph payloads or full upstream exceptions.
+- Workspace-administration and Microsoft Graph integration storage is metadata-only: no access/refresh tokens, client secrets, passwords, raw Graph payloads or full upstream exceptions. Feedback is separate user-entered plain text (subject and message), visible only to its submitting user in the active workspace and retained for 90 days in the active database. Active-database deletion does not guarantee backup erasure.
 
 Residual risk: isolation depends on every endpoint and repository path using the same verified workspace resolver. The security test suite must keep cross-tenant, cross-workspace and replay cases as API-level tests; the browser tests below cannot prove server isolation.
 

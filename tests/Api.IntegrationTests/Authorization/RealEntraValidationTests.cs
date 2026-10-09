@@ -64,7 +64,7 @@ public sealed class RealEntraValidationTests
     }
 
     private static WebApplicationFactory<Program> CreateFactory(RealEntraConfiguration configuration) =>
-        new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
+        new ApiIntegrationTestFactory().WithWebHostBuilder(builder =>
         {
             builder.ConfigureAppConfiguration((_, appConfiguration) => appConfiguration.AddInMemoryCollection(new Dictionary<string, string?>
             {

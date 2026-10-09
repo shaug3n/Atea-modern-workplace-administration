@@ -147,6 +147,20 @@ az containerapp ingress traffic set \
 
 For subsequent releases, the workflow keeps the current revision on primary traffic until candidate health and human smoke gates pass. The first release has only one revision, so its primary host is operator-IP-restricted rather than unrouted. Database migrations are not automatically reversed by app rollback; migrations must be additive/backward compatible, and restore procedures must be tested before production. Run no unreviewed destructive SQL in a release.
 
+## Moving the test deployment to another subscription
+
+The test deployment cannot be moved between subscriptions with Azure Resource Mover or `az resource move`. Move validation rejects the user-assigned managed identity, the Container Apps environment, the VNet-injected PostgreSQL Flexible Server, and the VNet (subnet service association links). Redeploy instead:
+
+1. Create the same empty resource group in the target subscription (same tenant) and grant the provision and release principals their resource-group roles there.
+2. Choose new globally unique names in `infra/parameters/dev.json`. The Key Vault uses purge protection, so its old name stays reserved for the retention period after deletion.
+3. Update `AZURE_SUBSCRIPTION_ID` in both GitHub environments (`test`, `test-promotion`) and the `AZURE_ACR_NAME` / `AZURE_KEY_VAULT_NAME` repository variables. The workflows read these values; they contain no hard-coded subscription IDs.
+4. Run **Provision test foundation**, then follow the post-provisioning steps above: new `AZURE_APP_PUBLIC_URL`, new Entra redirect URIs, and `api-client-secret` in the new vault. Release with **Validate and deploy**.
+5. After the new deployment passes its smoke checks, delete the old resource group(s), remove old role assignments, and remove the old host's Entra redirect URIs.
+
+The PostgreSQL database starts empty after a redeploy. Data protection keys are not carried over.
+
+In October 2026 the test deployment moved from "Azure subscription 1" (`a0789ebf-8e92-43cd-8dac-d7f97250f5d0`) to "Main subscription" (`19b605e1-04e0-44fc-8732-96c12573c4db`), resource group `rg-atea-workplace-test-noe` in `norwayeast`.
+
 ## Alert ownership, cost, retention, and cleanup
 
 The platform operator owns Azure availability, revision failures, Key Vault references, PostgreSQL health, and deployment alerts. The application owner owns authn/authz, Graph consent/PIM, audit, and tenant-isolation alerts. The dev Log Analytics workspace retains 30 days; production example uses 90 days. Confirm data retention with the security/privacy owner before real customer use.
