@@ -165,7 +165,7 @@ public sealed class UserDetailEndpointTests
     }
 
     private static WebApplicationFactory<Program> CreateFactory(DetailGraphFixture graph) =>
-        new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
+        new ApiIntegrationTestFactory().WithWebHostBuilder(builder =>
         {
             builder.ConfigureAppConfiguration((_, config) =>
             {

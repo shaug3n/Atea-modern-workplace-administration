@@ -112,7 +112,7 @@ public sealed class UserSecurityCommandEndpointTests
         RecordingSessionCommands? sessions = null,
         GraphAuthorizationSnapshot? snapshot = null,
         bool includeMembership = true) =>
-        new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
+        new ApiIntegrationTestFactory().WithWebHostBuilder(builder =>
         {
             builder.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
             {

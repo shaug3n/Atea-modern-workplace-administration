@@ -106,7 +106,7 @@ public sealed class MutationReplayTests : IAsyncLifetime
     }
 
     private WebApplicationFactory<Program> CreateFactory(TestIdentity identity, RecordingUserCommands commands) =>
-        new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
+        new ApiIntegrationTestFactory().WithWebHostBuilder(builder =>
         {
             builder.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
             {

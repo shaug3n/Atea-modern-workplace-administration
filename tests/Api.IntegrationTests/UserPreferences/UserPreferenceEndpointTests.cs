@@ -72,7 +72,7 @@ public sealed class UserPreferenceEndpointTests
     private static readonly Guid UserB = Guid.Parse("44444444-4444-4444-4444-444444444444");
 
     private static WebApplicationFactory<Program> CreateFactory(RecordingThemePreferenceService service, Guid? tenantId = null, Guid? objectId = null) =>
-        new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
+        new ApiIntegrationTestFactory().WithWebHostBuilder(builder =>
         {
             builder.ConfigureAppConfiguration((_, configuration) => configuration.AddInMemoryCollection(new Dictionary<string, string?>
             {

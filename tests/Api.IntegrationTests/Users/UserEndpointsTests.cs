@@ -180,7 +180,7 @@ public sealed class UserEndpointsTests
     private static WebApplicationFactory<Program> CreateFactory(
         RecordingDirectoryReader reader,
         GraphAuthorizationSnapshot? snapshot = null) =>
-        new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
+        new ApiIntegrationTestFactory().WithWebHostBuilder(builder =>
         {
             builder.ConfigureAppConfiguration((_, config) =>
             {

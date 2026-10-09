@@ -111,7 +111,7 @@ public sealed class LocalV1JourneyTests
         state.RedeemedMembership.Email.Should().Be("customer.admin@example.test");
     }
 
-    private static WebApplicationFactory<Program> CreateFactory() => new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
+    private static WebApplicationFactory<Program> CreateFactory() => new ApiIntegrationTestFactory().WithWebHostBuilder(builder =>
     {
         builder.UseEnvironment("Development");
         builder.ConfigureAppConfiguration((_, configuration) => configuration.AddInMemoryCollection(new Dictionary<string, string?>
@@ -125,7 +125,7 @@ public sealed class LocalV1JourneyTests
         }));
     });
 
-    private static WebApplicationFactory<Program> CreateAdminFactory(JourneyState state) => new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
+    private static WebApplicationFactory<Program> CreateAdminFactory(JourneyState state) => new ApiIntegrationTestFactory().WithWebHostBuilder(builder =>
     {
         builder.UseEnvironment("Development");
         builder.ConfigureAppConfiguration((_, configuration) => configuration.AddInMemoryCollection(LocalConfiguration()));
@@ -140,7 +140,7 @@ public sealed class LocalV1JourneyTests
         });
     });
 
-    private static WebApplicationFactory<Program> CreateCustomerFactory(JourneyState state) => new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
+    private static WebApplicationFactory<Program> CreateCustomerFactory(JourneyState state) => new ApiIntegrationTestFactory().WithWebHostBuilder(builder =>
     {
         builder.UseEnvironment("Development");
         builder.ConfigureAppConfiguration((_, configuration) => configuration.AddInMemoryCollection(LocalConfiguration()));

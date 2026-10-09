@@ -3,7 +3,6 @@ using System.Net.Http.Headers;
 using System.Security.Claims;
 using Atea.UnifiedWorkplace.Api.Authorization;
 using Atea.UnifiedWorkplace.Api.Infrastructure.Graph;
-using Atea.UnifiedWorkplace.Api.Infrastructure.Persistence;
 using Atea.UnifiedWorkplace.Api.Infrastructure.Persistence.Repositories;
 using FluentAssertions;
 using Microsoft.AspNetCore.Authentication;
@@ -155,7 +154,7 @@ public sealed class CapabilityEndpointTests
         IReadOnlyCollection<string>? moduleKeys = null,
         bool hasMembership = true,
         string consentRedirectUri = "http://localhost:5173/onboarding/consent/callback") =>
-        new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
+        new ApiIntegrationTestFactory().WithWebHostBuilder(builder =>
         {
             builder.ConfigureAppConfiguration((_, config) =>
             {
@@ -180,19 +179,8 @@ public sealed class CapabilityEndpointTests
                 services.AddSingleton<IGraphAuthorizationSnapshotReader>(reader ?? new RecordingSnapshotReader(snapshot ?? GraphAuthorizationSnapshot.Unavailable("temporarily_unavailable")));
                 services.RemoveAll<IConsentChallengeRepository>();
                 services.AddSingleton<IConsentChallengeRepository, RecordingConsentChallengeRepository>();
-                services.RemoveAll<IFeedbackRetentionService>();
-                services.AddSingleton<IFeedbackRetentionService, NoOpFeedbackRetentionService>();
             });
         });
-
-    private sealed class NoOpFeedbackRetentionService : IFeedbackRetentionService
-    {
-        public Task<int> DeleteExpiredBatchAsync(DateTimeOffset nowUtc, CancellationToken cancellationToken)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            return Task.FromResult(0);
-        }
-    }
 
     private sealed class RecordingSnapshotReader(GraphAuthorizationSnapshot snapshot) : IGraphAuthorizationSnapshotReader
     {

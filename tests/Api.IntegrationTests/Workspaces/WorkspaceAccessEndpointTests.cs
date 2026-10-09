@@ -40,7 +40,7 @@ public sealed class WorkspaceAccessEndpointTests : IAsyncLifetime
         try { await postgres.StartAsync(); }
         catch (DockerUnavailableException exception) { throw SkipException.ForSkip($"Docker daemon unavailable: {exception.Message}"); }
 
-        factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
+        factory = new ApiIntegrationTestFactory().WithWebHostBuilder(builder =>
         {
             builder.UseEnvironment("Development");
             builder.ConfigureAppConfiguration((_, configuration) => configuration.AddInMemoryCollection(new Dictionary<string, string?>

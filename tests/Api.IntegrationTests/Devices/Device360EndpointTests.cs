@@ -4,7 +4,6 @@ using System.Security.Claims;
 using Atea.UnifiedWorkplace.Api.Authorization;
 using Atea.UnifiedWorkplace.Api.Features.Devices;
 using Atea.UnifiedWorkplace.Api.Infrastructure.Graph;
-using Atea.UnifiedWorkplace.Api.Infrastructure.Persistence;
 using Atea.UnifiedWorkplace.Api.Infrastructure.Persistence.Repositories;
 using FluentAssertions;
 using Microsoft.AspNetCore.Authentication;
@@ -100,7 +99,7 @@ public sealed class Device360EndpointTests
     }
 
     private static WebApplicationFactory<Program> CreateFactory(RecordingService service, bool hasModule) =>
-        new WebApplicationFactory<Program>().WithWebHostBuilder(builder => builder
+        new ApiIntegrationTestFactory().WithWebHostBuilder(builder => builder
             .ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
             {
                 ["AzureAd:Audience"] = "api://atea-unified-workplace-api",
@@ -117,18 +116,7 @@ public sealed class Device360EndpointTests
                 services.AddSingleton<IWorkspaceMembershipReader>(new FixtureMembershipReader(hasModule));
                 services.RemoveAll<IDevice360Service>();
                 services.AddSingleton<IDevice360Service>(service);
-                services.RemoveAll<IFeedbackRetentionService>();
-                services.AddSingleton<IFeedbackRetentionService, NoOpFeedbackRetentionService>();
             }));
-
-    private sealed class NoOpFeedbackRetentionService : IFeedbackRetentionService
-    {
-        public Task<int> DeleteExpiredBatchAsync(DateTimeOffset nowUtc, CancellationToken cancellationToken)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            return Task.FromResult(0);
-        }
-    }
 
     private sealed class RecordingService : IDevice360Service
     {

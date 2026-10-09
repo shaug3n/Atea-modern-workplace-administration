@@ -187,7 +187,7 @@ public sealed class AuthenticationTests
     }
 
     private static WebApplicationFactory<Program> CreateFactory(bool includeMembership = false, bool malformedIdentity = false, bool includePlatformAdmin = false, string? webRootPath = null) =>
-        new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
+        new ApiIntegrationTestFactory().WithWebHostBuilder(builder =>
         {
             if (webRootPath is not null) builder.UseWebRoot(webRootPath);
             builder.ConfigureAppConfiguration((_, configuration) => configuration.AddInMemoryCollection(new Dictionary<string, string?>
