@@ -9,7 +9,10 @@ namespace Atea.UnifiedWorkplace.Api.Features.Workspaces;
 public sealed record InvitationCreationResult(Guid InvitationId, string InvitationUrl, DateTimeOffset ExpiresAt);
 public sealed record PreparedInvitation(PlatformInvitation Invitation, string InvitationUrl);
 
-public sealed class InvitationService(IInvitationRepository repository, Uri publicBaseUri)
+public sealed class InvitationService(
+    IInvitationRepository repository,
+    Uri publicBaseUri,
+    ConsentChallengeService? challengeService = null)
 {
     public Task<InvitationCreationResult> CreateAsync(Guid workspaceId, string email, string displayName, DateTimeOffset expiresAt, CancellationToken cancellationToken = default) =>
         CreateAsync(workspaceId, email, displayName, expiresAt, null, cancellationToken);
@@ -28,6 +31,26 @@ public sealed class InvitationService(IInvitationRepository repository, Uri publ
         return new InvitationCreationResult(invitation.Id, prepared.InvitationUrl, invitation.ExpiresAt);
     }
 
+    public async Task<InvitationCreationResult?> ReissueForRoleAsync(
+        Guid replacedInvitationId,
+        Guid workspaceId,
+        string email,
+        string displayName,
+        DateTimeOffset expiresAt,
+        string role,
+        Guid? approvedTenantObjectId = null,
+        CancellationToken cancellationToken = default,
+        AuditEvent? auditEvent = null,
+        IReadOnlyCollection<string>? moduleKeys = null)
+    {
+        var prepared = PrepareForRole(workspaceId, email, displayName, expiresAt, role, approvedTenantObjectId, moduleKeys);
+        if (auditEvent is not null) auditEvent.TargetId = prepared.Invitation.Id.ToString("D");
+        var reissued = await repository.ReissueAsync(prepared.Invitation, replacedInvitationId, auditEvent, cancellationToken);
+        return reissued
+            ? new InvitationCreationResult(prepared.Invitation.Id, prepared.InvitationUrl, prepared.Invitation.ExpiresAt)
+            : null;
+    }
+
     public PreparedInvitation PrepareForRole(Guid workspaceId, string email, string displayName, DateTimeOffset expiresAt, string role, Guid? approvedTenantObjectId = null, IReadOnlyCollection<string>? moduleKeys = null)
     {
         if (role is not ("member" or "customer_admin" or "workspace_owner")) throw new ArgumentOutOfRangeException(nameof(role));
@@ -43,10 +66,33 @@ public sealed class InvitationService(IInvitationRepository repository, Uri publ
     }
 
     public async Task<InvitationRedemption?> RedeemDetailedAsync(string nonce, Guid tenantId, Guid tenantObjectId, string? email, string displayName, CancellationToken cancellationToken = default)
+        => await RedeemDetailedAsync(nonce, tenantId, tenantObjectId, email, displayName, challenge: null, cancellationToken);
+
+    public async Task<InvitationRedemption?> RedeemDetailedAsync(
+        string nonce,
+        Guid tenantId,
+        Guid tenantObjectId,
+        string? email,
+        string displayName,
+        string? challenge,
+        CancellationToken cancellationToken = default)
     {
-        if (!IsValidNonce(nonce) || tenantId == Guid.Empty || tenantObjectId == Guid.Empty) return null;
+        if (!IsValidNonce(nonce) || tenantId == Guid.Empty || tenantObjectId == Guid.Empty || challenge is { Length: > 4096 }) return null;
+        string? stateHash = null;
+        if (challenge is not null)
+        {
+            if (challengeService is null ||
+                !challengeService.TryReadInvitation(challenge, out var payload) ||
+                payload.TenantId != tenantId)
+            {
+                return null;
+            }
+
+            stateHash = ConsentChallengeService.HashState(challenge);
+        }
+
         var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(nonce))).ToLowerInvariant();
-        return await repository.RedeemAsync(hash, tenantId, tenantObjectId, email, displayName, cancellationToken);
+        return await repository.RedeemAsync(hash, tenantId, tenantObjectId, email, displayName, stateHash, cancellationToken);
     }
 
     public async Task<bool> RedeemAsync(string nonce, Guid tenantId, Guid tenantObjectId, string? email, string displayName, CancellationToken cancellationToken = default) =>

@@ -14,7 +14,7 @@ test('local Compose startup supplies Development onboarding and admin configurat
   assert.match(compose, /AzureAd__Audience:\s*\$\{AzureAd__Audience:-/);
   assert.match(compose, /AzureAd__ClientSecret:\s*\$\{AzureAd__ClientSecret:-/);
   assert.match(compose, /VITE_ENTRA_CLIENT_ID:\s*\$\{VITE_ENTRA_CLIENT_ID:-\}/);
-  assert.match(compose, /VITE_ENTRA_AUTHORITY:\s*\$\{VITE_ENTRA_AUTHORITY:-\}/);
+  assert.match(compose, /VITE_ENTRA_AUTHORITY:\s*\$\{VITE_ENTRA_AUTHORITY:-https:\/\/login\.microsoftonline\.com\/organizations\}/);
   assert.match(compose, /VITE_ENTRA_API_SCOPE:\s*\$\{VITE_ENTRA_API_SCOPE:-\}/);
   assert.match(compose, /VITE_ENTRA_REDIRECT_URI:\s*\$\{VITE_ENTRA_REDIRECT_URI:-\}/);
   assert.match(compose, /AteaAdmin__LocalDevelopment__Enabled:\s*\$\{AteaAdmin__LocalDevelopment__Enabled:-true\}/);

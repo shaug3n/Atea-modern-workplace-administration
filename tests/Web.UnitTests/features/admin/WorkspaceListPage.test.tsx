@@ -22,15 +22,15 @@ describe('WorkspaceListPage', () => {
     expect((await screen.findByRole('alert')).textContent).toContain('Your current admin scope cannot view these workspaces.');
   });
 
-  it('validates tenant ID and display name before creating and opens the created workspace', async () => {
+  it('validates tenant domain or ID and display name before creating and opens the created workspace', async () => {
     const onOpen = vi.fn();
     api.listWorkspaces.mockResolvedValueOnce([]);
     api.onboardWorkspace.mockResolvedValueOnce({ workspace: { id: 'w-1', tenantId: '11111111-1111-1111-1111-111111111111', displayName: 'Demo', connectionStatus: 'awaiting_invitation' }, invitationUrl: 'http://localhost/invitations/token', expiresAt: '2026-10-01T00:00:00Z' });
     render(<WorkspaceListPage onOpenWorkspace={onOpen} />);
     fireEvent.click(await screen.findByRole('button', { name: 'Create workspace' }));
     fireEvent.click(screen.getByRole('button', { name: 'Create workspace and invite admin' }));
-    expect(screen.getByRole('alert').textContent).toContain('Enter a valid Microsoft Entra tenant ID.');
-    fireEvent.change(screen.getByLabelText('Tenant ID'), { target: { value: '11111111-1111-1111-1111-111111111111' } });
+    expect(screen.getByRole('alert').textContent).toContain('Enter a tenant domain or ID.');
+    fireEvent.change(screen.getByLabelText('Tenant domain or ID'), { target: { value: '11111111-1111-1111-1111-111111111111' } });
     fireEvent.change(screen.getByLabelText('Workspace name'), { target: { value: 'Demo' } });
     fireEvent.change(screen.getByLabelText('First admin sign-in address'), { target: { value: 'admin@example.com' } });
     fireEvent.click(screen.getByRole('button', { name: 'Create workspace and invite admin' }));

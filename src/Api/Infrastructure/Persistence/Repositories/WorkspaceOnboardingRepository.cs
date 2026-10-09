@@ -5,7 +5,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Atea.UnifiedWorkplace.Api.Infrastructure.Persistence.Repositories;
 
-public sealed class WorkspaceOnboardingRepository(WorkplaceDbContext db) : IOnboardingRepository, IInvitationRepository, IConsentChallengeRepository
+public sealed class WorkspaceOnboardingRepository(WorkplaceDbContext db) : IOnboardingRepository, IInvitationRepository, IInvitationReadRepository, IConsentChallengeRepository
 {
     public async Task CreateAsync(Guid workspaceId, Guid tenantId, string stateHash, string correlationId, DateTimeOffset expiresAt, CancellationToken cancellationToken = default)
     {
@@ -19,6 +19,84 @@ public sealed class WorkspaceOnboardingRepository(WorkplaceDbContext db) : IOnbo
             .Where(x => x.StateHash == stateHash && x.WorkspaceId == workspaceId && x.TenantId == tenantId && x.ConsumedAt == null && x.ExpiresAt > now)
             .ExecuteUpdateAsync(updates => updates.SetProperty(x => x.ConsumedAt, now), cancellationToken);
         return consumed == 1;
+    }
+
+    public async Task CreateInvitationAsync(InvitationConsentChallengeRecord challenge, CancellationToken cancellationToken = default)
+    {
+        db.ConsentChallenges.Add(new ConsentChallenge
+        {
+            StateHash = challenge.StateHash,
+            WorkspaceId = challenge.WorkspaceId,
+            TenantId = challenge.TenantId,
+            InvitationId = challenge.InvitationId,
+            Purpose = challenge.Purpose,
+            CorrelationId = challenge.CorrelationId,
+            ExpiresAt = challenge.ExpiresAt
+        });
+        await db.SaveChangesAsync(cancellationToken);
+    }
+
+    public async Task<InvitationConsentChallengeRecord?> FindInvitationAsync(string stateHash, CancellationToken cancellationToken = default)
+    {
+        return await db.ConsentChallenges.AsNoTracking()
+            .Where(x => x.StateHash == stateHash)
+            .Select(x => new InvitationConsentChallengeRecord(
+                x.StateHash,
+                x.WorkspaceId,
+                x.TenantId,
+                x.InvitationId ?? Guid.Empty,
+                x.Purpose,
+                x.CorrelationId,
+                x.ExpiresAt,
+                x.ConsumedAt,
+                x.Invitation == null ? null : x.Invitation.RedeemedAt,
+                x.Invitation == null ? null : x.Invitation.RedeemedByTenantObjectId,
+                x.Invitation == null ? null : x.Invitation.RevokedAt,
+                x.Invitation == null ? null : x.Invitation.ExpiresAt))
+            .SingleOrDefaultAsync(cancellationToken);
+    }
+
+    public async Task<bool> TryConsumeInvitationAsync(
+        string stateHash,
+        Guid invitationId,
+        Guid workspaceId,
+        Guid tenantId,
+        Guid redeemerObjectId,
+        DateTimeOffset now,
+        CancellationToken cancellationToken = default)
+    {
+        return await db.ConsentChallenges
+            .Where(x => x.StateHash == stateHash &&
+                x.InvitationId == invitationId &&
+                x.WorkspaceId == workspaceId &&
+                x.TenantId == tenantId &&
+                x.Purpose == "invitation" &&
+                x.ConsumedAt == null &&
+                x.ExpiresAt > now &&
+                x.Invitation != null &&
+                x.Invitation.RedeemedByTenantObjectId == redeemerObjectId &&
+                x.Invitation.RedeemedAt != null &&
+                x.Invitation.RevokedAt == null &&
+                x.Invitation.ExpiresAt > now &&
+                x.Invitation.Workspace.TenantId == tenantId)
+            .ExecuteUpdateAsync(updates => updates.SetProperty(x => x.ConsumedAt, now), cancellationToken) == 1;
+    }
+
+    public async Task<InvitationLookup?> FindByNonceHashAsync(string nonceHash, CancellationToken cancellationToken = default)
+    {
+        return await db.PlatformInvitations.AsNoTracking()
+            .Where(x => x.NonceHash == nonceHash)
+            .Select(x => new InvitationLookup(
+                x.Id,
+                x.WorkspaceId,
+                x.Workspace.DisplayName,
+                x.Workspace.TenantId,
+                x.Role,
+                x.ExpiresAt,
+                x.RedeemedAt != null,
+                x.RevokedAt != null,
+                x.RedeemedByTenantObjectId))
+            .SingleOrDefaultAsync(cancellationToken);
     }
     public async Task<ConnectionSnapshot?> GetConnectionAsync(Guid workspaceId, CancellationToken cancellationToken = default)
     {
@@ -81,14 +159,111 @@ public sealed class WorkspaceOnboardingRepository(WorkplaceDbContext db) : IOnbo
         return invitation;
     }
 
-    public async Task<InvitationRedemption?> RedeemAsync(string nonceHash, Guid tenantId, Guid tenantObjectId, string? email, string displayName, CancellationToken cancellationToken = default)
+    public async Task<bool> ReissueAsync(
+        PlatformInvitation invitation,
+        Guid replacedInvitationId,
+        AuditEvent? auditEvent,
+        CancellationToken cancellationToken = default)
     {
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
         var now = DateTimeOffset.UtcNow;
+        var revoked = await db.PlatformInvitations
+            .Where(x => x.Id == replacedInvitationId &&
+                x.WorkspaceId == invitation.WorkspaceId &&
+                x.RedeemedAt == null &&
+                x.RevokedAt == null)
+            .ExecuteUpdateAsync(updates => updates.SetProperty(x => x.RevokedAt, now), cancellationToken);
+        if (revoked != 1) return false;
+
+        await CreateAsync(invitation, auditEvent, cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return true;
+    }
+
+    public Task<InvitationRedemption?> RedeemAsync(
+        string nonceHash,
+        Guid tenantId,
+        Guid tenantObjectId,
+        string? email,
+        string displayName,
+        CancellationToken cancellationToken = default) =>
+        RedeemAsync(nonceHash, tenantId, tenantObjectId, email, displayName, invitationStateHash: null, cancellationToken);
+
+    public async Task<InvitationRedemption?> RedeemAsync(
+        string nonceHash,
+        Guid tenantId,
+        Guid tenantObjectId,
+        string? email,
+        string displayName,
+        string? invitationStateHash,
+        CancellationToken cancellationToken = default)
+    {
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        var now = DateTimeOffset.UtcNow;
+
+        if (invitationStateHash is not null)
+        {
+            var challengeMatchesInvitation = await db.ConsentChallenges.AnyAsync(x =>
+                x.StateHash == invitationStateHash &&
+                x.Purpose == "invitation" &&
+                x.ConsumedAt == null &&
+                x.ExpiresAt > now &&
+                x.InvitationId != null &&
+                x.Invitation != null &&
+                x.Invitation.NonceHash == nonceHash &&
+                x.Invitation.Id == x.InvitationId &&
+                x.Invitation.WorkspaceId == x.WorkspaceId &&
+                x.TenantId == tenantId &&
+                x.Invitation.Workspace.TenantId == tenantId &&
+                x.Invitation.RevokedAt == null &&
+                x.Invitation.ExpiresAt > now,
+                cancellationToken);
+            if (!challengeMatchesInvitation) return null;
+        }
+
         var claimed = await db.PlatformInvitations
             .Where(x => x.NonceHash == nonceHash && x.RedeemedAt == null && x.RevokedAt == null && x.ExpiresAt > now && x.Workspace.TenantId == tenantId && (x.ApprovedTenantObjectId == tenantObjectId || (x.ApprovedTenantObjectId == null && email != null && x.Email.ToLower() == email.Trim().ToLower())))
-            .ExecuteUpdateAsync(updates => updates.SetProperty(x => x.RedeemedAt, now), cancellationToken);
-        if (claimed != 1) return null;
+            .ExecuteUpdateAsync(updates => updates
+                .SetProperty(x => x.RedeemedAt, now)
+                .SetProperty(x => x.RedeemedByTenantObjectId, tenantObjectId), cancellationToken);
+        if (claimed != 1)
+        {
+            if (invitationStateHash is null) return null;
+
+            var recoveredInvitation = await db.PlatformInvitations.AsNoTracking()
+                .Include(x => x.Workspace)
+                .SingleOrDefaultAsync(x =>
+                    x.NonceHash == nonceHash &&
+                    x.RedeemedAt != null &&
+                    x.RedeemedByTenantObjectId == tenantObjectId &&
+                    x.RevokedAt == null &&
+                    x.ExpiresAt > now &&
+                    x.Workspace.TenantId == tenantId,
+                    cancellationToken);
+            if (recoveredInvitation is null) return null;
+
+            var challengeStillValid = await db.ConsentChallenges.AnyAsync(x =>
+                x.StateHash == invitationStateHash &&
+                x.Purpose == "invitation" &&
+                x.ConsumedAt == null &&
+                x.ExpiresAt > now &&
+                x.InvitationId == recoveredInvitation.Id &&
+                x.WorkspaceId == recoveredInvitation.WorkspaceId &&
+                x.TenantId == tenantId &&
+                x.Invitation != null &&
+                x.Invitation.RedeemedByTenantObjectId == tenantObjectId &&
+                x.Invitation.RevokedAt == null &&
+                x.Invitation.ExpiresAt > now &&
+                x.Invitation.Workspace.TenantId == tenantId,
+                cancellationToken);
+            if (!challengeStillValid) return null;
+
+            var existingMembership = await db.WorkspaceMemberships.AsNoTracking()
+                .SingleOrDefaultAsync(x => x.WorkspaceId == recoveredInvitation.WorkspaceId && x.TenantObjectId == tenantObjectId, cancellationToken);
+            return existingMembership is null
+                ? null
+                : new InvitationRedemption(recoveredInvitation.Workspace, existingMembership);
+        }
 
         var invitation = await db.PlatformInvitations.Include(x => x.Workspace).SingleAsync(x => x.NonceHash == nonceHash, cancellationToken);
         await db.PlatformInvitations
@@ -118,7 +293,8 @@ public sealed class WorkspaceOnboardingRepository(WorkplaceDbContext db) : IOnbo
             Outcome = "success", Timestamp = now,
             SafeMetadataJson = JsonSerializer.Serialize(new { resource = "invitation", role = invitation.Role })
         });
-        invitation.Workspace.ConnectionStatus = Atea.UnifiedWorkplace.Api.Features.Workspaces.ConnectionState.ConsentRequired;
+        if (invitation.Workspace.ConnectionStatus == Atea.UnifiedWorkplace.Api.Features.Workspaces.ConnectionState.AwaitingInvitation)
+            invitation.Workspace.ConnectionStatus = Atea.UnifiedWorkplace.Api.Features.Workspaces.ConnectionState.ConsentRequired;
         invitation.Workspace.UpdatedAt = now;
         await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);

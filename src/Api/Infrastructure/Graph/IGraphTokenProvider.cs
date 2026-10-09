@@ -16,6 +16,8 @@ public sealed class MicrosoftIdentityGraphTokenProvider(ITokenAcquisition tokenA
             throw new ArgumentException("At least one Graph delegated scope is required.", nameof(scopes));
         }
 
-        return tokenAcquisition.GetAccessTokenForUserAsync(scopes);
+        return tokenAcquisition.GetAccessTokenForUserAsync(
+            scopes,
+            tokenAcquisitionOptions: new TokenAcquisitionOptions { CancellationToken = cancellationToken });
     }
 }

@@ -24,11 +24,20 @@ This local provider is accepted only when the API environment is `Development`. 
 The local onboarding configuration is also included in `.env.example` and must remain present in `.env`:
 
 ```text
+Onboarding__CustomerClientId=<customer-SPA-client-id>
+Onboarding__ApiApplicationIdUri=api://<API-client-id>
 Onboarding__PublicBaseUrl=http://localhost:5173
 Onboarding__ConsentRedirectUri=http://localhost:5173/onboarding/consent/callback
 Onboarding__ConsentSigningKey=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+Onboarding__TrustedProxyAddresses=
 PlatformAuthorization__RequiredScope=platform.admin
 ```
+
+Compose maps `VITE_ENTRA_CLIENT_ID` to `Onboarding__CustomerClientId` and
+`AzureAd__Audience` to `Onboarding__ApiApplicationIdUri`; use the same customer
+SPA client ID and API audience in the web/API configuration. The signing key
+shown here is Development-only. Configure an explicit trusted proxy address
+only when the deployment has a known proxy that forwards client IPs.
 
 Use exactly three terminals. Source `.env` in each terminal so the API and Compose receive the same local configuration. Terminal 1 starts PostgreSQL:
 
@@ -54,7 +63,65 @@ cd src/Web && npm ci && npm run dev -- --host 0.0.0.0 --port 5173
 
 For the one-command Compose variant, source `.env` first: `set -a; . ./.env; set +a; docker compose up --build`. Compose explicitly configures the API as Development, injects the local admin credentials, injects all required onboarding values, uses the container PostgreSQL connection string, and waits for the PostgreSQL health check before starting the API. Generated invitations use `Onboarding__PublicBaseUrl=http://localhost:5173` and have no fallback origin. Tear down with `docker compose down` (add `-v` only when deliberately removing the local database volume).
 
-Open `http://localhost:5173/admin` for the local Atea platform-admin login. Platform bearer calls require the configured `platform.admin` scope in the space-delimited `scp` claim; the Development-only local admin cookie is exempt from bearer scopes. Create the workspace, add the customer administrator membership, and create the one-time invitation. The customer administrator signs in through the customer tenant's Entra ID flow, redeems the invitation, grants admin consent for approved delegated Graph scopes, verifies the overview connection state, checks Global Reader read-only and User Administrator mutation states, and follows the PIM handoff for eligible, approval-required, and MFA-required states. The local Atea admin cookie is not a customer Entra session and cannot authorize customer Graph operations. The API health endpoint is `GET http://localhost:8080/health`.
+Open `http://localhost:5173/admin` for the local Atea platform-admin login. Platform bearer calls require the configured `platform.admin` scope in the space-delimited `scp` claim; the Development-only local admin cookie is exempt from bearer scopes. Create the workspace using the customer's verified tenant domain or tenant GUID—an email domain is never inferred—then create the nominated administrator's invitation. For eligible administrator invitations, the customer opens one link while signed out, reviews the delegated-permission request, grants consent in the customer tenant, and then signs in as the invited identity to redeem and complete automatic verification. Ordinary member invitations retain sign-in and redemption without anonymous consent start. The local Atea admin cookie is not a customer Entra session and cannot authorize customer Graph operations. The API health endpoint is `GET http://localhost:8080/health`.
+
+## Consent-first customer onboarding
+
+The Atea operator remains responsible for verifying the customer's tenant,
+creating the workspace and handing off the invitation through the approved
+channel. Domain input is resolved through Microsoft Entra OpenID Connect
+metadata before provisioning; GUID input remains supported. The discovery
+result identifies a directory but is not proof of domain ownership or
+authorization.
+
+For an eligible administrator invitation:
+
+1. The invitee opens the invitation page before signing in. It shows the
+   workspace name, setup steps and delegated permission details without
+   exposing invitee identity, tenant/workspace IDs or connection diagnostics.
+2. The invitee starts tenant-specific admin consent. Entra provisions the
+   customer's SPA/API service principals and grants only the configured
+   delegated permissions. The app does not use app-only Graph access, create
+   enterprise apps itself, assign directory roles, or create membership during
+   anonymous consent.
+3. After returning to the same browser tab, the invitee signs in at the
+   server-returned tenant authority as the nominated identity. The API verifies
+   tenant and object ID, redeems the invitation, consumes the bound challenge,
+   and checks delegated connection/permission coverage. `consent_received`
+   means callback processing only; it does not mean the connection is healthy.
+4. Full permission coverage reaches the overview. Missing permissions or
+   inconclusive verification remains visible with safe retry/re-consent
+   guidance. A retry performs a new health check rather than replaying the
+   consumed consent state.
+
+The customer SPA lists the API's `access_as_user` scope; the API registration
+lists the reviewed Graph delegated-scope manifest and links the customer SPA
+through `knownClientApplications`. For this consent-first route, the admin
+consent request targets the customer SPA and requests the API resource's
+`/.default` URI. This differs from the retained authenticated legacy
+re-consent route, which targets the API and uses Graph `/.default`. Consent
+does not grant an Entra role: the customer's active directory role, PIM state,
+workspace membership and API authorization remain separate checks.
+
+To inspect registration changes without writing to Entra, use the existing
+registration tool's default dry-run mode. Supply the expected home tenant,
+existing API/customer-SPA client IDs, API application-ID URI and exact callback
+URIs:
+
+```bash
+python3 infra/scripts/configure-entra-onboarding.py \
+  --expected-home-tenant-id "$ENTRA_HOME_TENANT_ID" \
+  --api-app-id "$ENTRA_API_CLIENT_ID" \
+  --customer-spa-app-id "$CUSTOMER_SPA_CLIENT_ID" \
+  --api-application-id-uri "$ENTRA_API_AUDIENCE" \
+  --sign-in-redirect-uri "$APP_PUBLIC_URL/auth/callback" \
+  --consent-redirect-uri "$APP_PUBLIC_URL/onboarding/consent/callback"
+```
+
+Review the sanitized diff with the registration owner before considering
+`--apply`. The script does not create registrations, grant admin consent,
+create secrets, change customer tenants or assign roles. Do not run it with
+`--apply` as part of local validation.
 
 ## Azure infrastructure
 
@@ -96,4 +163,10 @@ The `tests/Web.E2E` command runs TAP contracts plus Vitest/jsdom scenarios; it
 does not launch a real browser or sign in to Entra. These deterministic fixtures
 do not verify live Graph permissions, tenant consent, Entra roles, or PIM
 policy. Follow the dedicated test-tenant runbooks for those real-tenant checks.
-Run `docker compose config --quiet` to validate Compose.
+Run `python3 infra/tests/test_configure_entra_onboarding.py`,
+`python3 infra/tests/validate_contract.py`, and `docker compose config --quiet`
+for the registration-script, hosted-infrastructure and local Compose
+contracts. The API integration suite uses Testcontainers PostgreSQL and needs a
+running Docker daemon; do not replace its database tests with an in-memory
+provider. Live tenant acceptance remains an explicit, opt-in operation and is
+not implied by these deterministic checks.

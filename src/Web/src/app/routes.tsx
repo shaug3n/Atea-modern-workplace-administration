@@ -46,6 +46,10 @@ export function isInvitationPath(pathname: string) {
   return /^\/invitations\/[^/]+$/.test(pathname);
 }
 
+export function isConsentCallbackPath(pathname: string) {
+  return pathname === '/onboarding/consent/callback' || pathname === '/consent-callback';
+}
+
 export const appRoutes: AppRoute[] = [
   { path: '/consent-callback', label: messages.connectionTitle, includeInSystemInventory: false, render: () => <ConsentCallbackPage /> },
   { path: '/onboarding/consent/callback', label: messages.connectionTitle, includeInSystemInventory: false, render: () => <ConsentCallbackPage /> },

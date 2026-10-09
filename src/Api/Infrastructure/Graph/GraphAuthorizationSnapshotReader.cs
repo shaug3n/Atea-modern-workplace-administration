@@ -7,7 +7,9 @@ using Microsoft.Identity.Web;
 
 namespace Atea.UnifiedWorkplace.Api.Infrastructure.Graph;
 
-public sealed class GraphAuthorizationSnapshotReader(IDelegatedGraphClientFactory clientFactory) : IGraphAuthorizationSnapshotReader
+public sealed class GraphAuthorizationSnapshotReader(
+    IDelegatedGraphClientFactory clientFactory,
+    IDelegatedScopeAvailabilityReader scopeAvailabilityReader) : IGraphAuthorizationSnapshotReader
 {
     private static readonly TimeSpan SnapshotCacheLifetime = TimeSpan.FromSeconds(15);
     private static readonly ConcurrentDictionary<SnapshotCacheKey, CachedSnapshot> SnapshotCache = new();
@@ -46,15 +48,26 @@ public sealed class GraphAuthorizationSnapshotReader(IDelegatedGraphClientFactor
                 return Cache(cacheKey, snapshot);
             }
 
-            var scopeProbe = await ReadScopeAvailabilityAsync(cancellationToken);
+            var scopeResults = await scopeAvailabilityReader.ReadAsync(
+                GraphScopeCatalog.CapabilityEvaluationScopes,
+                cancellationToken);
             return Cache(cacheKey, snapshot with
             {
-                GrantedScopes = scopeProbe.Availability
-                    .Where(entry => entry.Value)
-                    .Select(entry => entry.Key)
+                GrantedScopes = scopeResults
+                    .Where(result => result.Status == ScopeAvailability.Available)
+                    .Select(result => result.Scope)
                     .ToArray(),
-                ScopeAvailability = scopeProbe.Availability,
-                ScopeProblems = scopeProbe.Problems
+                ScopeAvailability = scopeResults.ToDictionary(
+                    result => result.Scope,
+                    result => result.Status == ScopeAvailability.Available,
+                    StringComparer.OrdinalIgnoreCase),
+                ScopeProblems = scopeResults
+                    .Where(result => result.Status != ScopeAvailability.Available &&
+                        !string.IsNullOrWhiteSpace(result.ProblemCategory))
+                    .ToDictionary(
+                        result => result.Scope,
+                        result => result.ProblemCategory!,
+                        StringComparer.OrdinalIgnoreCase)
             });
         }
     }
@@ -63,41 +76,6 @@ public sealed class GraphAuthorizationSnapshotReader(IDelegatedGraphClientFactor
     {
         SnapshotCache[key] = new CachedSnapshot(snapshot, DateTimeOffset.UtcNow.Add(SnapshotCacheLifetime));
         return snapshot;
-    }
-
-    private async Task<ScopeProbeSnapshot> ReadScopeAvailabilityAsync(CancellationToken cancellationToken)
-    {
-        var results = await Task.WhenAll(GraphScopeCatalog.CapabilityEvaluationScopes.Select(scope => ProbeScopeAsync(scope, cancellationToken)));
-        return new ScopeProbeSnapshot(
-            results.ToDictionary(result => result.Scope, result => result.Available, StringComparer.OrdinalIgnoreCase),
-            results
-                .Where(result => !result.Available && !string.IsNullOrWhiteSpace(result.ProblemCategory))
-                .ToDictionary(result => result.Scope, result => result.ProblemCategory!, StringComparer.OrdinalIgnoreCase));
-    }
-
-    private async Task<ScopeProbeResult> ProbeScopeAsync(string scope, CancellationToken cancellationToken)
-    {
-        try
-        {
-            await using var scopeLease = await clientFactory.CreateForCurrentUserAsync([scope], cancellationToken);
-            return new ScopeProbeResult(scope, true, null);
-        }
-        catch (MicrosoftIdentityWebChallengeUserException exception)
-        {
-            return new ScopeProbeResult(scope, false, GraphTokenAcquisitionErrorMapper.Map(exception).Category);
-        }
-        catch (MsalUiRequiredException exception)
-        {
-            return new ScopeProbeResult(scope, false, GraphTokenAcquisitionErrorMapper.Map(exception).Category);
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            throw;
-        }
-        catch (Exception)
-        {
-            return new ScopeProbeResult(scope, false, "temporarily_unavailable");
-        }
     }
 
     private static async Task<GraphAuthorizationSnapshot> ReadSnapshotAsync(GraphClientLease lease, CancellationToken cancellationToken)
@@ -234,12 +212,6 @@ public sealed class GraphAuthorizationSnapshotReader(IDelegatedGraphClientFactor
             : null;
 
     private sealed record RoleDefinition(string TemplateId, string? DisplayName);
-
-    private sealed record ScopeProbeResult(string Scope, bool Available, string? ProblemCategory);
-
-    private sealed record ScopeProbeSnapshot(
-        IReadOnlyDictionary<string, bool> Availability,
-        IReadOnlyDictionary<string, string> Problems);
 
     private sealed record SnapshotCacheKey(Guid WorkspaceId, Guid TenantId, Guid UserObjectId);
 

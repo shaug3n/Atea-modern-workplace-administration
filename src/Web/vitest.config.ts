@@ -24,6 +24,6 @@ export default defineConfig({
   },
   test: {
     environment: 'jsdom',
-    include: ['../../tests/Web.UnitTests/**/*.test.tsx']
+    include: ['../../tests/Web.UnitTests/**/*.test.ts', '../../tests/Web.UnitTests/**/*.test.tsx']
   }
 });

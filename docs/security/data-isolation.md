@@ -6,6 +6,21 @@ Persistence code treats `WorkspaceId` as a mandatory scope. `WorkspaceRepository
 
 Workspace-administration features store only metadata: workspace identity and status, membership metadata, connection status and approved scope JSON, UI settings JSON, and invitation metadata including a nonce hash. They do not store access tokens, refresh tokens, client secrets, passwords, or other credentials.
 
+Consent-first invitation preview, start and resume are narrowly scoped anonymous
+routes. Preview returns only the workspace display name, safe flow
+discriminator and public delegated scope names; it does not return invitee
+identity, tenant/workspace IDs, membership/module details or connection
+diagnostics. Anonymous consent does not create membership or change workspace
+connection state. The API stores only the consent-state hash and its
+server-held workspace, tenant, invitation and expiry bindings; it does not
+persist or log raw invitation nonces, signed consent state, authorization
+URLs, provider descriptions or tokens. The browser deliberately retains the
+pending invitation nonce/challenge in that tab's `sessionStorage` only for the
+redirect/recovery flow; do not copy it across origins or expose it through
+logs, analytics or screenshots. Authenticated invitation redemption records
+the verified redeemer object ID transactionally with membership and redemption
+time so a lost-response retry can be restricted to that same identity.
+
 Platform administrators are limited to the configured allowlist of Atea object IDs and may provision workspaces and change platform membership metadata. This role is separate from Microsoft Graph capabilities and never grants Microsoft 365 directory authority. Directory operations require the later Graph capability boundary and customer-granted permissions.
 
 EF migrations run automatically only in Development. Production startup never mutates the database; production migrations are a deployment responsibility.

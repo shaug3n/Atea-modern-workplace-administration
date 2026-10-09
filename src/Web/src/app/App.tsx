@@ -2,7 +2,7 @@ import { ModuleUnavailable } from '../components/ModuleUnavailable';
 import React, { useCallback, useEffect, useState } from 'react';
 import { useApi } from '../auth/useApi';
 import { useAuth } from '../auth/AuthProvider';
-import { appRoutes, capabilityDecisionFor, isInvitationPath, matchRoute, type AppRoute } from './routes';
+import { appRoutes, capabilityDecisionFor, isConsentCallbackPath, isInvitationPath, matchRoute, type AppRoute } from './routes';
 import { AppShell } from '../components/AppShell';
 import { AppThemeProvider, ThemeProvider, type ThemePreferenceStore } from '../components/ThemeToggle';
 import type { AppSession } from './sessionTypes';
@@ -12,6 +12,8 @@ import { useWorkspaceIssueReporter } from '../notifications/WorkspaceNotificatio
 import type { CapabilityDecision, CapabilitySnapshot } from '../capabilities/capabilityTypes';
 import { useCapabilities, type CapabilityLoader } from '../capabilities/useCapabilities';
 import { InvitationRedemptionPage } from '../features/invitations/InvitationRedemptionPage';
+import { InvitationLandingPage } from '../features/invitations/InvitationLandingPage';
+import { ConsentCallbackPage } from '../features/workspace-settings/ConsentCallbackPage';
 import { DevicesPage } from '../features/devices/DevicesPage';
 import type { ConnectionHealthLoader } from '../features/overview/OverviewPage';
 import { messages } from './messages';
@@ -64,6 +66,17 @@ export function getAuthorizedAppRoutes(session: AppSession, decisions: Capabilit
 }
 
 export function App({ loadCapabilities, loadSession, loadConnectionHealth, loadAuthenticationCampaigns, themePreferenceStore, signInAction }: { loadCapabilities?: CapabilityLoader; loadSession?: SessionLoader; loadConnectionHealth?: ConnectionHealthLoader; loadAuthenticationCampaigns?: AuthenticationCampaignsLoader; themePreferenceStore?: ThemePreferenceStore; signInAction?: () => Promise<void> }) {
+  const [pathname, setPathname] = useState(() => window.location.pathname);
+  useEffect(() => {
+    const updatePath = () => setPathname(window.location.pathname);
+    window.addEventListener('popstate', updatePath);
+    return () => window.removeEventListener('popstate', updatePath);
+  }, []);
+
+  if (isInvitationPath(pathname)) {
+    return <InvitationLandingPage nonce={pathname.slice('/invitations/'.length)} />;
+  }
+  if (isConsentCallbackPath(pathname)) return <ConsentCallbackPage />;
   if (loadCapabilities && loadSession) {
     return <ThemeProvider preferenceStore={themePreferenceStore}><AppExperience loadCapabilities={loadCapabilities} loadSession={loadSession} loadConnectionHealth={loadConnectionHealth} loadAuthenticationCampaigns={loadAuthenticationCampaigns} signInAction={signInAction} /></ThemeProvider>;
   }
@@ -111,6 +124,7 @@ function AppExperience({ loadCapabilities, loadSession, loadConnectionHealth, lo
   }, []);
 
   if (isInvitationPath(path)) return <InvitationRedemptionPage nonce={path.slice('/invitations/'.length)} />;
+  if (isConsentCallbackPath(path.split('#')[0])) return <ConsentCallbackPage />;
   return <WorkspaceExperience path={path} navigate={navigate} loadCapabilities={loadCapabilities} loadSession={loadSession} loadConnectionHealth={loadConnectionHealth} loadAuthenticationCampaigns={loadAuthenticationCampaigns} signInAction={signInAction} switchAccountAction={switchAccountAction} />;
 }
 

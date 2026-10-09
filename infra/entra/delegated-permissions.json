@@ -1,0 +1,101 @@
+{
+  "requiredResourceAccess": [
+    {
+      "resourceAppId": "00000003-0000-0000-c000-000000000000",
+      "resourceAccess": [
+        {
+          "name": "BitlockerKey.Read.All",
+          "type": "Scope"
+        },
+        {
+          "name": "BitlockerKey.ReadBasic.All",
+          "type": "Scope"
+        },
+        {
+          "name": "DeviceLocalCredential.Read.All",
+          "type": "Scope"
+        },
+        {
+          "name": "DeviceLocalCredential.ReadBasic.All",
+          "type": "Scope"
+        },
+        {
+          "name": "DeviceManagementManagedDevices.PrivilegedOperations.All",
+          "type": "Scope"
+        },
+        {
+          "name": "DeviceManagementManagedDevices.Read.All",
+          "type": "Scope"
+        },
+        {
+          "name": "DeviceManagementManagedDevices.ReadWrite.All",
+          "type": "Scope"
+        },
+        {
+          "name": "Directory.Read.All",
+          "type": "Scope"
+        },
+        {
+          "name": "Group.Read.All",
+          "type": "Scope"
+        },
+        {
+          "name": "GroupMember.ReadWrite.All",
+          "type": "Scope"
+        },
+        {
+          "name": "LicenseAssignment.ReadWrite.All",
+          "type": "Scope"
+        },
+        {
+          "name": "MailboxSettings.Read",
+          "type": "Scope"
+        },
+        {
+          "name": "RoleManagement.Read.Directory",
+          "type": "Scope"
+        },
+        {
+          "name": "RoleManagement.ReadWrite.Directory",
+          "type": "Scope"
+        },
+        {
+          "name": "User-PasswordProfile.ReadWrite.All",
+          "type": "Scope"
+        },
+        {
+          "name": "User.Create",
+          "type": "Scope"
+        },
+        {
+          "name": "User.EnableDisableAccount.All",
+          "type": "Scope"
+        },
+        {
+          "name": "User.Read",
+          "type": "Scope"
+        },
+        {
+          "name": "User.Read.All",
+          "type": "Scope"
+        },
+        {
+          "name": "User.ReadWrite.All",
+          "type": "Scope"
+        },
+        {
+          "name": "User.RevokeSessions.All",
+          "type": "Scope"
+        },
+        {
+          "name": "UserAuthenticationMethod.Read.All",
+          "type": "Scope"
+        },
+        {
+          "name": "UserAuthenticationMethod.ReadWrite.All",
+          "type": "Scope"
+        }
+      ]
+    }
+  ]
+}

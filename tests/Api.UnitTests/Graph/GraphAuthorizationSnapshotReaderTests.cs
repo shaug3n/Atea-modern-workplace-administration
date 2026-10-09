@@ -32,7 +32,8 @@ public sealed class GraphAuthorizationSnapshotReaderTests
             Success("{\"value\":[]}"),
             Success("{\"value\":[]}")
         ]);
-        var reader = new GraphAuthorizationSnapshotReader(new RecordingGraphClientFactory(transport));
+        var factory = new RecordingGraphClientFactory(transport);
+        var reader = new GraphAuthorizationSnapshotReader(factory, new DelegatedScopeAvailabilityReader(factory));
         var context = new WorkspaceContext(
             new AuthenticatedUser(Guid.NewGuid(), Guid.NewGuid(), "user@example.com", "Test user", "Member"),
             new WorkspaceMembership(Guid.NewGuid(), "Test workspace"));
@@ -54,7 +55,7 @@ public sealed class GraphAuthorizationSnapshotReaderTests
             Success("{\"value\":[]}")
         ]);
         var factory = new RecordingGraphClientFactory(transport);
-        var reader = new GraphAuthorizationSnapshotReader(factory);
+        var reader = new GraphAuthorizationSnapshotReader(factory, new DelegatedScopeAvailabilityReader(factory));
 
         await reader.ReadAsync(new WorkspaceContext(
             new AuthenticatedUser(Guid.NewGuid(), Guid.NewGuid(), "user@example.com", "Test user", "Member"),
@@ -74,7 +75,8 @@ public sealed class GraphAuthorizationSnapshotReaderTests
             Success($"{{\"value\":[{{\"id\":\"eligibility-1\",\"principalId\":\"user-1\",\"roleDefinitionId\":\"definition-1\",\"directoryScopeId\":\"/\"{(endDateTime is null ? string.Empty : $",\"endDateTime\":\"{endDateTime}\"")} }}]}}")
         ]);
 
-        var reader = new GraphAuthorizationSnapshotReader(new RecordingGraphClientFactory(transport));
+        var factory = new RecordingGraphClientFactory(transport);
+        var reader = new GraphAuthorizationSnapshotReader(factory, new DelegatedScopeAvailabilityReader(factory));
 
         var tenantId = Guid.NewGuid();
         var objectId = Guid.NewGuid();

@@ -7,6 +7,8 @@ using System.Security.Claims;
 
 namespace Atea.UnifiedWorkplace.Api.Features.Workspaces;
 
+public sealed record OnboardingRateLimitMarker;
+
 public static class WorkspaceEndpoints
 {
     public static IEndpointRouteBuilder MapWorkspaceEndpoints(this IEndpointRouteBuilder endpoints)
@@ -28,7 +30,84 @@ public static class WorkspaceEndpoints
         endpoints.MapPost("/api/workspaces/current/consent/start", StartConsentAsync).RequireAuthorization();
         endpoints.MapPost("/api/workspaces/current/consent/complete", CompleteConsentAsync).RequireAuthorization();
         endpoints.MapPost("/api/invitations/{nonce}/redeem", RedeemInvitationAsync).RequireAuthorization();
+        var anonymousInvitations = endpoints.MapGroup("/api/invitations");
+        anonymousInvitations.MapGet("/{nonce}/preview", PreviewInvitationAsync)
+            .AllowAnonymous()
+            .WithMetadata(new OnboardingRateLimitMarker())
+            .RequireRateLimiting("OnboardingCommon");
+        anonymousInvitations.MapPost("/{nonce}/consent/start", StartInvitationConsentAsync)
+            .AllowAnonymous()
+            .WithMetadata(new OnboardingRateLimitMarker())
+            .RequireRateLimiting("OnboardingConsentStart");
+        anonymousInvitations.MapPost("/{nonce}/consent/resume", ResumeInvitationConsentAsync)
+            .AllowAnonymous()
+            .WithMetadata(new OnboardingRateLimitMarker())
+            .RequireRateLimiting("OnboardingCommon");
         return endpoints;
+    }
+
+    private static async Task<IResult> PreviewInvitationAsync(
+        string nonce,
+        IInvitationConsentService invitations,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var result = await invitations.PreviewAsync(nonce, cancellationToken);
+            return result is null
+                ? Results.NotFound(new { error = "invitation_unavailable" })
+                : Results.Ok(result);
+        }
+        catch (InvitationConsentUnavailableException)
+        {
+            return Results.Json(new { error = "invitation_service_unavailable" }, statusCode: StatusCodes.Status503ServiceUnavailable);
+        }
+    }
+
+    private static async Task<IResult> StartInvitationConsentAsync(
+        string nonce,
+        InvitationConsentStartRequest request,
+        IInvitationConsentService invitations,
+        CancellationToken cancellationToken)
+    {
+        _ = request;
+        try
+        {
+            var result = await invitations.StartAsync(nonce, cancellationToken);
+            return Results.Ok(new InvitationConsentStartResponse(result.AuthorizationUrl, result.Scopes, result.Challenge, result.CorrelationId, result.ExpiresAt));
+        }
+        catch (InvitationConsentNotFoundException)
+        {
+            return Results.NotFound(new { error = "invitation_unavailable" });
+        }
+        catch (InvitationConsentConflictException)
+        {
+            return Results.Conflict(new { error = "invitation_consent_not_available" });
+        }
+        catch (InvitationConsentUnavailableException)
+        {
+            return Results.Json(new { error = "invitation_service_unavailable" }, statusCode: StatusCodes.Status503ServiceUnavailable);
+        }
+    }
+
+    private static async Task<IResult> ResumeInvitationConsentAsync(
+        string nonce,
+        InvitationConsentResumeRequest request,
+        IInvitationConsentService invitations,
+        CancellationToken cancellationToken)
+    {
+        if (request.State is null || request.State.Length > 4096)
+            return Results.Ok(new InvitationConsentResumeResponse(false, "invalid_callback", null, string.Empty));
+
+        try
+        {
+            var result = await invitations.ResumeAsync(nonce, request.State, request.Tenant, request.ErrorCode, cancellationToken);
+            return Results.Ok(new InvitationConsentResumeResponse(result.Valid, result.Status, result.TenantId, result.CorrelationId));
+        }
+        catch (InvitationConsentUnavailableException)
+        {
+            return Results.Json(new { error = "invitation_service_unavailable" }, statusCode: StatusCodes.Status503ServiceUnavailable);
+        }
     }
 
     private static IResult GetPlatformSessionAsync(HttpContext httpContext, IPlatformAuthorization authorization)
@@ -67,14 +146,17 @@ public static class WorkspaceEndpoints
         return detail is null ? Results.NotFound() : Results.Ok(detail);
     }
 
-    private static async Task<IResult> CreateWorkspaceAsync(CreateWorkspaceRequest request, HttpContext httpContext, IPlatformAuthorization authorization, IWorkspaceProvisioningService provisioning, CancellationToken cancellationToken)
+    private static async Task<IResult> CreateWorkspaceAsync(CreateWorkspaceRequest request, HttpContext httpContext, IPlatformAuthorization authorization, IWorkspaceProvisioningService provisioning, ITenantResolver tenantResolver, CancellationToken cancellationToken)
     {
         if (!authorization.IsAuthorized(httpContext.User)) return Results.Forbid();
-        if (request.TenantId == Guid.Empty || string.IsNullOrWhiteSpace(request.DisplayName)) return Results.BadRequest(new { error = "invalid_workspace" });
+        if (string.IsNullOrWhiteSpace(request.DisplayName)) return Results.BadRequest(new { error = "invalid_workspace" });
+        var tenantResolution = await ResolveTenantInputAsync(request.TenantId, request.TenantDomain, tenantResolver, cancellationToken);
+        if (tenantResolution.Status != TenantResolutionStatus.Resolved || tenantResolution.TenantId is not { } tenantId)
+            return TenantResolutionError(tenantResolution.Status);
         try
         {
             var operatorIdentity = PlatformOperatorIdentityReader.Read(httpContext.User);
-            var result = await provisioning.CreateWorkspaceAsync(request.TenantId, request.DisplayName.Trim(), operatorIdentity, cancellationToken);
+            var result = await provisioning.CreateWorkspaceAsync(tenantId, request.DisplayName.Trim(), operatorIdentity, cancellationToken);
             if (result.IsConflict) return Results.Conflict(new { error = "workspace_already_exists" });
             var workspace = result.Workspace!;
             return Results.Created($"/api/platform/workspaces/{workspace.Id}", ToDto(workspace));
@@ -82,24 +164,53 @@ public static class WorkspaceEndpoints
         catch (WorkspaceProvisioningUnavailableException) { return Results.Json(new { error = "workspace_database_unavailable" }, statusCode: StatusCodes.Status503ServiceUnavailable); }
     }
 
-    private static async Task<IResult> OnboardWorkspaceAsync(OnboardWorkspaceRequest request, HttpContext httpContext, IPlatformAuthorization authorization, IWorkspaceProvisioningService provisioning, CancellationToken cancellationToken)
+    private static async Task<IResult> OnboardWorkspaceAsync(OnboardWorkspaceRequest request, HttpContext httpContext, IPlatformAuthorization authorization, IWorkspaceProvisioningService provisioning, ITenantResolver tenantResolver, CancellationToken cancellationToken)
     {
         if (!authorization.IsAuthorized(httpContext.User)) return Results.Forbid();
-        if (request.TenantId == Guid.Empty || string.IsNullOrWhiteSpace(request.DisplayName) || request.DisplayName.Trim().Length > 200
+        if (string.IsNullOrWhiteSpace(request.DisplayName) || request.DisplayName.Trim().Length > 200
             || !TryNormalizeAdminInvite(request.AdminUpn, request.AdminDisplayName, out var upn, out var adminDisplayName))
             return Results.BadRequest(new { error = "invalid_workspace_onboarding" });
+        var tenantResolution = await ResolveTenantInputAsync(request.TenantId, request.TenantDomain, tenantResolver, cancellationToken);
+        if (tenantResolution.Status != TenantResolutionStatus.Resolved || tenantResolution.TenantId is not { } tenantId)
+            return TenantResolutionError(tenantResolution.Status);
 
         try
         {
             var audit = CreatePlatformAudit(httpContext.User, Guid.Empty, "workspace.onboarded", "workspace", "{}");
             var operatorIdentity = PlatformOperatorIdentityReader.Read(httpContext.User);
-            var result = await provisioning.OnboardAsync(request.TenantId, request.DisplayName.Trim(), upn, adminDisplayName, audit, operatorIdentity, cancellationToken);
+            var result = await provisioning.OnboardAsync(tenantId, request.DisplayName.Trim(), upn, adminDisplayName, audit, operatorIdentity, cancellationToken);
             if (result.IsConflict) return Results.Conflict(new { error = "workspace_already_exists" });
             var workspace = result.Workspace!;
             return Results.Created($"/api/platform/workspaces/{workspace.Id}", new WorkspaceOnboardingResponse(ToDto(workspace), result.InvitationUrl!, result.ExpiresAt!.Value));
         }
         catch (WorkspaceProvisioningUnavailableException) { return Results.Json(new { error = "workspace_database_unavailable" }, statusCode: StatusCodes.Status503ServiceUnavailable); }
     }
+
+    private static async Task<TenantResolutionResult> ResolveTenantInputAsync(
+        Guid? tenantId,
+        string? tenantDomain,
+        ITenantResolver tenantResolver,
+        CancellationToken cancellationToken)
+    {
+        var hasDomain = !string.IsNullOrWhiteSpace(tenantDomain);
+        if (tenantId == Guid.Empty || tenantId.HasValue == hasDomain)
+        {
+            return new TenantResolutionResult(TenantResolutionStatus.InvalidInput, null);
+        }
+
+        return tenantId.HasValue
+            ? new TenantResolutionResult(TenantResolutionStatus.Resolved, tenantId.Value)
+            : await tenantResolver.ResolveAsync(tenantDomain!.Trim(), cancellationToken);
+    }
+
+    private static IResult TenantResolutionError(TenantResolutionStatus status) =>
+        status switch
+        {
+            TenantResolutionStatus.InvalidInput => Results.BadRequest(new { error = "invalid_tenant_input" }),
+            TenantResolutionStatus.NotFound => Results.Json(new { error = "tenant_domain_not_found" }, statusCode: StatusCodes.Status422UnprocessableEntity),
+            TenantResolutionStatus.Unavailable => Results.Json(new { error = "tenant_resolution_unavailable" }, statusCode: StatusCodes.Status503ServiceUnavailable),
+            _ => Results.BadRequest(new { error = "invalid_tenant_input" })
+        };
 
     private static async Task<IResult> AddMembershipAsync(Guid workspaceId, AddWorkspaceMembershipRequest request, HttpContext httpContext, IPlatformAuthorization authorization, IWorkspaceProvisioningService provisioning, CancellationToken cancellationToken)
     {
@@ -139,7 +250,8 @@ public static class WorkspaceEndpoints
         var current = await accessRepository.GetInvitationAsync(workspaceId, invitationId, cancellationToken);
         if (current is null || current.RedeemedAt is not null || current.RevokedAt is not null) return Results.NotFound();
         var audit = CreatePlatformAudit(httpContext.User, workspaceId, "workspace.invitation.reissued", "invitation", System.Text.Json.JsonSerializer.Serialize(new { previousInvitationId = invitationId }));
-        var result = await invitations.CreateForRoleAsync(workspaceId, current.Email, current.DisplayName, DateTimeOffset.UtcNow.AddDays(7), current.Role, current.ApprovedTenantObjectId, cancellationToken, audit);
+        var result = await invitations.ReissueForRoleAsync(invitationId, workspaceId, current.Email, current.DisplayName, DateTimeOffset.UtcNow.AddDays(7), current.Role, current.ApprovedTenantObjectId, cancellationToken, audit);
+        if (result is null) return Results.NotFound();
         return Results.Ok(new WorkspaceInvitationLink(result.InvitationId, result.InvitationUrl, result.ExpiresAt));
     }
 
@@ -150,13 +262,25 @@ public static class WorkspaceEndpoints
         return await accessRepository.RevokeInvitationAsync(workspaceId, invitationId, audit, cancellationToken) ? Results.NoContent() : Results.NotFound();
     }
 
-    private static async Task<IResult> RedeemInvitationAsync(string nonce, HttpContext httpContext, InvitationService invitations, CancellationToken cancellationToken)
+    private static async Task<IResult> RedeemInvitationAsync(
+        string nonce,
+        HttpContext httpContext,
+        InvitationService invitations,
+        CancellationToken cancellationToken,
+        InvitationRedemptionRequest? request = null)
     {
         var tenantId = ParseGuidClaim(httpContext.User, "tid");
         var objectId = ParseGuidClaim(httpContext.User, "oid");
         var email = httpContext.User.FindFirstValue("preferred_username") ?? httpContext.User.FindFirstValue("upn");
         if (tenantId == Guid.Empty || objectId == Guid.Empty) return Results.Unauthorized();
-        var redemption = await invitations.RedeemDetailedAsync(nonce, tenantId, objectId, email, httpContext.User.FindFirstValue("name") ?? string.Empty, cancellationToken);
+        var redemption = await invitations.RedeemDetailedAsync(
+            nonce,
+            tenantId,
+            objectId,
+            email,
+            httpContext.User.FindFirstValue("name") ?? string.Empty,
+            request?.Challenge,
+            cancellationToken);
         return redemption is null
             ? Results.BadRequest(new { error = "invitation_invalid_or_expired" })
             : Results.Ok(new InvitationRedemptionResponse(ConnectionState.ConsentRequired, redemption.Workspace.Id, redemption.Workspace.DisplayName, "/overview"));
@@ -170,11 +294,35 @@ public static class WorkspaceEndpoints
         return Results.Ok(ToHealthDto(state, null, ""));
     }
 
-    private static async Task<IResult> CheckConnectionHealthAsync(IWorkspaceContextAccessor accessor, IOnboardingService onboarding, IConnectionHealthReader reader, HttpContext httpContext, CancellationToken cancellationToken)
+    private static async Task<IResult> CheckConnectionHealthAsync(
+        IWorkspaceContextAccessor accessor,
+        IOnboardingService onboarding,
+        IConnectionHealthReader reader,
+        IWorkspaceConnectionVerifier verifier,
+        HttpContext httpContext,
+        CancellationToken cancellationToken,
+        ConnectionHealthCheckRequest? request = null)
     {
         var context = accessor.Current;
         if (context is null) return Results.StatusCode(StatusCodes.Status403Forbidden);
         var correlationId = httpContext.TraceIdentifier;
+        if (request?.IncludePermissionCoverage == true)
+        {
+            try
+            {
+                var verification = await verifier.VerifyAsync(context, includePermissionCoverage: true, cancellationToken);
+                return Results.Ok(verification.Health with
+                {
+                    CorrelationId = correlationId,
+                    PermissionCoverage = verification.PermissionCoverage
+                });
+            }
+            catch (InvalidOperationException)
+            {
+                return Results.Conflict(new { error = "connection_state_transition_invalid", correlationId });
+            }
+        }
+
         var result = await reader.ReadAsync(context.User.TenantId, cancellationToken);
         var status = result.Status switch
         {
@@ -210,10 +358,49 @@ public static class WorkspaceEndpoints
         return Results.Ok(new ConsentStartResponse(url, GraphScopeCatalog.CapabilityEvaluationScopes, challenge.Challenge, challenge.CorrelationId));
     }
 
-    private static async Task<IResult> CompleteConsentAsync(ConsentCompletionRequest request, IWorkspaceContextAccessor accessor, ConsentChallengeService challenges, IConsentChallengeRepository challengeRepository, CancellationToken cancellationToken)
+    private static async Task<IResult> CompleteConsentAsync(
+        ConsentCompletionRequest request,
+        IWorkspaceContextAccessor accessor,
+        ConsentChallengeService challenges,
+        IConsentChallengeRepository challengeRepository,
+        IInvitationConsentService invitationConsent,
+        IWorkspaceConnectionVerifier verifier,
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
     {
         var context = accessor.Current;
         if (context is null) return Results.StatusCode(StatusCodes.Status403Forbidden);
+        InvitationCompletionResult invitationResult;
+        try
+        {
+            invitationResult = await invitationConsent.CompleteInvitationAsync(
+                request.State,
+                context.Membership.WorkspaceId,
+                context.User.TenantId,
+                context.User.ObjectId,
+                request.Tenant,
+                request.ErrorCode,
+                cancellationToken);
+        }
+        catch (InvitationConsentUnavailableException)
+        {
+            return Results.Json(new { error = "consent_completion_unavailable" }, statusCode: StatusCodes.Status503ServiceUnavailable);
+        }
+
+        if (invitationResult.Valid)
+        {
+            if (invitationResult.Status != "consent_received")
+                return Results.Ok(new ConsentCompletionResponse(invitationResult.Valid, invitationResult.Status, invitationResult.CorrelationId));
+
+            var verification = await verifier.VerifyAsync(context, includePermissionCoverage: true, cancellationToken);
+            return Results.Ok(new ConsentCompletionResponse(
+                invitationResult.Valid,
+                invitationResult.Status,
+                invitationResult.CorrelationId,
+                verification.Health with { CorrelationId = httpContext.TraceIdentifier },
+                verification.PermissionCoverage));
+        }
+
         if (request.Tenant == Guid.Empty || request.Tenant != context.User.TenantId || string.IsNullOrWhiteSpace(request.State))
             return Results.Ok(new ConsentCompletionResponse(false, "invalid_callback", string.Empty));
         if (!await challenges.TryValidateAndConsumeAsync(request.State, context.Membership.WorkspaceId, context.User.TenantId, challengeRepository, cancellationToken))

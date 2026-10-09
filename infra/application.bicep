@@ -14,6 +14,9 @@ param keyVaultUri string
 param logAnalyticsWorkspaceResourceId string
 param entraApiClientId string
 param entraApiAudience string
+param customerSpaClientId string
+@description('Explicit ingress proxy IP addresses trusted for forwarded client IPs; empty disables forwarded-header trust.')
+param trustedProxyAddresses string = ''
 param consentRedirectUri string
 param customerRedirectUri string
 param platformAdminRedirectUri string
@@ -35,6 +38,7 @@ module application 'modules/container-apps.bicep' = {
     containerAppName: containerAppName
     consentRedirectUri: consentRedirectUri
     customerRedirectUri: customerRedirectUri
+    customerSpaClientId: customerSpaClientId
     dataProtectionBlobUri: dataProtectionBlobUri
     dataProtectionKeyIdentifier: dataProtectionKeyIdentifier
     entraAudience: entraApiAudience
@@ -50,6 +54,7 @@ module application 'modules/container-apps.bicep' = {
     platformAdminRedirectUri: platformAdminRedirectUri
     platformHomeTenantId: platformHomeTenantId
     publicBaseUrl: publicBaseUrl
+    trustedProxyAddresses: trustedProxyAddresses
     smokeTestSourceCidr: smokeTestSourceCidr
     registryLoginServer: registryLoginServer
     workloadIdentityClientId: workloadIdentityClientId

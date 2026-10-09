@@ -88,8 +88,9 @@ public static class WorkspaceAccessEndpoints
         var enabled = (await settings.GetConfigurationAsync(context, cancellationToken)).EnabledModules;
         var actorModules = WorkspaceModuleCatalog.EffectiveModules(context.Membership.PlatformRole, enabled, context.Membership.ModuleKeys);
         if (!owner && grants.Except(actorModules, StringComparer.OrdinalIgnoreCase).Any()) return Results.StatusCode(StatusCodes.Status403Forbidden);
-        var result = await invitations.CreateForRoleAsync(context.Membership.WorkspaceId, current.Email, current.DisplayName, DateTimeOffset.UtcNow.Add(InvitationLifetime), NormalizeLegacyRole(current.Role), cancellationToken: cancellationToken,
+        var result = await invitations.ReissueForRoleAsync(invitationId, context.Membership.WorkspaceId, current.Email, current.DisplayName, DateTimeOffset.UtcNow.Add(InvitationLifetime), NormalizeLegacyRole(current.Role), cancellationToken: cancellationToken,
             auditEvent: CreateAuditEvent(context, "workspace.invitation.reissued", "invitation", Guid.Empty, NormalizeLegacyRole(current.Role)), moduleKeys: grants);
+        if (result is null) return Results.NotFound();
         return Results.Ok(new WorkspaceInvitationLink(result.InvitationId, result.InvitationUrl, result.ExpiresAt));
     }
 

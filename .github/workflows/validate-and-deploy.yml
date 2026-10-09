@@ -192,6 +192,8 @@ jobs:
       AZURE_MIGRATION_JOB_NAME: ${{ vars.AZURE_MIGRATION_JOB_NAME }}
       AZURE_APP_PUBLIC_URL: ${{ vars.AZURE_APP_PUBLIC_URL }}
       AZURE_SMOKE_TEST_SOURCE_CIDR: ${{ vars.AZURE_SMOKE_TEST_SOURCE_CIDR }}
+      CUSTOMER_SPA_CLIENT_ID: ${{ vars.CUSTOMER_SPA_CLIENT_ID }}
+      TRUSTED_PROXY_ADDRESSES: ${{ vars.ONBOARDING_TRUSTED_PROXY_ADDRESSES || '' }}
       PLATFORM_HOME_TENANT_ID: ${{ vars.PLATFORM_HOME_TENANT_ID }}
       PLATFORM_ADMIN_OBJECT_IDS_JSON: ${{ vars.PLATFORM_ADMIN_OBJECT_IDS_JSON }}
     outputs:
@@ -264,6 +266,7 @@ jobs:
             containerAppName="$AZURE_CONTAINER_APP_NAME" registryLoginServer="$registry" imageRepository="$IMAGE_REPOSITORY" imageTag="$IMAGE_TAG" \
             workloadIdentityResourceId="$identity_id" workloadIdentityClientId="$identity_client" keyVaultUri="$key_vault" \
             logAnalyticsWorkspaceResourceId="$logs_id" entraApiClientId="$ENTRA_API_CLIENT_ID" entraApiAudience="$ENTRA_API_AUDIENCE" \
+            customerSpaClientId="$CUSTOMER_SPA_CLIENT_ID" trustedProxyAddresses="$TRUSTED_PROXY_ADDRESSES" \
             consentRedirectUri="$AZURE_APP_PUBLIC_URL/onboarding/consent/callback" customerRedirectUri="$AZURE_APP_PUBLIC_URL/auth/callback" \
             platformAdminRedirectUri="$AZURE_APP_PUBLIC_URL/admin/auth/callback" platformHomeTenantId="$PLATFORM_HOME_TENANT_ID" \
             platformAdminObjectIds="$PLATFORM_ADMIN_OBJECT_IDS_JSON" dataProtectionBlobUri="$key_blob" dataProtectionKeyIdentifier="$key_id" \
@@ -273,6 +276,7 @@ jobs:
             containerAppName="$AZURE_CONTAINER_APP_NAME" registryLoginServer="$registry" imageRepository="$IMAGE_REPOSITORY" imageTag="$IMAGE_TAG" \
             workloadIdentityResourceId="$identity_id" workloadIdentityClientId="$identity_client" keyVaultUri="$key_vault" \
             logAnalyticsWorkspaceResourceId="$logs_id" entraApiClientId="$ENTRA_API_CLIENT_ID" entraApiAudience="$ENTRA_API_AUDIENCE" \
+            customerSpaClientId="$CUSTOMER_SPA_CLIENT_ID" trustedProxyAddresses="$TRUSTED_PROXY_ADDRESSES" \
             consentRedirectUri="$AZURE_APP_PUBLIC_URL/onboarding/consent/callback" customerRedirectUri="$AZURE_APP_PUBLIC_URL/auth/callback" \
             platformAdminRedirectUri="$AZURE_APP_PUBLIC_URL/admin/auth/callback" platformHomeTenantId="$PLATFORM_HOME_TENANT_ID" \
             platformAdminObjectIds="$PLATFORM_ADMIN_OBJECT_IDS_JSON" dataProtectionBlobUri="$key_blob" dataProtectionKeyIdentifier="$key_id" \
@@ -296,13 +300,18 @@ jobs:
           exit 1
       - name: Deploy candidate revision after migration
         id: candidate
+        env:
+          ENTRA_API_AUDIENCE: ${{ vars.ENTRA_API_AUDIENCE }}
         run: |
           if test "${{ steps.current.outputs.first }}" = true; then
             fqdn="$(az containerapp show --name "$AZURE_CONTAINER_APP_NAME" --resource-group "$AZURE_RESOURCE_GROUP" --query properties.latestRevisionFqdn -o tsv)"
             revision="$(az containerapp show --name "$AZURE_CONTAINER_APP_NAME" --resource-group "$AZURE_RESOURCE_GROUP" --query properties.latestRevisionName -o tsv)"
           else
             az containerapp update --name "$AZURE_CONTAINER_APP_NAME" --resource-group "$AZURE_RESOURCE_GROUP" \
-              --image "$AZURE_ACR_NAME.azurecr.io/$IMAGE_REPOSITORY:$IMAGE_TAG" --revision-suffix "${IMAGE_TAG:0:12}-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" --output none
+              --image "$AZURE_ACR_NAME.azurecr.io/$IMAGE_REPOSITORY:$IMAGE_TAG" --revision-suffix "${IMAGE_TAG:0:12}-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" \
+              --set-env-vars "Onboarding__CustomerClientId=$CUSTOMER_SPA_CLIENT_ID" \
+                "Onboarding__ApiApplicationIdUri=$ENTRA_API_AUDIENCE" \
+                "Onboarding__TrustedProxyAddresses=$TRUSTED_PROXY_ADDRESSES" --output none
             revision="$(az containerapp show --name "$AZURE_CONTAINER_APP_NAME" --resource-group "$AZURE_RESOURCE_GROUP" --query properties.latestRevisionName -o tsv)"
             fqdn="$(az containerapp show --name "$AZURE_CONTAINER_APP_NAME" --resource-group "$AZURE_RESOURCE_GROUP" --query properties.latestRevisionFqdn -o tsv)"
             old="${{ steps.current.outputs.previous }}"

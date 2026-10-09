@@ -4,6 +4,14 @@ export type InvitationSummary = { id: string; email: string; displayName: string
 export type WorkspaceAdminDetail = WorkspaceSummary & { lastVerifiedAt: string | null; connectionFailureCategory: string | null; memberships: Membership[]; invitations: InvitationSummary[] };
 export type InvitationResult = { invitationUrl: string; expiresAt: string };
 export type WorkspaceOnboardingResult = { workspace: WorkspaceSummary; invitationUrl: string; expiresAt: string };
+export type WorkspaceCreateInput =
+  | { tenantId: string; tenantDomain?: never }
+  | { tenantId?: never; tenantDomain: string };
+export type WorkspaceOnboardingInput = WorkspaceCreateInput & {
+  displayName: string;
+  adminUpn: string;
+  adminDisplayName?: string;
+};
 
 const isObject = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null;
 const isString = (value: unknown): value is string => typeof value === 'string';
@@ -69,7 +77,7 @@ const onboardingGuard = (value: unknown): value is WorkspaceOnboardingResult => 
 export const adminApi = {
   listWorkspaces: () => request('/api/platform/workspaces', undefined, arrayOf(isWorkspace)),
   createWorkspace: (input: { tenantId: string; displayName: string }) => request('/api/platform/workspaces', { method: 'POST', body: JSON.stringify(input) }, isWorkspace),
-  onboardWorkspace: (input: { tenantId: string; displayName: string; adminUpn: string; adminDisplayName?: string }) => request('/api/platform/workspaces/onboard', { method: 'POST', body: JSON.stringify(input) }, onboardingGuard),
+  onboardWorkspace: (input: WorkspaceOnboardingInput) => request('/api/platform/workspaces/onboard', { method: 'POST', body: JSON.stringify(input) }, onboardingGuard),
   getWorkspace: (workspaceId: string) => request(`/api/platform/workspaces/${workspaceId}`, undefined, detailGuard),
   addMembership: (workspaceId: string, input: { tenantObjectId: string; email: string; platformRole: string; isAteaOperator: boolean }) => request(`/api/platform/workspaces/${workspaceId}/memberships`, { method: 'POST', body: JSON.stringify(input) }, isMembership),
   createInvitation: (workspaceId: string, input: { email: string; displayName: string; expiresAt: string; approvedTenantObjectId?: string }) => request(`/api/platform/workspaces/${workspaceId}/invitations`, { method: 'POST', body: JSON.stringify(input) }, (value): value is InvitationResult => isObject(value) && isString(value.invitationUrl) && isString(value.expiresAt)),

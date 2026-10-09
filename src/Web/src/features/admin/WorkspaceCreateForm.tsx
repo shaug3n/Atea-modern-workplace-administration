@@ -1,17 +1,22 @@
 import React, { useState } from 'react';
+import type { WorkspaceCreateInput } from './adminApi';
 
 const guid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export type FirstAdminInvite = { workspace: { id: string; tenantId: string; displayName: string; connectionStatus: string }; invitationUrl: string; expiresAt: string };
 
-export function WorkspaceCreateForm({ onSubmit, onCancel }: { onSubmit: (input: { tenantId: string; displayName: string; adminUpn: string; adminDisplayName?: string }) => Promise<FirstAdminInvite>; onCancel: () => void }) {
-  const [tenantId, setTenantId] = useState(''); const [displayName, setDisplayName] = useState(''); const [adminUpn, setAdminUpn] = useState(''); const [adminDisplayName, setAdminDisplayName] = useState(''); const [error, setError] = useState(''); const [saving, setSaving] = useState(false);
+export function WorkspaceCreateForm({ onSubmit, onCancel }: { onSubmit: (input: WorkspaceCreateInput & { displayName: string; adminUpn: string; adminDisplayName?: string }) => Promise<FirstAdminInvite>; onCancel: () => void }) {
+  const [tenantInput, setTenantInput] = useState(''); const [displayName, setDisplayName] = useState(''); const [adminUpn, setAdminUpn] = useState(''); const [adminDisplayName, setAdminDisplayName] = useState(''); const [error, setError] = useState(''); const [saving, setSaving] = useState(false);
   async function submit(event: React.FormEvent) {
     event.preventDefault();
-    if (!guid.test(tenantId.trim())) return setError('Enter a valid Microsoft Entra tenant ID.');
+    const normalizedTenantInput = tenantInput.trim();
+    if (!normalizedTenantInput) return setError('Enter a tenant domain or ID.');
     if (!displayName.trim()) return setError('Enter a workspace name.');
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(adminUpn.trim())) return setError('Enter the first administrator’s Entra sign-in address.');
     setError(''); setSaving(true);
-    try { await onSubmit({ tenantId: tenantId.trim(), displayName: displayName.trim(), adminUpn: adminUpn.trim(), ...(adminDisplayName.trim() ? { adminDisplayName: adminDisplayName.trim() } : {}) }); }
+    const tenant = guid.test(normalizedTenantInput)
+      ? { tenantId: normalizedTenantInput }
+      : { tenantDomain: normalizedTenantInput };
+    try { await onSubmit({ ...tenant, displayName: displayName.trim(), adminUpn: adminUpn.trim(), ...(adminDisplayName.trim() ? { adminDisplayName: adminDisplayName.trim() } : {}) }); }
     catch (e) { setError(e instanceof Error ? e.message : 'Workspace onboarding failed.'); }
     finally { setSaving(false); }
   }
@@ -19,7 +24,7 @@ export function WorkspaceCreateForm({ onSubmit, onCancel }: { onSubmit: (input: 
     <p className="eyebrow">Customer onboarding</p><h2>Create workspace and invite its first administrator</h2>
     <p>The nominated administrator receives an invitation to sign in with their existing Entra account. Their workspace role does not grant Microsoft 365 privileges.</p>
     {error && <p role="alert">{error}</p>}
-    <label>Tenant ID<input aria-label="Tenant ID" autoComplete="off" value={tenantId} onChange={event => setTenantId(event.target.value)} required /></label>
+    <label>Tenant domain or ID<input aria-label="Tenant domain or ID" autoComplete="off" value={tenantInput} onChange={event => setTenantInput(event.target.value)} required /></label>
     <label>Workspace name<input aria-label="Workspace name" value={displayName} onChange={event => setDisplayName(event.target.value)} required maxLength={200} /></label>
     <label>First admin sign-in address<input aria-label="First admin sign-in address" type="email" autoComplete="email" value={adminUpn} onChange={event => setAdminUpn(event.target.value)} required maxLength={320} /></label>
     <label>First admin display name<input aria-label="First admin display name" value={adminDisplayName} onChange={event => setAdminDisplayName(event.target.value)} maxLength={200} /></label>

@@ -15,24 +15,33 @@ public static class ConnectionState
 
 public static class OnboardingStateMachine
 {
-    private static readonly IReadOnlySet<(string From, string To)> AllowedTransitions = new HashSet<(string, string)>
-    {
-        (ConnectionState.AwaitingInvitation, ConnectionState.ConsentRequired),
-        (ConnectionState.ConsentRequired, ConnectionState.Connected),
-        (ConnectionState.Connected, ConnectionState.PermissionIncomplete),
-        (ConnectionState.Connected, ConnectionState.TemporarilyUnavailable),
-        (ConnectionState.Connected, ConnectionState.ConsentRevoked),
-        (ConnectionState.Connected, ConnectionState.ConnectionFailed),
-        (ConnectionState.PermissionIncomplete, ConnectionState.ConsentRequired),
-        (ConnectionState.TemporarilyUnavailable, ConnectionState.ConsentRequired),
-        (ConnectionState.ConsentRevoked, ConnectionState.ConsentRequired),
-        (ConnectionState.ConnectionFailed, ConnectionState.ConsentRequired)
-    };
+    private static readonly string[] PostRedemptionStates =
+    [
+        ConnectionState.ConsentRequired,
+        ConnectionState.Connected,
+        ConnectionState.PermissionIncomplete,
+        ConnectionState.TemporarilyUnavailable,
+        ConnectionState.ConsentRevoked,
+        ConnectionState.ConnectionFailed
+    ];
+    private static readonly IReadOnlySet<(string From, string To)> AllowedTransitions = BuildAllowedTransitions();
 
     public static bool CanTransition(string from, string to) => AllowedTransitions.Contains((from, to));
     public static void EnsureTransition(string from, string to)
     {
         if (!CanTransition(from, to)) throw new InvalidOperationException($"Invalid connection state transition from '{from}' to '{to}'.");
+    }
+
+    private static IReadOnlySet<(string From, string To)> BuildAllowedTransitions()
+    {
+        var transitions = new HashSet<(string From, string To)>
+        {
+            (ConnectionState.AwaitingInvitation, ConnectionState.ConsentRequired)
+        };
+        foreach (var from in PostRedemptionStates)
+        foreach (var to in PostRedemptionStates)
+            transitions.Add((from, to));
+        return transitions;
     }
 }
 

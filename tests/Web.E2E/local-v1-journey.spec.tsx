@@ -7,6 +7,18 @@ import { UserDetailPage } from '../../src/Web/src/features/users/UserDetailPage'
 const apiFetch = vi.hoisted(() => vi.fn());
 const getApiToken = vi.hoisted(() => vi.fn().mockResolvedValue('api-token'));
 const signIn = vi.hoisted(() => vi.fn());
+const tenantId = '11111111-1111-1111-1111-111111111111';
+const nonce = 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
+
+function configuredConsentStart() {
+  const challenge = 'signed-consent-state';
+  const authorizationUrl = new URL(`https://login.microsoftonline.com/${tenantId}/v2.0/adminconsent`);
+  authorizationUrl.searchParams.set('client_id', 'api-client-id');
+  authorizationUrl.searchParams.set('scope', 'https://graph.microsoft.com/.default');
+  authorizationUrl.searchParams.set('redirect_uri', `${window.location.origin}/onboarding/consent/callback`);
+  authorizationUrl.searchParams.set('state', challenge);
+  return { authorizationUrl: authorizationUrl.toString(), challenge, correlationId: 'consent-correlation' };
+}
 
 vi.mock('../../src/Web/src/auth/useApi', () => ({ useApi: () => apiFetch }));
 vi.mock('../../src/Web/src/auth/AuthProvider', () => ({ useAuth: () => ({ account: { username: 'customer@example.com' }, getApiToken, signIn }) }));
@@ -30,16 +42,25 @@ describe('customer overview route', () => {
   });
 
   it('renders the workspace after continuing from a redeemed invitation', async () => {
-    window.history.replaceState({}, '', '/invitations/test-nonce');
+    window.history.replaceState({}, '', `/invitations/${nonce}`);
     apiFetch.mockImplementation(async (path: string) => {
       if (path === '/api/capabilities') return Response.json({ evaluatedAt: '2026-09-21T12:00:00Z', sourceState: 'unknown', capabilities: [] });
       if (path === '/api/session') return Response.json({ user: { displayName: 'Customer admin' }, workspace: { id: 'workspace-1', name: 'Local customer' }, workspaceAccess: { role: 'customer_admin', canManageMembers: true, canManageSettings: true } });
       if (path === '/api/overview') return Response.json({ freshness: 'live', fetchedAt: '2026-09-21T12:00:00Z', totalUsers: 0, licenseCoverage: { assigned: 0, available: 0, percentage: 0 }, permissionHealth: { state: 'healthy', allowedCount: 0, totalCount: 0 }, pimAttention: { requiresAttention: false, count: 0 }, partialData: false, access: { state: 'allowed' } });
       if (path === '/api/workspaces/current/connection-health') return Response.json({ status: 'consent_required', lastVerifiedAt: null });
-      if (path === '/api/workspaces/current/consent/start') return Response.json({ authorizationUrl: 'https://login.microsoftonline.com/tenant/adminconsent?client_id=demo' });
+      if (path === '/api/workspaces/current/consent/start') return Response.json(configuredConsentStart());
       return new Response(null, { status: 404 });
     });
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({ status: 'consent_required', workspaceId: 'workspace-1', workspaceName: 'Local customer', nextStep: '/overview' })));
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith(`/api/invitations/${nonce}/preview`)) {
+        return Response.json({ workspaceName: 'Local customer', expiresAt: new Date(Date.now() + 60_000).toISOString(), flow: 'sign_in', permissionScopes: [] });
+      }
+      if (url.endsWith(`/api/invitations/${nonce}/redeem`)) {
+        return Response.json({ status: 'consent_required', workspaceId: 'workspace-1', workspaceName: 'Local customer', nextStep: '/overview' });
+      }
+      return new Response(null, { status: 404 });
+    }));
 
     render(<App />);
     fireEvent.click(await screen.findByRole('button', { name: 'Redeem invitation' }));
@@ -93,7 +114,7 @@ describe('customer overview route', () => {
       if (path === '/api/session') return Response.json({ user: { displayName: 'Customer admin' }, workspace: { id: 'workspace-1', name: 'Local customer' }, workspaceAccess: { role: 'customer_admin', canManageMembers: true, canManageSettings: true } });
       if (path === '/api/capabilities') throw new Error('Graph unavailable');
       if (path === '/api/workspaces/current/connection-health') return Response.json({ status: 'consent_required', lastVerifiedAt: null });
-      if (path === '/api/workspaces/current/consent/start' && init?.method === 'POST') return Response.json({ authorizationUrl: 'https://login.microsoftonline.com/tenant/adminconsent?client_id=demo' });
+      if (path === '/api/workspaces/current/consent/start' && init?.method === 'POST') return Response.json(configuredConsentStart());
       return new Response(null, { status: 404 });
     });
     render(<App />);

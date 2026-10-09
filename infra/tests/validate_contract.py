@@ -51,6 +51,13 @@ def main() -> int:
     workflow = require_file(ROOT / ".github" / "workflows" / "validate-and-deploy.yml", errors)
     operations = require_file(ROOT / "docs" / "operations" / "azure-deployment.md", errors)
     readme = require_file(ROOT / "README.md", errors)
+    env_example = require_file(ROOT / ".env.example", errors)
+    compose = require_file(ROOT / "docker-compose.yml", errors)
+    require_text(env_example, r"VITE_ENTRA_AUTHORITY=https://login\.microsoftonline\.com/organizations", "customer organizations authority in local environment example", errors)
+    require_text(env_example, r"VITE_PLATFORM_ADMIN_AUTHORITY=https://login\.microsoftonline\.com/replace-with-atea-home-tenant-id", "unchanged platform-admin authority in local environment example", errors)
+    require_text(compose, r"Onboarding__CustomerClientId:\s*\$\{VITE_ENTRA_CLIENT_ID:-\}", "local customer SPA onboarding client mapping", errors)
+    require_text(compose, r"Onboarding__ApiApplicationIdUri:\s*\$\{AzureAd__Audience:-", "local onboarding API URI mapping", errors)
+    require_text(compose, r"Onboarding__TrustedProxyAddresses:\s*\$\{Onboarding__TrustedProxyAddresses:-\}", "local explicit trusted-proxy setting", errors)
 
     application_bicep = require_file(ROOT / "infra" / "application.bicep", errors)
     database_bootstrap = require_file(ROOT / "infra" / "database-bootstrap.bicep", errors)
@@ -66,6 +73,9 @@ def main() -> int:
     require_text(application_bicep, r"consentRedirectUri", "separate consent redirect URI", errors)
     require_text(application_bicep, r"customerRedirectUri", "separate customer redirect URI", errors)
     require_text(application_bicep, r"platformAdminRedirectUri", "separate admin redirect URI", errors)
+    require_text(application_bicep, r"param\s+customerSpaClientId\s+string", "customer SPA client parameter", errors)
+    require_text(application_bicep, r"customerSpaClientId", "customer SPA runtime mapping", errors)
+    require_text(application_bicep, r"entraApiAudience", "API application URI runtime mapping", errors)
     if re.search(r"imageTag|entraApi|RedirectUri|api-client-secret|workplace-db|workplace-migration-db", main_bicep, re.IGNORECASE):
         errors.append("foundation template must not depend on image, app secrets, Entra registrations, or callbacks")
 
@@ -108,6 +118,13 @@ def main() -> int:
         require_text(container_apps, rf"secrets/{re.escape(secret_name)}", f"Key Vault secret reference {secret_name}", errors)
     for config_name in ("HostedAuth__CustomerRedirectUri", "HostedAuth__PlatformAdminRedirectUri", "PlatformAuthorization__HomeTenantId", "DataProtection__BlobUri", "DataProtection__KeyIdentifier", "DataProtection__ManagedIdentityClientId"):
         require_text(container_apps, re.escape(config_name), f"hosted configuration {config_name}", errors)
+    for config_name in ("Onboarding__CustomerClientId", "Onboarding__ApiApplicationIdUri", "Onboarding__TrustedProxyAddresses"):
+        require_text(container_apps, re.escape(config_name), f"hosted configuration {config_name}", errors)
+    require_text(container_apps, r"Onboarding__CustomerClientId[\s\S]{0,100}customerSpaClientId", "customer SPA onboarding client mapping", errors)
+    require_text(container_apps, r"Onboarding__ApiApplicationIdUri[\s\S]{0,100}entraAudience", "API application URI onboarding mapping", errors)
+    require_text(container_apps, r"Onboarding__TrustedProxyAddresses[\s\S]{0,100}trustedProxyAddresses", "explicit forwarded-header proxy allowlist mapping", errors)
+    require_text(workflow, r"VITE_ENTRA_AUTHORITY:\s*\$\{\{[^}]*https://login\.microsoftonline\.com/organizations", "organizations customer SPA authority default", errors)
+    require_text(workflow, r"PLATFORM_ADMIN_AUTHORITY[\s\S]{0,300}PLATFORM_HOME_TENANT_ID", "unchanged tenant-pinned platform-admin authority", errors)
     key_vault = require_file(ROOT / "infra" / "modules" / "key-vault.bicep", errors)
     require_text(key_vault, r"enablePurgeProtection:\s*true", "irreversible Key Vault purge protection on all environments", errors)
     require_text(key_vault, r"workplace-data-protection", "Key Vault Data Protection wrapping key", errors)
@@ -191,7 +208,7 @@ def main() -> int:
 
     for parameter_path in (ROOT / "infra" / "parameters" / "application-dev.example.json", ROOT / "infra" / "parameters" / "application-prod.example.json"):
         parameters = load_parameters(parameter_path, errors)
-        for name in ("environment", "imageTag", "publicBaseUrl", "smokeTestSourceCidr", "consentRedirectUri", "customerRedirectUri", "platformAdminRedirectUri", "allowedIngressHostnames"):
+        for name in ("environment", "imageTag", "publicBaseUrl", "smokeTestSourceCidr", "consentRedirectUri", "customerRedirectUri", "platformAdminRedirectUri", "customerSpaClientId", "trustedProxyAddresses", "allowedIngressHostnames"):
             if name not in parameters:
                 errors.append(f"{parameter_path.relative_to(ROOT)} missing parameter value: {name}")
         for name in ("consentRedirectUri", "customerRedirectUri", "platformAdminRedirectUri", "publicBaseUrl"):
@@ -202,7 +219,7 @@ def main() -> int:
         if len(set(callbacks)) != 3:
             errors.append(f"{parameter_path.relative_to(ROOT)} must use three distinct callback URIs")
         serialized = json.dumps(parameters)
-        for forbidden in ("api-client-secret", "workplace-db", "workplace-migration-db", "ConnectionStrings__"):
+        for forbidden in ("api-client-secret", "workplace-db", "workplace-migration-db", "ConnectionStrings__", "Onboarding__ConsentSigningKey", "Onboarding__CustomerClientId", "Onboarding__ApiApplicationIdUri"):
             if forbidden in serialized:
                 errors.append(f"secret-bearing value/name must not be committed in {parameter_path.relative_to(ROOT)}: {forbidden}")
 
@@ -226,6 +243,9 @@ def main() -> int:
     if "template-file infra/main.bicep" in workflow:
         errors.append("release workflow must not redeploy the foundation on every application release")
     migration_position = workflow.find("Database migration job")
+    require_text(workflow, r"az containerapp update[\s\S]{0,600}--set-env-vars[\s\S]{0,300}Onboarding__CustomerClientId=", "existing candidate customer consent configuration", errors)
+    require_text(workflow, r"az containerapp update[\s\S]{0,600}--set-env-vars[\s\S]{0,400}Onboarding__ApiApplicationIdUri=", "existing candidate API consent resource configuration", errors)
+    require_text(workflow, r"az containerapp update[\s\S]{0,600}--set-env-vars[\s\S]{0,500}Onboarding__TrustedProxyAddresses=", "existing candidate trusted proxy configuration", errors)
     revision_position = workflow.find("Deploy candidate revision")
     smoke_position = workflow.find("Smoke test candidate")
     route_position = workflow.find("Route traffic after smoke")
