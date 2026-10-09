@@ -10,7 +10,7 @@ export type AccessSummaryState = CapabilityState
   | 'module_disabled'
   | 'not_applicable';
 
-export type AccessModuleKey = 'users' | 'devices' | 'licenses' | 'workspace-administration' | 'exchange';
+export type AccessModuleKey = 'users' | 'devices' | 'licenses' | 'workspace-administration' | 'exchange' | 'authentication-campaigns';
 
 type AccessGroupDefinition = {
   key: AccessModuleKey;
@@ -70,6 +70,14 @@ export const accessSummaryCapabilityGroups: readonly AccessGroupDefinition[] = [
     moduleGate: 'exchange',
     coverageComplete: false,
     read: [],
+    write: [],
+  },
+  {
+    key: 'authentication-campaigns',
+    label: 'Authentication campaigns',
+    moduleGate: 'authentication-campaigns',
+    coverageComplete: true,
+    read: ['authentication.campaigns.view'],
     write: [],
   },
 ];
@@ -202,6 +210,10 @@ function summarizeGroup(
     }
   }
 
+  if (capabilities.length === 0) {
+    return { state: 'not_applicable', workspaceGateState: null, actions: [] };
+  }
+
   if (snapshot.sourceState !== 'graph_authoritative') {
     const actions = capabilities.map(capability => {
       const decision = snapshot.capabilities.find(item => item.capability === capability);
@@ -222,10 +234,6 @@ function summarizeGroup(
       workspaceGateState: null,
       actions,
     };
-  }
-
-  if (capabilities.length === 0) {
-    return { state: 'unavailable', workspaceGateState: null, actions: [] };
   }
 
   const actions = capabilities.map(capability => {

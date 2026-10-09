@@ -15,10 +15,27 @@ const snapshot: CapabilitySnapshot = {
   workspaceId: 'workspace-one',
   evaluatedAt: '2026-10-08T12:00:00Z',
   sourceState: 'graph_authoritative',
-  workspaceModules: [{ module: 'users', grantSource: 'direct', enabled: true, effective: true }],
+  workspaceModules: [
+    { module: 'users', grantSource: 'direct', enabled: true, effective: true },
+    { module: 'authentication-campaigns', grantSource: 'direct', enabled: true, effective: true },
+  ],
   capabilities: [
     { capability: 'users.view', state: 'allowed', reasonCode: 'active_role', roleEvidence: { state: 'not_applicable', requiredRoleTemplateIds: [], assignments: [] } },
     { capability: 'authentication.methods.view', state: 'allowed', reasonCode: 'active_role', roleEvidence: { state: 'not_applicable', requiredRoleTemplateIds: [], assignments: [] } },
+    {
+      capability: 'authentication.campaigns.view',
+      state: 'allowed',
+      reasonCode: 'active_role',
+      roleEvidence: {
+        state: 'available',
+        requiredRoleTemplateIds: ['4a5d8f65-41da-4de4-8968-e035b65339cf'],
+        assignments: [{
+          roleTemplateId: '4a5d8f65-41da-4de4-8968-e035b65339cf',
+          assignmentState: 'active',
+          scope: 'tenant_wide',
+        }],
+      },
+    },
     { capability: 'pim.view', state: 'allowed', reasonCode: 'active_role', roleEvidence: { state: 'not_applicable', requiredRoleTemplateIds: [], assignments: [] } },
     { capability: 'audit.view', state: 'allowed', reasonCode: 'graph_authoritative', roleEvidence: { state: 'not_applicable', requiredRoleTemplateIds: [], assignments: [] } },
     { capability: 'workspace.settings.manage', state: 'allowed', reasonCode: 'workspace_platform_role', roleEvidence: { state: 'not_applicable', requiredRoleTemplateIds: [], assignments: [] } },
@@ -80,6 +97,15 @@ describe('AccountAccessMenu', () => {
 
     expect(container.querySelector('.account-access-menu__modules')?.textContent).toContain('Write access: Mixed results');
     expect(container.querySelector('.account-access-menu__modules')?.textContent).not.toContain('Write access: Allowed');
+  });
+
+  it('shows campaigns read access and an unevaluated write group', () => {
+    const { container } = renderMenu();
+    const campaigns = [...container.querySelectorAll('.account-access-menu__modules li')]
+      .find(row => row.textContent?.includes('Authentication campaigns'));
+
+    expect(campaigns?.textContent).toContain('Read access: Allowed');
+    expect(campaigns?.textContent).toContain('Write access: Not applicable');
   });
 
   it('reports unavailable evidence instead of implying no access and refreshes the shared snapshot', () => {

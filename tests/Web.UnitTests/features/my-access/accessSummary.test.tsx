@@ -27,6 +27,7 @@ const mappedCapabilities: Capability[] = [
   'users.sessions.revoke',
   'groups.manage_members',
   'authentication.methods.manage',
+  'authentication.campaigns.view',
   'roles.assign',
   'pim.activate',
   'devices.view',
@@ -64,6 +65,7 @@ function snapshot(overrides: Partial<CapabilitySnapshot> = {}): CapabilitySnapsh
       { module: 'devices', grantSource: 'explicit', enabled: true, effective: true },
       { module: 'licenses', grantSource: 'explicit', enabled: true, effective: true },
       { module: 'exchange', grantSource: 'explicit', enabled: true, effective: true },
+      { module: 'authentication-campaigns', grantSource: 'explicit', enabled: true, effective: true },
     ],
     ...overrides,
   };
@@ -78,8 +80,104 @@ function module(summary: ReturnType<typeof summarizeAccess>, key: string) {
 describe('summarizeAccess', () => {
   it('maps every evaluated API capability exactly once', () => {
     const flattened = accessSummaryCapabilityGroups.flatMap(group => [...group.read, ...group.write]);
-    expect(flattened).toHaveLength(24);
+    expect(flattened).toHaveLength(25);
     expect([...flattened].sort()).toEqual([...mappedCapabilities].sort());
+  });
+
+  it('maps authentication campaigns as a read-only module with its exact API decision and workspace gate', () => {
+    const summary = summarizeAccess(snapshot(), session);
+    const campaigns = module(summary, 'authentication-campaigns');
+
+    expect(campaigns.read.state).toBe('allowed');
+    expect(campaigns.read.actions.map(action => action.capability)).toEqual(['authentication.campaigns.view']);
+    expect(campaigns.read.actions[0]?.decision?.capability).toBe('authentication.campaigns.view');
+    expect(campaigns.write.state).toBe('not_applicable');
+    expect(campaigns.write.actions).toEqual([]);
+
+    const notGranted = snapshot({
+      workspaceModules: snapshot().workspaceModules?.map(item =>
+        item.module === 'authentication-campaigns' ? { ...item, effective: false, grantSource: 'none' } : item),
+    });
+    expect(module(summarizeAccess(notGranted, session), 'authentication-campaigns').read.state).toBe('workspace_not_granted');
+
+    const disabled = snapshot({
+      workspaceModules: snapshot().workspaceModules?.map(item =>
+        item.module === 'authentication-campaigns' ? { ...item, enabled: false, effective: false } : item),
+    });
+    expect(module(summarizeAccess(disabled, session), 'authentication-campaigns').read.state).toBe('module_disabled');
+    expect(module(summarizeAccess(snapshot({ workspaceModules: [] }), session), 'authentication-campaigns').read.state).toBe('unavailable');
+  });
+
+  it('keeps campaign consent and PIM evidence distinct from missing API decisions', () => {
+    const consent = snapshot({
+      capabilities: snapshot().capabilities.map(item => item.capability === 'authentication.campaigns.view'
+        ? decision(item.capability, 'consent_required', 'available', {
+          reasonCode: 'delegated_scope_required',
+          missingScopes: ['AuditLog.Read.All'],
+          roleEvidence: {
+            state: 'available',
+            requiredRoleTemplateIds: ['4a5d8f65-41da-4de4-8968-e035b65339cf'],
+            assignments: [],
+          },
+        })
+        : item),
+    });
+    const consentRead = module(summarizeAccess(consent, session), 'authentication-campaigns').read;
+    expect(consentRead.state).toBe('consent_required');
+    expect(consentRead.actions[0]?.consentEvidence).toContain('AuditLog.Read.All');
+
+    const pim = snapshot({
+      capabilities: snapshot().capabilities.map(item => item.capability === 'authentication.campaigns.view'
+        ? decision(item.capability, 'pim_activation_required', 'available', {
+          reasonCode: 'active_role',
+          requiredRoleTemplateId: '4a5d8f65-41da-4de4-8968-e035b65339cf',
+          roleEvidence: {
+            state: 'available',
+            requiredRoleTemplateIds: ['4a5d8f65-41da-4de4-8968-e035b65339cf'],
+            assignments: [{
+              roleTemplateId: '4a5d8f65-41da-4de4-8968-e035b65339cf',
+              assignmentState: 'eligible',
+              scope: 'tenant_wide',
+              pimState: 'activation_required',
+            }],
+          },
+        })
+        : item),
+    });
+    const pimRead = module(summarizeAccess(pim, session), 'authentication-campaigns').read;
+    expect(pimRead.state).toBe('pim_activation_required');
+    expect(pimRead.actions[0]?.decision?.roleEvidence?.assignments[0]?.assignmentState).toBe('eligible');
+
+    const missing = snapshot({
+      capabilities: snapshot().capabilities.filter(item => item.capability !== 'authentication.campaigns.view'),
+    });
+    const missingRead = module(summarizeAccess(missing, session), 'authentication-campaigns').read;
+    expect(missingRead.state).toBe('partial');
+    expect(missingRead.actions[0]?.decision).toBeNull();
+
+    const unknownRoleEvidence = snapshot({
+      capabilities: snapshot().capabilities.map(item => item.capability === 'authentication.campaigns.view'
+        ? decision(item.capability, 'allowed', 'unavailable')
+        : item),
+    });
+    const unknownRoleRead = module(summarizeAccess(unknownRoleEvidence, session), 'authentication-campaigns').read;
+    expect(unknownRoleRead.state).toBe('partial');
+    expect(unknownRoleRead.actions[0]?.decision?.state).toBe('allowed');
+  });
+
+  it.each([
+    'pim_activation_required',
+    'pim_approval_required',
+    'pim_mfa_required',
+    'pim_eligibility_expired',
+  ] as const)('preserves campaign %s as a distinct read decision', state => {
+    const value = snapshot({
+      capabilities: snapshot().capabilities.map(item => item.capability === 'authentication.campaigns.view'
+        ? decision(item.capability, state, 'available')
+        : item),
+    });
+
+    expect(module(summarizeAccess(value, session), 'authentication-campaigns').read.state).toBe(state);
   });
 
   it('allows a group only when every decision, role layer, workspace and module gate is evidenced', () => {

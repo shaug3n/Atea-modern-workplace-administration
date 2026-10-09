@@ -37,9 +37,10 @@ public sealed class CapabilityEndpointTests
         body.Should().Contain("\"capability\":\"users.create\",\"state\":\"read_only\"");
         body.Should().Contain($"\"roleTemplateId\":\"{EntraRoleCatalog.GlobalReaderTemplateId}\"");
         body.Should().Contain("\"workspaceModules\"");
-        body.Should().NotContain("authentication-campaigns");
+        body.Should().Contain("\"module\":\"authentication-campaigns\"");
         body.Should().NotContain("license-hygiene");
-        body.Should().NotContain("\"capability\":\"authentication.campaigns.view\"");
+        body.Should().Contain("\"capability\":\"authentication.campaigns.view\"");
+        body.Should().Contain("\"capability\":\"authentication.campaigns.view\",\"state\":\"consent_required\"");
         body.Should().NotContain("\"capability\":\"authentication.campaigns.manage\"");
         body.Should().NotContain("\"capability\":\"licenses.hygiene.view\"");
         body.Should().NotContain("\"capability\":\"platform.about.view\"");
@@ -63,7 +64,7 @@ public sealed class CapabilityEndpointTests
             .Should().Be("55555555-5555-5555-5555-555555555555");
         var modules = body.RootElement.GetProperty("workspaceModules").EnumerateArray().ToArray();
         modules.Select(module => module.GetProperty("module").GetString())
-            .Should().Equal("users", "devices", "licenses", "exchange");
+            .Should().Equal("users", "devices", "licenses", "exchange", "authentication-campaigns");
         modules.Should().OnlyContain(module =>
             !module.GetProperty("effective").GetBoolean()
             && module.GetProperty("grantSource").GetString() == "none");

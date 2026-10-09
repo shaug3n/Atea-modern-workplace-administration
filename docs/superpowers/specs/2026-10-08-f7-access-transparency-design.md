@@ -22,6 +22,8 @@ Build the page under `src/Web/src/features/my-access/`. Keep feature-owned displ
 
 The presentation mapping associates modules and read/write action groups with capability IDs that the API actually evaluates. It is descriptive, not an evaluator. It must not infer a module's full write access from one allowed action. An allowed summary means all mapped actions in that group are explicitly allowed and its declared coverage is complete. Different known outcomes are mixed. Missing decisions or incomplete coverage are unavailable/partial, never allowed or denied by assumption. Preserve individual reasons even when all actions are unavailable for different reasons.
 
+Authentication campaigns is represented as a read-only module here: `authentication.campaigns.view` is API-evaluated, while campaign management remains reserved and is not presented as a decision.
+
 Use `DomainAccessChip` only when its existing contract accurately represents the available decisions. Supplement it with explicit text for mixed/partial evidence; never fabricate an API decision to fit a pill. Unmapped modules show that coverage is unavailable, not a fake capability.
 
 Workspace grants and Microsoft authorization are distinct:

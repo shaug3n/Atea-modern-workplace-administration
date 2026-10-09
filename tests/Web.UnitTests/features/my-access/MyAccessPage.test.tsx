@@ -10,7 +10,7 @@ const session: AppSession = { user: { displayName: 'Avery Member' }, workspace: 
 const capabilities: Capability[] = [
   'users.view', 'authentication.methods.view', 'pim.view', 'users.create', 'users.update', 'users.disable',
   'users.reset_password', 'users.sessions.revoke', 'groups.manage_members', 'authentication.methods.manage',
-  'roles.assign', 'pim.activate', 'devices.view', 'devices.bitlocker.metadata', 'devices.laps.metadata',
+  'authentication.campaigns.view', 'roles.assign', 'pim.activate', 'devices.view', 'devices.bitlocker.metadata', 'devices.laps.metadata',
   'devices.manage', 'devices.privileged.manage', 'devices.bitlocker.reveal', 'devices.laps.reveal',
   'licenses.view', 'licenses.assign', 'audit.view', 'workspace.settings.manage', 'workspace.members.manage',
 ];
@@ -36,6 +36,7 @@ function snapshot(overrides: Partial<CapabilitySnapshot> = {}): CapabilitySnapsh
       { module: 'devices', grantSource: 'explicit', enabled: true, effective: true },
       { module: 'licenses', grantSource: 'explicit', enabled: true, effective: true },
       { module: 'exchange', grantSource: 'explicit', enabled: true, effective: true },
+      { module: 'authentication-campaigns', grantSource: 'explicit', enabled: true, effective: true },
     ],
     ...overrides,
   };
@@ -74,6 +75,36 @@ describe('MyAccessPage', () => {
 
     expect(screen.getByRole('region', { name: 'My access evidence' }).getAttribute('aria-busy')).toBe('true');
     expect(screen.getByText(/Loading access information/)).toBeTruthy();
+  });
+
+  it('shows authentication campaign read evidence and does not invent write actions', () => {
+    const currentSnapshot = snapshot({
+      capabilities: capabilities.map(capability => capability === 'authentication.campaigns.view'
+        ? decision(capability, {
+          reasonCode: 'active_role',
+          requiredRoleTemplateId: '4a5d8f65-41da-4de4-8968-e035b65339cf',
+          roleEvidence: {
+            state: 'available',
+            requiredRoleTemplateIds: ['4a5d8f65-41da-4de4-8968-e035b65339cf'],
+            assignments: [{
+              roleTemplateId: '4a5d8f65-41da-4de4-8968-e035b65339cf',
+              assignmentState: 'active',
+              scope: 'tenant_wide',
+            }],
+          },
+        })
+        : decision(capability)),
+    });
+    renderPage({ currentSnapshot });
+
+    const campaigns = screen.getByRole('article', { name: 'Authentication campaigns' });
+    const [read, write] = within(campaigns).getAllByRole('group');
+    expect(within(read).getByRole('heading', { name: 'View authentication campaigns' })).toBeTruthy();
+    expect(within(read).getByText('Reports Reader')).toBeTruthy();
+    expect(within(read).getAllByText('Allowed')).toHaveLength(2);
+    expect(within(write).getByText('Not applicable')).toBeTruthy();
+    expect(within(write).getByText('The API does not currently evaluate actions in this group.')).toBeTruthy();
+    expect(within(write).queryByText(/Manage authentication campaigns/i)).toBeNull();
   });
 
   it('renders_unavailable_and_retry_after_initial_failure', () => {

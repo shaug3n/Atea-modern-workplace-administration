@@ -46,6 +46,8 @@ describe('reserved contracts', () => {
   it('keeps reserved capabilities out of access-summary mappings while including workspace member management', () => {
     const mapped = accessSummaryCapabilityGroups.flatMap(group => [...group.read, ...group.write]);
     expect(mapped).toContain('workspace.members.manage');
+    expect(mapped).toContain('authentication.campaigns.view');
+    expect(mapped).not.toContain('authentication.campaigns.manage');
     expect(mapped.some(capability => reservedCapabilities.includes(capability as typeof reservedCapabilities[number]))).toBe(false);
   });
 });

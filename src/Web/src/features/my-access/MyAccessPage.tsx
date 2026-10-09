@@ -47,6 +47,7 @@ const roleNames: Record<string, string> = {
   '729827e3-9c14-49f7-bb1b-9608f156bbb8': 'Helpdesk Administrator',
   '194ae4cb-b126-40b2-bd5b-6091b380977d': 'Security Administrator',
   '5d6b6bb7-de71-4623-b4af-96380a352509': 'Security Reader',
+  '4a5d8f65-41da-4de4-8968-e035b65339cf': 'Reports Reader',
 };
 
 const pimStateLabels: Record<string, string> = {
@@ -299,7 +300,9 @@ function AccessGroup({
       </div>
       {actions.length > 0
         ? <ul className="my-access-actions">{actions.map(action => <ActionEvidence key={action.capability} action={action} sourceAvailable={sourceAvailable} canManageSettings={canManageSettings} onNavigate={onNavigate} />)}</ul>
-        : <p>Action coverage is not available; no access summary can be made.</p>}
+        : <p>{state === 'not_applicable'
+          ? 'The API does not currently evaluate actions in this group.'
+          : 'Action coverage is not available; no access summary can be made.'}</p>}
     </section>
   );
 }

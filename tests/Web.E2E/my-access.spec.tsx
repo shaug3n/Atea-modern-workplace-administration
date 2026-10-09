@@ -8,7 +8,7 @@ import type { Capability, CapabilitySnapshot } from '../../src/Web/src/capabilit
 const capabilities: Capability[] = [
   'users.view', 'users.create', 'users.update', 'users.disable', 'users.reset_password',
   'users.sessions.revoke', 'groups.manage_members', 'authentication.methods.view',
-  'authentication.methods.manage', 'pim.view', 'pim.activate', 'roles.assign',
+  'authentication.methods.manage', 'authentication.campaigns.view', 'pim.view', 'pim.activate', 'roles.assign',
   'devices.view', 'devices.manage', 'devices.privileged.manage', 'devices.bitlocker.metadata',
   'devices.bitlocker.reveal', 'devices.laps.metadata', 'devices.laps.reveal',
   'licenses.view', 'licenses.assign', 'audit.view', 'workspace.settings.manage',
@@ -20,8 +20,8 @@ const memberSession: AppSession = {
   workspace: {
     id: 'workspace-1',
     name: 'Northwind Workspace',
-    enabledModules: ['users', 'devices', 'licenses'],
-    moduleAccess: ['users', 'devices', 'licenses'],
+    enabledModules: ['users', 'devices', 'licenses', 'authentication-campaigns'],
+    moduleAccess: ['users', 'devices', 'licenses', 'authentication-campaigns'],
   },
   workspaceAccess: {
     role: 'member',
@@ -37,7 +37,7 @@ function accessSnapshot(workspaceId = memberSession.workspace.id): CapabilitySna
     workspaceId,
     evaluatedAt: '2026-10-08T16:00:00Z',
     sourceState: 'graph_authoritative',
-    workspaceModules: ['users', 'devices', 'licenses'].map(module => ({
+    workspaceModules: ['users', 'devices', 'licenses', 'authentication-campaigns'].map(module => ({
       module,
       grantSource: 'workspace_role',
       enabled: true,
@@ -95,6 +95,8 @@ describe('My access owned journey', () => {
       expect(window.location.pathname).toBe('/my-access');
       expect(screen.getByText(/Review how workspace grants and Microsoft permissions affect actions in Northwind Workspace/)).toBeTruthy();
       expect(screen.getByRole('heading', { name: 'Users', level: 2 })).toBeTruthy();
+      expect(screen.getByRole('heading', { name: 'Authentication campaigns', level: 2 })).toBeTruthy();
+      expect(screen.getByText('View authentication campaigns')).toBeTruthy();
       expect(screen.getByText('View users')).toBeTruthy();
       expect(loadCapabilities).toHaveBeenCalledOnce();
     },
