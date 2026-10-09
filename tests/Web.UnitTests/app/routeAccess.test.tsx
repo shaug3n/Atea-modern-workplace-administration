@@ -120,7 +120,7 @@ describe('route access metadata', () => {
     window.history.pushState(null, '', '/feedback');
     apiMock
       .mockResolvedValueOnce(Response.json({ items: [], nextCursor: null }))
-      .mockResolvedValueOnce(Response.json({ id: 'saved', createdAt: '2026-10-09T08:00:00Z', expiresAt: '2027-01-07T08:00:00Z' }, { status: 201 }))
+      .mockResolvedValueOnce(Response.json({ id: '22222222-2222-4222-8222-222222222222', createdAt: '2026-10-09T08:00:00Z', expiresAt: '2027-01-07T08:00:00Z' }, { status: 201 }))
       .mockResolvedValueOnce(Response.json({ items: [], nextCursor: null }));
     const feedbackWorkspace = {
       ...session,

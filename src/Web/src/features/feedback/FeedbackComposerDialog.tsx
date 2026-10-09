@@ -45,8 +45,16 @@ export function FeedbackComposerDialog({ open, onOpenChange, workspaceId, submit
   const retry = useRef<{ payload: string; key: string } | null>(null);
   const contextKey = `${workspaceId}:${submitterObjectId}`;
   const contextRef = useRef(contextKey);
+  const requestGeneration = useRef(0);
+  const latestValues = useRef(values);
   const categoryRef = useRef<HTMLSelectElement>(null);
-  const dialogRef = useFocusContainment<HTMLDivElement>(open, () => onOpenChange(false));
+  const dialogRef = useFocusContainment<HTMLDivElement>(open, () => {
+    if (!pending) onOpenChange(false);
+  });
+
+  useEffect(() => () => {
+    requestGeneration.current += 1;
+  }, []);
 
   useEffect(() => {
     if (open) categoryRef.current?.focus();
@@ -55,6 +63,8 @@ export function FeedbackComposerDialog({ open, onOpenChange, workspaceId, submit
   useEffect(() => {
     if (!open || contextRef.current !== contextKey) {
       contextRef.current = contextKey;
+      requestGeneration.current += 1;
+      latestValues.current = blankForm;
       setValues(blankForm);
       setErrors({});
       setPending(false);
@@ -67,7 +77,9 @@ export function FeedbackComposerDialog({ open, onOpenChange, workspaceId, submit
   if (!open) return null;
 
   const update = (field: keyof FormValues, value: string) => {
-    setValues(current => ({ ...current, [field]: value }));
+    const nextValues = { ...latestValues.current, [field]: value };
+    latestValues.current = nextValues;
+    setValues(nextValues);
     setErrors(current => ({ ...current, [field]: undefined }));
     setError('');
     setSaved(false);
@@ -86,16 +98,22 @@ export function FeedbackComposerDialog({ open, onOpenChange, workspaceId, submit
     const request = { category: values.category, subject: values.subject, message: values.message };
     const payload = JSON.stringify(request);
     const key = retry.current?.payload === payload ? retry.current.key : newIdempotencyKey();
+    const requestId = ++requestGeneration.current;
     retry.current = { payload, key };
     setPending(true);
     try {
       await createFeedback(api, request, key);
+      if (requestId !== requestGeneration.current) return;
       retry.current = null;
-      setValues(blankForm);
-      setErrors({});
+      if (JSON.stringify(latestValues.current) === payload) {
+        latestValues.current = blankForm;
+        setValues(blankForm);
+        setErrors({});
+      }
       setSaved(true);
       onSaved();
     } catch (reason) {
+      if (requestId !== requestGeneration.current) return;
       if (reason instanceof FeedbackApiError && reason.code === 'idempotency_key_expired') {
         retry.current = { payload, key: newIdempotencyKey() };
         setError(messages.feedbackRetryExpired);
@@ -106,7 +124,7 @@ export function FeedbackComposerDialog({ open, onOpenChange, workspaceId, submit
         setError(messages.feedbackSaveFailed);
       }
     } finally {
-      setPending(false);
+      if (requestId === requestGeneration.current) setPending(false);
     }
   };
 

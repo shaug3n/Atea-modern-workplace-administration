@@ -23,17 +23,17 @@ describe('FeedbackPage', () => {
     expect(openDialog).toHaveBeenCalledOnce();
   });
 
-  it('renders own feedback as text in stable newest-first order and loads the next cursor page', async () => {
+  it('preserves the server newest-first order and loads the next cursor page', async () => {
     apiMock
       .mockResolvedValueOnce(Response.json({
         items: [
-          { id: 'older', category: 'General', subject: '<b>Older</b>', message: '<img src=x onerror=alert(1)>', createdAt: '2026-10-01T10:00:00Z', expiresAt: '2027-01-01T10:00:00Z' },
-          { id: 'newer', category: 'Bug', subject: 'Newer', message: 'New message', createdAt: '2026-10-02T10:00:00Z', expiresAt: '2027-01-02T10:00:00Z' },
+          { id: 'z-id', category: 'Bug', subject: 'Newer', message: 'New message', createdAt: '2026-10-02T10:00:00Z', expiresAt: '2027-01-02T10:00:00Z' },
+          { id: 'a-id', category: 'General', subject: '<b>Older</b>', message: '<img src=x onerror=alert(1)>', createdAt: '2026-10-02T10:00:00Z', expiresAt: '2027-01-02T10:00:00Z' },
         ],
         nextCursor: 'next-page',
       }))
       .mockResolvedValueOnce(Response.json({
-        items: [{ id: 'newest', category: 'Improvement', subject: 'Newest', message: 'Latest message', createdAt: '2026-10-03T10:00:00Z', expiresAt: '2027-01-03T10:00:00Z' }],
+        items: [{ id: 'oldest', category: 'Improvement', subject: 'Oldest', message: 'Oldest message', createdAt: '2026-10-01T10:00:00Z', expiresAt: '2027-01-01T10:00:00Z' }],
         nextCursor: null,
       }));
     render(<FeedbackPage refreshRevision={0} onOpenFeedbackDialog={vi.fn()} />);
@@ -44,11 +44,11 @@ describe('FeedbackPage', () => {
     expect(older.closest('article')?.querySelector('img')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Load more feedback' }));
 
-    await screen.findByText('Newest');
+    await screen.findByText('Oldest');
     await waitFor(() => expect(apiMock).toHaveBeenCalledTimes(2));
     expect(apiMock.mock.calls[1][0]).toContain('cursor=next-page');
     const titles = Array.from(document.querySelectorAll('[data-feedback-subject]')).map(node => node.textContent);
-    expect(titles).toEqual(['Newest', 'Newer', '<b>Older</b>']);
+    expect(titles).toEqual(['Newer', '<b>Older</b>', 'Oldest']);
   });
 
   it('shows an actionable error instead of an empty list when the response is invalid', async () => {

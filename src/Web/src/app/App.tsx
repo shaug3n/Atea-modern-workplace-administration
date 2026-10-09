@@ -5,7 +5,7 @@ import { useAuth } from '../auth/AuthProvider';
 import { appRoutes, capabilityDecisionFor, isInvitationPath, matchRoute, type AppRoute } from './routes';
 import { AppShell } from '../components/AppShell';
 import { AppThemeProvider, ThemeProvider, type ThemePreferenceStore } from '../components/ThemeToggle';
-import type { AppSession } from '../components/TenantContextHeader';
+import type { AppSession } from './sessionTypes';
 import { WorkspaceDataState } from '../components/WorkspaceDataState';
 import { WorkspacePageHeader } from '../components/WorkspacePageHeader';
 import { useWorkspaceIssueReporter } from '../notifications/WorkspaceNotifications';

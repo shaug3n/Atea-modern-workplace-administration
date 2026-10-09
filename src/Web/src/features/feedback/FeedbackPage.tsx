@@ -5,11 +5,6 @@ import { messages } from '../../app/messages';
 import { listFeedback, type FeedbackSubmission } from './feedbackApi';
 import './feedback.css';
 
-function newestFirst(items: FeedbackSubmission[]) {
-  return [...items].sort((left, right) =>
-    Date.parse(right.createdAt) - Date.parse(left.createdAt) || left.id.localeCompare(right.id));
-}
-
 export function FeedbackPage({ refreshRevision, onOpenFeedbackDialog }: { refreshRevision: number; onOpenFeedbackDialog: () => void }) {
   const api = useApi();
   const sequence = useRef(0);
@@ -29,7 +24,7 @@ export function FeedbackPage({ refreshRevision, onOpenFeedbackDialog }: { refres
     setError(false);
     listFeedback(api).then(page => {
       if (!active || requestId !== sequence.current) return;
-      setItems(newestFirst(page.items));
+      setItems(page.items);
       setNextCursor(page.nextCursor);
     }).catch(() => {
       if (active && requestId === sequence.current) setError(true);
@@ -49,7 +44,7 @@ export function FeedbackPage({ refreshRevision, onOpenFeedbackDialog }: { refres
     setError(false);
     listFeedback(api, nextCursor).then(page => {
       if (requestId !== sequence.current) return;
-      setItems(current => newestFirst([...current, ...page.items]));
+      setItems(current => [...current, ...page.items]);
       setNextCursor(page.nextCursor);
     }).catch(() => {
       if (requestId === sequence.current) setError(true);

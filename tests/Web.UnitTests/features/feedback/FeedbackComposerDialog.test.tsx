@@ -5,6 +5,7 @@ import { FeedbackComposerDialog } from '../../../../src/Web/src/features/feedbac
 
 const apiMock = vi.hoisted(() => vi.fn());
 vi.mock('../../../../src/Web/src/auth/useApi', () => ({ useApi: () => apiMock }));
+const receiptId = '11111111-1111-4111-8111-111111111111';
 
 function renderDialog() {
   const onOpenChange = vi.fn();
@@ -82,7 +83,7 @@ describe('FeedbackComposerDialog', () => {
   });
 
   it('shows the privacy and retention terms before submit and confirms only Saved on success', async () => {
-    apiMock.mockResolvedValue(Response.json({ id: 'submission-1', createdAt: '2026-10-09T08:00:00Z', expiresAt: '2027-01-07T08:00:00Z' }, { status: 201 }));
+    apiMock.mockResolvedValue(Response.json({ id: receiptId, createdAt: '2026-10-09T08:00:00Z', expiresAt: '2027-01-07T08:00:00Z' }, { status: 201 }));
     renderDialog();
     fillValidForm();
 
@@ -101,7 +102,7 @@ describe('FeedbackComposerDialog', () => {
   });
 
   it('accepts subject and message at the exact UTF-16 server limits', async () => {
-    apiMock.mockResolvedValue(Response.json({ id: 'submission-1', createdAt: '2026-10-09T08:00:00Z', expiresAt: '2027-01-07T08:00:00Z' }, { status: 201 }));
+    apiMock.mockResolvedValue(Response.json({ id: receiptId, createdAt: '2026-10-09T08:00:00Z', expiresAt: '2027-01-07T08:00:00Z' }, { status: 201 }));
     renderDialog();
     fillValidForm('😀'.repeat(60), '😀'.repeat(2000));
     fireEvent.click(screen.getByRole('button', { name: 'Save feedback' }));
@@ -114,7 +115,7 @@ describe('FeedbackComposerDialog', () => {
 
   it('preserves form values and retries an uncertain request with the same key until the payload changes', async () => {
     apiMock.mockRejectedValueOnce(new TypeError('network offline')).mockResolvedValueOnce(Response.json({
-      id: 'submission-1',
+      id: receiptId,
       createdAt: '2026-10-09T08:00:00Z',
       expiresAt: '2027-01-07T08:00:00Z',
     }, { status: 201 }));
@@ -182,6 +183,76 @@ describe('FeedbackComposerDialog', () => {
     expect((screen.getByLabelText('Subject') as HTMLInputElement).value).toBe('Subject');
   });
 
+  it.each([
+    ['empty ID', { id: '', createdAt: '2026-10-09T08:00:00Z', expiresAt: '2027-01-07T08:00:00Z' }],
+    ['empty creation timestamp', { id: receiptId, createdAt: '', expiresAt: '2027-01-07T08:00:00Z' }],
+    ['malformed creation timestamp', { id: receiptId, createdAt: 'not-a-date', expiresAt: '2027-01-07T08:00:00Z' }],
+    ['malformed expiry timestamp', { id: receiptId, createdAt: '2026-10-09T08:00:00Z', expiresAt: 'not-a-date' }],
+    ['expiry before creation', { id: receiptId, createdAt: '2026-10-09T08:00:00Z', expiresAt: '2026-10-08T08:00:00Z' }],
+  ])('preserves the form and rejects a 2xx receipt with %s', async (_description, receipt) => {
+    apiMock.mockResolvedValue(Response.json(receipt, { status: 201 }));
+    const { onSaved } = renderDialog();
+    fillValidForm('Preserved subject', 'Preserved message');
+    fireEvent.click(screen.getByRole('button', { name: 'Save feedback' }));
+
+    expect((await screen.findByRole('alert')).textContent).toMatch(/could not be saved/i);
+    expect(screen.queryByRole('status')).toBeNull();
+    expect((screen.getByLabelText('Subject') as HTMLInputElement).value).toBe('Preserved subject');
+    expect((screen.getByLabelText('Message') as HTMLTextAreaElement).value).toBe('Preserved message');
+    expect(onSaved).not.toHaveBeenCalled();
+  });
+
+  it('does not dismiss or lose the retry key while a submission is pending', async () => {
+    let rejectRequest!: (reason: Error) => void;
+    apiMock
+      .mockImplementationOnce(() => new Promise<Response>((_resolve, reject) => { rejectRequest = reject; }))
+      .mockRejectedValueOnce(new TypeError('network offline'));
+    const { onOpenChange } = renderDialog();
+    fillValidForm();
+    fireEvent.click(screen.getByRole('button', { name: 'Save feedback' }));
+    await waitFor(() => expect((screen.getByRole('button', { name: 'Saving…' }) as HTMLButtonElement).disabled).toBe(true));
+
+    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
+    expect(onOpenChange).not.toHaveBeenCalled();
+    expect(screen.getByRole('dialog')).toBeTruthy();
+    rejectRequest(new TypeError('network offline'));
+    expect((await screen.findByRole('alert')).textContent).toMatch(/could not be saved/i);
+    fireEvent.click(screen.getByRole('button', { name: 'Save feedback' }));
+    await waitFor(() => expect(apiMock).toHaveBeenCalledTimes(2));
+    expect(apiMock.mock.calls[1][1].headers['Idempotency-Key']).toBe(apiMock.mock.calls[0][1].headers['Idempotency-Key']);
+  });
+
+  it('preserves edits made while the submitted payload is pending', async () => {
+    let resolveRequest!: (response: Response) => void;
+    apiMock.mockImplementation(() => new Promise<Response>(resolve => { resolveRequest = resolve; }));
+    const { onSaved } = renderDialog();
+    fillValidForm('Submitted subject', 'Submitted message');
+    fireEvent.click(screen.getByRole('button', { name: 'Save feedback' }));
+    fireEvent.change(screen.getByLabelText('Message'), { target: { value: 'Unsent edit' } });
+    resolveRequest(Response.json({ id: receiptId, createdAt: '2026-10-09T08:00:00Z', expiresAt: '2027-01-07T08:00:00Z' }, { status: 201 }));
+
+    expect((await screen.findByRole('status')).textContent).toBe('Saved');
+    expect((screen.getByLabelText('Subject') as HTMLInputElement).value).toBe('Submitted subject');
+    expect((screen.getByLabelText('Message') as HTMLTextAreaElement).value).toBe('Unsent edit');
+    expect(onSaved).toHaveBeenCalledOnce();
+  });
+
+  it('ignores an in-flight success after the authenticated context remounts the dialog', async () => {
+    let resolveRequest!: (response: Response) => void;
+    apiMock.mockImplementationOnce(() => new Promise<Response>(resolve => { resolveRequest = resolve; }));
+    const staleSaved = vi.fn();
+    const currentSaved = vi.fn();
+    const props = { open: true, onOpenChange: vi.fn(), workspaceId: 'workspace-1', submitterObjectId: 'user-1' };
+    const { rerender } = render(<FeedbackComposerDialog key="workspace-1:user-1" {...props} onSaved={staleSaved} />);
+    fillValidForm();
+    fireEvent.click(screen.getByRole('button', { name: 'Save feedback' }));
+    rerender(<FeedbackComposerDialog key="workspace-2:user-2" {...props} workspaceId="workspace-2" submitterObjectId="user-2" onSaved={currentSaved} />);
+    resolveRequest(Response.json({ id: receiptId, createdAt: '2026-10-09T08:00:00Z', expiresAt: '2027-01-07T08:00:00Z' }, { status: 201 }));
+
+    await waitFor(() => expect(staleSaved).not.toHaveBeenCalled());
+    expect(currentSaved).not.toHaveBeenCalled();
+  });
+
   it('disables repeated submission while the request is pending', async () => {
     let resolveRequest!: (response: Response) => void;
     apiMock.mockImplementation(() => new Promise<Response>(resolve => { resolveRequest = resolve; }));
@@ -193,7 +264,7 @@ describe('FeedbackComposerDialog', () => {
     await waitFor(() => expect((submit as HTMLButtonElement).disabled).toBe(true));
     fireEvent.click(submit);
     expect(apiMock).toHaveBeenCalledOnce();
-    resolveRequest(Response.json({ id: 'submission-1', createdAt: '2026-10-09T08:00:00Z', expiresAt: '2027-01-07T08:00:00Z' }, { status: 201 }));
+    resolveRequest(Response.json({ id: receiptId, createdAt: '2026-10-09T08:00:00Z', expiresAt: '2027-01-07T08:00:00Z' }, { status: 201 }));
     await screen.findByRole('status');
   });
 });

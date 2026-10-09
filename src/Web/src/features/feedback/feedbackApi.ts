@@ -25,8 +25,28 @@ export class FeedbackApiError extends Error {
   }
 }
 
+const guidPattern = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i;
+const timestampPattern = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d{1,7})?(?:Z|[+-]\d{2}:\d{2})$/i;
+
 function isFeedbackCategory(value: unknown): value is FeedbackCategory {
   return value === 'Bug' || value === 'Improvement' || value === 'General';
+}
+
+function timestampValue(value: string): number | null {
+  const parts = timestampPattern.exec(value);
+  if (!parts) return null;
+  const [year, month, day, hour, minute, second] = parts.slice(1).map(Number);
+  const calendar = new Date(0);
+  calendar.setUTCFullYear(year, month - 1, day);
+  calendar.setUTCHours(hour, minute, second, 0);
+  if (calendar.getUTCFullYear() !== year
+    || calendar.getUTCMonth() !== month - 1
+    || calendar.getUTCDate() !== day
+    || calendar.getUTCHours() !== hour
+    || calendar.getUTCMinutes() !== minute
+    || calendar.getUTCSeconds() !== second) return null;
+  const timestamp = Date.parse(value);
+  return Number.isFinite(timestamp) ? timestamp : null;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -99,10 +119,15 @@ export async function createFeedback(api: ApiFetch, request: FeedbackRequest, id
   if (!response.ok) {
     throw new FeedbackApiError(response.status, isRecord(body) && typeof body.error === 'string' ? body.error : undefined);
   }
+  const createdAt = isRecord(body) && typeof body.createdAt === 'string' ? timestampValue(body.createdAt) : null;
+  const expiresAt = isRecord(body) && typeof body.expiresAt === 'string' ? timestampValue(body.expiresAt) : null;
   if (!isRecord(body)
     || typeof body.id !== 'string'
-    || typeof body.createdAt !== 'string'
-    || typeof body.expiresAt !== 'string') {
+    || !guidPattern.test(body.id)
+    || body.id === '00000000-0000-0000-0000-000000000000'
+    || createdAt === null
+    || expiresAt === null
+    || expiresAt <= createdAt) {
     throw new FeedbackApiError(response.status, 'invalid_response');
   }
 }
