@@ -152,6 +152,20 @@
   gap: var(--atea-space-4);
 }
 
+.device360-security {
+  display: grid;
+  gap: var(--atea-space-4);
+  min-width: 0;
+}
+
+.device-action-acceptance {
+  padding: var(--atea-space-3);
+  border-inline-start: 4px solid var(--uw-warning-text);
+  background: var(--uw-warning-surface);
+  color: var(--uw-warning-text);
+  font-weight: 600;
+}
+
 .device360-configuration,
 .device360-apps {
   display: grid;

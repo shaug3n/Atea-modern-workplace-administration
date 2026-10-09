@@ -16,6 +16,15 @@ function deferred<T>() {
   return { promise, resolve };
 }
 function openSecurityTab() { fireEvent.click(screen.getByRole('tab', { name: 'Security' })); }
+const windowsProtection = {
+  antiMalwareVersion: null, controlledConfigurationEnabled: null, deviceState: 'clean', engineVersion: null,
+  fullScanOverdue: null, fullScanRequired: null, isVirtualMachine: null, lastFullScanDateTime: null,
+  lastFullScanSignatureVersion: null, lastQuickScanDateTime: null, lastQuickScanSignatureVersion: null,
+  lastReportedDateTime: '2026-10-08T09:30:00Z', malwareProtectionEnabled: true,
+  networkInspectionSystemEnabled: null, productStatus: null, quickScanOverdue: null,
+  realTimeProtectionEnabled: true, rebootRequired: null, signatureUpdateOverdue: null,
+  signatureVersion: null, tamperProtectionEnabled: null,
+};
 
 describe('DeviceDetailPage', () => {
   afterEach(() => { cleanup(); vi.useRealTimers(); vi.clearAllMocks(); window.history.replaceState({}, '', '/devices'); });
@@ -94,6 +103,7 @@ describe('DeviceDetailPage', () => {
       if (path === '/api/devices/device-1/compliance-policies') return response({ status: 'graph_forbidden', data: null, error: { category: 'authorization', message: 'denied', state: 'graph_forbidden' } }, 403);
       return response({ status: 'succeeded', data: [] });
     });
+
     render(<DeviceDetailPage deviceId="device-1" />);
     expect(await screen.findByRole('heading', { name: 'WIN-01' })).toBeTruthy();
     await screen.findByText(/not allowed to read per-policy compliance reports/i);
@@ -108,6 +118,28 @@ describe('DeviceDetailPage', () => {
     fireEvent.click(screen.getByRole('tab', { name: 'Configuration' }));
     expect(apiMock.mock.calls.filter(([path]) => path.endsWith('/configuration/reported'))).toHaveLength(1);
     expect(document.querySelector('.workspace-page-header__meta')?.textContent).toContain('Compliance: Noncompliant');
+  });
+
+  it('protection_is_requested_only_on_security_activation_and_recovery_stays_user_initiated', async () => {
+    apiMock.mockImplementation(async (path: string) => {
+      if (path === '/api/devices/device-1') return response({ id: 'device-1', deviceName: 'WIN-01', operatingSystem: 'Windows', isEncrypted: true });
+      if (path.endsWith('/compliance-policies')) return response({ status: 'succeeded', data: [], retrievedAt: null, partialData: false, error: null });
+      if (path.endsWith('/protection')) return response({ status: 'succeeded', data: windowsProtection, retrievedAt: '2026-10-08T10:00:00Z', partialData: false, error: null });
+      return response({ status: 'succeeded', data: [] });
+    });
+    render(<DeviceDetailPage deviceId="device-1" />);
+    await screen.findByRole('heading', { name: 'WIN-01' });
+    await screen.findByText('No per-policy compliance reports were returned.');
+    expect(apiMock.mock.calls.some(([path]) => String(path).endsWith('/protection'))).toBe(false);
+    expect(apiMock.mock.calls.some(([path]) => String(path).includes('/recovery/'))).toBe(false);
+
+    openSecurityTab();
+    expect(await screen.findByText('Malware protection enabled')).toBeTruthy();
+    expect(document.querySelector('time[datetime="2026-10-08T09:30:00Z"]')).toBeTruthy();
+    expect(apiMock).toHaveBeenCalledWith('/api/devices/device-1/protection', { cache: 'no-store' });
+    expect(apiMock.mock.calls.some(([path]) => String(path).includes('/recovery/'))).toBe(false);
+    fireEvent.click(screen.getByRole('tab', { name: 'Actions' }));
+    expect(apiMock.mock.calls.some(([path]) => String(path).includes('/recovery/'))).toBe(false);
   });
 
   it('shows_a_retryable_unavailable_state_when_policy_response_is_valid_json_null', async () => {
