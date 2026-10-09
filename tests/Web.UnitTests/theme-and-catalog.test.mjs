@@ -12,6 +12,14 @@ test('app renders every visible message from the typed catalog', async () => {
   assert.doesNotMatch(shell, />Atea Unified Workplace<\/h1>/);
 });
 
+test('about messages are explicitly composed into the typed catalog', async () => {
+  const catalog = await readFile('../../src/Web/src/messages/en.ts', 'utf8');
+  const featureMessages = await readFile('../../src/Web/src/features/about/messages.ts', 'utf8');
+  assert.match(featureMessages, /export const aboutMessages\s*=/);
+  assert.match(catalog, /import\s+\{\s*aboutMessages\s*\}\s+from\s+['"]\.\.\/features\/about\/messages['"]/);
+  assert.match(catalog, /\.\.\.aboutMessages/);
+});
+
 test('baseline provides semantic Atea theme tokens and user dark-mode control', async () => {
   const css = await readFile('../../src/Web/src/styles/theme.css', 'utf8');
   const app = await readFile('../../src/Web/src/app/App.tsx', 'utf8');

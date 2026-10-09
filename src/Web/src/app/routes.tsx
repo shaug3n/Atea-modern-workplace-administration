@@ -23,6 +23,8 @@ import { AuthenticationCampaignsPage, type AuthenticationCampaignsLoader } from 
 import { messages } from './messages';
 import type { AppSession } from '../components/TenantContextHeader';
 import type { IconName } from '../components/icons';
+import { AboutPage } from '../features/about/AboutPage';
+import { SystemVersionsPage } from '../features/about/SystemVersionsPage';
 
 export type NavigationGroup = 'overview' | 'identity-access' | 'devices' | 'licenses' | 'services' | 'operations' | 'platform';
 export type NavigationVisibility = 'always' | 'module' | 'device-module-or-settings-manager' | 'audit-not-hidden' | 'workspace-manager';
@@ -32,10 +34,11 @@ export type AppRoute = {
   label: string;
   pageTitle?: string;
   capability?: Capability;
+  includeInSystemInventory?: boolean;
   module?: 'users' | 'devices' | 'licenses' | 'exchange' | 'authentication-campaigns' | 'license-hygiene' | 'about' | 'feedback';
   workspaceAccess?: 'members' | 'settings' | 'modules' | 'any';
   navigation?: { group: NavigationGroup; order: number; icon: IconName; visibility: NavigationVisibility };
-  render: (options?: { loadConnectionHealth?: ConnectionHealthLoader; loadOverview?: OverviewLoader; loadAuthenticationCampaigns?: AuthenticationCampaignsLoader; capabilities?: CapabilityDecision[]; navigate?: (path: string) => void; session?: AppSession; authorizationUnavailable?: boolean; onAuthorizationRetry?: () => Promise<void>; onRefreshAccess?: () => Promise<void> }) => ReactNode;
+  render: (options?: { loadConnectionHealth?: ConnectionHealthLoader; loadOverview?: OverviewLoader; loadAuthenticationCampaigns?: AuthenticationCampaignsLoader; capabilities?: CapabilityDecision[]; navigate?: (path: string) => void; session?: AppSession; authorizationUnavailable?: boolean; onAuthorizationRetry?: () => Promise<void>; onRefreshAccess?: () => Promise<void>; authorizedRoutes?: Array<{ path: string; label: string }> }) => ReactNode;
 };
 
 export function isInvitationPath(pathname: string) {
@@ -43,11 +46,26 @@ export function isInvitationPath(pathname: string) {
 }
 
 export const appRoutes: AppRoute[] = [
-  { path: '/consent-callback', label: messages.connectionTitle, render: () => <ConsentCallbackPage /> },
-  { path: '/onboarding/consent/callback', label: messages.connectionTitle, render: () => <ConsentCallbackPage /> },
+  { path: '/consent-callback', label: messages.connectionTitle, includeInSystemInventory: false, render: () => <ConsentCallbackPage /> },
+  { path: '/onboarding/consent/callback', label: messages.connectionTitle, includeInSystemInventory: false, render: () => <ConsentCallbackPage /> },
   { path: '/onboarding', label: messages.navOnboarding, render: (options) => <OnboardingPage onNavigate={options?.navigate} /> },
   { path: '/identity', label: 'PIM guidance', render: (options) => <PimGuidancePage onRefreshAccess={options?.onRefreshAccess} /> },
   { path: '/settings', label: 'Workspace Settings', workspaceAccess: 'any', navigation: { group: 'platform', order: 0, icon: 'settings', visibility: 'workspace-manager' }, render: (options) => options?.session ? <WorkspaceSettingsHub session={options.session} /> : null },
+  {
+    path: '/about',
+    label: messages.navAbout,
+    module: 'about',
+    capability: 'platform.about.view',
+    navigation: { group: 'platform', order: 1, icon: 'overview', visibility: 'module' },
+    render: () => <AboutPage />,
+  },
+  {
+    path: '/about/system-versions',
+    label: messages.aboutSystemVersionsTitle,
+    module: 'about',
+    capability: 'platform.about.view',
+    render: (options) => <SystemVersionsPage authorizedRoutes={options?.authorizedRoutes ?? []} />,
+  },
   { path: '/settings/setup', label: 'Setup', workspaceAccess: 'settings', render: (options) => <OnboardingPage onNavigate={options?.navigate} /> },
   { path: '/settings/general', label: 'General', workspaceAccess: 'settings', render: () => <WorkspaceSettingsPage /> },
   { path: '/settings/modules', label: 'Modules', workspaceAccess: 'modules', render: () => <WorkspaceModulesPage /> },
