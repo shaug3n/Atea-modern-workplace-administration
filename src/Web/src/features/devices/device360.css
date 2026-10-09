@@ -152,6 +152,70 @@
   gap: var(--atea-space-4);
 }
 
+.device360-configuration,
+.device360-apps {
+  display: grid;
+  gap: var(--atea-space-4);
+  min-width: 0;
+}
+
+.device360-view-switch {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--atea-space-2);
+}
+
+.device360-freshness {
+  margin: 0;
+  color: var(--uw-muted);
+  font-size: var(--atea-text-s);
+}
+
+.device360-table-scroll {
+  min-width: 0;
+  overflow-x: auto;
+  border: 1px solid var(--uw-border);
+  border-radius: var(--atea-radius-md);
+}
+
+.device360-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+
+.device360-table th,
+.device360-table td {
+  padding: var(--atea-space-3);
+  border-bottom: 1px solid var(--uw-border);
+  vertical-align: top;
+  overflow-wrap: anywhere;
+}
+
+.device360-table th {
+  color: var(--uw-heading);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.device360-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.device360-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: var(--atea-space-2);
+}
+
+.device360-pagination > span {
+  margin-right: auto;
+  color: var(--uw-muted);
+  font-size: var(--atea-text-s);
+}
+
 @media (max-width: 60rem) {
   .device360-overview__grid {
     grid-template-columns: minmax(0, 1fr);
@@ -171,6 +235,15 @@
 
   .device360-retrieved {
     text-align: left;
+  }
+
+  .device360-table th,
+  .device360-table td {
+    padding: var(--atea-space-2);
+  }
+
+  .device360-pagination {
+    justify-content: flex-start;
   }
 
   .device360-policies__list li {

@@ -101,7 +101,12 @@ describe('DeviceDetailPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Retry policies' }));
     await waitFor(() => expect(apiMock.mock.calls.filter(([path]) => path === '/api/devices/device-1/compliance-policies')).toHaveLength(2));
     fireEvent.click(screen.getByRole('tab', { name: 'Configuration' }));
-    expect(apiMock.mock.calls.some(([path]) => path.endsWith('/configuration/reported'))).toBe(false);
+    await waitFor(() => expect(apiMock.mock.calls.filter(([path]) => path.endsWith('/configuration/reported'))).toHaveLength(1));
+    expect(apiMock.mock.calls.some(([path]) => path.endsWith('/apps'))).toBe(false);
+    fireEvent.click(screen.getByRole('tab', { name: 'Apps' }));
+    await waitFor(() => expect(apiMock.mock.calls.filter(([path]) => path.endsWith('/apps'))).toHaveLength(1));
+    fireEvent.click(screen.getByRole('tab', { name: 'Configuration' }));
+    expect(apiMock.mock.calls.filter(([path]) => path.endsWith('/configuration/reported'))).toHaveLength(1);
     expect(document.querySelector('.workspace-page-header__meta')?.textContent).toContain('Compliance: Noncompliant');
   });
 

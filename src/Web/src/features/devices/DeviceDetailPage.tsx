@@ -16,6 +16,8 @@ import { InfoTip } from '../../components/InfoTip';
 import { devicesMessages } from './devicesMessages';
 import { Device360OverviewTab, reportedOwnershipLabel, reportedUserDomain } from './Device360OverviewTab';
 import { fetchDeviceCompliancePolicies, type Device360Response, type DeviceCompliancePolicyState } from './device360Api';
+import { DeviceConfigurationTab } from './DeviceConfigurationTab';
+import { DeviceAppsTab } from './DeviceAppsTab';
 
 type VisibleSecret = { type: 'bitlocker'; value: string } | { type: 'laps'; value: string; accountName?: string | null };
 type Device360Tab = keyof typeof devicesMessages.device360Tabs;
@@ -248,8 +250,8 @@ function DeviceDetailContent({ id, capabilities, onNavigate }: { id: string; cap
         tabIndex={0}
       >
         {activeTab === tab && tab === 'overview' && <Device360OverviewTab device={device} policies={policies ?? emptyPolicies} policyLoading={policiesBusy || !policies} onRetryPolicies={retryPolicies} onNavigate={onNavigate} />}
-        {activeTab === tab && tab === 'configuration' && <WorkspaceDataState kind="empty" message={devicesMessages.device360.configurationUnavailable} />}
-        {activeTab === tab && tab === 'apps' && <WorkspaceDataState kind="empty" message={devicesMessages.device360.appsUnavailable} />}
+        {tab === 'configuration' && <DeviceConfigurationTab managedDeviceId={device.id} active={activeTab === 'configuration'} />}
+        {tab === 'apps' && <DeviceAppsTab managedDeviceId={device.id} active={activeTab === 'apps'} />}
 
       {activeTab === tab && tab === 'security' && <section className="content-panel device-recovery" aria-labelledby="device-recovery-title"><h2 id="device-recovery-title">Recovery data</h2><p>Load recovery records only when needed. Microsoft Graph checks your access to this device.</p>
         {sharedBlock && <div id="recovery-shared-blocker"><WorkspaceDataState kind="permission" compact message={`Recovery data isn't available to you.${sharedBlock.state === 'temporarily_unavailable' ? ' Authorization checks are temporarily unavailable. Retry after the checks recover.' : ''}`} action={blockerLink(sharedBlock, canManageSettings)} /></div>}
