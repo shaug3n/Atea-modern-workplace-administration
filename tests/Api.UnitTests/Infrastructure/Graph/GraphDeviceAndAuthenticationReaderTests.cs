@@ -1,3 +1,4 @@
+using Atea.UnifiedWorkplace.Api.Authorization;
 using Atea.UnifiedWorkplace.Api.Features.Devices;
 using Atea.UnifiedWorkplace.Api.Features.Identity;
 using Atea.UnifiedWorkplace.Api.Infrastructure.Graph;
@@ -8,6 +9,51 @@ namespace Atea.UnifiedWorkplace.Api.UnitTests.Infrastructure.Graph;
 
 public sealed class GraphDeviceAndAuthenticationReaderTests
 {
+    [Fact]
+    public async Task Device_detail_selects_and_maps_primary_user_identity_and_nullable_encryption()
+    {
+        var transport = new RecordingTransport("""
+            {"id":"device-1","userDisplayName":"Ada Lovelace","userPrincipalName":"ada@example.com","isEncrypted":true}
+            """);
+        var result = await new GraphManagedDeviceReader(new RecordingFactory(transport)).GetAsync("device-1", CancellationToken.None);
+
+        result.Value!.UserDisplayName.Should().Be("Ada Lovelace");
+        result.Value.UserPrincipalName.Should().Be("ada@example.com");
+        result.Value.IsEncrypted.Should().BeTrue();
+        transport.Requests.Single().PathAndQuery.Should().Contain("userDisplayName,userPrincipalName,isEncrypted");
+    }
+
+    [Fact]
+    public async Task Device_detail_preserves_omitted_encryption_as_unknown()
+    {
+        var transport = new RecordingTransport("""{"id":"device-1","userDisplayName":"Ada Lovelace","userPrincipalName":"ada@example.com"}""");
+        var result = await new GraphManagedDeviceReader(new RecordingFactory(transport)).GetAsync("device-1", CancellationToken.None);
+
+        result.Value!.IsEncrypted.Should().BeNull();
+    }
+
+    [Fact]
+    public void Configuration_read_scope_is_independently_evaluated_without_changing_core_device_access()
+    {
+        GraphScopeCatalog.DeviceConfigurationReadScopes.Should().Equal("DeviceManagementConfiguration.Read.All");
+        GraphScopeCatalog.CapabilityEvaluationScopes.Should().Contain("DeviceManagementConfiguration.Read.All");
+        GraphScopeCatalog.DeviceReadScopes.Should().Equal("DeviceManagementManagedDevices.Read.All");
+
+        var snapshot = GraphAuthorizationSnapshot.Available(
+            "user-1",
+            ["DeviceManagementManagedDevices.Read.All"],
+            [new DirectoryRoleSnapshot(
+                EntraRoleCatalog.IntuneAdministratorTemplateId,
+                "Intune Administrator",
+                DirectoryRoleAssignmentState.Active,
+                "/")]);
+        var membership = new WorkspaceMembership(Guid.NewGuid(), "Customer workspace", ModuleKeys: ["devices"]);
+
+        var devicesView = CapabilityEvaluator.Evaluate(snapshot, membership)[Capability.DevicesView];
+
+        devicesView.State.Should().Be(CapabilityState.Allowed);
+    }
+
     [Fact]
     public async Task Device_detail_uses_a_targeted_get_and_keeps_only_supported_fields()
     {

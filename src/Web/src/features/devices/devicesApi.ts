@@ -14,6 +14,9 @@ export type ManagedDevice = {
   serialNumber?: string | null;
   manufacturer?: string | null;
   model?: string | null;
+  userDisplayName?: string | null;
+  userPrincipalName?: string | null;
+  isEncrypted?: boolean | null;
 };
 
 export type DevicesResponse = {

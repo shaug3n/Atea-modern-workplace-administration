@@ -15,6 +15,16 @@ function deferred<T>() {
   const promise = new Promise<T>(done => { resolve = done; });
   return { promise, resolve };
 }
+function openSecurityTab() { fireEvent.click(screen.getByRole('tab', { name: 'Security' })); }
+const windowsProtection = {
+  antiMalwareVersion: null, controlledConfigurationEnabled: null, deviceState: 'clean', engineVersion: null,
+  fullScanOverdue: null, fullScanRequired: null, isVirtualMachine: null, lastFullScanDateTime: null,
+  lastFullScanSignatureVersion: null, lastQuickScanDateTime: null, lastQuickScanSignatureVersion: null,
+  lastReportedDateTime: '2026-10-08T09:30:00Z', malwareProtectionEnabled: true,
+  networkInspectionSystemEnabled: null, productStatus: null, quickScanOverdue: null,
+  realTimeProtectionEnabled: true, rebootRequired: null, signatureUpdateOverdue: null,
+  signatureVersion: null, tamperProtectionEnabled: null,
+};
 
 describe('DeviceDetailPage', () => {
   afterEach(() => { cleanup(); vi.useRealTimers(); vi.clearAllMocks(); window.history.replaceState({}, '', '/devices'); });
@@ -39,7 +49,181 @@ describe('DeviceDetailPage', () => {
     expect(await screen.findByRole('heading', { name: 'WIN-01' })).toBeTruthy();
     expect(screen.getByText('serial-1')).toBeTruthy();
     expect(apiMock).toHaveBeenCalledWith('/api/devices/device-1', { cache: 'no-store' });
-    expect(apiMock).toHaveBeenCalledTimes(1);
+    expect(apiMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('direct_route_loads_header_without_directory_search', async () => {
+    window.history.replaceState({}, '', '/devices/device-1');
+    apiMock.mockImplementation(async (path: string) => path === '/api/devices/device-1'
+      ? response({ id: 'device-1', deviceName: 'WIN-01', userId: 'user-1', userDisplayName: 'A User', userPrincipalName: 'a@user.example', lastSyncDateTime: '2026-10-08T10:00:00Z' })
+      : response({ status: 'succeeded', data: [], retrievedAt: '2026-10-08T10:01:00Z' }));
+    render(<DeviceDetailPage />);
+
+    expect(await screen.findByRole('heading', { name: 'WIN-01' })).toBeTruthy();
+    expect(apiMock.mock.calls[0][0]).toBe('/api/devices/device-1');
+    expect(apiMock.mock.calls.some(([path]) => path === '/api/devices' || path.startsWith('/api/devices?'))).toBe(false);
+  });
+
+  it('device_header_uses_reported_user_and_user_domain_only', async () => {
+    apiMock.mockImplementation(async (path: string) => path === '/api/devices/device-1'
+      ? response({ id: 'device-1', deviceName: 'WIN-01', userId: 'reported-user-id', userDisplayName: 'A User', userPrincipalName: 'a@user.example', managedDeviceOwnerType: 'company' })
+      : response({ status: 'succeeded', data: [] }));
+    render(<DeviceDetailPage deviceId="device-1" />);
+
+    expect(await screen.findByRole('heading', { name: 'WIN-01' })).toBeTruthy();
+    const userLinks = screen.getAllByRole('link', { name: 'A User' });
+    expect(userLinks.map(userLink => userLink.getAttribute('href'))).toEqual(['/users/reported-user-id', '/users/reported-user-id']);
+    expect(screen.getByText('User domain').parentElement?.textContent).toContain('user.example');
+    expect(screen.getByText('Company owned')).toBeTruthy();
+    fireEvent.click(screen.getByRole('tab', { name: 'Security' }));
+    expect(screen.getByText('User domain: user.example')).toBeTruthy();
+    expect(screen.getAllByRole('link', { name: 'A User' })).toHaveLength(1);
+  });
+
+  it('missing_user_and_malformed_upn_are_distinct', async () => {
+    apiMock.mockImplementation(async (path: string) => path === '/api/devices/device-1'
+      ? response({ id: 'device-1', deviceName: 'No user device' })
+      : response({ status: 'succeeded', data: [] }));
+    const view = render(<DeviceDetailPage deviceId="device-1" />);
+    expect(await screen.findByRole('heading', { name: 'No user device' })).toBeTruthy();
+    expect(screen.getByText('No primary user')).toBeTruthy();
+    apiMock.mockImplementation(async (path: string) => path === '/api/devices/device-2'
+      ? response({ id: 'device-2', deviceName: 'Unreadable user', userId: 'user-2', userDisplayName: null, userPrincipalName: 'not-an-upn' })
+      : response({ status: 'succeeded', data: [] }));
+    view.rerender(<DeviceDetailPage deviceId="device-2" />);
+    expect(await screen.findByRole('heading', { name: 'Unreadable user' })).toBeTruthy();
+    expect(screen.getByText('Primary user unavailable')).toBeTruthy();
+    expect(screen.getByText('User domain').parentElement?.textContent).toContain('Unavailable');
+    expect(document.body.textContent).not.toContain('device-2.example');
+  });
+
+  it('policy_request_is_lazy_and_retry_is_section_local', async () => {
+    apiMock.mockImplementation(async (path: string) => {
+      if (path === '/api/devices/device-1') return response({ id: 'device-1', deviceName: 'WIN-01', complianceState: 'noncompliant' });
+      if (path === '/api/devices/device-1/compliance-policies') return response({ status: 'graph_forbidden', data: null, error: { category: 'authorization', message: 'denied', state: 'graph_forbidden' } }, 403);
+      return response({ status: 'succeeded', data: [] });
+    });
+
+    render(<DeviceDetailPage deviceId="device-1" />);
+    expect(await screen.findByRole('heading', { name: 'WIN-01' })).toBeTruthy();
+    await screen.findByText(/not allowed to read per-policy compliance reports/i);
+    expect(apiMock.mock.calls.map(([path]) => path)).toEqual(['/api/devices/device-1', '/api/devices/device-1/compliance-policies']);
+    fireEvent.click(screen.getByRole('button', { name: 'Retry policies' }));
+    await waitFor(() => expect(apiMock.mock.calls.filter(([path]) => path === '/api/devices/device-1/compliance-policies')).toHaveLength(2));
+    fireEvent.click(screen.getByRole('tab', { name: 'Configuration' }));
+    await waitFor(() => expect(apiMock.mock.calls.filter(([path]) => path.endsWith('/configuration/reported'))).toHaveLength(1));
+    expect(apiMock.mock.calls.some(([path]) => path.endsWith('/apps'))).toBe(false);
+    fireEvent.click(screen.getByRole('tab', { name: 'Apps' }));
+    await waitFor(() => expect(apiMock.mock.calls.filter(([path]) => path.endsWith('/apps'))).toHaveLength(1));
+    fireEvent.click(screen.getByRole('tab', { name: 'Configuration' }));
+    expect(apiMock.mock.calls.filter(([path]) => path.endsWith('/configuration/reported'))).toHaveLength(1);
+    expect(document.querySelector('.workspace-page-header__meta')?.textContent).toContain('Compliance: Noncompliant');
+  });
+
+  it('protection_is_requested_only_on_security_activation_and_recovery_stays_user_initiated', async () => {
+    apiMock.mockImplementation(async (path: string) => {
+      if (path === '/api/devices/device-1') return response({ id: 'device-1', deviceName: 'WIN-01', operatingSystem: 'Windows', isEncrypted: true });
+      if (path.endsWith('/compliance-policies')) return response({ status: 'succeeded', data: [], retrievedAt: null, partialData: false, error: null });
+      if (path.endsWith('/protection')) return response({ status: 'succeeded', data: windowsProtection, retrievedAt: '2026-10-08T10:00:00Z', partialData: false, error: null });
+      return response({ status: 'succeeded', data: [] });
+    });
+    render(<DeviceDetailPage deviceId="device-1" />);
+    await screen.findByRole('heading', { name: 'WIN-01' });
+    await screen.findByText('No per-policy compliance reports were returned.');
+    expect(apiMock.mock.calls.some(([path]) => String(path).endsWith('/protection'))).toBe(false);
+    expect(apiMock.mock.calls.some(([path]) => String(path).includes('/recovery/'))).toBe(false);
+
+    openSecurityTab();
+    expect(await screen.findByText('Malware protection enabled')).toBeTruthy();
+    expect(document.querySelector('time[datetime="2026-10-08T09:30:00Z"]')).toBeTruthy();
+    expect(apiMock).toHaveBeenCalledWith('/api/devices/device-1/protection', { cache: 'no-store' });
+    expect(apiMock.mock.calls.some(([path]) => String(path).includes('/recovery/'))).toBe(false);
+    fireEvent.click(screen.getByRole('tab', { name: 'Actions' }));
+    expect(apiMock.mock.calls.some(([path]) => String(path).includes('/recovery/'))).toBe(false);
+  });
+
+  it('shows_a_retryable_unavailable_state_when_policy_response_is_valid_json_null', async () => {
+    apiMock.mockImplementation(async (path: string) => path === '/api/devices/device-1'
+      ? response({ id: 'device-1', deviceName: 'WIN-01' })
+      : response(null));
+    render(<DeviceDetailPage deviceId="device-1" />);
+
+    await screen.findByRole('heading', { name: 'WIN-01' });
+    expect(await screen.findByText(/per-policy compliance reports are unavailable/i)).toBeTruthy();
+    expect(screen.queryByText('Loading per-policy compliance reports…')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Retry policies' })).toBeTruthy();
+  });
+
+  it('keeps_the_overview_bound_to_the_current_device_when_a_policy_read_finishes_late', async () => {
+    const pending = deferred<ReturnType<typeof response>>();
+    apiMock.mockImplementation((path: string) => {
+      if (path === '/api/devices/device-a') return Promise.resolve(response({ id: 'device-a', deviceName: 'Device A' }));
+      if (path === '/api/devices/device-b') return Promise.resolve(response({ id: 'device-b', deviceName: 'Device B' }));
+      if (path === '/api/devices/device-a/compliance-policies') return pending.promise;
+      return Promise.resolve(response({ status: 'succeeded', data: [] }));
+    });
+    const view = render(<DeviceDetailPage deviceId="device-a" />);
+    await screen.findByRole('heading', { name: 'Device A' });
+    view.rerender(<DeviceDetailPage deviceId="device-b" />);
+    await screen.findByRole('heading', { name: 'Device B' });
+    await act(async () => pending.resolve(response({ status: 'succeeded', data: [{ id: 'old-policy', displayName: 'Policy for A' }] })));
+    expect(screen.queryByText('Policy for A')).toBeNull();
+  });
+
+  it('discards_policy_results_when_leaving_the_tab_and_reloads_on_return', async () => {
+    const pending = deferred<ReturnType<typeof response>>();
+    let policyRequests = 0;
+    apiMock.mockImplementation((path: string) => {
+      if (path === '/api/devices/device-1') return Promise.resolve(response({ id: 'device-1', deviceName: 'WIN-01' }));
+      if (path.endsWith('/compliance-policies')) {
+        policyRequests += 1;
+        return policyRequests === 1 ? pending.promise : Promise.resolve(response({ status: 'succeeded', data: [] }));
+      }
+      return Promise.resolve(response({ status: 'succeeded', data: [] }));
+    });
+    render(<DeviceDetailPage deviceId="device-1" />);
+    await screen.findByRole('heading', { name: 'WIN-01' });
+    await waitFor(() => expect(policyRequests).toBe(1));
+    fireEvent.click(screen.getByRole('tab', { name: 'Configuration' }));
+    await act(async () => pending.resolve(response({ status: 'succeeded', data: [{ id: 'stale-policy', displayName: 'Stale policy' }] })));
+    fireEvent.click(screen.getByRole('tab', { name: 'Overview' }));
+    await waitFor(() => expect(policyRequests).toBe(2));
+    expect(screen.queryByText('Stale policy')).toBeNull();
+  });
+
+  it('clears_revealed_secrets_when_leaving_security', async () => {
+    apiMock.mockImplementation(async (path: string) => {
+      if (path === '/api/devices/device-1') return response({ id: 'device-1', deviceName: 'WIN-01' });
+      if (path.endsWith('/recovery/laps/reveal')) return response({ status: 'succeeded', data: { password: 'sensitive-password' } });
+      if (path.endsWith('/recovery/laps')) return response({ status: 'succeeded', data: { id: 'aad-1', deviceName: 'WIN-01' } });
+      return response({ status: 'succeeded', data: [] });
+    });
+    render(<DeviceDetailPage deviceId="device-1" />);
+    await screen.findByRole('heading', { name: 'WIN-01' });
+    openSecurityTab();
+    fireEvent.click(screen.getByRole('button', { name: 'Load Windows LAPS metadata' }));
+    await screen.findByText('Windows LAPS metadata loaded');
+    fireEvent.change(screen.getByLabelText('Reason for recovery access'), { target: { value: 'Incident 123' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Reveal Windows LAPS password' }));
+    await screen.findByText('sensitive-password');
+    fireEvent.click(screen.getByRole('tab', { name: 'Actions' }));
+    expect(screen.queryByText('sensitive-password')).toBeNull();
+  });
+
+  it('supports_roving_keyboard_tabs_with_arrows_home_and_end', async () => {
+    apiMock.mockResolvedValue(response({ id: 'device-1', deviceName: 'WIN-01' }));
+    render(<DeviceDetailPage deviceId="device-1" />);
+    await screen.findByRole('heading', { name: 'WIN-01' });
+    const overview = screen.getByRole('tab', { name: 'Overview' });
+    for (const tab of screen.getAllByRole('tab')) expect(document.getElementById(tab.getAttribute('aria-controls')!)).toBeTruthy();
+    overview.focus();
+    fireEvent.keyDown(overview, { key: 'End' });
+    const actions = screen.getByRole('tab', { name: 'Actions' });
+    expect(actions.getAttribute('aria-selected')).toBe('true');
+    expect(actions.getAttribute('tabindex')).toBe('0');
+    expect(document.activeElement).toBe(actions);
+    fireEvent.keyDown(actions, { key: 'Home' });
+    expect(screen.getByRole('tab', { name: 'Overview' }).getAttribute('aria-selected')).toBe('true');
   });
 
   it('requires a reason, makes a no-store POST, and clears LAPS secret after 60 seconds', async () => {
@@ -50,6 +234,7 @@ describe('DeviceDetailPage', () => {
     });
     render(<DeviceDetailPage deviceId="device-1" />);
     await screen.findByRole('heading', { name: 'WIN-01' });
+    openSecurityTab();
     fireEvent.click(screen.getByRole('button', { name: 'Load Windows LAPS metadata' }));
     await screen.findByText('Windows LAPS metadata loaded');
     const reveal = screen.getByRole('button', { name: 'Reveal Windows LAPS password' });
@@ -69,6 +254,7 @@ describe('DeviceDetailPage', () => {
       : response({ status: 'succeeded', data: path.endsWith('/reveal') ? { accountName: 'Admin', password: 'sensitive-password' } : { id: 'aad-1' } }));
     const view = render(<DeviceDetailPage deviceId="device-1" />);
     await screen.findByRole('heading', { name: 'WIN-01' });
+    openSecurityTab();
     fireEvent.click(screen.getByRole('button', { name: 'Load Windows LAPS metadata' }));
     await screen.findByText('Windows LAPS metadata loaded');
     fireEvent.change(screen.getByLabelText('Reason for recovery access'), { target: { value: 'Incident 123' } });
@@ -86,6 +272,7 @@ describe('DeviceDetailPage', () => {
       : response({ status: 'graph_forbidden', graphCorrelationId: 'corr-403', graphRequestId: 'req-403' }, 403));
     render(<DeviceDetailPage deviceId="device-1" />);
     await screen.findByRole('heading', { name: 'WIN-01' });
+    openSecurityTab();
     fireEvent.click(screen.getByRole('button', { name: 'Load BitLocker metadata' }));
     const error = await screen.findByRole('alert');
     expect(error.textContent).toContain('lacks access to this specific recovery data');
@@ -100,11 +287,12 @@ describe('DeviceDetailPage', () => {
       missingScopes: ['BitlockerKey.ReadBasic.All'], nextStep: { label: 'Grant delegated consent', href: '/api/workspaces/current/consent/start' },
     }]} />);
     await screen.findByRole('heading', { name: 'WIN-01' });
+    openSecurityTab();
     expect((screen.getByRole('button', { name: 'Load BitLocker metadata' }) as HTMLButtonElement).disabled).toBe(true);
     expect(screen.getByText(/isn't available to you/)).toBeTruthy();
     expect(screen.getByRole('link', { name: 'Open PIM guidance' })).toBeTruthy();
     expect(document.body.textContent).not.toContain('BitlockerKey.');
-    expect(apiMock).toHaveBeenCalledTimes(1);
+    expect(apiMock).toHaveBeenCalledTimes(2);
   });
 
   it('keeps reveal available with scope and eligible PIM guidance because Graph decides target access', async () => {
@@ -116,6 +304,7 @@ describe('DeviceDetailPage', () => {
       nextStep: { label: 'Activate eligible role if Graph denies access', href: '/identity' },
     }]} />);
     await screen.findByRole('heading', { name: 'WIN-01' });
+    openSecurityTab();
     fireEvent.click(screen.getByRole('button', { name: 'Load Windows LAPS metadata' }));
     await screen.findByText('Windows LAPS metadata loaded');
     fireEvent.change(screen.getByLabelText('Reason for recovery access'), { target: { value: 'Incident 123' } });
@@ -141,10 +330,12 @@ describe('DeviceDetailPage', () => {
     });
     const view = render(<DeviceDetailPage deviceId="device-a" />);
     await screen.findByRole('heading', { name: 'Device A' });
+    openSecurityTab();
     fireEvent.change(screen.getByLabelText('Reason for recovery access'), { target: { value: 'Incident for A' } });
     fireEvent.click(screen.getByRole('button', { name: 'Load BitLocker metadata' }));
     view.rerender(<DeviceDetailPage deviceId="device-b" />);
     await screen.findByRole('heading', { name: 'Device B' });
+    openSecurityTab();
     expect((screen.getByLabelText('Reason for recovery access') as HTMLInputElement).value).toBe('');
     await act(async () => pending.resolve(response({ status: 'succeeded', data: [{ id: 'key-for-A' }] })));
     expect(screen.queryByText('Key ID: key-for-A')).toBeNull();
@@ -160,9 +351,10 @@ describe('DeviceDetailPage', () => {
     });
     render(<DeviceDetailPage deviceId="device-1" />);
     await screen.findByRole('heading', { name: 'WIN-01' });
-    expect(screen.getByText('Microsoft Graph')).toBeTruthy();
+    openSecurityTab();
+    expect(document.body.textContent).toContain('Microsoft Graph');
     expect(document.body.textContent).not.toContain('Source:');
-    expect(document.querySelector('.workspace-page-header__meta')!.textContent).not.toContain('2020');
+    expect(document.querySelector('.workspace-page-header__meta')!.textContent).toContain('2020');
     expect(screen.getAllByText(/Not loaded yet/)).toHaveLength(2);
     fireEvent.click(screen.getByRole('button', { name: 'Load BitLocker metadata' }));
     fireEvent.click(screen.getByRole('button', { name: 'Load Windows LAPS metadata' }));
@@ -181,6 +373,7 @@ describe('DeviceDetailPage', () => {
       : response({ id: 'device-1', deviceName: 'WIN-01' }));
     render(<DeviceDetailPage deviceId="device-1" />);
     await screen.findByRole('heading', { name: 'WIN-01' });
+    openSecurityTab();
     fireEvent.click(screen.getByRole('button', { name: 'Load BitLocker metadata' }));
     expect(await screen.findByText('No BitLocker recovery record found.')).toBeTruthy();
     expect(screen.getByText(/BitLocker metadata retrieved/)).toBeTruthy();
@@ -194,6 +387,7 @@ describe('DeviceDetailPage', () => {
         : response({ id: 'device-1', deviceName: 'WIN-01' }));
     render(<DeviceDetailPage deviceId="device-1" />);
     await screen.findByRole('heading', { name: 'WIN-01' });
+    openSecurityTab();
     fireEvent.click(screen.getByRole('button', { name: 'Load BitLocker metadata' }));
     expect((await screen.findByText(/bitlocker-denial/)).textContent).toContain('lacks access');
     fireEvent.click(screen.getByRole('button', { name: 'Load Windows LAPS metadata' }));
@@ -209,6 +403,7 @@ describe('DeviceDetailPage', () => {
         : response({ status: 'succeeded', data: { id: 'aad-1' } }));
     render(<DeviceDetailPage deviceId="device-1" />);
     await screen.findByRole('heading', { name: 'WIN-01' });
+    openSecurityTab();
     fireEvent.click(screen.getByRole('button', { name: 'Load Windows LAPS metadata' }));
     await screen.findByText('Windows LAPS metadata loaded');
     fireEvent.change(screen.getByLabelText('Reason for recovery access'), { target: { value: 'Incident 123' } });
@@ -226,7 +421,7 @@ describe('DeviceDetailPage', () => {
     apiMock.mockResolvedValue(response({ id: guid, deviceName: 'WIN-01', userId: 'user-guid-1', complianceState: 'compliant' }));
     render(<DeviceDetailPage deviceId={guid} />);
     await screen.findByRole('heading', { level: 1, name: 'WIN-01' });
-    const overview = screen.getByRole('heading', { name: 'Overview' }).closest('section')!;
+    const overview = screen.getByRole('heading', { name: 'Essentials' }).closest('section')!;
     expect(overview.textContent).not.toContain(guid);
     const details = screen.getByText('Technical details').closest('details')!;
     expect(details.open).toBe(false);
@@ -247,6 +442,7 @@ describe('DeviceDetailPage', () => {
     apiMock.mockResolvedValue(response({ id: guid, deviceName: 'WIN-01' }));
     render(<DeviceDetailPage deviceId={guid} capabilities={manage} />);
     await screen.findByRole('heading', { level: 1, name: 'WIN-01' });
+    fireEvent.click(screen.getByRole('tab', { name: 'Actions' }));
     const actions = screen.getByRole('heading', { name: 'Device actions' });
     const danger = screen.getByRole('heading', { name: 'Danger zone' });
     expect(actions.compareDocumentPosition(danger) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
