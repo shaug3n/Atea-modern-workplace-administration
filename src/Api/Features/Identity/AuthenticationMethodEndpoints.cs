@@ -55,6 +55,7 @@ public static class AuthenticationMethodEndpoints
             "denied" => Results.Json(result, statusCode: StatusCodes.Status403Forbidden),
             "not_found" => Results.NotFound(result),
             "invalid_target" => Results.BadRequest(result),
+            "idempotency_key_reused" => Results.Conflict(result),
             _ => Results.Json(result, statusCode: StatusCodes.Status503ServiceUnavailable)
         };
     }

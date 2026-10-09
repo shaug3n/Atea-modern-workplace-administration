@@ -62,4 +62,44 @@ Could not run for the same pinned-SDK mismatch. Therefore no claim is made that 
 
 ## Concerns
 
-- API unit and integration behavior remains unverified by execution until SDK `10.0.401` is available.
+- At the time of the initial report, API unit and integration behavior could not be run because SDK `10.0.401` was unavailable. The SDK is now available at the configured path; round 1 verification results are recorded below.
+
+## Round 1 fixes (base `1be6508`)
+
+Addressed the two review findings without changing schema, W0, or unrelated tasks:
+
+- Authentication-method DELETE now maps `idempotency_key_reused` to HTTP 409. Its regression test verifies the reused key with a changed reason does not trigger a second Graph mutation or audit write.
+- Auth-method remove/reset, TAP, and session revoke persist the non-secret `audit_persistence_failed` warning in their safe idempotency result and restore it on replay. TAP result storage still clears the one-time TAP value, and replay does not rerun mutation or audit work.
+
+### RED/GREEN evidence
+
+Commands used the installed SDK:
+
+```bash
+export DOTNET_ROOT=/Users/sondre.haugen/.copilot/session-state/5b6768d3-837e-4726-92b3-50f35edce141/files/dotnet
+PATH="$DOTNET_ROOT:$PATH" dotnet test tests/Api.UnitTests/Api.UnitTests.csproj --filter 'FullyQualifiedName~UserSecurityCommandServiceTests' --no-restore
+```
+
+RED before the service fix: `Failed: 1, Passed: 14`; `Audit_failure_warning_survives_same_key_replays_without_repeating_mutations_or_persisting_tap_secrets` failed because replayed audit warnings were null.
+
+```bash
+PATH="$DOTNET_ROOT:$PATH" dotnet test tests/Api.IntegrationTests/Api.IntegrationTests.csproj --filter 'FullyQualifiedName~Authentication_method_remove_returns_conflict_when_idempotency_key_is_reused_with_a_different_reason' --no-restore
+```
+
+RED before the endpoint fix: expected HTTP 409, received HTTP 503.
+
+After fixes:
+
+```bash
+PATH="$DOTNET_ROOT:$PATH" dotnet test tests/Api.UnitTests/Api.UnitTests.csproj --filter 'FullyQualifiedName~UserCommandServiceTests|FullyQualifiedName~UserSecurityCommandServiceTests' --no-restore
+```
+
+GREEN: `Passed: 32, Failed: 0, Skipped: 0`.
+
+```bash
+PATH="$DOTNET_ROOT:$PATH" dotnet test tests/Api.IntegrationTests/Api.IntegrationTests.csproj --filter 'FullyQualifiedName~UserMutationEndpointTests|FullyQualifiedName~UserSecurityCommandEndpointTests' --no-restore
+```
+
+GREEN: `Passed: 21, Failed: 0, Skipped: 0`.
+
+`git diff --check` passed. These commands ran with SDK `10.0.401` from the configured `DOTNET_ROOT`.

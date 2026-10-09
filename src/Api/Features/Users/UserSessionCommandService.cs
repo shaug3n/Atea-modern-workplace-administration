@@ -57,14 +57,13 @@ public sealed class UserSessionCommandService(
                     ? new UserSessionCommandResult("succeeded", Capability.UsersRevokeSessions, Authorization: authorization, GraphCorrelationId: graph.CorrelationId, GraphRequestId: graph.RequestId)
                     : new UserSessionCommandResult("temporarily_unavailable", Capability.UsersRevokeSessions, graph.Category, authorization, GraphCorrelationId: graph.CorrelationId, GraphRequestId: graph.RequestId);
                 live = result with { AuditWarning = await AuditAsync(context, operation, userObjectId, result.Status, result.Error, result.GraphCorrelationId, result.GraphRequestId, cancellationToken, reason) };
-                var safe = live with { AuditWarning = null };
-                return new IdempotentOperationResult(StatusCodeFor(safe), safe.Status, JsonSerializer.Serialize(safe, JsonOptions), safe.GraphCorrelationId, safe.GraphRequestId);
+                return new IdempotentOperationResult(StatusCodeFor(live), live.Status, JsonSerializer.Serialize(live, JsonOptions), live.GraphCorrelationId, live.GraphRequestId);
             }, cancellationToken);
 
         if (outcome.Kind == IdempotencyOutcomeKind.KeyReused) return new("idempotency_key_reused", Capability.UsersRevokeSessions, "idempotency_key_reused");
         if (outcome.Kind == IdempotencyOutcomeKind.InProgress) return new("temporarily_unavailable", Capability.UsersRevokeSessions, "idempotency_in_progress");
         var stored = JsonSerializer.Deserialize<UserSessionCommandResult>(outcome.Result.SafeResultJson, JsonOptions) ?? new("temporarily_unavailable", Capability.UsersRevokeSessions, "idempotency_result_unavailable");
-        return stored with { Replayed = outcome.Kind == IdempotencyOutcomeKind.Replayed, AuditWarning = live?.AuditWarning };
+        return stored with { Replayed = outcome.Kind == IdempotencyOutcomeKind.Replayed };
     }
 
     private async Task<string?> AuditAsync(WorkspaceContext context, string operation, string targetId, string outcome, string? error, string? correlation, string? requestId, CancellationToken cancellationToken, string? reason)

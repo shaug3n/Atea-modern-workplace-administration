@@ -133,6 +133,42 @@ public sealed class UserSecurityCommandServiceTests
     }
 
     [Fact]
+    public async Task Audit_failure_warning_survives_same_key_replays_without_repeating_mutations_or_persisting_tap_secrets()
+    {
+        var idempotency = new MemoryIdempotencyService();
+        var audit = new FailingAuditWriter();
+        var authenticationCommands = new StubAuthenticationMethodCommands(new GraphTemporaryAccessPassResult("fixture-tap-value", "tap-1", null, 60, true));
+        var authentication = CreateAuthenticationService(idempotency, audit, commands: authenticationCommands);
+        var sessionCommands = new RecordingSessionCommands();
+        var sessions = new UserSessionCommandService(new StaticAuthorizationReader(AllowedSnapshot), sessionCommands, idempotency, audit);
+
+        var remove = await authentication.RemoveAsync(Context(), "user-1", "method-1", "fido2AuthenticationMethod", "audit-remove", CancellationToken.None);
+        var removeReplay = await authentication.RemoveAsync(Context(), "user-1", "method-1", "fido2AuthenticationMethod", "audit-remove", CancellationToken.None);
+        var reset = await authentication.ResetMfaAsync(Context(), "user-1", "audit-reset", CancellationToken.None);
+        var resetReplay = await authentication.ResetMfaAsync(Context(), "user-1", "audit-reset", CancellationToken.None);
+        var tap = await authentication.CreateTemporaryAccessPassAsync(Context(), "user-1", "audit-tap", CancellationToken.None);
+        var tapReplay = await authentication.CreateTemporaryAccessPassAsync(Context(), "user-1", "audit-tap", CancellationToken.None);
+        var revoke = await sessions.RevokeAsync(Context(), "user-1", "audit-session", CancellationToken.None);
+        var revokeReplay = await sessions.RevokeAsync(Context(), "user-1", "audit-session", CancellationToken.None);
+
+        new string?[] { remove.AuditWarning, removeReplay.AuditWarning, reset.AuditWarning, resetReplay.AuditWarning, tap.AuditWarning, tapReplay.AuditWarning, revoke.AuditWarning, revokeReplay.AuditWarning }
+            .Should().OnlyContain(warning => warning == "audit_persistence_failed");
+        removeReplay.Replayed.Should().BeTrue();
+        resetReplay.Replayed.Should().BeTrue();
+        tapReplay.Replayed.Should().BeTrue();
+        tapReplay.TemporaryAccessPass.Should().BeNull();
+        tapReplay.Error.Should().Be("temporary_access_pass_already_issued");
+        revokeReplay.Replayed.Should().BeTrue();
+        authenticationCommands.RemoveCalls.Should().Be(1);
+        authenticationCommands.TemporaryAccessPassCalls.Should().Be(1);
+        sessionCommands.Calls.Should().Be(1);
+        idempotency.Records.Should().HaveCount(4);
+        idempotency.Records.Should().OnlyContain(record => record.SafeResultJson.Contains("audit_persistence_failed", StringComparison.Ordinal));
+        var tapRecord = idempotency.Records[2];
+        tapRecord.SafeResultJson.Should().NotContain("fixture-tap-value");
+    }
+
+    [Fact]
     public async Task Missing_tap_consent_denies_direct_service_call_without_command_dispatch()
     {
         var commands = new StubAuthenticationMethodCommands(new GraphTemporaryAccessPassResult("fixture-tap-value", "tap-1", null, 60, true));
@@ -233,6 +269,12 @@ public sealed class UserSecurityCommandServiceTests
             Events.Add(auditEvent);
             return Task.CompletedTask;
         }
+    }
+
+    private sealed class FailingAuditWriter : IAuditWriter
+    {
+        public Task WriteAsync(AuditEvent auditEvent, CancellationToken cancellationToken) =>
+            throw new InvalidOperationException("Audit persistence failed.");
     }
 
     private sealed class RecordingSessionCommands : IUserSessionCommands

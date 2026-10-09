@@ -133,6 +133,34 @@ public sealed class UserSecurityCommandEndpointTests
     }
 
     [Fact]
+    public async Task Authentication_method_remove_returns_conflict_when_idempotency_key_is_reused_with_a_different_reason()
+    {
+        var authentication = new RecordingAuthenticationCommands();
+        var audit = new RecordingAuditWriter();
+        using var factory = CreateFactory(authentication, auditWriter: audit);
+        using var client = AuthenticatedClient(factory);
+
+        using var firstRequest = new HttpRequestMessage(HttpMethod.Delete, "/api/users/user-1/authentication-methods/method-1?type=fido2AuthenticationMethod")
+        {
+            Content = new StringContent("""{"reason":"device replaced"}""", Encoding.UTF8, "application/json")
+        };
+        firstRequest.Headers.Add("Idempotency-Key", "same-remove-key");
+        var first = await client.SendAsync(firstRequest);
+        using var reusedRequest = new HttpRequestMessage(HttpMethod.Delete, "/api/users/user-1/authentication-methods/method-1?type=fido2AuthenticationMethod")
+        {
+            Content = new StringContent("""{"reason":"different reason"}""", Encoding.UTF8, "application/json")
+        };
+        reusedRequest.Headers.Add("Idempotency-Key", "same-remove-key");
+        var reused = await client.SendAsync(reusedRequest);
+
+        first.StatusCode.Should().Be(HttpStatusCode.OK);
+        reused.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        (await reused.Content.ReadAsStringAsync()).Should().Contain("idempotency_key_reused");
+        authentication.RemoveCalls.Should().Be(1);
+        audit.Events.Should().ContainSingle();
+    }
+
+    [Fact]
     public async Task Missing_delegated_consent_denies_both_mutations_without_command_calls()
     {
         var authentication = new RecordingAuthenticationCommands();
