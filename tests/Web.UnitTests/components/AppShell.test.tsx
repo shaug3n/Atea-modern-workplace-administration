@@ -1,13 +1,20 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import React from 'react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CapabilitySnapshot } from '../../../src/Web/src/capabilities/capabilityTypes';
 import { App } from '../../../src/Web/src/app/App';
 import { AppShell } from '../../../src/Web/src/components/AppShell';
 import { ThemeProvider } from '../../../src/Web/src/components/ThemeToggle';
 
 const apiMock = vi.hoisted(() => vi.fn());
-vi.mock('../../../src/Web/src/auth/useApi', () => ({ useApi: () => apiMock }));
+const authMock = vi.hoisted(() => ({
+  getApiToken: vi.fn(async () => 'test-token'),
+  signIn: vi.fn(),
+  switchAccount: vi.fn(),
+}));
+vi.mock('../../../src/Web/src/auth/AuthProvider', () => ({
+  useAuth: () => authMock,
+}));
 
 const allowedCapabilities: CapabilitySnapshot = {
   workspaceId: '55555555-5555-5555-5555-555555555555',
@@ -47,8 +54,13 @@ const overviewResponse = {
 };
 
 describe('AppShell', () => {
+  beforeEach(() => {
+    vi.stubGlobal('fetch', (path: RequestInfo | URL, init?: RequestInit) => apiMock(String(path), init));
+  });
+
   afterEach(() => {
     cleanup();
+    vi.unstubAllGlobals();
     apiMock.mockReset();
     window.history.pushState(null, '', '/');
     document.documentElement.removeAttribute('data-theme');
@@ -154,7 +166,32 @@ describe('AppShell', () => {
     await within(main).findByRole('heading', { name: 'Overview' });
     fireEvent.click(screen.getByRole('button', { name: /Notifications, \d+ need attention/i }));
     expect(screen.getByText('Access needs attention')).toBeTruthy();
-    expect(apiMock).not.toHaveBeenCalledWith('/api/devices');
+    expect(apiMock.mock.calls.some(([path]) => path === '/api/devices')).toBe(false);
+  });
+
+  it('loads and refreshes My access through the authenticated default API path without writes', async () => {
+    window.history.pushState(null, '', '/my-access');
+    apiMock.mockImplementation(async (path: string, init: RequestInit = {}) => {
+      if (path === '/api/session') return Response.json(session);
+      if (path === '/api/capabilities') return Response.json(allowedCapabilities);
+      if (path === '/api/workspaces/current/connection-health') return Response.json({ state: 'healthy' });
+      return Response.json({}, { status: 200 });
+    });
+
+    render(<App />);
+    expect(await screen.findByRole('heading', { name: 'My access' })).toBeTruthy();
+    await waitFor(() => expect(apiMock.mock.calls.filter(([path]) => path === '/api/capabilities')).toHaveLength(1));
+    fireEvent.click(within(screen.getByRole('region', { name: 'My access evidence' })).getByRole('button', { name: 'Refresh access' }));
+    await waitFor(() => expect(apiMock.mock.calls.filter(([path]) => path === '/api/capabilities')).toHaveLength(2));
+
+    const requests = apiMock.mock.calls.map(([path, init]) => ({
+      path: String(path),
+      method: String((init as RequestInit | undefined)?.method ?? 'GET').toUpperCase(),
+    }));
+    expect(requests.length).toBeGreaterThan(0);
+    expect(requests.every(request => request.path.startsWith('/api/'))).toBe(true);
+    expect(requests.every(request => request.method === 'GET')).toBe(true);
+    expect(requests.some(request => /consent|pim|graph\.microsoft\.com/i.test(request.path))).toBe(false);
   });
 
   it('keeps Activity filters and the unavailable region without requesting audit records when access is unknown', async () => {
@@ -245,7 +282,7 @@ describe('AppShell', () => {
     window.history.pushState(null, '', '/devices');
     apiMock.mockResolvedValue(Response.json({ items: [], total: 0, fetchedAt: '2026-09-25T10:00:00Z', freshness: 'live', partialData: false, access: { state } }));
     render(<App loadCapabilities={async () => ({ ...allowedCapabilities, capabilities: [{ capability: 'devices.view', state, reasonCode: 'active_role' }] })} loadSession={async () => session} />);
-    await waitFor(() => expect(apiMock).toHaveBeenCalledWith('/api/devices'));
+    await waitFor(() => expect(apiMock.mock.calls.some(([path]) => path === '/api/devices')).toBe(true));
   });
 
   it('loads direct device details with an authoritative view decision', async () => {
@@ -344,5 +381,64 @@ describe('AppShell', () => {
     fireEvent.keyDown(document, { key: 'Escape' });
     expect(menu.getAttribute('aria-expanded')).toBe('false');
     expect(document.activeElement).toBe(menu);
+  });
+
+  it('shows the same domain access summaries in both account slots and closes the mobile drawer on My access selection', () => {
+    const navigate = vi.fn();
+    const member = { user: session.user, workspace: session.workspace };
+    const { container } = render(
+      <ThemeProvider systemTheme={() => 'light'}>
+        <AppShell capabilities={allowedCapabilities} currentPath="/overview" session={member} onNavigate={navigate}>
+          <p>Overview content</p>
+        </AppShell>
+      </ThemeProvider>,
+    );
+    const menuSummaries = container.querySelectorAll('.account-access-menu__summary');
+    expect(menuSummaries).toHaveLength(1);
+    const desktopDetails = container.querySelector('.app-header__account details') as HTMLDetailsElement;
+    const desktopText = desktopDetails.textContent;
+
+    fireEvent.click(screen.getByRole('button', { name: 'Menu' }));
+    const drawer = document.getElementById('primary-navigation')!;
+    const mobileDetails = drawer.querySelector('details') as HTMLDetailsElement;
+    expect(mobileDetails.textContent).toBe(desktopText);
+    fireEvent.click(mobileDetails.querySelector('summary')!);
+    fireEvent.click(within(mobileDetails).getByRole('link', { name: 'My access' }));
+
+    expect(navigate).toHaveBeenCalledWith('/my-access');
+    expect(screen.getByRole('button', { name: 'Menu' }).getAttribute('aria-expanded')).toBe('false');
+    expect(mobileDetails.open).toBe(false);
+  });
+
+  it('lets an ordinary member navigate to My access without Graph or workspace grants', async () => {
+    window.history.pushState(null, '', '/identity');
+    const loadCapabilities = vi.fn(async () => { throw new Error('Graph unavailable'); });
+    const member = { user: session.user, workspace: { id: session.workspace.id, name: session.workspace.name } };
+
+    render(<App loadCapabilities={loadCapabilities} loadSession={async () => member} />);
+
+    expect(await screen.findByRole('heading', { name: 'PIM guidance' })).toBeTruthy();
+    const accountDisclosure = document.querySelector('.app-header__account details')!;
+    fireEvent.click(accountDisclosure.querySelector('summary')!);
+    fireEvent.click(within(accountDisclosure as HTMLElement).getByRole('link', { name: 'My access' }));
+
+    expect(await screen.findByRole('heading', { name: 'My access' })).toBeTruthy();
+    expect(screen.getByText(/Access information could not be loaded/)).toBeTruthy();
+    expect(window.location.pathname).toBe('/my-access');
+    expect(loadCapabilities).toHaveBeenCalledOnce();
+    expect(screen.getByRole('navigation', { name: 'Primary navigation' }).querySelector('a[href="/my-access"]')).toBeNull();
+  });
+
+  it('refreshes account disclosure from the existing capability loader', async () => {
+    window.history.pushState(null, '', '/my-access');
+    const loadCapabilities = vi.fn(async () => allowedCapabilities);
+    render(<App loadCapabilities={loadCapabilities} loadSession={async () => session} />);
+    await screen.findByRole('heading', { name: 'My access' });
+
+    const desktopMenu = document.querySelector('.app-header__account details')!;
+    fireEvent.click(desktopMenu.querySelector('summary')!);
+    fireEvent.click(within(desktopMenu as HTMLElement).getByRole('button', { name: 'Refresh access' }));
+
+    await waitFor(() => expect(loadCapabilities).toHaveBeenCalledTimes(2));
   });
 });

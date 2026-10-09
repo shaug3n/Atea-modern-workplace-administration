@@ -1,7 +1,7 @@
 import { cleanup, render, screen } from '@testing-library/react';
 import React from 'react';
 import { afterEach, describe, expect, it } from 'vitest';
-import { appRoutes, type NavigationGroup, type NavigationVisibility } from '../../../src/Web/src/app/routes';
+import { appRoutes, matchRoute, type NavigationGroup, type NavigationVisibility } from '../../../src/Web/src/app/routes';
 import { App } from '../../../src/Web/src/app/App';
 import type { CapabilitySnapshot } from '../../../src/Web/src/capabilities/capabilityTypes';
 
@@ -50,6 +50,7 @@ describe('route navigation metadata', () => {
       '/settings/modules',
       '/settings/access',
       '/workspace-access',
+      '/my-access',
       '/workspace-settings',
       '/audit',
     ];
@@ -89,5 +90,16 @@ describe('route navigation metadata', () => {
 
     expect(await screen.findByText(/Data cannot be shown right now|turned off for this workspace|don't have access/i)).toBeTruthy();
     expect(screen.queryByText('What this review covers')).toBeNull();
+  });
+
+  it('keeps My access available to ordinary signed-in members without capability or manager gates', () => {
+    const route = appRoutes.find(({ path }) => path === '/my-access');
+
+    expect(route).toBeDefined();
+    expect(route?.navigation).toBeUndefined();
+    expect(route?.module).toBeUndefined();
+    expect(route?.capability).toBeUndefined();
+    expect(route?.workspaceAccess).toBeUndefined();
+    expect(matchRoute('/my-access')).toBe(route);
   });
 });

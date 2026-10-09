@@ -26,7 +26,8 @@ export type Capability =
   | 'platform.about.view'
   | 'feedback.submit'
   | 'audit.view'
-  | 'workspace.settings.manage';
+  | 'workspace.settings.manage'
+  | 'workspace.members.manage';
 
 export const reservedCapabilities = [
   'authentication.campaigns.manage',
@@ -56,6 +57,27 @@ export type CapabilityDecision = {
   pim?: { state: string; activationUrl?: string | null } | null;
   nextStep?: { label: string; href?: string | null } | null;
   missingScopes?: string[] | null;
+  roleEvidence?: CapabilityRoleEvidence | null;
+};
+
+export type CapabilityRoleEvidence = {
+  state: string;
+  requiredRoleTemplateIds: string[];
+  assignments: CapabilityRoleAssignmentEvidence[];
+};
+
+export type CapabilityRoleAssignmentEvidence = {
+  roleTemplateId: string;
+  assignmentState: string;
+  scope: string;
+  pimState?: string | null;
+};
+
+export type WorkspaceModuleEvidence = {
+  module: string;
+  grantSource: string;
+  enabled: boolean;
+  effective: boolean;
 };
 
 export type CapabilitySnapshot = {
@@ -64,6 +86,7 @@ export type CapabilitySnapshot = {
   capabilities: CapabilityDecision[];
   sourceState?: string | null;
   sourceReasonCode?: string | null;
+  workspaceModules?: WorkspaceModuleEvidence[] | null;
 };
 
 export function isPimCapabilityState(state: CapabilityState) {

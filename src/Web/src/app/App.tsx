@@ -155,7 +155,7 @@ function LoadedWorkspaceExperience({ path, navigate, capabilities, capabilitiesL
       : route.render({ loadConnectionHealth, loadAuthenticationCampaigns, capabilities: unavailableSnapshot.capabilities, navigate, session, onRefreshAccess: refreshCapabilities });
   }
 
-  return <WorkspaceNotificationsProvider key={`${session.workspace.id}:${sessionRevision}`} session={session} sessionScope={sessionRevision} capabilities={capabilities} capabilitiesError={capabilitiesError} onRefresh={refreshCapabilities} loadConnectionHealth={loadConnectionHealth}><AppShell capabilities={capabilities} currentPath={path.split('#')[0]} session={session} onNavigate={navigate}>{routeContent}</AppShell></WorkspaceNotificationsProvider>;
+  return <WorkspaceNotificationsProvider key={`${session.workspace.id}:${sessionRevision}`} session={session} sessionScope={sessionRevision} capabilities={capabilities} capabilitiesError={capabilitiesError} onRefresh={refreshCapabilities} loadConnectionHealth={loadConnectionHealth}><AppShell capabilities={capabilities} currentPath={path.split('#')[0]} session={session} onNavigate={navigate} accessState={{ loading: capabilitiesLoading, error: capabilitiesError !== null, refresh: refreshCapabilities }}>{routeContent}</AppShell></WorkspaceNotificationsProvider>;
 }
 
 function SessionFailure({ error, onRetry, onSignIn, onSwitchAccount }: { error: Error; onRetry: () => void; onSignIn?: () => Promise<void>; onSwitchAccount?: () => Promise<void> }) {

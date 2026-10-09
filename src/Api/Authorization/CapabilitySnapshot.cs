@@ -5,7 +5,8 @@ public sealed record CapabilitySnapshot(
     DateTimeOffset EvaluatedAt,
     IReadOnlyList<CapabilityDecision> Capabilities,
     string? SourceState = null,
-    string? SourceReasonCode = null)
+    string? SourceReasonCode = null,
+    IReadOnlyCollection<WorkspaceModuleEvidence>? WorkspaceModules = null)
 {
     public CapabilityDecision this[string capability] =>
         Capabilities.Single(entry => string.Equals(entry.Capability, capability, StringComparison.OrdinalIgnoreCase));
@@ -18,11 +19,25 @@ public sealed record CapabilityDecision(
     string? RequiredRoleTemplateId = null,
     CapabilityPimState? Pim = null,
     CapabilityNextStep? NextStep = null,
-    IReadOnlyCollection<string>? MissingScopes = null);
+    IReadOnlyCollection<string>? MissingScopes = null,
+    CapabilityRoleEvidence? RoleEvidence = null);
 
 public sealed record CapabilityPimState(string State, string? ActivationUrl = null);
 
 public sealed record CapabilityNextStep(string Label, string? Href = null);
+
+public sealed record WorkspaceModuleEvidence(string Module, string GrantSource, bool Enabled, bool Effective);
+
+public sealed record CapabilityRoleEvidence(
+    string State,
+    IReadOnlyCollection<string> RequiredRoleTemplateIds,
+    IReadOnlyCollection<CapabilityRoleAssignmentEvidence> Assignments);
+
+public sealed record CapabilityRoleAssignmentEvidence(
+    string RoleTemplateId,
+    string AssignmentState,
+    string Scope,
+    string? PimState);
 
 public sealed record GraphAuthorizationSnapshot(
     bool IsAvailable,

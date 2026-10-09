@@ -11,6 +11,7 @@ import { WorkspaceSettingsPage } from '../features/workspace-settings/WorkspaceS
 import { ConsentCallbackPage } from '../features/workspace-settings/ConsentCallbackPage';
 import { OnboardingPage } from '../features/workspace-settings/OnboardingPage';
 import { WorkspaceAccessPage } from '../features/workspace-access/WorkspaceAccessPage';
+import { MyAccessPage } from '../features/my-access/MyAccessPage';
 import { UserDetailPage } from '../features/users/UserDetailPage';
 import { UsersPage } from '../features/users/UsersPage';
 import { DevicesPage } from '../features/devices/DevicesPage';
@@ -153,6 +154,11 @@ export const appRoutes: AppRoute[] = [
     label: messages.navWorkspaceAccess,
     workspaceAccess: 'members',
     render: (options) => <WorkspaceAccessPage isOwner={options?.session?.workspaceAccess?.isOwner === true} canManageModules={options?.session?.workspaceAccess?.canManageMemberModules === true} availableModules={options?.session?.workspace.moduleAccess ?? []} />,
+  },
+  {
+    path: '/my-access',
+    label: 'My access',
+    render: (options) => options?.session ? <MyAccessPage session={options.session} onNavigate={options.navigate} /> : null,
   },
   {
     path: '/workspace-settings',

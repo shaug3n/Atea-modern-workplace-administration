@@ -12,6 +12,7 @@ describe('humanize helpers', () => {
     expect(humanizeCapability('licenses.hygiene.view')).toBe('View license hygiene');
     expect(humanizeCapability('platform.about.view')).toBe('View system information');
     expect(humanizeCapability('feedback.submit')).toBe('Submit feedback');
+    expect(humanizeCapability('workspace.members.manage')).toBe('Manage workspace members');
     expect(humanizeCapability('totally.unknown')).toBe('Additional permission');
   });
 
