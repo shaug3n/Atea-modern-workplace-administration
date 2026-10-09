@@ -3,12 +3,12 @@ import { useApi } from '../../auth/useApi';
 import { messages } from '../../app/messages';
 import type { AppRoute } from '../../app/routes';
 import { readWebBuildMetadata, type WebBuildMetadata } from './buildMetadata';
-import { fetchApiBuildMetadata, type ApiBuildMetadata } from './aboutApi';
+import { AboutApiError, fetchApiBuildMetadata, type ApiBuildMetadata } from './aboutApi';
 
 type ApiState =
   | { status: 'loading' }
   | { status: 'loaded'; metadata: ApiBuildMetadata }
-  | { status: 'error'; statusCode?: number };
+  | { status: 'error'; statusCode?: number; invalidResponse?: boolean };
 
 const webBuild = readWebBuildMetadata(import.meta.env);
 
@@ -29,7 +29,11 @@ export function SystemVersionsPage({ authorizedRoutes, webMetadata = webBuild }:
     fetchApiBuildMetadata(api).then(metadata => {
       if (!cancelled) setApiState({ status: 'loaded', metadata });
     }).catch(error => {
-      if (!cancelled) setApiState({ status: 'error', statusCode: typeof error?.status === 'number' ? error.status : undefined });
+      if (!cancelled) setApiState({
+        status: 'error',
+        statusCode: typeof error?.status === 'number' ? error.status : undefined,
+        invalidResponse: error instanceof AboutApiError && error.code === 'invalid_response',
+      });
     });
     return () => { cancelled = true; };
   }, [api]);
@@ -48,7 +52,9 @@ export function SystemVersionsPage({ authorizedRoutes, webMetadata = webBuild }:
           {apiState.status === 'loading' && <p role="status">{messages.aboutVersionsLoading}</p>}
           {apiState.status === 'error' && (
             <p className="about-version-error" role="alert">
-              {apiState.statusCode ? messages.aboutVersionsHttpError(apiState.statusCode) : messages.aboutVersionsUnavailable}
+              {apiState.invalidResponse
+                ? messages.aboutVersionsInvalidResponse
+                : apiState.statusCode ? messages.aboutVersionsHttpError(apiState.statusCode) : messages.aboutVersionsUnavailable}
             </p>
           )}
           {apiState.status === 'loaded' && <MetadataValues metadata={apiState.metadata} />}

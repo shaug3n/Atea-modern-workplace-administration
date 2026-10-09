@@ -40,4 +40,5 @@ export const aboutMessages = {
   aboutVersionsLoading: 'Loading API build metadata…',
   aboutVersionsUnavailable: 'API build metadata is unavailable.',
   aboutVersionsHttpError: (status: number) => `API build metadata is unavailable (HTTP ${status}).`,
+  aboutVersionsInvalidResponse: 'API returned invalid build metadata.',
 } as const;

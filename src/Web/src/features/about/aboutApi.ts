@@ -7,7 +7,7 @@ export type ApiBuildMetadata = {
 };
 
 export class AboutApiError extends Error {
-  constructor(public readonly status?: number) {
+  constructor(public readonly status?: number, public readonly code?: 'invalid_response') {
     super('system_versions_unavailable');
   }
 }
@@ -27,6 +27,6 @@ export async function fetchApiBuildMetadata(api: ApiFetch): Promise<ApiBuildMeta
   try {
     return await response.json() as ApiBuildMetadata;
   } catch {
-    throw new AboutApiError(response.status);
+    throw new AboutApiError(undefined, 'invalid_response');
   }
 }
