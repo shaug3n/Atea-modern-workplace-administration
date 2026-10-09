@@ -11,6 +11,7 @@ vi.mock('../../src/Web/src/auth/useApi', () => ({ useApi: () => apiMock }));
 
 const workspaceA = '55555555-5555-5555-5555-555555555555';
 const workspaceB = '66666666-6666-6666-6666-666666666666';
+const validCursor = 'NjM5MjY1MzIwMDAwMDAwMDAwOjExMTExMTExMTExMTQxMTE4MTExMTExMTExMTExMTEx';
 const aboutCapability = { capability: 'platform.about.view', state: 'allowed', reasonCode: 'workspace_member' } as const;
 const feedbackCapability = { capability: 'feedback.submit', state: 'allowed', reasonCode: 'workspace_member' } as const;
 
@@ -124,7 +125,6 @@ describe('owned About and Feedback journeys', () => {
     const inventory = screen.getByRole('region', { name: 'Authorized application routes' });
     const inventoryPaths = Array.from(inventory.querySelectorAll('code'), code => code.textContent);
     expect(inventoryPaths).toEqual([
-      '/onboarding',
       '/identity',
       '/about',
       '/about/system-versions',
@@ -215,6 +215,40 @@ describe('owned About and Feedback journeys', () => {
     expect(screen.queryByRole('status')).toBeNull();
   });
 
+  it('Feedback_response_lost_then_cancel_and_reopen_reuses_the_uncertain_submission_key', async () => {
+    const savedItem = feedbackItem('33333333-3333-4333-8333-333333333333', 'Retry after reopen', 'Same uncertain payload');
+    apiMock
+      .mockResolvedValueOnce(feedbackPage([]))
+      .mockRejectedValueOnce(new TypeError('response lost'))
+      .mockResolvedValueOnce(Response.json({
+        id: savedItem.id,
+        createdAt: savedItem.createdAt,
+        expiresAt: savedItem.expiresAt,
+      }, { status: 200 }))
+      .mockResolvedValueOnce(feedbackPage([savedItem]));
+    renderApp('/feedback', workspaceA, ['feedback'], [feedbackCapability]);
+
+    expect(await screen.findByRole('heading', { name: 'No feedback yet' })).toBeTruthy();
+    fireEvent.click(document.querySelector('.app-feedback-fab')!);
+    fillFeedback('Retry after reopen', 'Same uncertain payload');
+    fireEvent.click(screen.getByRole('button', { name: 'Save feedback' }));
+    expect((await screen.findByRole('alert')).textContent).toMatch(/could not be reached/i);
+    const firstPost = apiMock.mock.calls.find(([, init]) => init?.method === 'POST')!;
+    const firstKey = new Headers(firstPost[1].headers).get('Idempotency-Key');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    fireEvent.click(document.querySelector('.app-feedback-fab')!);
+    expect((screen.getByLabelText('Subject') as HTMLInputElement).value).toBe('Retry after reopen');
+    expect((screen.getByLabelText('Message') as HTMLTextAreaElement).value).toBe('Same uncertain payload');
+    fireEvent.click(screen.getByRole('button', { name: 'Save feedback' }));
+
+    expect((await screen.findByRole('status')).textContent).toBe('Saved');
+    const posts = apiMock.mock.calls.filter(([, init]) => init?.method === 'POST');
+    expect(posts).toHaveLength(2);
+    expect(new Headers(posts[1][1].headers).get('Idempotency-Key')).toBe(firstKey);
+    expect(await screen.findByText('Same uncertain payload')).toBeTruthy();
+  });
+
   it('Feedback_empty_and_populated_states_are_owner_scoped', async () => {
     let finishInitialLoad!: (response: Response) => void;
     apiMock.mockImplementationOnce(() => new Promise<Response>(resolve => { finishInitialLoad = resolve; }));
@@ -239,7 +273,7 @@ describe('owned About and Feedback journeys', () => {
     ));
     const nextPage = [feedbackItem('33333333-3333-4333-8333-333333333333', 'Feedback item 21')];
     apiMock.mockReset();
-    apiMock.mockResolvedValueOnce(feedbackPage(firstPage, 'next-page'))
+    apiMock.mockResolvedValueOnce(feedbackPage(firstPage, validCursor))
       .mockResolvedValueOnce(feedbackPage(nextPage));
     renderApp('/feedback', workspaceA, ['feedback'], [feedbackCapability]);
 
@@ -248,13 +282,13 @@ describe('owned About and Feedback journeys', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Load more feedback' }));
     expect(await screen.findByText('Feedback item 21')).toBeTruthy();
     expect(document.querySelectorAll('[data-feedback-subject]')).toHaveLength(21);
-    expect(apiMock.mock.calls[1][0]).toBe('/api/feedback/submissions?cursor=next-page');
+    expect(apiMock.mock.calls[1][0]).toBe(`/api/feedback/submissions?cursor=${validCursor}`);
   });
 
   it('discards a pending list response and clears the prior owner when workspace identity changes', async () => {
     let finishOldPage!: (response: Response) => void;
     apiMock
-      .mockResolvedValueOnce(feedbackPage([feedbackItem('44444444-4444-4444-8444-444444444444', 'Workspace A private entry')], 'old-cursor'))
+      .mockResolvedValueOnce(feedbackPage([feedbackItem('44444444-4444-4444-8444-444444444444', 'Workspace A private entry')], validCursor))
       .mockImplementationOnce(() => new Promise<Response>(resolve => { finishOldPage = resolve; }))
       .mockResolvedValueOnce(feedbackPage([feedbackItem('55555555-5555-4555-8555-555555555555', 'Workspace B private entry')]));
     const oldCapabilities = capabilities(workspaceA, [feedbackCapability]);
@@ -286,7 +320,7 @@ describe('owned About and Feedback journeys', () => {
   it('discards a pending list response when identity changes within the same workspace', async () => {
     let finishOldPage!: (response: Response) => void;
     apiMock
-      .mockResolvedValueOnce(feedbackPage([feedbackItem('77777777-7777-4777-8777-777777777777', 'First identity private entry')], 'old-cursor'))
+      .mockResolvedValueOnce(feedbackPage([feedbackItem('77777777-7777-4777-8777-777777777777', 'First identity private entry')], validCursor))
       .mockImplementationOnce(() => new Promise<Response>(resolve => { finishOldPage = resolve; }))
       .mockResolvedValueOnce(feedbackPage([feedbackItem('88888888-8888-4888-8888-888888888888', 'Second identity private entry')]));
     const firstCapabilities = capabilities(workspaceA, [feedbackCapability]);

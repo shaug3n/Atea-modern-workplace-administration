@@ -47,7 +47,26 @@ describe('route access metadata', () => {
     expect(routes).toContainEqual({ path: '/about/system-versions', label: 'System versions' });
     expect(routes.map(route => route.path)).not.toContain('/users');
     expect(routes.map(route => route.path)).not.toContain('/settings');
+    expect(routes.map(route => route.path)).not.toContain('/onboarding');
     expect(routes.some(route => route.path.startsWith('/api/'))).toBe(false);
+  });
+
+  it('excludes the legacy onboarding redirect from both member and manager inventories', () => {
+    const memberRoutes = getAuthorizedAppRoutes(session, [aboutAllowed]).map(route => route.path);
+    const managerSession = {
+      ...session,
+      workspaceAccess: {
+        canManageMembers: true,
+        canManageSettings: true,
+        canManageModules: true,
+      },
+    };
+    const managerRoutes = getAuthorizedAppRoutes(managerSession, [aboutAllowed]).map(route => route.path);
+
+    expect(memberRoutes).not.toContain('/onboarding');
+    expect(managerRoutes).not.toContain('/onboarding');
+    expect(managerRoutes).toContain('/settings');
+    expect(appRoutes.find(route => route.path === '/onboarding')?.includeInSystemInventory).toBe(false);
   });
 
   it('excludes about routes when the module is disabled, unassigned, or the capability is not allowed', () => {
@@ -197,6 +216,28 @@ describe('route access metadata', () => {
     const inventory = (await screen.findByRole('heading', { name: 'Authorized application routes' })).parentElement!;
     expect(inventory.textContent).toContain('/about/system-versions');
     expect(inventory.textContent).not.toContain('/users');
+  });
+
+  it.each([
+    { productVersion: 1 },
+    { commit: false },
+    { branch: [] },
+    ['not', 'an object'],
+  ])('rejects successful API metadata with an invalid shape', async metadata => {
+    window.history.pushState(null, '', '/about/system-versions');
+    apiMock.mockResolvedValue(Response.json(metadata));
+    const snapshot: CapabilitySnapshot = {
+      workspaceId,
+      evaluatedAt: '2026-10-09T08:00:00Z',
+      sourceState: 'graph_authoritative',
+      capabilities: [aboutAllowed],
+    };
+
+    render(<App loadCapabilities={async () => snapshot} loadSession={async () => session} />);
+
+    expect((await screen.findByRole('alert')).textContent).toMatch(/invalid build metadata/i);
+    const apiCard = screen.getByRole('region', { name: 'API' });
+    expect(apiCard.querySelector('.about-metadata-list')).toBeNull();
   });
 
   it('preserves API HTTP failures and labels missing API build fields unavailable', async () => {

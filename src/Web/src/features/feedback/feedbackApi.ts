@@ -32,6 +32,27 @@ function isFeedbackCategory(value: unknown): value is FeedbackCategory {
   return value === 'Bug' || value === 'Improvement' || value === 'General';
 }
 
+function isFeedbackId(value: string): boolean {
+  return guidPattern.test(value) && value !== '00000000-0000-0000-0000-000000000000';
+}
+
+function isFeedbackCursor(value: unknown): value is string {
+  if (typeof value !== 'string' || value.length === 0 || value.length > 128 || !/^[A-Za-z0-9_-]+$/.test(value) || value.length % 4 === 1) {
+    return false;
+  }
+  try {
+    const base64 = value.replace(/-/g, '+').replace(/_/g, '/');
+    const decoded = globalThis.atob(base64.padEnd(base64.length + ((4 - base64.length % 4) % 4), '='));
+    const parts = /^([0-9]{1,19}):([0-9a-f]{32})$/i.exec(decoded);
+    if (!parts) return false;
+    const ticks = BigInt(parts[1]);
+    return ticks <= 3155378975999999999n;
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'InvalidCharacterError') return false;
+    throw error;
+  }
+}
+
 function timestampValue(value: string): number | null {
   const parts = timestampPattern.exec(value);
   if (!parts) return null;
@@ -65,11 +86,15 @@ async function parseJson(response: Response): Promise<unknown> {
 function submissionFrom(value: unknown): FeedbackSubmission | null {
   if (!isRecord(value)
     || typeof value.id !== 'string'
+    || !isFeedbackId(value.id)
     || !isFeedbackCategory(value.category)
     || typeof value.subject !== 'string'
     || typeof value.message !== 'string'
     || typeof value.createdAt !== 'string'
     || typeof value.expiresAt !== 'string') return null;
+  const createdAt = timestampValue(value.createdAt);
+  const expiresAt = timestampValue(value.expiresAt);
+  if (createdAt === null || expiresAt === null || expiresAt <= createdAt) return null;
   return {
     id: value.id,
     category: value.category,
@@ -96,7 +121,8 @@ export async function listFeedback(api: ApiFetch, cursor?: string): Promise<Feed
   }
   const body = await parseJson(response);
   if (!isRecord(body) || !Array.isArray(body.items)
-    || !(body.nextCursor === null || typeof body.nextCursor === 'string')) {
+    || body.items.length > 20
+    || !(body.nextCursor === null || isFeedbackCursor(body.nextCursor))) {
     throw new FeedbackApiError(response.status, 'invalid_response');
   }
   const items = body.items.map(submissionFrom);
@@ -123,8 +149,7 @@ export async function createFeedback(api: ApiFetch, request: FeedbackRequest, id
   const expiresAt = isRecord(body) && typeof body.expiresAt === 'string' ? timestampValue(body.expiresAt) : null;
   if (!isRecord(body)
     || typeof body.id !== 'string'
-    || !guidPattern.test(body.id)
-    || body.id === '00000000-0000-0000-0000-000000000000'
+    || !isFeedbackId(body.id)
     || createdAt === null
     || expiresAt === null
     || expiresAt <= createdAt) {

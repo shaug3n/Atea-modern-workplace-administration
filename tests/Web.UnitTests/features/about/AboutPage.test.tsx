@@ -71,10 +71,22 @@ describe('About page', () => {
     expect(screen.getByText(/verified tenant and object claims/i)).toBeTruthy();
     expect(screen.getByText(/Graph access tokens stay server-side/i)).toBeTruthy();
     fireEvent.click(screen.getByRole('tab', { name: 'Privacy' }));
-    expect(screen.getByText(/Feedback is stored as plain text/i)).toBeTruthy();
-    expect(screen.getByText(/90 days/i)).toBeTruthy();
+    expect(screen.getByText(/Feedback stores the user-entered subject and message as plain text/i)).toBeTruthy();
+    expect(screen.getAllByText(/90 days/i).length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText(/backup retention is separate/i)).toBeTruthy();
     expect(screen.queryByText(/certified|guaranteed|AI assistant/i)).toBeNull();
     expect(document.querySelector('script, img')).toBeNull();
+  });
+
+  it('qualifies metadata storage and discloses user-entered feedback text and its scope', () => {
+    render(<AboutPage />);
+    fireEvent.click(screen.getByRole('tab', { name: 'Architecture' }));
+    expect(screen.getByText(/workspace-administration and Microsoft Graph integration storage/i)).toBeTruthy();
+    expect(screen.queryByText(/does not store user-entered feedback/i)).toBeNull();
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Privacy' }));
+    expect(screen.getByText(/user-entered subject and message as plain text/i)).toBeTruthy();
+    expect(screen.getByText(/visible only to its submitter in the active workspace/i)).toBeTruthy();
+    expect(screen.getAllByText(/90 days/i).length).toBeGreaterThanOrEqual(1);
   });
 });

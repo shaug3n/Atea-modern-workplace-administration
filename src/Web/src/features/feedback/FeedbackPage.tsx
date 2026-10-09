@@ -4,6 +4,7 @@ import { WorkspacePageHeader } from '../../components/WorkspacePageHeader';
 import { messages } from '../../app/messages';
 import { formatDate } from '../../format/dateTime';
 import { listFeedback, type FeedbackSubmission } from './feedbackApi';
+import { feedbackErrorMessage } from './feedbackErrorMessage';
 import './feedback.css';
 
 export function FeedbackPage({ refreshRevision, onOpenFeedbackDialog }: { refreshRevision: number; onOpenFeedbackDialog: () => void }) {
@@ -13,7 +14,7 @@ export function FeedbackPage({ refreshRevision, onOpenFeedbackDialog }: { refres
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [error, setError] = useState(false);
+  const [error, setError] = useState('');
 
   useEffect(() => {
     const requestId = ++sequence.current;
@@ -22,13 +23,13 @@ export function FeedbackPage({ refreshRevision, onOpenFeedbackDialog }: { refres
     setNextCursor(null);
     setLoading(true);
     setLoadingMore(false);
-    setError(false);
+    setError('');
     listFeedback(api).then(page => {
       if (!active || requestId !== sequence.current) return;
       setItems(page.items);
       setNextCursor(page.nextCursor);
-    }).catch(() => {
-      if (active && requestId === sequence.current) setError(true);
+    }).catch(reason => {
+      if (active && requestId === sequence.current) setError(feedbackErrorMessage(reason, 'load'));
     }).finally(() => {
       if (active && requestId === sequence.current) setLoading(false);
     });
@@ -42,13 +43,13 @@ export function FeedbackPage({ refreshRevision, onOpenFeedbackDialog }: { refres
     if (!nextCursor || loadingMore) return;
     const requestId = ++sequence.current;
     setLoadingMore(true);
-    setError(false);
+    setError('');
     listFeedback(api, nextCursor).then(page => {
       if (requestId !== sequence.current) return;
       setItems(current => [...current, ...page.items]);
       setNextCursor(page.nextCursor);
-    }).catch(() => {
-      if (requestId === sequence.current) setError(true);
+    }).catch(reason => {
+      if (requestId === sequence.current) setError(feedbackErrorMessage(reason, 'load'));
     }).finally(() => {
       if (requestId === sequence.current) setLoadingMore(false);
     });
@@ -61,7 +62,7 @@ export function FeedbackPage({ refreshRevision, onOpenFeedbackDialog }: { refres
         <button className="button button--primary" type="button" onClick={onOpenFeedbackDialog}>{messages.feedbackGiveAction}</button>
       </div>
       {loading && <p className="feedback-state" role="status">{messages.feedbackPageLoading}</p>}
-      {!loading && error && <p className="feedback-state feedback-state--error" role="alert">{messages.feedbackPageUnavailable}</p>}
+      {!loading && error && <p className="feedback-state feedback-state--error" role="alert">{error}</p>}
       {!loading && !error && items.length === 0 && (
         <section className="feedback-empty" aria-labelledby="feedback-empty-title">
           <h2 id="feedback-empty-title">{messages.feedbackEmptyTitle}</h2>

@@ -12,6 +12,20 @@ export class AboutApiError extends Error {
   }
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isBuildMetadata(value: unknown): value is ApiBuildMetadata {
+  if (!isRecord(value)) return false;
+  return ['productVersion', 'commit', 'branch'].every(field => {
+    const property = Object.getOwnPropertyDescriptor(value, field);
+    return property === undefined
+      || property.value === null
+      || typeof property.value === 'string';
+  });
+}
+
 export async function fetchApiBuildMetadata(api: ApiFetch): Promise<ApiBuildMetadata> {
   let response: Response;
   try {
@@ -24,9 +38,12 @@ export async function fetchApiBuildMetadata(api: ApiFetch): Promise<ApiBuildMeta
     throw new AboutApiError(response.status);
   }
 
+  let value: unknown;
   try {
-    return await response.json() as ApiBuildMetadata;
+    value = await response.json();
   } catch {
     throw new AboutApiError(undefined, 'invalid_response');
   }
+  if (!isBuildMetadata(value)) throw new AboutApiError(undefined, 'invalid_response');
+  return value;
 }

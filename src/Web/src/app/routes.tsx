@@ -49,7 +49,7 @@ export function isInvitationPath(pathname: string) {
 export const appRoutes: AppRoute[] = [
   { path: '/consent-callback', label: messages.connectionTitle, includeInSystemInventory: false, render: () => <ConsentCallbackPage /> },
   { path: '/onboarding/consent/callback', label: messages.connectionTitle, includeInSystemInventory: false, render: () => <ConsentCallbackPage /> },
-  { path: '/onboarding', label: messages.navOnboarding, render: (options) => <OnboardingPage onNavigate={options?.navigate} /> },
+  { path: '/onboarding', label: messages.navOnboarding, includeInSystemInventory: false, render: (options) => <OnboardingPage onNavigate={options?.navigate} /> },
   { path: '/identity', label: 'PIM guidance', render: (options) => <PimGuidancePage onRefreshAccess={options?.onRefreshAccess} /> },
   { path: '/settings', label: 'Workspace Settings', workspaceAccess: 'any', navigation: { group: 'platform', order: 0, icon: 'settings', visibility: 'workspace-manager' }, render: (options) => options?.session ? <WorkspaceSettingsHub session={options.session} /> : null },
   {

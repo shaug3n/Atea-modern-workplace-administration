@@ -147,12 +147,43 @@ describe('FeedbackComposerDialog', () => {
   });
 
   it('resets form state when the authenticated workspace or submitter changes', async () => {
+    apiMock.mockRejectedValueOnce(new TypeError('response lost')).mockRejectedValueOnce(new TypeError('response lost'));
     const { rerender, onOpenChange, onSaved } = renderDialog();
     fillValidForm('Private draft', 'Draft message');
+    fireEvent.click(screen.getByRole('button', { name: 'Save feedback' }));
+    await screen.findByRole('alert');
+    const oldContextKey = apiMock.mock.calls[0][1].headers['Idempotency-Key'];
     rerender(<FeedbackComposerDialog open onOpenChange={onOpenChange} workspaceId="workspace-2" submitterObjectId="user-2" onSaved={onSaved} />);
 
     await waitFor(() => expect((screen.getByLabelText('Subject') as HTMLInputElement).value).toBe(''));
     expect((screen.getByLabelText('Message') as HTMLTextAreaElement).value).toBe('');
+    fillValidForm('Private draft', 'Draft message');
+    fireEvent.click(screen.getByRole('button', { name: 'Save feedback' }));
+    await waitFor(() => expect(apiMock).toHaveBeenCalledTimes(2));
+    expect(apiMock.mock.calls[1][1].headers['Idempotency-Key']).not.toBe(oldContextKey);
+  });
+
+  it('reuses an uncertain request key after closing and reopening with the same payload', async () => {
+    apiMock.mockRejectedValueOnce(new TypeError('response lost')).mockResolvedValueOnce(Response.json({
+      id: receiptId,
+      createdAt: '2026-10-09T08:00:00Z',
+      expiresAt: '2027-01-07T08:00:00Z',
+    }, { status: 201 }));
+    const { onOpenChange, rerender, onSaved } = renderDialog();
+    fillValidForm('Retry subject', 'Retry message');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save feedback' }));
+    expect((await screen.findByRole('alert')).textContent).toMatch(/could not be saved/i);
+    const firstKey = apiMock.mock.calls[0][1].headers['Idempotency-Key'];
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    rerender(<FeedbackComposerDialog open={false} onOpenChange={onOpenChange} workspaceId="workspace-1" submitterObjectId="user-1" onSaved={onSaved} />);
+    rerender(<FeedbackComposerDialog open onOpenChange={onOpenChange} workspaceId="workspace-1" submitterObjectId="user-1" onSaved={onSaved} />);
+
+    expect((screen.getByLabelText('Subject') as HTMLInputElement).value).toBe('Retry subject');
+    expect((screen.getByLabelText('Message') as HTMLTextAreaElement).value).toBe('Retry message');
+    fireEvent.click(screen.getByRole('button', { name: 'Save feedback' }));
+    await screen.findByRole('status');
+    expect(apiMock.mock.calls[1][1].headers['Idempotency-Key']).toBe(firstKey);
   });
 
   it('replaces an expired key only for an explicit retry and treats changed-payload conflicts as failures', async () => {
@@ -170,6 +201,23 @@ describe('FeedbackComposerDialog', () => {
     expect(apiMock.mock.calls[1][1].headers['Idempotency-Key']).not.toBe(expiredKey);
     expect(screen.queryByRole('status')).toBeNull();
     expect((screen.getByLabelText('Subject') as HTMLInputElement).value).toBe('Subject');
+  });
+
+  it.each([
+    [401, { error: 'authorization_denied' }, /sign in again/i],
+    [403, { error: 'authorization_denied' }, /no longer have access/i],
+    [400, { error: 'validation_failed' }, /review the required/i],
+    [409, { error: 'conflict' }, /conflicts with an earlier request/i],
+    [503, { error: 'persistence_unavailable' }, /try again later/i],
+  ])('shows a safe actionable message for HTTP %i', async (status, body, expected) => {
+    apiMock.mockResolvedValue(Response.json(body, { status }));
+    renderDialog();
+    fillValidForm();
+    fireEvent.click(screen.getByRole('button', { name: 'Save feedback' }));
+
+    expect((await screen.findByRole('alert')).textContent).toMatch(expected);
+    expect(screen.queryByText(JSON.stringify(body))).toBeNull();
+    expect(screen.queryByRole('status')).toBeNull();
   });
 
   it('does not report success when a successful HTTP response contains invalid JSON', async () => {
@@ -222,18 +270,20 @@ describe('FeedbackComposerDialog', () => {
     expect(apiMock.mock.calls[1][1].headers['Idempotency-Key']).toBe(apiMock.mock.calls[0][1].headers['Idempotency-Key']);
   });
 
-  it('preserves edits made while the submitted payload is pending', async () => {
+  it('disables fields while a submitted payload is pending', async () => {
     let resolveRequest!: (response: Response) => void;
     apiMock.mockImplementation(() => new Promise<Response>(resolve => { resolveRequest = resolve; }));
     const { onSaved } = renderDialog();
     fillValidForm('Submitted subject', 'Submitted message');
     fireEvent.click(screen.getByRole('button', { name: 'Save feedback' }));
-    fireEvent.change(screen.getByLabelText('Message'), { target: { value: 'Unsent edit' } });
+    expect((screen.getByLabelText('Category') as HTMLSelectElement).disabled).toBe(true);
+    expect((screen.getByLabelText('Subject') as HTMLInputElement).disabled).toBe(true);
+    expect((screen.getByLabelText('Message') as HTMLTextAreaElement).disabled).toBe(true);
     resolveRequest(Response.json({ id: receiptId, createdAt: '2026-10-09T08:00:00Z', expiresAt: '2027-01-07T08:00:00Z' }, { status: 201 }));
 
     expect((await screen.findByRole('status')).textContent).toBe('Saved');
-    expect((screen.getByLabelText('Subject') as HTMLInputElement).value).toBe('Submitted subject');
-    expect((screen.getByLabelText('Message') as HTMLTextAreaElement).value).toBe('Unsent edit');
+    expect((screen.getByLabelText('Subject') as HTMLInputElement).value).toBe('');
+    expect((screen.getByLabelText('Message') as HTMLTextAreaElement).value).toBe('');
     expect(onSaved).toHaveBeenCalledOnce();
   });
 

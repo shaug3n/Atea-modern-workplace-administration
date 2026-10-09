@@ -3,6 +3,7 @@ import { useApi } from '../../auth/useApi';
 import { useFocusContainment } from '../../components/useFocusContainment';
 import { messages } from '../../app/messages';
 import { createFeedback, FeedbackApiError, type FeedbackCategory, type FeedbackRequest } from './feedbackApi';
+import { feedbackErrorMessage } from './feedbackErrorMessage';
 import './feedback.css';
 
 type FormValues = Omit<FeedbackRequest, 'category'> & { category: string };
@@ -61,7 +62,7 @@ export function FeedbackComposerDialog({ open, onOpenChange, workspaceId, submit
   }, [open]);
 
   useEffect(() => {
-    if (!open || contextRef.current !== contextKey) {
+    if (contextRef.current !== contextKey) {
       contextRef.current = contextKey;
       requestGeneration.current += 1;
       latestValues.current = blankForm;
@@ -71,6 +72,9 @@ export function FeedbackComposerDialog({ open, onOpenChange, workspaceId, submit
       setError('');
       setSaved(false);
       retry.current = null;
+    } else if (!open) {
+      requestGeneration.current += 1;
+      setPending(false);
     }
   }, [open, contextKey]);
 
@@ -120,9 +124,7 @@ export function FeedbackComposerDialog({ open, onOpenChange, workspaceId, submit
       } else if (reason instanceof FeedbackApiError && reason.code === 'idempotency_key_reused') {
         retry.current = null;
         setError(messages.feedbackRetryConflict);
-      } else {
-        setError(messages.feedbackSaveFailed);
-      }
+      } else setError(feedbackErrorMessage(reason, 'save'));
     } finally {
       if (requestId === requestGeneration.current) setPending(false);
     }
@@ -141,7 +143,7 @@ export function FeedbackComposerDialog({ open, onOpenChange, workspaceId, submit
         <h2 id={titleId}>{messages.feedbackTitle}</h2>
         <form onSubmit={event => void submit(event)} noValidate>
           <label htmlFor={`${titleId}-category`}>{messages.feedbackCategoryLabel}</label>
-          <select ref={categoryRef} id={`${titleId}-category`} value={values.category} aria-invalid={Boolean(errors.category)} aria-describedby={errors.category ? `${titleId}-category-error` : undefined} required onChange={event => update('category', event.target.value)}>
+          <select ref={categoryRef} id={`${titleId}-category`} value={values.category} aria-invalid={Boolean(errors.category)} aria-describedby={errors.category ? `${titleId}-category-error` : undefined} required disabled={pending} onChange={event => update('category', event.target.value)}>
             <option value="">{messages.feedbackCategoryPlaceholder}</option>
             <option value="Bug">{messages.feedbackCategoryBug}</option>
             <option value="Improvement">{messages.feedbackCategoryImprovement}</option>
@@ -150,11 +152,11 @@ export function FeedbackComposerDialog({ open, onOpenChange, workspaceId, submit
           {errors.category && <p id={`${titleId}-category-error`} className="feedback-field-error">{errors.category}</p>}
 
           <label htmlFor={`${titleId}-subject`}>{messages.feedbackSubjectLabel}</label>
-          <input id={`${titleId}-subject`} maxLength={120} value={values.subject} aria-invalid={Boolean(errors.subject)} aria-describedby={errors.subject ? `${titleId}-subject-error` : undefined} required onChange={event => update('subject', event.target.value)} />
+          <input id={`${titleId}-subject`} maxLength={120} value={values.subject} aria-invalid={Boolean(errors.subject)} aria-describedby={errors.subject ? `${titleId}-subject-error` : undefined} required disabled={pending} onChange={event => update('subject', event.target.value)} />
           {errors.subject && <p id={`${titleId}-subject-error`} className="feedback-field-error">{errors.subject}</p>}
 
           <label htmlFor={`${titleId}-message`}>{messages.feedbackMessageLabel}</label>
-          <textarea id={`${titleId}-message`} maxLength={4000} rows={5} value={values.message} aria-invalid={Boolean(errors.message)} aria-describedby={errors.message ? `${titleId}-message-error` : undefined} required onChange={event => update('message', event.target.value)} />
+          <textarea id={`${titleId}-message`} maxLength={4000} rows={5} value={values.message} aria-invalid={Boolean(errors.message)} aria-describedby={errors.message ? `${titleId}-message-error` : undefined} required disabled={pending} onChange={event => update('message', event.target.value)} />
           {errors.message && <p id={`${titleId}-message-error`} className="feedback-field-error">{errors.message}</p>}
 
           <aside id={privacyId} className="feedback-privacy">
