@@ -1,7 +1,16 @@
-import { describe, expect, it } from 'vitest';
+import { cleanup, render, screen } from '@testing-library/react';
+import React from 'react';
+import { afterEach, describe, expect, it } from 'vitest';
 import { appRoutes, type NavigationGroup, type NavigationVisibility } from '../../../src/Web/src/app/routes';
+import { App } from '../../../src/Web/src/app/App';
+import type { CapabilitySnapshot } from '../../../src/Web/src/capabilities/capabilityTypes';
 
 describe('route navigation metadata', () => {
+  afterEach(() => {
+    cleanup();
+    window.history.pushState(null, '', '/');
+  });
+
   it('marks only current navigation destinations and keeps details out of navigation', () => {
     const navigationRoutes = appRoutes.filter((route) => route.navigation);
     const destinations = navigationRoutes.map(({ path, navigation }) => ({
@@ -34,6 +43,7 @@ describe('route navigation metadata', () => {
       '/onboarding',
       '/identity',
       '/users/:userId',
+      '/licenses/hygiene',
       '/devices/:id',
       '/settings/setup',
       '/settings/general',
@@ -46,5 +56,38 @@ describe('route navigation metadata', () => {
     for (const path of nonNavigablePaths) {
       expect(appRoutes.find((route) => route.path === path)?.navigation).toBeUndefined();
     }
+  });
+
+  it('registers hygiene as an authorized non-navigation route', () => {
+    const route = appRoutes.find(({ path }) => path === '/licenses/hygiene');
+
+    expect(route).toMatchObject({ path: '/licenses/hygiene', module: 'license-hygiene', capability: 'licenses.hygiene.view' });
+    expect(route?.navigation).toBeUndefined();
+  });
+
+  it.each([
+    ['denied capability', '55555555-5555-5555-5555-555555555555', 'hidden', ['licenses', 'license-hygiene'], ['licenses', 'license-hygiene']],
+    ['stale capability snapshot', 'stale-workspace', 'allowed', ['licenses', 'license-hygiene'], ['licenses', 'license-hygiene']],
+    ['missing capability decision', '55555555-5555-5555-5555-555555555555', null, ['licenses', 'license-hygiene'], ['licenses', 'license-hygiene']],
+    ['missing assigned module', '55555555-5555-5555-5555-555555555555', 'allowed', ['licenses', 'license-hygiene'], ['licenses']],
+    ['unknown assigned module state', '55555555-5555-5555-5555-555555555555', 'allowed', ['licenses', 'license-hygiene'], undefined],
+    ['missing enabled module', '55555555-5555-5555-5555-555555555555', 'allowed', ['licenses'], ['licenses', 'license-hygiene']],
+  ])('denies the direct hygiene route with %s', async (_case, capabilityWorkspaceId, state, enabledModules, moduleAccess) => {
+    window.history.pushState(null, '', '/licenses/hygiene');
+    const session = {
+      user: { displayName: 'Alex Morgan', userPrincipalName: 'alex@example.com' },
+      workspace: { id: '55555555-5555-5555-5555-555555555555', name: 'Contoso', enabledModules, moduleAccess },
+    };
+    const snapshot: CapabilitySnapshot = {
+      workspaceId: capabilityWorkspaceId,
+      evaluatedAt: '2026-10-08T10:00:00Z',
+      sourceState: 'graph_authoritative',
+      capabilities: state === null ? [] : [{ capability: 'licenses.hygiene.view', state: state as 'allowed' | 'hidden', reasonCode: 'role_required' }],
+    };
+
+    render(<App loadCapabilities={async () => snapshot} loadSession={async () => session} />);
+
+    expect(await screen.findByText(/Data cannot be shown right now|turned off for this workspace|don't have access/i)).toBeTruthy();
+    expect(screen.queryByText('What this review covers')).toBeNull();
   });
 });

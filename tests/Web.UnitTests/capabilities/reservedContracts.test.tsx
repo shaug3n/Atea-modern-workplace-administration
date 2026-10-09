@@ -5,25 +5,24 @@ import { reservedCapabilities } from '../../../src/Web/src/capabilities/capabili
 
 const typedReservedCapabilities: Capability[] = [
   'authentication.campaigns.manage',
-  'licenses.hygiene.view',
   'platform.about.view',
   'feedback.submit',
 ];
 
 const typedReservedModules: NonNullable<AppRoute['module']>[] = [
-  'license-hygiene',
   'about',
   'feedback',
 ];
 
 describe('reserved contracts', () => {
-  it('keeps reserved keys typed but absent decisions fail closed', () => {
+  it('keeps only inactive keys reserved while hygiene is activated', () => {
     expect(reservedCapabilities).toEqual(typedReservedCapabilities);
     expect(typedReservedModules).toEqual([
-      'license-hygiene',
       'about',
       'feedback',
     ]);
+    expect(reservedCapabilities).not.toContain('licenses.hygiene.view');
+    expect(typedReservedModules).not.toContain('license-hygiene');
 
     const futureRoute: AppRoute = {
       path: '/future',

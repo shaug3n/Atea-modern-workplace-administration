@@ -70,6 +70,10 @@ public static class CapabilityEvaluator
             ReadScopes: ["Directory.Read.All"],
             RoleTemplateIds: [.. ReaderRoles, EntraRoleCatalog.LicenseAdministratorTemplateId],
             MissingReadState: CapabilityState.Hidden),
+        [Capability.LicensesHygieneView] = new(
+            ReadScopes: ["Directory.Read.All"],
+            RoleTemplateIds: [.. ReaderRoles, EntraRoleCatalog.LicenseAdministratorTemplateId],
+            MissingReadState: CapabilityState.Hidden),
         [Capability.LicensesAssign] = new(
             ReadScopes: ["Directory.Read.All", "User.Read.All"],
             WriteScopes: GraphScopeCatalog.LicenseWriteScopes,

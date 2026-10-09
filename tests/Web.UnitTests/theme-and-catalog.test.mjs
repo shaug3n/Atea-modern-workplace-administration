@@ -78,14 +78,27 @@ test('reserved capability names match FE and BE', async () => {
 
   assert.deepEqual(frontendValues, [
     'authentication.campaigns.manage',
-    'licenses.hygiene.view',
     'platform.about.view',
     'feedback.submit',
   ]);
   assert.deepEqual(backendValues, frontendValues);
 });
 
-test('module inventory labels reserved candidates planned and not active', async () => {
+test('license hygiene is an active capability rather than a reserved identifier', async () => {
+  const frontend = await readFile('../../src/Web/src/capabilities/capabilityTypes.ts', 'utf8');
+  const backend = await readFile('../../src/Api/Authorization/Capability.cs', 'utf8');
+  const contracts = await readFile('../../docs/contributing/feature-extension-contracts.md', 'utf8');
+
+  assert.match(frontend, /'licenses\.hygiene\.view'/);
+  assert.match(backend, /LicensesHygieneView\s*=\s*"licenses\.hygiene\.view"/);
+  assert.doesNotMatch(frontend.match(/export const reservedCapabilities\s*=\s*\[([\s\S]*?)\]\s*as const/)?.[1] ?? '', /licenses\.hygiene\.view/);
+  assert.doesNotMatch(backend.match(/public static readonly IReadOnlyList<string> Reserved\s*=\s*\[([\s\S]*?)\];/)?.[1] ?? '', /LicensesHygieneView/);
+  assert.match(contracts, /`license-hygiene`.*`licenses\.hygiene\.view`|`licenses\.hygiene\.view`.*`license-hygiene`/s);
+  assert.match(contracts, /route or\s+navigation metadata is not authorization/i);
+  assert.match(contracts, /no automatic module enablement or member assignment/i);
+});
+
+test('module inventory documents the active, opt-in hygiene workflow', async () => {
   const inventory = await readFile('../../docs/module-inventory.md', 'utf8');
   const campaigns = inventory.split('\n').find(line => line.startsWith('| Authentication campaigns |'));
   assert.ok(campaigns, 'Authentication campaigns should be an active workspace module');
@@ -98,7 +111,6 @@ test('module inventory labels reserved candidates planned and not active', async
   assert.match(campaigns, /authentication\.campaigns\.manage.*reserved and denied/);
 
   const plannedCandidates = [
-    'License Hygiene',
     'About',
     'Feedback',
   ];
@@ -112,4 +124,21 @@ test('module inventory labels reserved candidates planned and not active', async
   for (const retiredCandidate of ['Passkeys', 'MFA campaigns']) {
     assert.equal(inventory.split('\n').some(line => line.startsWith(`| ${retiredCandidate} |`)), false);
   }
+
+  const hygiene = inventory.split('\n').find((line) => line.startsWith('| License Hygiene |'));
+  assert.ok(hygiene, 'License Hygiene should have an inventory row');
+  assert.match(hygiene, /active,\s*opt-in,\s*read-only/i);
+  assert.match(hygiene, /Graph subscribed SKUs.*paged user projection/i);
+  assert.match(hygiene, /10,000.*100.*30 seconds/i);
+  assert.match(hygiene, /no automatic module or member grants/i);
+  assert.doesNotMatch(hygiene, /pending|not shipped/i);
+  const modules = inventory.split('\n').find((line) => line.startsWith('| Modules |'));
+  assert.ok(modules, 'Modules should have an inventory row');
+  assert.match(modules, /supported keys are Users, Devices, Licenses, Exchange, Authentication campaigns, and License Hygiene \(`license-hygiene`\)/);
+  assert.match(modules, /License Hygiene is opt-in/i);
+  assert.match(modules, /does not grant it by default to a workspace or member/i);
+  const candidateTable = inventory.split('## Prism-inspired candidates, outside live navigation')[1];
+  assert.ok(candidateTable, 'the inactive candidate table should exist');
+  assert.doesNotMatch(candidateTable, /^\| License Hygiene \|/m);
+  assert.match(inventory, /`license-hygiene`.*`licenses\.hygiene\.view`|`licenses\.hygiene\.view`.*`license-hygiene`/s);
 });

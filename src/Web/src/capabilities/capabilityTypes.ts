@@ -30,7 +30,6 @@ export type Capability =
 
 export const reservedCapabilities = [
   'authentication.campaigns.manage',
-  'licenses.hygiene.view',
   'platform.about.view',
   'feedback.submit',
 ] as const satisfies readonly Capability[];

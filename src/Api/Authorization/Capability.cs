@@ -35,7 +35,6 @@ public static class Capability
     public static readonly IReadOnlyList<string> Reserved =
     [
         AuthenticationCampaignsManage,
-        LicensesHygieneView,
         PlatformAboutView,
         FeedbackSubmit
     ];
@@ -64,6 +63,7 @@ public static class Capability
         AuthenticationMethodsView,
         AuthenticationMethodsManage,
         AuthenticationCampaignsView,
+        LicensesHygieneView,
         AuditView,
         WorkspaceSettingsManage,
         WorkspaceMembersManage
