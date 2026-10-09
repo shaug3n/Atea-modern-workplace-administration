@@ -10,7 +10,7 @@ import { useFocusContainment } from '../../components/useFocusContainment';
 import { UserWriteReasonField, normalizeUserWriteReason } from './UserWriteReasonField';
 import { userFeatureMessages } from './messages';
 
-export function TemporaryAccessPassDialog({ userId, target, onClose, onAuditWarning }: { userId: string; target: string; onClose: () => void; onAuditWarning?: (warning: string | null) => void }) {
+export function TemporaryAccessPassDialog({ userId, target, onClose, onAuditWarning, onIssued }: { userId: string; target: string; onClose: () => void; onAuditWarning?: (warning: string | null) => void; onIssued?: () => void }) {
   const api = useApi();
   const [pending, setPending] = useState(false);
   const [code, setCode] = useState<string | null>(null);
@@ -59,6 +59,7 @@ export function TemporaryAccessPassDialog({ userId, target, onClose, onAuditWarn
       const warning = result.auditWarning?.trim() || null;
       setAuditWarning(warning);
       onAuditWarning?.(warning);
+      if (result.status === 'succeeded' && !result.replayed) onIssued?.();
       if (result.status === 'succeeded' && result.temporaryAccessPass && !result.replayed) {
         setPassDetails(result);
         setCode(result.temporaryAccessPass);

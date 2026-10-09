@@ -182,6 +182,28 @@ describe('UserDetailPage', () => {
     expect(JSON.parse(apiMock.mock.calls[0][1].body)).toEqual({ reason: 'Suspected token exposure' });
   });
 
+  it('keeps a failed session-revocation audit warning in the dialog and on the page after dismissal', async () => {
+    const auditWarning = 'Session revocation failed because its audit record could not be persisted.';
+    apiMock.mockResolvedValue(new Response(JSON.stringify({ error: 'revoke_sessions_failed', auditWarning }), { status: 503 }));
+    render(<UserDetailPage userId="user-1" loadUserDetail={async () => detail} capabilities={[
+      { capability: 'users.sessions.revoke', state: 'allowed', reasonCode: 'active_role' },
+    ]} />);
+
+    await screen.findByRole('heading', { name: 'Ada Lovelace' });
+    fireEvent.click(screen.getByRole('button', { name: 'More actions' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Revoke sessions' }));
+    const dialog = screen.getByRole('dialog', { name: 'Revoke user sessions' });
+    fireEvent.change(within(dialog).getByLabelText('Reason'), { target: { value: 'Suspected token exposure' } });
+    fireEvent.click(within(dialog).getByLabelText('I reviewed the target, change and required capability.'));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Revoke sessions' }));
+
+    expect((await within(dialog).findByText('revoke_sessions_failed')).textContent).toBe('revoke_sessions_failed');
+    expect(within(dialog).getByText(auditWarning)).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect((await screen.findByRole('alert')).textContent).toContain(auditWarning);
+  });
+
   it('offers card-level profile editing through the existing editor only when source editing is allowed', async () => {
     render(<UserDetailPage userId="user-1" loadUserDetail={async () => ({ ...detail, user: { ...detail.user!, isReadOnly: false } })} capabilities={[
       { capability: 'users.update', state: 'allowed', reasonCode: 'active_role' },
@@ -343,6 +365,53 @@ describe('UserDetailPage', () => {
     expect(screen.getByRole('heading', { name: 'Ada Lovelace' })).toBeTruthy();
     expect(screen.queryByRole('heading', { name: 'Grace Hopper' })).toBeNull();
     expect(screen.getByRole('tabpanel', { name: 'Identity' })).toBeTruthy();
+  });
+
+  it('ignores a delayed license retry after a successful license assignment refreshes profile data', async () => {
+    const stale = { ...detail, licenses: { ...detail.licenses, access: { ...detail.licenses.access, freshness: 'stale' as const, partialData: true } } };
+    const fresh = {
+      ...detail,
+      user: { ...detail.user!, displayName: 'Grace Hopper' },
+      licenses: { ...detail.licenses, items: [{ skuId: 'sku-2', skuPartNumber: 'E5', displayName: 'Microsoft 365 E5' }] },
+      groups: { ...detail.groups, items: [{ id: 'group-2', displayName: 'Engineering', mailNickname: 'engineering', securityEnabled: true, groupTypes: [] }] },
+    };
+    let loads = 0;
+    let finishOldRetry: ((value: UserDetailResponse) => void) | undefined;
+    const loadUserDetail = async () => {
+      loads += 1;
+      if (loads === 1) return stale;
+      if (loads === 2) return await new Promise<UserDetailResponse>(resolve => { finishOldRetry = resolve; });
+      return fresh;
+    };
+    apiMock.mockImplementation(async (path: string, init?: RequestInit) => path === '/api/licenses?pageSize=100'
+      ? new Response(JSON.stringify({ items: [{ skuId: 'sku-2', partNumber: 'E5', displayName: 'Microsoft 365 E5' }], access: { state: 'allowed' } }), { status: 200 })
+      : new Response(JSON.stringify({ status: 'succeeded', requiredCapability: 'licenses.assign', replayed: false }), { status: 200 }));
+    render(<UserDetailPage userId="user-1" modules={['users', 'licenses']} loadUserDetail={loadUserDetail} capabilities={[
+      { capability: 'licenses.assign', state: 'allowed', reasonCode: 'active_role' },
+    ]} />);
+    await screen.findByRole('heading', { name: 'Ada Lovelace' });
+    const licenseRegion = screen.getByRole('region', { name: 'Assigned licenses' });
+    fireEvent.click(within(licenseRegion).getByRole('button', { name: 'Refresh' }));
+    await waitFor(() => expect(loads).toBe(2));
+
+    fireEvent.click(within(licenseRegion).getByRole('button', { name: /assign license/i }));
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.change(within(dialog).getByLabelText('License'), { target: { value: 'sku-2' } });
+    fireEvent.change(within(dialog).getByLabelText('Reason'), { target: { value: 'Role requirements' } });
+    fireEvent.click(within(dialog).getByLabelText('I reviewed the target, change and required capability.'));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Assign license' }));
+    await waitFor(() => expect(apiMock).toHaveBeenCalledWith('/api/users/user-1/licenses/sku-2', expect.objectContaining({ method: 'POST' })));
+    await waitFor(() => expect(loads).toBe(3));
+    expect(await screen.findByRole('heading', { name: 'Grace Hopper' })).toBeTruthy();
+    expect(screen.getByRole('region', { name: 'Assigned licenses' }).textContent).toContain('Microsoft 365 E5');
+    expect(screen.getByText('Engineering')).toBeTruthy();
+
+    finishOldRetry?.({ ...detail, licenses: { ...detail.licenses, items: [{ skuId: 'sku-old', skuPartNumber: 'OLD', displayName: 'Stale license response' }] } });
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Retrying…' })).toBeNull());
+    expect(screen.getByRole('heading', { name: 'Grace Hopper' })).toBeTruthy();
+    expect(screen.getByText('Microsoft 365 E5')).toBeTruthy();
+    expect(screen.getByText('Engineering')).toBeTruthy();
+    expect(screen.queryByText('Stale license response')).toBeNull();
   });
 
   it('ignores a section retry response after navigating to another user', async () => {

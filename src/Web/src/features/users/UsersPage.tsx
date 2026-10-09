@@ -289,7 +289,7 @@ export function UsersPage({ capabilities, onNavigate, loadUsers, authorizationUn
         </ConfirmationDialog>
       )}
       {disableError && !disableTarget && <p role="alert">{disableError}</p>}
-      {createOpen && <UserCreateDialog onCompleted={(response) => {
+      {createOpen && <UserCreateDialog onCancel={() => setCreateOpen(false)} onCompleted={(response) => {
         setAuditWarning(typeof response.auditWarning === 'string' && response.auditWarning.trim() ? response.auditWarning : null);
         if (response.status === 'succeeded') {
           setCreateOpen(false);

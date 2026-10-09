@@ -5,7 +5,7 @@ import { ConfirmationDialog } from '../../components/ConfirmationDialog';
 import { mutateUser, type CreateUserCommand, type UserCommandResponse } from './userMutationApi';
 import { UserWriteReasonField, normalizeUserWriteReason } from './UserWriteReasonField';
 
-export function UserCreateDialog({ onCompleted }: { onCompleted?: (result: UserCommandResponse) => void }) {
+export function UserCreateDialog({ onCompleted, onCancel }: { onCompleted?: (result: UserCommandResponse) => void; onCancel?: () => void }) {
   const api = useApi();
   const [displayName, setDisplayName] = useState('');
   const [userPrincipalName, setUserPrincipalName] = useState('');
@@ -59,6 +59,7 @@ export function UserCreateDialog({ onCompleted }: { onCompleted?: (result: UserC
       busy={pending}
       confirmBlocked={Boolean(reasonError)}
       onConfirm={submit}
+      onCancel={pending ? undefined : onCancel}
     >
       <label>{messages.usersNameColumn}<input value={displayName} onChange={(event) => { setDisplayName(event.target.value); setResult(null); }} /></label>
       <label>{messages.usersUpnColumn}<input value={userPrincipalName} onChange={(event) => { setUserPrincipalName(event.target.value); setResult(null); }} /></label>

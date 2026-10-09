@@ -11,7 +11,7 @@ import { LoadingSkeleton } from '../../components/LoadingSkeleton';
 import { PermissionState } from '../../components/PermissionState';
 import { DisabledReason } from '../../components/DisabledReason';
 import type { CapabilityDecision } from '../../capabilities/capabilityTypes';
-import { fetchAuthenticationMethods, removeAuthenticationMethod, resetAuthenticationMethods, type AuthenticationMethod, type AuthenticationMethodsResponse } from './authenticationMethodsApi';
+import { AuthenticationMethodRequestError, fetchAuthenticationMethods, removeAuthenticationMethod, resetAuthenticationMethods, type AuthenticationMethod, type AuthenticationMethodsResponse } from './authenticationMethodsApi';
 import type { ApiFetch } from './userDetailApi';
 import { TemporaryAccessPassDialog } from './TemporaryAccessPassDialog';
 import { normalizeUserWriteReason, UserWriteReasonField, type UserWriteReasonError } from './UserWriteReasonField';
@@ -93,14 +93,15 @@ export function AuthenticationMethodsSection({ userId, userLabel, decision, mana
     setReasonValidationError(null);
     setPending(true);
     setActionError(null);
+    reportAuditWarning(null);
     try {
       const response = await removeAuthenticationMethod(api as ApiFetch, userId, removeTarget, normalizedReason.reason);
       const warning = readAuditWarning(response);
-      if (onAuditWarning) onAuditWarning(warning);
-      else setAuditWarning(warning);
+      reportAuditWarning(warning);
       setRemoveTarget(null);
       await refreshAfterMutation();
     } catch (error) {
+      if (error instanceof AuthenticationMethodRequestError) reportAuditWarning(error.auditWarning?.trim() || null);
       setActionError(error instanceof Error ? error.message : messages.userAuthenticationMethodsActionFailed);
     } finally {
       setPending(false);
@@ -116,14 +117,15 @@ export function AuthenticationMethodsSection({ userId, userLabel, decision, mana
     setReasonValidationError(null);
     setPending(true);
     setActionError(null);
+    reportAuditWarning(null);
     try {
       const response = await resetAuthenticationMethods(api as ApiFetch, userId, normalizedReason.reason);
       const warning = readAuditWarning(response);
-      if (onAuditWarning) onAuditWarning(warning);
-      else setAuditWarning(warning);
+      reportAuditWarning(warning);
       setResetOpen(false);
       await refreshAfterMutation();
     } catch (error) {
+      if (error instanceof AuthenticationMethodRequestError) reportAuditWarning(error.auditWarning?.trim() || null);
       setActionError(error instanceof Error ? error.message : messages.userAuthenticationMethodsActionFailed);
     } finally {
       setPending(false);
@@ -135,6 +137,10 @@ export function AuthenticationMethodsSection({ userId, userLabel, decision, mana
   const updateResult = (response: AuthenticationMethodsResponse) => {
     setResult(response);
     onResult?.({ status: response.error || response.freshness === 'unavailable' || response.partialData ? 'unavailable' : 'available', items: response.items });
+  };
+  const reportAuditWarning = (warning: string | null) => {
+    setAuditWarning(warning);
+    onAuditWarning?.(warning);
   };
 
   if (decision.state !== 'allowed' && decision.state !== 'read_only') {
@@ -175,13 +181,15 @@ export function AuthenticationMethodsSection({ userId, userLabel, decision, mana
         : <DisabledReason reason={managementDecisionReason(manageDecision)}><button type="button" className="button button--danger" disabled>{messages.userAuthenticationMethodsReset}</button></DisabledReason>}</ActionGroup>}
       {removeTarget && <ConfirmationDialog title={messages.userAuthenticationMethodsRemoveTitle} target={removeTarget.displayName} proposedChange={messages.userAuthenticationMethodsRemoveDescription} requiredCapability="authentication.methods.manage" confirmLabel={messages.confirmRemoveMethod} consequence={messages.confirmRemoveMethodConsequence} tone="danger" busy={pending} confirmBlocked={Boolean(reasonValidationError) || !removeReason.trim()} onConfirm={() => void remove(removeReason)} onCancel={() => { if (!pending) { setRemoveTarget(null); setActionError(null); setReasonValidationError(null); setRemoveReason(''); } }}>
         <UserWriteReasonField value={removeReason} onChange={(value) => { setRemoveReason(value); setReasonValidationError(null); }} error={reasonValidationError} />
+        {auditWarning && <p role="alert" className="audit-warning">{auditWarning}</p>}
         {actionError && <p role="alert" className="action-feedback action-feedback--error">{actionError}</p>}
       </ConfirmationDialog>}
       {resetOpen && <ConfirmationDialog title={messages.userAuthenticationMethodsResetTitle} target={userLabel || userId} proposedChange={messages.userAuthenticationMethodsResetDescription} requiredCapability="authentication.methods.manage" destructivePhrase="RESET MFA" confirmLabel={messages.confirmResetMfa} consequence={messages.confirmResetMfaConsequence} tone="danger" busy={pending} confirmBlocked={Boolean(reasonValidationError) || !resetReason.trim()} onConfirm={() => void resetMfa(resetReason)} onCancel={() => { if (!pending) { setResetOpen(false); setActionError(null); setReasonValidationError(null); setResetReason(''); } }}>
         <UserWriteReasonField value={resetReason} onChange={(value) => { setResetReason(value); setReasonValidationError(null); }} error={reasonValidationError} />
+        {auditWarning && <p role="alert" className="audit-warning">{auditWarning}</p>}
         {actionError && <p role="alert" className="action-feedback action-feedback--error">{actionError}</p>}
       </ConfirmationDialog>}
-      {tapOpen && <TemporaryAccessPassDialog userId={userId} target={userLabel || userId} onClose={() => { setTapOpen(false); onTemporaryAccessPassOpenChange?.(false); }} onAuditWarning={onAuditWarning} />}
+      {tapOpen && <TemporaryAccessPassDialog userId={userId} target={userLabel || userId} onClose={() => { setTapOpen(false); onTemporaryAccessPassOpenChange?.(false); }} onAuditWarning={onAuditWarning} onIssued={() => { void refreshAfterMutation(); }} />}
     </section>
   );
 }

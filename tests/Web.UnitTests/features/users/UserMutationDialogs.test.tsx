@@ -176,6 +176,50 @@ describe('UserMutationDialogs', () => {
     expect(document.activeElement).toBe(name);
   });
 
+  it('allows keyboard-reachable reason entry and returns focus after Cancel or Escape', () => {
+    function Harness() {
+      const [open, setOpen] = React.useState(false);
+      return <><button type="button" onClick={() => setOpen(true)}>Open create user</button>{open && <UserCreateDialog onCancel={() => setOpen(false)} />}</>;
+    }
+    render(<Harness />);
+    const trigger = screen.getByRole('button', { name: 'Open create user' });
+    trigger.focus();
+    fireEvent.click(trigger);
+
+    let dialog = screen.getByRole('dialog', { name: 'Create user' });
+    expect(within(dialog).getByLabelText('Reason')).toBeTruthy();
+    expect(within(dialog).getByRole('button', { name: 'Cancel' })).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(document.activeElement).toBe(trigger);
+
+    trigger.focus();
+    fireEvent.click(trigger);
+    dialog = screen.getByRole('dialog', { name: 'Create user' });
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(document.activeElement).toBe(trigger);
+  });
+
+  it('blocks create-dialog cancellation while the create request is pending', async () => {
+    let finishCreate: ((response: Response) => void) | undefined;
+    apiMock.mockImplementation(() => new Promise<Response>(resolve => { finishCreate = resolve; }));
+    render(<UserCreateDialog onCancel={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Ada Lovelace' } });
+    fireEvent.change(screen.getByLabelText('User principal name'), { target: { value: 'ada@example.com' } });
+    fireEvent.change(screen.getByLabelText('Reason'), { target: { value: 'New employee onboarding' } });
+    fireEvent.click(screen.getByLabelText('I reviewed the target, change and required capability.'));
+    fireEvent.click(screen.getByRole('button', { name: 'Create user' }));
+
+    const dialog = screen.getByRole('dialog', { name: 'Create user' });
+    expect(await within(dialog).findByRole('button', { name: 'Create user…' })).toBeTruthy();
+    expect(within(dialog).queryByRole('button', { name: 'Cancel' })).toBeNull();
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(screen.getByRole('dialog', { name: 'Create user' })).toBeTruthy();
+    expect(apiMock).toHaveBeenCalledTimes(1);
+    finishCreate?.(new Response(JSON.stringify({ status: 'failed', error: 'user_mutation_failed' }), { status: 500 }));
+  });
+
   it('opens the password reset confirmation and cancels without calling the API', () => {
     const onClose = vi.fn();
 

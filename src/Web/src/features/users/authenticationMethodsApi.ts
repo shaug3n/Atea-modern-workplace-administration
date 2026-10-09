@@ -19,6 +19,13 @@ export type AuthenticationMethodsResponse = {
   error?: { category: string; message: string } | null;
 };
 
+export class AuthenticationMethodRequestError extends Error {
+  constructor(message: string, readonly auditWarning?: string | null) {
+    super(message);
+    this.name = 'AuthenticationMethodRequestError';
+  }
+}
+
 export async function fetchAuthenticationMethods(api: ApiFetch, userId: string) {
   const response = await api(`/api/users/${encodeURIComponent(userId)}/authentication-methods`);
   if (!response.ok) throw new Error('authentication_methods_unavailable');
@@ -35,7 +42,10 @@ export async function removeAuthenticationMethod(api: ApiFetch, userId: string, 
     body: JSON.stringify({ reason }),
   });
   const body = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(body.error ?? 'authentication_method_remove_failed');
+  if (!response.ok) throw new AuthenticationMethodRequestError(
+    typeof body.error === 'string' ? body.error : 'authentication_method_remove_failed',
+    typeof body.auditWarning === 'string' ? body.auditWarning : null,
+  );
   return body as { status: string; auditWarning?: string | null };
 }
 
@@ -49,7 +59,10 @@ export async function resetAuthenticationMethods(api: ApiFetch, userId: string, 
     body: JSON.stringify({ reason }),
   });
   const body = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(body.error ?? 'authentication_methods_reset_failed');
+  if (!response.ok) throw new AuthenticationMethodRequestError(
+    typeof body.error === 'string' ? body.error : 'authentication_methods_reset_failed',
+    typeof body.auditWarning === 'string' ? body.auditWarning : null,
+  );
   return body as { status: string; removedCount: number; auditWarning?: string | null };
 }
 

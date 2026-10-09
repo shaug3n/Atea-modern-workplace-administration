@@ -68,6 +68,37 @@ describe('AuthenticationMethodsSection', () => {
     expect((within(dialog).getByLabelText('Reason') as HTMLTextAreaElement).value).toBe('Retired device');
   });
 
+  it.each(['remove', 'reset'] as const)('preserves an audit failure warning inside and after a failed %s dialog', async (operation) => {
+    const auditWarning = 'The security write failed because its audit record could not be persisted.';
+    const operationError = operation === 'remove' ? 'authentication_method_remove_failed' : 'authentication_methods_reset_failed';
+    apiMock.mockImplementation(async (_path: string, init?: RequestInit) => {
+      if (init?.method === 'DELETE' || (init?.method === 'POST' && init.body)) {
+        return new Response(JSON.stringify({ error: operationError, auditWarning }), { status: 503 });
+      }
+      return new Response(JSON.stringify({
+        userObjectId: 'user-1',
+        items: [{ id: 'method-1', type: 'fido2AuthenticationMethod', displayName: 'YubiKey' }],
+        fetchedAt: '2026-09-22T08:00:00Z', freshness: 'live', partialData: false, access: { state: 'allowed' },
+      }), { status: 200 });
+    });
+    const onAuditWarning = vi.fn();
+    render(<AuthenticationMethodsSection userId="user-1" decision={allowed} manageDecision={manage} onAuditWarning={onAuditWarning} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: operation === 'remove' ? 'Remove' : 'Reset MFA methods' }));
+    const dialog = screen.getByRole('dialog');
+    fireEvent.change(within(dialog).getByLabelText('Reason'), { target: { value: 'Security response' } });
+    if (operation === 'reset') fireEvent.change(within(dialog).getByLabelText('Type DISABLE to confirm'), { target: { value: 'RESET MFA' } });
+    fireEvent.click(within(dialog).getByLabelText('I reviewed the target, change and required capability.'));
+    fireEvent.click(within(dialog).getByRole('button', { name: operation === 'remove' ? 'Remove method' : 'Reset MFA' }));
+
+    expect((await within(dialog).findByText(operationError)).textContent).toBe(operationError);
+    expect(within(dialog).getByText(auditWarning)).toBeTruthy();
+    expect(onAuditWarning).toHaveBeenCalledWith(auditWarning);
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect((await screen.findByRole('alert')).textContent).toContain(auditWarning);
+  });
+
   it('explains missing authentication-method consent without making a Graph request', () => {
     render(<AuthenticationMethodsSection userId="user-1" userLabel="Ada Lovelace" decision={consentRequired} />);
 
@@ -140,6 +171,45 @@ describe('AuthenticationMethodsSection', () => {
     expect((await screen.findAllByRole('alert')).some((alert) => alert.textContent?.includes('Pass issued, but its audit record could not be written.'))).toBe(true);
     fireEvent.click(screen.getByRole('button', { name: 'Close' }));
     expect(screen.queryByText('fixture-tap-value')).toBeNull();
+  });
+
+  it('refreshes the method summary after TAP issuance while retaining the one-time secret through a failed read retry', async () => {
+    let readCount = 0;
+    let finishRefresh: ((response: Response) => void) | undefined;
+    apiMock.mockImplementation(async (path: string, init?: RequestInit) => {
+      if (path.includes('temporary-access-pass')) {
+        return new Response(JSON.stringify({ status: 'succeeded', temporaryAccessPass: 'fixture-tap-once' }), { status: 200 });
+      }
+      readCount += 1;
+      if (readCount === 1) return new Response(JSON.stringify({ userObjectId: 'user-1', items: [], fetchedAt: '2026-09-23T08:00:00Z', freshness: 'live', partialData: false, access: { state: 'allowed' } }), { status: 200 });
+      if (readCount === 2) return await new Promise<Response>(resolve => { finishRefresh = resolve; });
+      return new Response(JSON.stringify({
+        userObjectId: 'user-1',
+        items: [{ id: 'method-2', type: 'temporaryAccessPassAuthenticationMethod', displayName: 'Temporary Access Pass' }],
+        fetchedAt: '2026-09-24T08:00:00Z', freshness: 'live', partialData: false, access: { state: 'allowed' },
+      }), { status: 200 });
+    });
+    const onResult = vi.fn();
+    render(<AuthenticationMethodsSection userId="user-1" userLabel="Ada Lovelace" decision={allowed} manageDecision={manage} onResult={onResult} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Grant Temporary Access Pass' }));
+    fireEvent.change(screen.getByLabelText('Reason'), { target: { value: 'New device access' } });
+    fireEvent.click(screen.getByLabelText('I reviewed the target, change and required capability.'));
+    fireEvent.click(screen.getByRole('button', { name: 'Issue Temporary Access Pass' }));
+
+    expect(await screen.findByText('fixture-tap-once')).toBeTruthy();
+    await waitFor(() => expect(readCount).toBe(2));
+    expect(screen.getByRole('dialog', { name: 'Temporary access pass issued' })).toBeTruthy();
+    expect(screen.getByText('Loading authentication methods…')).toBeTruthy();
+    finishRefresh?.(new Response('{}', { status: 503 }));
+    expect(await screen.findByRole('button', { name: 'Retry authentication methods' })).toBeTruthy();
+    expect(screen.getByText('fixture-tap-once')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Retry authentication methods' }));
+    expect((await screen.findAllByText('Temporary Access Pass')).length).toBeGreaterThan(0);
+    expect(screen.getByText('fixture-tap-once')).toBeTruthy();
+    expect(onResult).toHaveBeenLastCalledWith({ status: 'available', items: [{ id: 'method-2', type: 'temporaryAccessPassAuthenticationMethod', displayName: 'Temporary Access Pass' }] });
+    expect(apiMock.mock.calls.filter(([, init]) => init?.method === 'POST')).toHaveLength(1);
+    expect(screen.getAllByText('fixture-tap-once')).toHaveLength(1);
   });
 
   it('shows friendly method names, keeps raw types in technical details and puts reset in a danger zone', async () => {

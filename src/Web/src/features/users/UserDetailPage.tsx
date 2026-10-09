@@ -38,6 +38,7 @@ export function UserDetailPage({ userId, loadUserDetail, capabilities = [], modu
   const currentUserIdRef = useRef(resolvedUserId);
   currentUserIdRef.current = resolvedUserId;
   const sectionRetrySequence = useRef<Record<UserDetailSectionKey, number>>({ identity: 0, licenses: 0, groups: 0, roles: 0 });
+  const authoritativeRefreshGeneration = useRef(0);
   const [partialRetryFor, setPartialRetryFor] = useState<string | null>(null);
   const [refreshingSections, setRefreshingSections] = useState<Partial<Record<UserDetailSectionKey, boolean>>>({});
   const partialRetryPending = partialRetryFor === resolvedUserId;
@@ -71,9 +72,17 @@ export function UserDetailPage({ userId, loadUserDetail, capabilities = [], modu
   const devicesViewDecision = findDecision(capabilities, 'devices.view');
   const revokeSessionsDecision = findDecision(capabilities, 'users.sessions.revoke');
   const reportAuthenticationSummary = useCallback((summary: AuthenticationMethodsSummary) => setAuthenticationSummary(summary), []);
+  function startAuthoritativeRefresh(partial: boolean) {
+    authoritativeRefreshGeneration.current += 1;
+    setRefreshingSections({});
+    setPartialRetryFor(partial ? resolvedUserId : null);
+    setRefreshVersion(version => version + 1);
+  }
 
   useEffect(() => {
     let cancelled = false;
+    authoritativeRefreshGeneration.current += 1;
+    setRefreshingSections({});
     setLoading(true);
     setError(null);
     loader(resolvedUserId)
@@ -111,7 +120,7 @@ export function UserDetailPage({ userId, loadUserDetail, capabilities = [], modu
     return (
       <section className="user-detail-page">
         <WorkspacePageHeader eyebrow="Users" title={messages.userDetailTitle} />
-        <WorkspaceDataState state="unavailable" message={error.message === 'user_not_found' ? messages.userDetailNotFound : messages.userDetailUnavailable} onRetry={() => setRefreshVersion(version => version + 1)} />
+        <WorkspaceDataState state="unavailable" message={error.message === 'user_not_found' ? messages.userDetailNotFound : messages.userDetailUnavailable} onRetry={() => startAuthoritativeRefresh(false)} />
       </section>
     );
   }
@@ -142,7 +151,7 @@ export function UserDetailPage({ userId, loadUserDetail, capabilities = [], modu
     setEditOpen(false);
     setReactivateOpen(false);
     setMutationError(null);
-    setRefreshVersion((version) => version + 1);
+    startAuthoritativeRefresh(false);
   };
   const retainAuditWarning = (result: unknown) => {
     const warning = result && typeof result === 'object' && 'auditWarning' in result ? (result as { auditWarning?: unknown }).auditWarning : null;
@@ -154,12 +163,15 @@ export function UserDetailPage({ userId, loadUserDetail, capabilities = [], modu
   };
 
   const displayName = user.displayName || user.userPrincipalName || user.id;
-  const refreshDetail = () => { setPartialRetryFor(resolvedUserId); setRefreshVersion(version => version + 1); };
+  const refreshDetail = () => startAuthoritativeRefresh(true);
   const retrySection = async (section: UserDetailSectionKey) => {
     if (refreshingSections[section]) return;
     const requestUserId = resolvedUserId;
     const requestVersion = ++sectionRetrySequence.current[section];
-    const isCurrentRequest = () => currentUserIdRef.current === requestUserId && sectionRetrySequence.current[section] === requestVersion;
+    const refreshGeneration = authoritativeRefreshGeneration.current;
+    const isCurrentRequest = () => currentUserIdRef.current === requestUserId
+      && sectionRetrySequence.current[section] === requestVersion
+      && authoritativeRefreshGeneration.current === refreshGeneration;
     setRefreshingSections(current => ({ ...current, [section]: true }));
     try {
       const refreshed = sanitizeDetailErrors(await loader(requestUserId));

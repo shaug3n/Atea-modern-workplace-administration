@@ -255,6 +255,23 @@ describe('UsersPage', () => {
     expect(screen.getByLabelText('Name')).toBeTruthy();
   });
 
+  it('closes create on Cancel and Escape and restores focus to its opener', async () => {
+    render(<UsersPage capabilities={[decision('users.view', 'allowed'), decision('users.create', 'allowed'), decision('users.disable', 'hidden')]} loadUsers={async () => usersResponse} />);
+    const trigger = await screen.findByRole('button', { name: 'Create user' });
+
+    trigger.focus();
+    fireEvent.click(trigger);
+    fireEvent.click(within(screen.getByRole('dialog', { name: 'Create user' })).getByRole('button', { name: 'Cancel' }));
+    expect(screen.queryByRole('dialog', { name: 'Create user' })).toBeNull();
+    expect(document.activeElement).toBe(trigger);
+
+    trigger.focus();
+    fireEvent.click(trigger);
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(screen.queryByRole('dialog', { name: 'Create user' })).toBeNull();
+    expect(document.activeElement).toBe(trigger);
+  });
+
   it('keeps the create audit warning visible after the form closes', async () => {
     apiMock.mockResolvedValue(new Response(JSON.stringify({ status: 'succeeded', auditWarning: 'User created, but the audit record could not be written.' }), { status: 201 }));
     render(<UsersPage capabilities={[decision('users.view', 'allowed'), decision('users.create', 'allowed'), decision('users.disable', 'hidden')]} loadUsers={async () => usersResponse} />);
