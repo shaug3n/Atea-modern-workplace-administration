@@ -89,6 +89,14 @@
 
 .device360-fact .provenance-chip {
   justify-self: start;
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.device360-fact .provenance-chip__source {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .device360-fact dt .info-tip {
