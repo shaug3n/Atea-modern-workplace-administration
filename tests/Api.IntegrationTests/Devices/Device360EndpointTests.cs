@@ -99,7 +99,7 @@ public sealed class Device360EndpointTests
     }
 
     private static WebApplicationFactory<Program> CreateFactory(RecordingService service, bool hasModule) =>
-        new WebApplicationFactory<Program>().WithWebHostBuilder(builder => builder
+        new ApiIntegrationTestFactory().WithWebHostBuilder(builder => builder
             .ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
             {
                 ["AzureAd:Audience"] = "api://atea-unified-workplace-api",

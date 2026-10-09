@@ -1,6 +1,8 @@
 import { overviewMessages } from '../features/overview/messages';
 import { authenticationCampaignMessages } from '../features/authentication-campaigns/messages';
 import { licenseHygieneMessages } from '../features/licenses/hygiene/messages';
+import { aboutMessages } from '../features/about/messages';
+import { feedbackMessages } from '../features/feedback/messages';
 
 export type ConnectionState = 'awaiting_invitation' | 'consent_required' | 'connected' | 'permission_incomplete' | 'temporarily_unavailable' | 'consent_revoked' | 'connection_failed';
 
@@ -17,7 +19,7 @@ export const messages = {
   primaryNavigationLabel: 'Primary navigation', tenantContextLabel: 'Current workspace and signed-in user', workspaceLabel: 'Workspace', signedInUserLabel: 'Signed-in user', signedInAs: 'Signed in as', unknownUser: 'Unknown user',
   navOverview: 'Overview', navOnboarding: 'Workspace setup', navWorkspaceAccess: 'Workspace access', navUsers: 'Users', navLicenses: 'Licenses', navDevices: 'Devices', navIdentity: 'Identity and security', navAudit: 'Audit activity', navWorkspaceSettings: 'Workspace settings',
   navGroupOverview: 'Overview', navGroupIdentityAccess: 'Identity & Access', navGroupDevices: 'Devices', navGroupLicenses: 'Licenses', navGroupServices: 'Services', navGroupOperations: 'Operations', navGroupPlatform: 'Platform',
-  ...overviewMessages, ...authenticationCampaignMessages, overviewFreshness: 'Data freshness', overviewTotalUsers: 'Total users', overviewLicenseCoverage: 'License coverage', retry: 'Retry', saveSettings: 'Save settings',
+  ...overviewMessages, ...authenticationCampaignMessages, ...aboutMessages, ...feedbackMessages, overviewFreshness: 'Data freshness', overviewTotalUsers: 'Total users', overviewLicenseCoverage: 'License coverage', retry: 'Retry', saveSettings: 'Save settings',
   domainAccessReadOnly: 'Read-only', domainAccessReadWrite: 'Read / write', domainAccessUnavailable: 'Unavailable', disabledReasonSourceLabel: 'Source of truth:',
   statusThrottled: 'Refresh throttled', statusRefreshAction: 'Refresh', statusRefreshing: 'Refreshing…', quickActionsAuditNotice: 'All actions are audit-logged', reasonFieldLabel: 'Reason', reasonFieldRequired: 'Enter a reason before continuing.',
  

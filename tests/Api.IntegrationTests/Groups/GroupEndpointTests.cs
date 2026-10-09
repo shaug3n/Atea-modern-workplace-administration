@@ -68,7 +68,7 @@ public sealed class GroupEndpointTests
     }
 
     private static WebApplicationFactory<Program> CreateFactory(RecordingGroupCatalogReader reader, GraphAuthorizationSnapshot snapshot) =>
-        new WebApplicationFactory<Program>().WithWebHostBuilder(builder => builder.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
+        new ApiIntegrationTestFactory().WithWebHostBuilder(builder => builder.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
         {
             ["AzureAd:Audience"] = "api://atea-unified-workplace-api",
             ["AzureAd:ClientId"] = "test-client-id"

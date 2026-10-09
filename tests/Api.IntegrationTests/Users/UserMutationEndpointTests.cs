@@ -276,7 +276,7 @@ public sealed class UserMutationEndpointTests
         RecordingGroupCatalogReader? groupCatalog = null,
         RecordingLicenseCatalogReader? licenseCatalog = null,
         RecordingAuditWriter? auditWriter = null) =>
-        new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
+        new ApiIntegrationTestFactory().WithWebHostBuilder(builder =>
         {
             builder.ConfigureAppConfiguration((_, config) =>
             {

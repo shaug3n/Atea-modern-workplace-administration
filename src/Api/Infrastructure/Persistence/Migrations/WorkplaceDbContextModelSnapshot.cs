@@ -17,7 +17,7 @@ namespace Atea.UnifiedWorkplace.Api.Infrastructure.Persistence.Migrations
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "9.0.8")
+                .HasAnnotation("ProductVersion", "10.0.12")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
@@ -28,16 +28,16 @@ namespace Atea.UnifiedWorkplace.Api.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<string>("Action")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
                     b.Property<Guid>("ActorObjectId")
                         .HasColumnType("uuid");
 
                     b.Property<Guid>("ActorTenantId")
                         .HasColumnType("uuid");
-
-                    b.Property<string>("Action")
-                        .IsRequired()
-                        .HasMaxLength(128)
-                        .HasColumnType("character varying(128)");
 
                     b.Property<string>("CorrelationId")
                         .HasMaxLength(100)
@@ -55,14 +55,14 @@ namespace Atea.UnifiedWorkplace.Api.Infrastructure.Persistence.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)");
 
-                    b.Property<string>("PimRequestId")
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)");
-
                     b.Property<string>("Outcome")
                         .IsRequired()
                         .HasMaxLength(32)
                         .HasColumnType("character varying(32)");
+
+                    b.Property<string>("PimRequestId")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
 
                     b.Property<string>("SafeMetadataJson")
                         .IsRequired()
@@ -73,16 +73,16 @@ namespace Atea.UnifiedWorkplace.Api.Infrastructure.Persistence.Migrations
                         .HasMaxLength(256)
                         .HasColumnType("character varying(256)");
 
-                    b.Property<DateTimeOffset>("Timestamp")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid");
-
                     b.Property<string>("TargetType")
                         .IsRequired()
                         .HasMaxLength(64)
                         .HasColumnType("character varying(64)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("Timestamp")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<Guid>("WorkspaceId")
                         .HasColumnType("uuid");
@@ -102,13 +102,13 @@ namespace Atea.UnifiedWorkplace.Api.Infrastructure.Persistence.Migrations
                         .HasMaxLength(128)
                         .HasColumnType("character varying(128)");
 
+                    b.Property<DateTimeOffset?>("ConsumedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<string>("CorrelationId")
                         .IsRequired()
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)");
-
-                    b.Property<DateTimeOffset?>("ConsumedAt")
-                        .HasColumnType("timestamp with time zone");
 
                     b.Property<DateTimeOffset>("ExpiresAt")
                         .HasColumnType("timestamp with time zone");
@@ -124,6 +124,60 @@ namespace Atea.UnifiedWorkplace.Api.Infrastructure.Persistence.Migrations
                     b.HasIndex("WorkspaceId", "TenantId", "ExpiresAt");
 
                     b.ToTable("ConsentChallenges");
+                });
+
+            modelBuilder.Entity("Atea.UnifiedWorkplace.Api.Infrastructure.Persistence.Entities.FeedbackSubmission", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Category")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Message")
+                        .IsRequired()
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)");
+
+                    b.Property<string>("PayloadFingerprint")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("RetryKeyHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("Subject")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.Property<Guid>("SubmitterObjectId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("WorkspaceId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ExpiresAt");
+
+                    b.HasIndex("WorkspaceId", "SubmitterObjectId", "RetryKeyHash")
+                        .IsUnique()
+                        .HasDatabaseName("IX_FeedbackSubmissions_RetryKey");
+
+                    b.ToTable("FeedbackSubmissions");
                 });
 
             modelBuilder.Entity("Atea.UnifiedWorkplace.Api.Infrastructure.Persistence.Entities.IdempotencyRecord", b =>
@@ -193,16 +247,11 @@ namespace Atea.UnifiedWorkplace.Api.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("ModuleKeysJson")
-                        .IsRequired()
-                        .HasColumnType("jsonb")
-                        .HasDefaultValueSql("'[]'::jsonb");
-
                     b.Property<Guid?>("ApprovedTenantObjectId")
                         .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("DisplayName")
                         .IsRequired()
@@ -215,22 +264,29 @@ namespace Atea.UnifiedWorkplace.Api.Infrastructure.Persistence.Migrations
                     b.Property<DateTimeOffset>("ExpiresAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("ModuleKeysJson")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("jsonb")
+                        .HasDefaultValueSql("'[]'::jsonb");
+
                     b.Property<string>("NonceHash")
                         .IsRequired()
                         .HasMaxLength(128)
                         .HasColumnType("character varying(128)");
-
-                    b.Property<string>("Role")
-                        .IsRequired()
-                        .HasMaxLength(32)
-                        .HasDefaultValue("customer_admin")
-                        .HasColumnType("character varying(32)");
 
                     b.Property<DateTimeOffset?>("RedeemedAt")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<DateTimeOffset?>("RevokedAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Role")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasDefaultValue("customer_admin");
 
                     b.Property<Guid>("WorkspaceId")
                         .HasColumnType("uuid");
@@ -261,9 +317,9 @@ namespace Atea.UnifiedWorkplace.Api.Infrastructure.Persistence.Migrations
 
                     b.HasKey("OperatorTenantId", "OperatorObjectId", "WorkspaceId");
 
-                    b.HasIndex("OperatorTenantId", "OperatorObjectId");
-
                     b.HasIndex("WorkspaceId");
+
+                    b.HasIndex("OperatorTenantId", "OperatorObjectId");
 
                     b.ToTable("PlatformWorkspaceGrants");
                 });
@@ -369,6 +425,7 @@ namespace Atea.UnifiedWorkplace.Api.Infrastructure.Persistence.Migrations
 
                     b.Property<string>("ModuleGrantsJson")
                         .IsRequired()
+                        .ValueGeneratedOnAdd()
                         .HasColumnType("jsonb")
                         .HasDefaultValueSql("'[]'::jsonb");
 
@@ -421,6 +478,26 @@ namespace Atea.UnifiedWorkplace.Api.Infrastructure.Persistence.Migrations
                     b.ToTable("WorkspaceSettings");
                 });
 
+            modelBuilder.Entity("Atea.UnifiedWorkplace.Api.Infrastructure.Persistence.Entities.ConsentChallenge", b =>
+                {
+                    b.HasOne("Atea.UnifiedWorkplace.Api.Infrastructure.Persistence.Entities.Workspace", "Workspace")
+                        .WithMany()
+                        .HasForeignKey("WorkspaceId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Workspace");
+                });
+
+            modelBuilder.Entity("Atea.UnifiedWorkplace.Api.Infrastructure.Persistence.Entities.FeedbackSubmission", b =>
+                {
+                    b.HasOne("Atea.UnifiedWorkplace.Api.Infrastructure.Persistence.Entities.Workspace", null)
+                        .WithMany()
+                        .HasForeignKey("WorkspaceId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("Atea.UnifiedWorkplace.Api.Infrastructure.Persistence.Entities.PlatformInvitation", b =>
                 {
                     b.HasOne("Atea.UnifiedWorkplace.Api.Infrastructure.Persistence.Entities.Workspace", "Workspace")
@@ -433,17 +510,6 @@ namespace Atea.UnifiedWorkplace.Api.Infrastructure.Persistence.Migrations
                 });
 
             modelBuilder.Entity("Atea.UnifiedWorkplace.Api.Infrastructure.Persistence.Entities.PlatformWorkspaceGrant", b =>
-                {
-                    b.HasOne("Atea.UnifiedWorkplace.Api.Infrastructure.Persistence.Entities.Workspace", "Workspace")
-                        .WithMany()
-                        .HasForeignKey("WorkspaceId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Workspace");
-                });
-
-            modelBuilder.Entity("Atea.UnifiedWorkplace.Api.Infrastructure.Persistence.Entities.ConsentChallenge", b =>
                 {
                     b.HasOne("Atea.UnifiedWorkplace.Api.Infrastructure.Persistence.Entities.Workspace", "Workspace")
                         .WithMany()

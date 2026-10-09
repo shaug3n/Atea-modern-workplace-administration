@@ -143,13 +143,21 @@ public static class CapabilityEvaluator
     public static bool IsPlatformOnly(string capability) =>
         string.Equals(capability, Capability.WorkspaceSettingsManage, StringComparison.OrdinalIgnoreCase)
         || string.Equals(capability, Capability.WorkspaceMembersManage, StringComparison.OrdinalIgnoreCase)
-        || string.Equals(capability, Capability.AuditView, StringComparison.OrdinalIgnoreCase);
+        || string.Equals(capability, Capability.AuditView, StringComparison.OrdinalIgnoreCase)
+        || string.Equals(capability, Capability.PlatformAboutView, StringComparison.OrdinalIgnoreCase)
+        || string.Equals(capability, Capability.FeedbackSubmit, StringComparison.OrdinalIgnoreCase);
 
     public static CapabilityDecision EvaluatePlatformCapability(string capability, WorkspaceMembership workspaceMembership)
     {
         if (!IsPlatformOnly(capability))
         {
             throw new ArgumentException($"Capability '{capability}' is not platform-only.", nameof(capability));
+        }
+
+        if (string.Equals(capability, Capability.PlatformAboutView, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(capability, Capability.FeedbackSubmit, StringComparison.OrdinalIgnoreCase))
+        {
+            return new CapabilityDecision(capability, CapabilityState.Allowed, "workspace_membership");
         }
 
         return IsWorkspaceManager(workspaceMembership)

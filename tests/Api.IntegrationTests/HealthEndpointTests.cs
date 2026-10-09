@@ -4,11 +4,11 @@ using Microsoft.AspNetCore.Mvc.Testing;
 
 namespace Atea.UnifiedWorkplace.Api.IntegrationTests;
 
-public sealed class HealthEndpointTests : IClassFixture<WebApplicationFactory<Program>>
+public sealed class HealthEndpointTests : IClassFixture<ApiIntegrationTestFactory>
 {
     private readonly HttpClient client;
 
-    public HealthEndpointTests(WebApplicationFactory<Program> factory) => client = factory.CreateClient();
+    public HealthEndpointTests(ApiIntegrationTestFactory factory) => client = factory.CreateClient();
 
     [Fact]
     public async Task ApiStartsAndExposesHealthEndpoint()

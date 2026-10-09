@@ -150,7 +150,7 @@ public sealed class LicenseHygieneEndpointTests
         string[] modules,
         RecordingInventoryReader inventory,
         RecordingUserReader users) =>
-        new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
+        new ApiIntegrationTestFactory().WithWebHostBuilder(builder =>
             builder.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
             {
                 ["AzureAd:Audience"] = "api://atea-unified-workplace-api",

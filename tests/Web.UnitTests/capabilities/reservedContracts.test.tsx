@@ -6,24 +6,27 @@ import { accessSummaryCapabilityGroups } from '../../../src/Web/src/features/my-
 
 const typedReservedCapabilities: Capability[] = [
   'authentication.campaigns.manage',
+];
+
+const typedActiveCapabilities: Capability[] = [
+  'licenses.hygiene.view',
   'platform.about.view',
   'feedback.submit',
 ];
 
 const typedReservedModules: NonNullable<AppRoute['module']>[] = [
-  'about',
-  'feedback',
 ];
 
 describe('reserved contracts', () => {
-  it('keeps only inactive keys reserved while hygiene is activated', () => {
+  it('keeps only inactive capability keys reserved while shipped modules are active', () => {
     expect(reservedCapabilities).toEqual(typedReservedCapabilities);
-    expect(typedReservedModules).toEqual([
-      'about',
-      'feedback',
-    ]);
-    expect(reservedCapabilities).not.toContain('licenses.hygiene.view');
-    expect(typedReservedModules).not.toContain('license-hygiene');
+    expect(typedActiveCapabilities).toEqual(['licenses.hygiene.view', 'platform.about.view', 'feedback.submit']);
+    expect(typedReservedModules).toEqual([]);
+    expect(reservedCapabilities).not.toContain('platform.about.view');
+    expect(reservedCapabilities).not.toContain('feedback.submit');
+    expect(reservedCapabilities).not.toContain('authentication.campaigns.view');
+    expect(typedReservedModules).not.toContain('about');
+    expect(typedReservedModules).not.toContain('feedback');
 
     const futureRoute: AppRoute = {
       path: '/future',

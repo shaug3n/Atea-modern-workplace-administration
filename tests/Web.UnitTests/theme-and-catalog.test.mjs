@@ -12,6 +12,14 @@ test('app renders every visible message from the typed catalog', async () => {
   assert.doesNotMatch(shell, />Atea Unified Workplace<\/h1>/);
 });
 
+test('about messages are explicitly composed into the typed catalog', async () => {
+  const catalog = await readFile('../../src/Web/src/messages/en.ts', 'utf8');
+  const featureMessages = await readFile('../../src/Web/src/features/about/messages.ts', 'utf8');
+  assert.match(featureMessages, /export const aboutMessages\s*=/);
+  assert.match(catalog, /import\s+\{\s*aboutMessages\s*\}\s+from\s+['"]\.\.\/features\/about\/messages['"]/);
+  assert.match(catalog, /\.\.\.aboutMessages/);
+});
+
 test('baseline provides semantic Atea theme tokens and user dark-mode control', async () => {
   const css = await readFile('../../src/Web/src/styles/theme.css', 'utf8');
   const app = await readFile('../../src/Web/src/app/App.tsx', 'utf8');
@@ -57,6 +65,13 @@ test('skeleton convention disables shimmer for reduced motion', async () => {
   assert.match(components, /@media\s*\(prefers-reduced-motion:\s*reduce\)[\s\S]*?\.loading-skeleton[\s\S]*?animation:\s*none/);
 });
 
+test('narrow About tabs wrap and feedback launcher returns to document flow', async () => {
+  const about = await readFile('../../src/Web/src/features/about/about.css', 'utf8');
+  const feedback = await readFile('../../src/Web/src/features/feedback/feedback.css', 'utf8');
+  assert.match(about, /@media\s*\(max-width:\s*42rem\)[\s\S]*?\.about-tabs\s*\{[^}]*flex-wrap:\s*wrap[^}]*overflow-x:\s*visible/);
+  assert.match(feedback, /@media\s*\(max-width:\s*42rem\)[\s\S]*?\.app-feedback-fab\s*\{[^}]*position:\s*static[^}]*margin:\s*1rem 0\.75rem 0\.75rem auto/);
+});
+
 test('reserved capability names match FE and BE', async () => {
   const frontend = await readFile('../../src/Web/src/capabilities/capabilityTypes.ts', 'utf8');
   const backend = await readFile('../../src/Api/Authorization/Capability.cs', 'utf8');
@@ -78,13 +93,11 @@ test('reserved capability names match FE and BE', async () => {
 
   assert.deepEqual(frontendValues, [
     'authentication.campaigns.manage',
-    'platform.about.view',
-    'feedback.submit',
   ]);
   assert.deepEqual(backendValues, frontendValues);
 });
 
-test('license hygiene is an active capability rather than a reserved identifier', async () => {
+test('license hygiene is active rather than a reserved capability', async () => {
   const frontend = await readFile('../../src/Web/src/capabilities/capabilityTypes.ts', 'utf8');
   const backend = await readFile('../../src/Api/Authorization/Capability.cs', 'utf8');
   const contracts = await readFile('../../docs/contributing/feature-extension-contracts.md', 'utf8');
@@ -98,7 +111,7 @@ test('license hygiene is an active capability rather than a reserved identifier'
   assert.match(contracts, /no automatic module enablement or member assignment/i);
 });
 
-test('module inventory documents the active, opt-in hygiene workflow', async () => {
+test('module inventory distinguishes shipped modules from planned candidates', async () => {
   const inventory = await readFile('../../docs/module-inventory.md', 'utf8');
   const campaigns = inventory.split('\n').find(line => line.startsWith('| Authentication campaigns |'));
   assert.ok(campaigns, 'Authentication campaigns should be an active workspace module');
@@ -110,17 +123,12 @@ test('module inventory documents the active, opt-in hygiene workflow', async () 
   assert.match(campaigns, /Entra ID P1 or P2/);
   assert.match(campaigns, /authentication\.campaigns\.manage.*reserved and denied/);
 
-  const plannedCandidates = [
-    'About',
-    'Feedback',
-  ];
-
-  for (const candidate of plannedCandidates) {
-    const row = inventory.split('\n').find((line) => line.startsWith(`| ${candidate} |`));
-    assert.ok(row, `${candidate} should have an inventory row`);
-    assert.match(row, /planned wave 1/i, `${candidate} should be planned for wave 1`);
-    assert.match(row, /not shipped, enabled, validated, or granted/i, `${candidate} should be explicitly inactive`);
+  for (const capability of ['About', 'Feedback']) {
+    const row = inventory.split('\n').find((line) => line.startsWith(`| ${capability} |`));
+    assert.ok(row, `${capability} should have an inventory row`);
+    assert.match(row, /F6 catalog activated/i, `${capability} should be documented as shipped`);
   }
+
   for (const retiredCandidate of ['Passkeys', 'MFA campaigns']) {
     assert.equal(inventory.split('\n').some(line => line.startsWith(`| ${retiredCandidate} |`)), false);
   }
@@ -134,9 +142,10 @@ test('module inventory documents the active, opt-in hygiene workflow', async () 
   assert.doesNotMatch(hygiene, /pending|not shipped/i);
   const modules = inventory.split('\n').find((line) => line.startsWith('| Modules |'));
   assert.ok(modules, 'Modules should have an inventory row');
-  assert.match(modules, /supported keys are Users, Devices, Licenses, Exchange, Authentication campaigns, and License Hygiene \(`license-hygiene`\)/);
-  assert.match(modules, /License Hygiene is opt-in/i);
-  assert.match(modules, /does not grant it by default to a workspace or member/i);
+  assert.match(modules, /supported keys are Users, Devices, Licenses, Exchange, Authentication campaigns, License Hygiene \(`license-hygiene`\), About, and Feedback/);
+  assert.match(modules, /License Hygiene, About and Feedback are opt-in/i);
+  assert.match(modules, /does not grant them by default to a workspace or member/i);
+  assert.match(modules, /About.*Feedback/);
   const candidateTable = inventory.split('## Prism-inspired candidates, outside live navigation')[1];
   assert.ok(candidateTable, 'the inactive candidate table should exist');
   assert.doesNotMatch(candidateTable, /^\| License Hygiene \|/m);

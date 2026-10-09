@@ -184,7 +184,7 @@ public sealed class PimEndpointTests
         RecordingPimActivationCommands? activations = null,
         GraphAuthorizationSnapshot? snapshot = null,
         RecordingDirectoryReader? directory = null) =>
-        new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
+        new ApiIntegrationTestFactory().WithWebHostBuilder(builder =>
         {
             builder.ConfigureAppConfiguration((_, config) =>
             {

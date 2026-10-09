@@ -315,7 +315,7 @@ public sealed class CrossTenantAccessTests : IAsyncLifetime
         bool useDatabase = false,
         bool useHostedPlatformAuthorization = false,
         bool failAudit = false) =>
-        new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
+        new ApiIntegrationTestFactory().WithWebHostBuilder(builder =>
         {
             var configuration = new Dictionary<string, string?>
             {

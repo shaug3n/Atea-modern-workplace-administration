@@ -39,6 +39,17 @@ def workflow_step_script(name):
 
 
 class ReleaseCliTests(unittest.TestCase):
+    def test_build_argument_uses_pull_request_head_branch_and_non_pr_ref_name(self):
+        workflow = WORKFLOW.read_text(encoding="utf-8")
+        self.assertRegex(
+            workflow,
+            r"(?m)^\s*ATEA_BUILD_BRANCH: \$\{\{ github\.event_name == 'pull_request' && github\.event\.pull_request\.head\.ref \|\| github\.ref_name \}\}$",
+        )
+
+        script = workflow_step_script("Build the immutable hosted image")
+        self.assertIn('--build-arg ATEA_BUILD_BRANCH="$ATEA_BUILD_BRANCH"', script)
+        self.assertIn('--build-arg ATEA_BUILD_COMMIT="$GITHUB_SHA"', script)
+
     def test_candidate_update_uses_supported_azure_cli_options(self):
         command = candidate_update_arguments()
         self.assertEqual(command[:3], ["az", "containerapp", "update"])

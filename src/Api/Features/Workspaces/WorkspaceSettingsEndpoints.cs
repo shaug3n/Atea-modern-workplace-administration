@@ -30,7 +30,7 @@ public interface IWorkspaceSettingsService
 
 public sealed class WorkspaceSettingsService(WorkplaceDbContext db, IConfiguration configuration, WorkspaceSettingsMemoryCache memoryCache) : IWorkspaceSettingsService
 {
-    private static readonly HashSet<string> AllowedModules = new(StringComparer.OrdinalIgnoreCase) { "users", "devices", "licenses", "exchange" };
+    private static readonly HashSet<string> AllowedModules = WorkspaceModuleCatalog.All.ToHashSet(StringComparer.OrdinalIgnoreCase);
     private static readonly HashSet<string> AllowedColumns = new(StringComparer.OrdinalIgnoreCase) { "displayName", "userPrincipalName", "mail", "accountStatus", "userType" };
     private static readonly HashSet<string> AllowedFilters = new(StringComparer.OrdinalIgnoreCase) { "accountStatus", "tenantRole", "license", "userType" };
 
