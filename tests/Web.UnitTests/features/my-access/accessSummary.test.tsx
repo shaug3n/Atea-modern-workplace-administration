@@ -109,8 +109,70 @@ describe('summarizeAccess', () => {
     const summary = summarizeAccess(value, currentSession);
     expect(module(summary, 'users').read.state).toBe('unavailable');
     if (value && value.sourceState !== 'graph_authoritative') {
-      expect(module(summary, 'workspace-administration').write.state).toBe('allowed');
+      expect(module(summary, 'workspace-administration').write.state).toBe('unavailable');
     }
+  });
+
+  it('preserves API decisions and consent evidence when the Graph snapshot is unavailable', () => {
+    const value = snapshot({
+      sourceState: 'temporarily_unavailable',
+      capabilities: mappedCapabilities.map(capability => decision(
+        capability,
+        capability === 'users.update' ? 'consent_required' : 'allowed',
+        'not_applicable',
+        capability === 'users.update'
+          ? { reasonCode: 'consent_required', missingScopes: ['User.ReadWrite.All'] }
+          : {},
+      )),
+    });
+
+    const update = module(summarizeAccess(value, session), 'users').write.actions.find(action => action.capability === 'users.update');
+    expect(update?.state).toBe('unavailable');
+    expect(update?.decision?.state).toBe('consent_required');
+    expect(update?.reasonLabel).toContain('Microsoft consent is required');
+    expect(update?.consentEvidence).toContain('User.ReadWrite.All');
+  });
+
+  it.each([
+    ['module disabled', { enabled: false, effective: false }, 'module_disabled'],
+    ['workspace grant missing', { enabled: true, effective: false }, 'workspace_not_granted'],
+  ] as const)('retains role and consent evidence when the module is gated (%s)', (_label, gate, expectedState) => {
+    const value = snapshot({
+      workspaceModules: snapshot().workspaceModules?.map(item => item.module === 'users' ? { ...item, ...gate } : item),
+      capabilities: mappedCapabilities.filter(capability => capability !== 'users.sessions.revoke').map(capability => decision(
+        capability,
+        capability === 'users.create' ? 'pim_activation_required' : capability === 'users.update' ? 'consent_required' : 'allowed',
+        'available',
+        capability === 'users.create'
+          ? {
+            reasonCode: 'directory_role_required',
+            requiredRoleTemplateId: 'fe930be7-5e62-47db-91af-98c3a49a38b1',
+            roleEvidence: {
+              state: 'available',
+              requiredRoleTemplateIds: ['fe930be7-5e62-47db-91af-98c3a49a38b1'],
+              assignments: [{ roleTemplateId: 'fe930be7-5e62-47db-91af-98c3a49a38b1', assignmentState: 'eligible', scope: 'tenant' }],
+            },
+          }
+          : capability === 'users.update'
+            ? { reasonCode: 'consent_required', missingScopes: ['User.ReadWrite.All'] }
+            : {},
+      )),
+    });
+
+    const users = module(summarizeAccess(value, session), 'users');
+    const create = users.write.actions.find(action => action.capability === 'users.create');
+    const update = users.write.actions.find(action => action.capability === 'users.update');
+    expect(users.write.state).toBe(expectedState);
+    expect(users.write.workspaceGateState).toBe(expectedState);
+    expect(create?.state).toBe(expectedState);
+    expect(create?.decision?.state).toBe('pim_activation_required');
+    expect(create?.decision?.roleEvidence?.assignments[0].assignmentState).toBe('eligible');
+    expect(update?.decision?.state).toBe('consent_required');
+    expect(update?.consentEvidence).toContain('User.ReadWrite.All');
+    const missing = users.write.actions.find(action => action.capability === 'users.sessions.revoke');
+    expect(missing?.state).toBe('partial');
+    expect(missing?.decision).toBeNull();
+    expect(missing?.reasonLabel).toContain('did not return a decision');
   });
 
   it('distinguishes a disabled module from a missing workspace grant', () => {
@@ -143,10 +205,12 @@ describe('summarizeAccess', () => {
     const value = snapshot({
       sourceState: 'temporarily_unavailable',
       capabilities: mappedCapabilities.map(capability =>
-        decision(capability, 'allowed', capability.startsWith('workspace.') || capability === 'audit.view' ? 'not_applicable' : 'unavailable')),
+        decision(capability, 'allowed', capability.startsWith('workspace.') ? 'not_applicable' : 'unavailable',
+          capability.startsWith('workspace.') ? { reasonCode: 'workspace_platform_role' } : {})),
     });
     const summary = summarizeAccess(value, session);
-    expect(module(summary, 'workspace-administration').read.state).toBe('allowed');
+    expect(module(summary, 'workspace-administration').read.state).toBe('unavailable');
+    expect(module(summary, 'workspace-administration').read.actions[0]?.decision?.state).toBe('allowed');
     expect(module(summary, 'workspace-administration').write.state).toBe('allowed');
     expect(module(summary, 'users').read.state).toBe('unavailable');
   });

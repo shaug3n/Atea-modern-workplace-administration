@@ -72,6 +72,34 @@
   color: var(--uw-muted);
 }
 
+.account-access-menu__state {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--uw-gap-xs);
+}
+
+.account-access-menu__indicator {
+  flex: 0 0 0.625rem;
+  width: 0.625rem;
+  height: 0.625rem;
+  border-radius: 50%;
+  background: var(--uw-muted);
+}
+
+.account-access-menu__indicator--positive {
+  background: var(--uw-success-text);
+}
+
+.account-access-menu__indicator--caution {
+  background: var(--uw-warning-text);
+}
+
+.account-access-menu__indicator--unavailable {
+  background: var(--uw-muted);
+  outline: 1px dashed currentColor;
+  outline-offset: 1px;
+}
+
 .account-access-menu__link {
   color: var(--uw-link);
   font-weight: 600;

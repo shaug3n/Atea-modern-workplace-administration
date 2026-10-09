@@ -23,6 +23,13 @@ const stateLabels: Record<AccessSummaryState, string> = {
   not_applicable: 'Not applicable',
 };
 
+function indicatorTone(state: AccessSummaryState): string {
+  if (state === 'allowed' || state === 'read_only') return 'positive';
+  if (state === 'mixed' || state === 'partial' || state === 'consent_required' || state.startsWith('pim_') || state === 'workspace_not_granted') return 'caution';
+  if (state === 'temporarily_unavailable' || state === 'unavailable') return 'unavailable';
+  return 'neutral';
+}
+
 export function AccountAccessMenu({
   session,
   onNavigate,
@@ -37,6 +44,7 @@ export function AccountAccessMenu({
   const summary = useRef<HTMLElement>(null);
   const access = summarizeAccess(snapshot, session);
   const stale = snapshot !== null && (loading || error);
+  const workspaceEvidenceAvailable = (snapshot?.workspaceModules?.length ?? 0) > 0;
 
   useEffect(() => {
     const node = details.current;
@@ -85,17 +93,25 @@ export function AccountAccessMenu({
         </div>
         {loading && !snapshot
           ? <p className="account-access-menu__status" role="status">Loading access evidence…</p>
-          : !snapshot || error || access.sourceState !== 'graph_authoritative'
+          : !snapshot
             ? <p className="account-access-menu__status" role="status">{stale ? 'Previous access check · evidence may be stale' : 'Access evidence unavailable'}</p>
             : stale
               ? <p className="account-access-menu__status" role="status">Previous access check · evidence may be stale</p>
-              : null}
+              : access.sourceState !== 'graph_authoritative'
+                ? <p className="account-access-menu__status" role="status">Microsoft authorization evidence unavailable · workspace grant evidence {workspaceEvidenceAvailable ? 'remains available' : 'is unavailable'} separately.</p>
+                : null}
         <ul className="account-access-menu__modules">
           {access.modules.map(module => (
             <li key={module.key}>
               <strong>{module.label}</strong>
-              <span>Read access: {stateLabels[module.read.state]}</span>
-              <span>Write access: {stateLabels[module.write.state]}</span>
+              <span className="account-access-menu__state">
+                <span className={`account-access-menu__indicator account-access-menu__indicator--${indicatorTone(module.read.state)}`} role="img" aria-label={`Read access: ${stateLabels[module.read.state]}`} />
+                <span>Read access: {stateLabels[module.read.state]}</span>
+              </span>
+              <span className="account-access-menu__state">
+                <span className={`account-access-menu__indicator account-access-menu__indicator--${indicatorTone(module.write.state)}`} role="img" aria-label={`Write access: ${stateLabels[module.write.state]}`} />
+                <span>Write access: {stateLabels[module.write.state]}</span>
+              </span>
             </li>
           ))}
         </ul>

@@ -84,6 +84,7 @@ export type AccessActionSummary = {
 
 export type AccessGroupSummary = {
   state: AccessSummaryState;
+  workspaceGateState: AccessSummaryState | null;
   actions: AccessActionSummary[];
 };
 
@@ -141,6 +142,39 @@ function emptyAction(capability: Capability, state: AccessSummaryState, reasonLa
   return { capability, state, decision: null, reasonLabel, consentEvidence: null };
 }
 
+function actionSummary(
+  capability: Capability,
+  decision: CapabilityDecision | undefined,
+  state: AccessSummaryState,
+): AccessActionSummary {
+  if (!decision) return emptyAction(capability, 'partial', myAccessMessages.myAccessDecisionMissing);
+  return {
+    capability,
+    state: state === 'unavailable' || state === 'module_disabled' || state === 'workspace_not_granted'
+      ? state
+      : hasCompleteRoleEvidence(decision) ? state : 'partial',
+    decision,
+    reasonLabel: decisionReason(decision),
+    consentEvidence: consentEvidence(decision),
+  };
+}
+
+function gatedGroup(
+  capabilities: readonly Capability[],
+  snapshot: CapabilitySnapshot,
+  gateState: AccessSummaryState,
+): AccessGroupSummary {
+  return {
+    state: gateState,
+    workspaceGateState: gateState,
+    actions: capabilities.map(capability => actionSummary(
+      capability,
+      snapshot.capabilities.find(item => item.capability === capability),
+      gateState,
+    )),
+  };
+}
+
 function summarizeGroup(
   capabilities: readonly Capability[],
   snapshot: CapabilitySnapshot,
@@ -150,68 +184,65 @@ function summarizeGroup(
   if (!coverageComplete) {
     return {
       state: 'unavailable',
+      workspaceGateState: null,
       actions: capabilities.map(capability => emptyAction(capability, 'unavailable', myAccessMessages.myAccessCoverageUnavailable)),
-    };
-  }
-
-  if (moduleGate && snapshot.sourceState !== 'graph_authoritative') {
-    return {
-      state: 'unavailable',
-      actions: capabilities.map(capability => emptyAction(capability, 'unavailable', myAccessMessages.myAccessGraphUnavailable)),
     };
   }
 
   if (moduleGate) {
     const evidence = snapshot.workspaceModules?.find(item => item.module === moduleGate);
     if (!evidence) {
-      return {
-        state: 'unavailable',
-        actions: capabilities.map(capability => emptyAction(capability, 'unavailable', myAccessMessages.myAccessWorkspaceEvidenceUnavailable)),
-      };
+      return gatedGroup(capabilities, snapshot, 'unavailable');
     }
     if (!evidence.enabled) {
-      return {
-        state: 'module_disabled',
-        actions: capabilities.map(capability => emptyAction(capability, 'module_disabled', myAccessMessages.myAccessModuleDisabled)),
-      };
+      return gatedGroup(capabilities, snapshot, 'module_disabled');
     }
     if (!evidence.effective) {
-      return {
-        state: 'workspace_not_granted',
-        actions: capabilities.map(capability => emptyAction(capability, 'workspace_not_granted', myAccessMessages.myAccessWorkspaceNotGranted)),
-      };
+      return gatedGroup(capabilities, snapshot, 'workspace_not_granted');
     }
   }
 
+  if (snapshot.sourceState !== 'graph_authoritative') {
+    const actions = capabilities.map(capability => {
+      const decision = snapshot.capabilities.find(item => item.capability === capability);
+      if (!decision) return emptyAction(capability, 'partial', myAccessMessages.myAccessDecisionMissing);
+      const isWorkspaceDecision = decision.reasonCode.startsWith('workspace_platform_');
+      return actionSummary(
+        capability,
+        decision,
+        isWorkspaceDecision ? decision.state : 'unavailable',
+      );
+    });
+    if (actions.some(action => action.state === 'partial')) {
+      return { state: 'partial', workspaceGateState: null, actions };
+    }
+    const states = new Set(actions.map(action => action.state));
+    return {
+      state: states.size > 1 ? 'mixed' : actions[0]?.state ?? 'unavailable',
+      workspaceGateState: null,
+      actions,
+    };
+  }
+
   if (capabilities.length === 0) {
-    return { state: 'unavailable', actions: [] };
+    return { state: 'unavailable', workspaceGateState: null, actions: [] };
   }
 
   const actions = capabilities.map(capability => {
     const decision = snapshot.capabilities.find(item => item.capability === capability);
-    if (!decision) {
-      return emptyAction(capability, 'partial', myAccessMessages.myAccessDecisionMissing);
-    }
-    const evidenceComplete = hasCompleteRoleEvidence(decision);
-    return {
-      capability,
-      state: evidenceComplete ? decision.state : 'partial',
-      decision,
-      reasonLabel: decisionReason(decision),
-      consentEvidence: consentEvidence(decision),
-    } satisfies AccessActionSummary;
+    return actionSummary(capability, decision, decision?.state ?? 'partial');
   });
 
   if (actions.some(action => action.decision === null)) {
-    return { state: 'partial', actions };
+    return { state: 'partial', workspaceGateState: null, actions };
   }
   if (actions.some(action => action.state === 'partial')) {
-    return { state: 'partial', actions };
+    return { state: 'partial', workspaceGateState: null, actions };
   }
 
   const states = new Set(actions.map(action => action.state));
-  if (states.size > 1) return { state: 'mixed', actions };
-  return { state: actions[0].state, actions };
+  if (states.size > 1) return { state: 'mixed', workspaceGateState: null, actions };
+  return { state: actions[0].state, workspaceGateState: null, actions };
 }
 
 export function summarizeAccess(snapshot: CapabilitySnapshot | null, session: AppSession): AccessTransparencySummary {
@@ -228,10 +259,12 @@ export function summarizeAccess(snapshot: CapabilitySnapshot | null, session: Ap
         label: group.label,
         read: {
           state: 'unavailable',
+          workspaceGateState: null,
           actions: group.read.map(capability => emptyAction(capability, 'unavailable', myAccessMessages.myAccessSnapshotUnavailable)),
         },
         write: {
           state: 'unavailable',
+          workspaceGateState: null,
           actions: group.write.map(capability => emptyAction(capability, 'unavailable', myAccessMessages.myAccessSnapshotUnavailable)),
         },
       })),

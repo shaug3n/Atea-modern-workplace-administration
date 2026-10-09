@@ -20,6 +20,9 @@ const snapshot: CapabilitySnapshot = {
     { capability: 'users.view', state: 'allowed', reasonCode: 'active_role', roleEvidence: { state: 'not_applicable', requiredRoleTemplateIds: [], assignments: [] } },
     { capability: 'authentication.methods.view', state: 'allowed', reasonCode: 'active_role', roleEvidence: { state: 'not_applicable', requiredRoleTemplateIds: [], assignments: [] } },
     { capability: 'pim.view', state: 'allowed', reasonCode: 'active_role', roleEvidence: { state: 'not_applicable', requiredRoleTemplateIds: [], assignments: [] } },
+    { capability: 'audit.view', state: 'allowed', reasonCode: 'graph_authoritative', roleEvidence: { state: 'not_applicable', requiredRoleTemplateIds: [], assignments: [] } },
+    { capability: 'workspace.settings.manage', state: 'allowed', reasonCode: 'workspace_platform_role', roleEvidence: { state: 'not_applicable', requiredRoleTemplateIds: [], assignments: [] } },
+    { capability: 'workspace.members.manage', state: 'allowed', reasonCode: 'workspace_platform_role', roleEvidence: { state: 'not_applicable', requiredRoleTemplateIds: [], assignments: [] } },
   ],
 };
 
@@ -68,9 +71,9 @@ describe('AccountAccessMenu', () => {
     const mixedSnapshot: CapabilitySnapshot = {
       ...snapshot,
       capabilities: [
-        ...snapshot.capabilities,
-        { capability: 'workspace.settings.manage', state: 'allowed', reasonCode: 'workspace_platform_role', roleEvidence: completeRoleEvidence },
-        { capability: 'workspace.members.manage', state: 'hidden', reasonCode: 'workspace_platform_role_required', roleEvidence: completeRoleEvidence },
+        ...snapshot.capabilities.map(decision => decision.capability === 'workspace.members.manage'
+          ? { ...decision, state: 'hidden' as const, reasonCode: 'workspace_platform_role_required', roleEvidence: completeRoleEvidence }
+          : decision),
       ],
     };
     const { container } = renderMenu({ currentSnapshot: mixedSnapshot });
@@ -87,6 +90,34 @@ describe('AccountAccessMenu', () => {
     expect(screen.queryByText(/No access/)).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Refresh access' }));
     expect(refresh).toHaveBeenCalledOnce();
+  });
+
+  it('separates unavailable Microsoft evidence from available workspace evidence', () => {
+    const { container } = renderMenu({ currentSnapshot: { ...snapshot, sourceState: 'temporarily_unavailable' } });
+    const status = container.querySelector('.account-access-menu__status');
+
+    expect(status?.textContent).toMatch(/Microsoft authorization evidence unavailable/i);
+    expect(status?.textContent).toMatch(/workspace grant evidence remains available/i);
+    expect(status?.textContent).not.toMatch(/^Access evidence unavailable$/);
+    const workspaceAdministration = [...container.querySelectorAll('.account-access-menu__modules li')]
+      .find(row => row.textContent?.includes('Workspace administration'));
+    expect(workspaceAdministration?.textContent).toContain('Read access: Evidence unavailable');
+    expect(workspaceAdministration?.textContent).toContain('Write access: Allowed');
+  });
+
+  it('renders accessible read and write dot indicators with explicit status labels', () => {
+    const { container } = renderMenu({ currentSnapshot: { ...snapshot, sourceState: 'temporarily_unavailable' } });
+    const rows = [...container.querySelectorAll('.account-access-menu__modules li')];
+    const users = rows.find(row => row.textContent?.includes('Users'))!;
+    const indicators = users.querySelectorAll('.account-access-menu__indicator');
+
+    expect(indicators).toHaveLength(2);
+    expect(indicators[0]?.getAttribute('aria-label')).toMatch(/^Read access:/);
+    expect(indicators[1]?.getAttribute('aria-label')).toMatch(/^Write access:/);
+    expect(users.textContent).toContain('Read access: Evidence unavailable');
+    expect(users.textContent).toContain('Write access: Partial evidence');
+    expect(indicators[0]?.className).toContain('unavailable');
+    expect(indicators[1]?.className).toContain('caution');
   });
 
   it('distinguishes an initial capability load when no snapshot exists', () => {

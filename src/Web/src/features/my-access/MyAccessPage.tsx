@@ -34,9 +34,19 @@ const stateLabels: Record<AccessSummaryState, { label: string; tone: StatusTone 
 };
 
 const roleNames: Record<string, string> = {
-  'fe930be7-5e62-47db-91af-98c3a49a38b1': 'User Administrator',
-  '3a2c62db-5318-420d-8d74-23affee08d80': 'Intune Administrator',
   '62e90394-69f5-4237-9190-012177145e10': 'Global Administrator',
+  'f2ef992c-3afb-46b9-b7cf-a126ee74c451': 'Global Reader',
+  'fe930be7-5e62-47db-91af-98c3a49a38b1': 'User Administrator',
+  'fdd7a751-b60b-444a-984c-02652fe8fa1c': 'Groups Administrator',
+  '4d6ac14f-3453-41d0-bef9-a3e0c569773a': 'License Administrator',
+  'e8611ab8-c189-46e8-94e1-60213ab1f814': 'Privileged Role Administrator',
+  'c4e39bd9-1100-46d3-8c65-fb160da0071f': 'Authentication Administrator',
+  '7be44c8a-adaf-4e2a-84d6-ab2649e08a13': 'Privileged Authentication Administrator',
+  '7698a772-787b-4ac8-901f-60d6b08affd2': 'Cloud Device Administrator',
+  '3a2c62db-5318-420d-8d74-23affee5d9d5': 'Intune Administrator',
+  '729827e3-9c14-49f7-bb1b-9608f156bbb8': 'Helpdesk Administrator',
+  '194ae4cb-b126-40b2-bd5b-6091b380977d': 'Security Administrator',
+  '5d6b6bb7-de71-4623-b4af-96380a352509': 'Security Reader',
 };
 
 const pimStateLabels: Record<string, string> = {
@@ -75,17 +85,19 @@ function apiDecisionLabel(decision: CapabilityDecision): string {
   return 'The API reported that this action is unavailable.';
 }
 
-function supportedDestination(action: AccessActionSummary): { href: string; external: boolean; label: string } | null {
+function supportedDestination(action: AccessActionSummary, canManageSettings: boolean): { href: string; external: boolean; label: string } | null {
   const decision = action.decision;
   if (!decision) return null;
 
   if (decision.state === 'consent_required') {
-    return { href: '/onboarding', external: false, label: 'Review Microsoft permission setup' };
+    if (canManageSettings && decision.nextStep?.href === '/onboarding') {
+      return { href: '/onboarding', external: false, label: decision.nextStep.label || 'Review Microsoft permission setup' };
+    }
+    return null;
   }
 
   if (isPimCapabilityState(decision.state)) {
-    const roleId = decision.requiredRoleTemplateId
-      ?? decision.roleEvidence?.requiredRoleTemplateIds[0];
+    const roleId = decision.requiredRoleTemplateId;
     if (!roleId) return null;
     if (decision.nextStep?.href === '/identity') {
       return { href: '/identity', external: false, label: 'Open PIM guidance' };
@@ -125,10 +137,12 @@ function roleAndPimEvidence(action: AccessActionSummary) {
     );
   }
   const evidence = decision.roleEvidence;
-  const requiredRoleId = decision.requiredRoleTemplateId ?? evidence?.requiredRoleTemplateIds[0] ?? null;
+  const requiredRoleId = decision.requiredRoleTemplateId ?? null;
+  const qualifyingRoleIds = [...new Set(evidence?.requiredRoleTemplateIds ?? [])];
   const roleAssignments = evidence?.state === 'available' ? evidence.assignments : [];
   const unknownRoles = [...new Set([
     ...(requiredRoleId && !roleNames[requiredRoleId] ? [requiredRoleId] : []),
+    ...qualifyingRoleIds.filter(roleId => !roleNames[roleId]),
     ...roleAssignments.map(assignment => assignment.roleTemplateId).filter(roleId => !roleNames[roleId]),
   ])];
 
@@ -137,7 +151,15 @@ function roleAndPimEvidence(action: AccessActionSummary) {
       <dt>Entra role and PIM evidence</dt>
       <dd>
         <div className="my-access-evidence__role-details">
-          {requiredRoleId && <p><strong>Required role:</strong> {roleLabel(requiredRoleId)}. A role requirement is not evidence that it is assigned to you.</p>}
+          {requiredRoleId && <p><strong>PIM role requirement:</strong> {roleLabel(requiredRoleId)}. This specific requirement is not evidence that the role is assigned to you.</p>}
+          {qualifyingRoleIds.length > 0 && (
+            <div>
+              <p><strong>Qualifying role alternatives reported by the API:</strong> These alternatives are not all required and do not confirm any role is assigned to you.</p>
+              <ul className="my-access-evidence__assignments">
+                {qualifyingRoleIds.map(roleId => <li key={roleId}>{roleLabel(roleId)}</li>)}
+              </ul>
+            </div>
+          )}
           {evidence?.state === 'unavailable' && <p>Role assignment evidence is unavailable.</p>}
           {evidence?.state && evidence.state !== 'available' && evidence.state !== 'not_applicable' && evidence.state !== 'unavailable'
             && <p>Role evidence state reported by the API: {evidence.state}. It is not treated as confirmation of an active role.</p>}
@@ -159,7 +181,7 @@ function roleAndPimEvidence(action: AccessActionSummary) {
           )}
           {roleAssignments.some(assignment => assignment.assignmentState === 'eligible')
             && <p>PIM eligibility is not an active role assignment; activation may still be required.</p>}
-          {evidence?.state === 'not_applicable' && !requiredRoleId && <p>The API did not report a role requirement for this action.</p>}
+          {evidence?.state === 'not_applicable' && !requiredRoleId && qualifyingRoleIds.length === 0 && <p>The API did not report a role requirement for this action.</p>}
           {evidence?.state === 'not_applicable' && requiredRoleId && <p>The API did not provide active assignment evidence for the required role.</p>}
           {!evidence && <p>Active role assignment evidence was not provided.</p>}
           {decision.pim?.state && <p>PIM state reported by the API: {decision.pim.state}</p>}
@@ -173,27 +195,30 @@ function roleAndPimEvidence(action: AccessActionSummary) {
 function ActionEvidence({
   action,
   sourceAvailable,
+  canManageSettings,
   onNavigate,
 }: {
   action: AccessActionSummary;
   sourceAvailable: boolean;
+  canManageSettings: boolean;
   onNavigate?: (path: string) => void;
 }) {
   const decision = action.decision;
   const workspaceDecision = isWorkspaceDecision(action);
   const graphEvidenceUnavailable = !sourceAvailable && !workspaceDecision;
   const status = statusFor(displayedActionState(action, sourceAvailable));
-  const destination = supportedDestination(action);
+  const destination = supportedDestination(action, canManageSettings);
 
+  const reason = graphEvidenceUnavailable && decision
+    ? `${action.reasonLabel} The API returned ${decision.state} (${decision.reasonCode}), but Microsoft authorization evidence is unavailable; this result is not verified.`
+    : action.reasonLabel;
   return (
     <li className="my-access-action">
       <div className="my-access-action__heading">
         <h4>{humanizeCapability(action.capability)}</h4>
         <StatusBadge tone={status.tone} label={status.label} />
       </div>
-      <p className="my-access-action__reason">{graphEvidenceUnavailable && decision
-        ? `The API returned ${decision.state} (${decision.reasonCode}), but Microsoft authorization evidence is unavailable; this result is not verified.`
-        : action.reasonLabel}</p>
+      <p className="my-access-action__reason">{reason}</p>
       {decision && <p>{graphEvidenceUnavailable
         ? 'The returned Microsoft decision cannot be treated as verified authorization.'
         : apiDecisionLabel(decision)}</p>}
@@ -207,7 +232,7 @@ function ActionEvidence({
               : action.state === 'unavailable' && !decision && sourceAvailable
                 ? 'Workspace module grant evidence was not returned.'
                 : action.state === 'unavailable' && !sourceAvailable
-                  ? 'Workspace grant evidence could not be verified from the returned snapshot.'
+                ? 'Workspace module grant evidence is shown above when available; Microsoft authorization evidence could not be verified.'
                   : decision ? 'The API evaluated this action; see the module-level workspace grant evidence above when available.' : 'No action-level result was returned; the module-level workspace gate is shown above when available.'}</dd>
         </div>
         <div className="my-access-evidence__layer">
@@ -215,7 +240,9 @@ function ActionEvidence({
           <dd>{workspaceDecision
             ? 'The API evaluated this action using workspace authorization evidence; Microsoft authorization was not reported separately for this decision.'
             : !sourceAvailable
-              ? 'Microsoft authorization evidence is unavailable.'
+              ? decision?.state === 'consent_required' && action.consentEvidence
+                ? action.consentEvidence
+                : 'Microsoft authorization evidence is unavailable.'
               : !decision
                 ? 'Microsoft authorization and consent evidence are unavailable because no action-level decision was returned.'
                 : action.consentEvidence ?? (decision.state === 'consent_required'
@@ -225,6 +252,7 @@ function ActionEvidence({
         </div>
         {roleAndPimEvidence(action)}
       </dl>
+      {decision?.state === 'consent_required' && <p className="my-access-action__next-step">Microsoft consent must be reviewed through the workspace’s existing setup. If you cannot manage workspace settings, contact your workspace administrator.</p>}
       {destination && (destination.external
         ? <p className="my-access-action__next-step"><a href={destination.href} target="_blank" rel="noreferrer">{destination.label}<span className="my-access-sr-only"> (opens in a new tab)</span></a></p>
         : <p className="my-access-action__next-step"><InternalLink href={destination.href} onNavigate={onNavigate}>{destination.label}</InternalLink></p>)}
@@ -240,6 +268,7 @@ function AccessGroup({
   state,
   actions,
   sourceAvailable,
+  canManageSettings,
   onNavigate,
 }: {
   moduleKey: string;
@@ -248,6 +277,7 @@ function AccessGroup({
   state: AccessSummaryState;
   actions: AccessActionSummary[];
   sourceAvailable: boolean;
+  canManageSettings: boolean;
   onNavigate?: (path: string) => void;
 }) {
   const graphDecisionUnavailable = !sourceAvailable && actions.some(action => action.decision && !isWorkspaceDecision(action));
@@ -268,7 +298,7 @@ function AccessGroup({
         <StatusBadge tone={status.tone} label={status.label} />
       </div>
       {actions.length > 0
-        ? <ul className="my-access-actions">{actions.map(action => <ActionEvidence key={action.capability} action={action} sourceAvailable={sourceAvailable} onNavigate={onNavigate} />)}</ul>
+        ? <ul className="my-access-actions">{actions.map(action => <ActionEvidence key={action.capability} action={action} sourceAvailable={sourceAvailable} canManageSettings={canManageSettings} onNavigate={onNavigate} />)}</ul>
         : <p>Action coverage is not available; no access summary can be made.</p>}
     </section>
   );
@@ -281,6 +311,7 @@ export function MyAccessPage({ session, onNavigate }: { session: AppSession; onN
   const summary = summarizeAccess(scopedSnapshot, session);
   const stale = Boolean(scopedSnapshot && (loading || error));
   const sourceAvailable = summary.sourceState === 'graph_authoritative';
+  const canManageSettings = session.workspaceAccess?.canManageSettings === true;
   const workspaceEvidence = scopedSnapshot?.workspaceModules ?? null;
 
   return (
@@ -348,8 +379,8 @@ export function MyAccessPage({ session, onNavigate }: { session: AppSession; onN
                     />}
                   </header>
                   <div className="my-access-module__groups">
-                    <AccessGroup moduleKey={module.key} moduleLabel={module.label} groupType="read" state={module.read.state} actions={module.read.actions} sourceAvailable={sourceAvailable} onNavigate={onNavigate} />
-                    <AccessGroup moduleKey={module.key} moduleLabel={module.label} groupType="write" state={module.write.state} actions={module.write.actions} sourceAvailable={sourceAvailable} onNavigate={onNavigate} />
+                    <AccessGroup moduleKey={module.key} moduleLabel={module.label} groupType="read" state={module.read.state} actions={module.read.actions} sourceAvailable={sourceAvailable} canManageSettings={canManageSettings} onNavigate={onNavigate} />
+                    <AccessGroup moduleKey={module.key} moduleLabel={module.label} groupType="write" state={module.write.state} actions={module.write.actions} sourceAvailable={sourceAvailable} canManageSettings={canManageSettings} onNavigate={onNavigate} />
                   </div>
                 </article>
               );

@@ -112,6 +112,105 @@ describe('MyAccessPage', () => {
     expect(screen.queryByText(/Workspace grant: denied/)).toBeNull();
   });
 
+  it('shows unverified consent evidence and missing scopes from an unavailable snapshot', () => {
+    const currentSnapshot = snapshot({
+      sourceState: 'temporarily_unavailable',
+      capabilities: capabilities.map(capability => decision(capability, capability === 'users.update'
+        ? { state: 'consent_required', reasonCode: 'consent_required', missingScopes: ['User.ReadWrite.All'] }
+        : {})),
+    });
+    renderPage({ currentSnapshot });
+
+    const updateAction = screen.getByRole('heading', { name: /Edit users/ }).closest('li')!;
+    expect(within(updateAction).getByText('Unavailable')).toBeTruthy();
+    expect(within(updateAction).getByText(/API returned consent_required.*not verified/i)).toBeTruthy();
+    expect(within(updateAction).getAllByText(/User.ReadWrite.All/).length).toBeGreaterThan(0);
+    expect(within(updateAction).getAllByText(/Microsoft authorization evidence is unavailable/).length).toBeGreaterThan(0);
+    expect(within(updateAction).queryByRole('link', { name: /Microsoft permission setup/i })).toBeNull();
+    expect(updateAction.textContent ?? '').toContain('workspace administrator');
+  });
+
+  it.each([
+    ['module disabled', { enabled: false, effective: false }, 'Module disabled'],
+    ['workspace access not granted', { enabled: true, effective: false }, 'Workspace access not granted'],
+  ] as const)('retains API role assignment and consent evidence when the module is %s', (_label, gate, status) => {
+    const currentSnapshot = snapshot({
+      workspaceModules: [{ module: 'users', grantSource: gate.enabled ? 'none' : 'explicit', ...gate }],
+      capabilities: capabilities.map(capability => decision(capability, capability === 'users.create'
+        ? {
+          state: 'pim_activation_required',
+          reasonCode: 'directory_role_required',
+          requiredRoleTemplateId: 'fe930be7-5e62-47db-91af-98c3a49a38b1',
+          roleEvidence: {
+            state: 'available',
+            requiredRoleTemplateIds: ['fe930be7-5e62-47db-91af-98c3a49a38b1'],
+            assignments: [{ roleTemplateId: 'fe930be7-5e62-47db-91af-98c3a49a38b1', assignmentState: 'eligible', scope: 'tenant' }],
+          },
+        }
+        : capability === 'users.update'
+          ? { state: 'consent_required', reasonCode: 'consent_required', missingScopes: ['User.ReadWrite.All'] }
+          : {})),
+    });
+    renderPage({ currentSnapshot });
+
+    const createAction = screen.getByRole('heading', { name: /Create users/ }).closest('li')!;
+    const updateAction = screen.getByRole('heading', { name: /Edit users/ }).closest('li')!;
+    expect(within(createAction).getByText(status)).toBeTruthy();
+    expect(within(createAction).getByText(/Eligible assignment/)).toBeTruthy();
+    expect(within(createAction).getByText(/qualifying Microsoft role is required/i)).toBeTruthy();
+    expect(within(updateAction).getByText(status)).toBeTruthy();
+    expect(within(updateAction).getAllByText(/User.ReadWrite.All/).length).toBeGreaterThan(0);
+  });
+
+  it('renders all recognized qualifying role alternatives without calling one required', () => {
+    const currentSnapshot = snapshot({
+      capabilities: capabilities.map(capability => decision(capability, capability === 'users.update'
+        ? {
+          state: 'pim_activation_required',
+          reasonCode: 'directory_role_required',
+          roleEvidence: {
+            state: 'available',
+            requiredRoleTemplateIds: [
+              'f2ef992c-3afb-46b9-b7cf-a126ee74c451',
+              'fdd7a751-b60b-444a-984c-02652fe8fa1c',
+              'c4e39bd9-1100-46d3-8c65-fb160da0071f',
+              '4d6ac14f-3453-41d0-bef9-a3e0c569773a',
+            ],
+            assignments: [],
+          },
+        }
+        : {})),
+    });
+    renderPage({ currentSnapshot });
+
+    const updateAction = screen.getByRole('heading', { name: /Edit users/ }).closest('li')!;
+    expect(within(updateAction).getByText(/Qualifying role alternatives/)).toBeTruthy();
+    for (const name of ['Global Reader', 'Groups Administrator', 'Authentication Administrator', 'License Administrator']) {
+      expect(within(updateAction).getByText(name)).toBeTruthy();
+    }
+    expect(within(updateAction).queryByText(/^Required role:/)).toBeNull();
+  });
+
+  it('offers consent navigation only for an API-supported setup flow to a settings manager', () => {
+    const currentSnapshot = snapshot({
+      capabilities: capabilities.map(capability => decision(capability, capability === 'users.update'
+        ? { state: 'consent_required', reasonCode: 'consent_required', nextStep: { label: 'Review setup', href: '/onboarding' } }
+        : {})),
+    });
+    const { unmount } = renderPage({ currentSnapshot });
+    expect(screen.queryByRole('link', { name: 'Review setup' })).toBeNull();
+    unmount();
+
+    const managerSession = {
+      ...session,
+      workspaceAccess: { role: 'workspace_owner', canManageSettings: true },
+    } satisfies AppSession;
+    const onNavigate = vi.fn();
+    renderPage({ currentSession: managerSession, currentSnapshot, onNavigate });
+    fireEvent.click(screen.getByRole('link', { name: 'Review setup' }));
+    expect(onNavigate).toHaveBeenCalledWith('/onboarding');
+  });
+
   it('marks_graph_authoritative_workspace_administration_actions_unavailable_without_hiding_platform_decisions', () => {
     const currentSnapshot = snapshot({
       sourceState: 'temporarily_unavailable',
@@ -228,7 +327,7 @@ describe('MyAccessPage', () => {
     const currentSnapshot = snapshot({
       capabilities: capabilities.map(capability => decision(capability,
         capability === 'users.create'
-          ? { state: 'consent_required', reasonCode: 'consent_required', missingScopes: ['User.ReadWrite.All'], nextStep: { label: 'Arbitrary consent', href: '/api/workspaces/current/consent/start' } }
+          ? { state: 'consent_required', reasonCode: 'consent_required', missingScopes: ['User.ReadWrite.All'], nextStep: { label: 'Grant delegated consent', href: '/api/workspaces/current/consent/start' } }
           : capability === 'users.update'
             ? { state: 'pim_activation_required', reasonCode: 'directory_role_required', requiredRoleTemplateId: 'role-1', nextStep: { label: 'Unsupported handoff', href: 'https://evil.example/activate' } }
             : capability === 'users.reset_password'
@@ -239,9 +338,9 @@ describe('MyAccessPage', () => {
     });
     renderPage({ currentSnapshot, onNavigate: navigate });
 
-    fireEvent.click(screen.getByRole('link', { name: /review Microsoft permission setup/i }));
-    expect(navigate).toHaveBeenCalledWith('/onboarding');
-    expect(screen.queryByRole('link', { name: 'Arbitrary consent' })).toBeNull();
+    expect(navigate).not.toHaveBeenCalled();
+    expect(screen.queryByRole('link', { name: /Microsoft permission setup/i })).toBeNull();
+    expect(screen.getByText(/contact your workspace administrator/)).toBeTruthy();
     expect(screen.queryByRole('link', { name: 'Unsupported handoff' })).toBeNull();
     expect(screen.queryByRole('link', { name: 'Open PIM guidance' })).toBeNull();
     expect(screen.getByRole('link', { name: /Open Microsoft Entra PIM/ }).getAttribute('href')).toBe('https://entra.microsoft.com/#view/Microsoft_Azure_PIMCommon/ActivationMenuBlade');
