@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import React from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { App } from '../../../src/Web/src/app/App';
@@ -114,6 +114,39 @@ describe('route access metadata', () => {
       loadSession={async () => session}
     />);
     expect(await screen.findByText(/Data cannot be shown right now/)).toBeTruthy();
+  });
+
+  it('uses the same authorized dialog opener from the Feedback page, shell launcher and shortcut', async () => {
+    window.history.pushState(null, '', '/feedback');
+    apiMock
+      .mockResolvedValueOnce(Response.json({ items: [], nextCursor: null }))
+      .mockResolvedValueOnce(Response.json({ id: 'saved', createdAt: '2026-10-09T08:00:00Z', expiresAt: '2027-01-07T08:00:00Z' }, { status: 201 }))
+      .mockResolvedValueOnce(Response.json({ items: [], nextCursor: null }));
+    const feedbackWorkspace = {
+      ...session,
+      user: { ...session.user, objectId: 'user-1' },
+      workspace: { ...session.workspace, enabledModules: ['feedback'], moduleAccess: ['feedback'] },
+    };
+    const feedbackSnapshot: CapabilitySnapshot = {
+      workspaceId,
+      evaluatedAt: '2026-10-09T08:00:00Z',
+      sourceState: 'graph_authoritative',
+      capabilities: [{ capability: 'feedback.submit', state: 'allowed', reasonCode: 'workspace_member' }],
+    };
+    render(<App loadCapabilities={async () => feedbackSnapshot} loadSession={async () => feedbackWorkspace} />);
+
+    expect(await screen.findByRole('heading', { name: 'No feedback yet' })).toBeTruthy();
+    fireEvent.keyDown(document, { key: 'F', altKey: true, shiftKey: true });
+    expect(screen.getAllByRole('dialog')).toHaveLength(1);
+    fireEvent.change(screen.getByLabelText('Category'), { target: { value: 'General' } });
+    fireEvent.change(screen.getByLabelText('Subject'), { target: { value: 'App flow' } });
+    fireEvent.change(screen.getByLabelText('Message'), { target: { value: 'Saved through the shared dialog' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save feedback' }));
+    expect((await screen.findByRole('status')).textContent).toBe('Saved');
+    await waitFor(() => expect(apiMock).toHaveBeenCalledTimes(3));
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    fireEvent.click(screen.getAllByRole('button', { name: 'Give feedback' })[0]);
+    expect(screen.getAllByRole('dialog')).toHaveLength(1);
   });
 
   it('shows independent web and API builds and only authorized front-end routes', async () => {

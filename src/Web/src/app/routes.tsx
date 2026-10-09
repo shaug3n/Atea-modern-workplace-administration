@@ -25,6 +25,8 @@ import type { AppSession } from '../components/TenantContextHeader';
 import type { IconName } from '../components/icons';
 import { AboutPage } from '../features/about/AboutPage';
 import { SystemVersionsPage } from '../features/about/SystemVersionsPage';
+import { FeedbackPage } from '../features/feedback/FeedbackPage';
+import { FeedbackPage } from '../features/feedback/FeedbackPage';
 
 export type NavigationGroup = 'overview' | 'identity-access' | 'devices' | 'licenses' | 'services' | 'operations' | 'platform';
 export type NavigationVisibility = 'always' | 'module' | 'device-module-or-settings-manager' | 'audit-not-hidden' | 'workspace-manager';
@@ -38,7 +40,7 @@ export type AppRoute = {
   module?: 'users' | 'devices' | 'licenses' | 'exchange' | 'authentication-campaigns' | 'license-hygiene' | 'about' | 'feedback';
   workspaceAccess?: 'members' | 'settings' | 'modules' | 'any';
   navigation?: { group: NavigationGroup; order: number; icon: IconName; visibility: NavigationVisibility };
-  render: (options?: { loadConnectionHealth?: ConnectionHealthLoader; loadOverview?: OverviewLoader; loadAuthenticationCampaigns?: AuthenticationCampaignsLoader; capabilities?: CapabilityDecision[]; navigate?: (path: string) => void; session?: AppSession; authorizationUnavailable?: boolean; onAuthorizationRetry?: () => Promise<void>; onRefreshAccess?: () => Promise<void>; authorizedRoutes?: Array<{ path: string; label: string }> }) => ReactNode;
+  render: (options?: { loadConnectionHealth?: ConnectionHealthLoader; loadOverview?: OverviewLoader; loadAuthenticationCampaigns?: AuthenticationCampaignsLoader; capabilities?: CapabilityDecision[]; navigate?: (path: string) => void; session?: AppSession; authorizationUnavailable?: boolean; onAuthorizationRetry?: () => Promise<void>; onRefreshAccess?: () => Promise<void>; authorizedRoutes?: Array<{ path: string; label: string }>; feedbackRefreshRevision?: number; onOpenFeedbackDialog?: () => void }) => ReactNode;
 };
 
 export function isInvitationPath(pathname: string) {
@@ -65,6 +67,22 @@ export const appRoutes: AppRoute[] = [
     module: 'about',
     capability: 'platform.about.view',
     render: (options) => <SystemVersionsPage authorizedRoutes={options?.authorizedRoutes ?? []} />,
+  },
+  {
+    path: '/feedback',
+    label: messages.navFeedback,
+    module: 'feedback',
+    capability: 'feedback.submit',
+    navigation: { group: 'platform', order: 2, icon: 'activity', visibility: 'module' },
+    render: (options) => <FeedbackPage refreshRevision={options?.feedbackRefreshRevision ?? 0} onOpenFeedbackDialog={options?.onOpenFeedbackDialog ?? (() => {})} />,
+  },
+  {
+    path: '/feedback',
+    label: messages.navFeedback,
+    module: 'feedback',
+    capability: 'feedback.submit',
+    navigation: { group: 'platform', order: 2, icon: 'activity', visibility: 'module' },
+    render: (options) => <FeedbackPage refreshRevision={options?.feedbackRefreshRevision ?? 0} onOpenFeedbackDialog={options?.onOpenFeedbackDialog ?? (() => {})} />,
   },
   { path: '/settings/setup', label: 'Setup', workspaceAccess: 'settings', render: (options) => <OnboardingPage onNavigate={options?.navigate} /> },
   { path: '/settings/general', label: 'General', workspaceAccess: 'settings', render: () => <WorkspaceSettingsPage /> },

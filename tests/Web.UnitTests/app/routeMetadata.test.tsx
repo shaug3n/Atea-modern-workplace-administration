@@ -2,7 +2,7 @@ import { cleanup, render, screen } from '@testing-library/react';
 import React from 'react';
 import { afterEach, describe, expect, it } from 'vitest';
 import { appRoutes, matchRoute, type NavigationGroup, type NavigationVisibility } from '../../../src/Web/src/app/routes';
-import { App } from '../../../src/Web/src/app/App';
+import { App, getAuthorizedAppRoutes } from '../../../src/Web/src/app/App';
 import type { CapabilitySnapshot } from '../../../src/Web/src/capabilities/capabilityTypes';
 
 describe('route navigation metadata', () => {
@@ -23,6 +23,7 @@ describe('route navigation metadata', () => {
     expect(destinations).toEqual([
       { path: '/settings', group: 'platform', visibility: 'workspace-manager', icon: 'settings' },
       { path: '/about', group: 'platform', visibility: 'module', icon: 'overview' },
+      { path: '/feedback', group: 'platform', visibility: 'module', icon: 'activity' },
       { path: '/overview', group: 'overview', visibility: 'always', icon: 'overview' },
       { path: '/users', group: 'identity-access', visibility: 'module', icon: 'users' },
       { path: '/authentication-campaigns', group: 'identity-access', visibility: 'module', icon: 'lock' },
@@ -35,8 +36,22 @@ describe('route navigation metadata', () => {
     const groupOrder: NavigationGroup[] = ['overview', 'identity-access', 'devices', 'licenses', 'services', 'operations', 'platform'];
     const visibilityKinds: NavigationVisibility[] = ['always', 'module', 'device-module-or-settings-manager', 'audit-not-hidden', 'workspace-manager'];
     expect([...new Set(navigationRoutes.map((route) => route.navigation!.group))].sort((a, b) => groupOrder.indexOf(a) - groupOrder.indexOf(b))).toEqual(groupOrder);
-    expect(navigationRoutes.map((route) => route.navigation!.order)).toEqual([0, 1, 0, 0, 1, 0, 0, 0, 0]);
+    expect(navigationRoutes.map((route) => route.navigation!.order)).toEqual([0, 1, 2, 0, 0, 1, 0, 0, 0, 0]);
     expect(navigationRoutes.every((route) => visibilityKinds.includes(route.navigation!.visibility))).toBe(true);
+
+    const feedback = appRoutes.find((route) => route.path === '/feedback')!;
+    expect(feedback).toMatchObject({
+      module: 'feedback',
+      capability: 'feedback.submit',
+      navigation: { group: 'platform', order: 2 },
+    });
+    const workspace = { user: {}, workspace: { id: 'workspace-1', name: 'Workspace', enabledModules: ['feedback'], moduleAccess: ['feedback'] } };
+    expect(getAuthorizedAppRoutes(workspace, [{ capability: 'feedback.submit', state: 'allowed', reasonCode: 'workspace_member' }]))
+      .toContainEqual({ path: '/feedback', label: 'Feedback' });
+    expect(getAuthorizedAppRoutes(workspace, [{ capability: 'feedback.submit', state: 'hidden', reasonCode: 'role_required' }]).map(route => route.path))
+      .not.toContain('/feedback');
+    expect(getAuthorizedAppRoutes({ ...workspace, workspace: { ...workspace.workspace, enabledModules: [] } }, [{ capability: 'feedback.submit', state: 'allowed', reasonCode: 'workspace_member' }]).map(route => route.path))
+      .not.toContain('/feedback');
 
     const nonNavigablePaths = [
       '/consent-callback',

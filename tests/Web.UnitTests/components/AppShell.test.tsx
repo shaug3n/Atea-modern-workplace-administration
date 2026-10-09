@@ -82,6 +82,80 @@ describe('AppShell', () => {
     expect(screen.getByText('Alex Morgan')).toBeTruthy();
   });
 
+  it('keeps the authorized build chip and feedback launcher separate from the account slot', () => {
+    const openFeedback = vi.fn();
+    const navigate = vi.fn();
+    const capabilities: CapabilitySnapshot = {
+      ...allowedCapabilities,
+      capabilities: [
+        ...allowedCapabilities.capabilities,
+        { capability: 'platform.about.view', state: 'allowed', reasonCode: 'workspace_member' },
+        { capability: 'feedback.submit', state: 'allowed', reasonCode: 'workspace_member' },
+      ],
+    };
+    render(
+      <ThemeProvider systemTheme={() => 'light'}>
+        <AppShell capabilities={capabilities} currentPath="/overview" session={{ ...session, workspace: { ...session.workspace, enabledModules: ['about', 'feedback'], moduleAccess: ['about', 'feedback'] } }} onNavigate={navigate} canViewAbout canSubmitFeedback onOpenFeedbackDialog={openFeedback}>
+          <p>Overview content</p>
+        </AppShell>
+      </ThemeProvider>
+    );
+
+    const account = document.querySelector('.app-header__account')!;
+    expect(screen.getByRole('link', { name: /System versions/i })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Give feedback' })).toBeTruthy();
+    expect(account.textContent).not.toContain('System versions');
+    expect(account.textContent).not.toContain('Give feedback');
+    fireEvent.click(screen.getByRole('link', { name: /System versions/i }));
+    expect(navigate).toHaveBeenCalledWith('/about/system-versions');
+    fireEvent.click(screen.getByRole('button', { name: 'Give feedback' }));
+    expect(openFeedback).toHaveBeenCalledOnce();
+  });
+
+  it('opens feedback from Alt+Shift+F only outside editable and composing contexts', () => {
+    const openFeedback = vi.fn();
+    render(
+      <ThemeProvider systemTheme={() => 'light'}>
+        <AppShell capabilities={allowedCapabilities} currentPath="/overview" session={session} canSubmitFeedback onOpenFeedbackDialog={openFeedback}>
+          <input aria-label="Text entry" />
+          <textarea aria-label="Multiline text" />
+          <select aria-label="Selection"><option>Option</option></select>
+          <div contentEditable aria-label="Editable region" />
+          <div role="textbox" aria-label="Role textbox" />
+        </AppShell>
+      </ThemeProvider>
+    );
+
+    fireEvent.keyDown(document, { key: 'f', altKey: true, shiftKey: true });
+    expect(openFeedback).toHaveBeenCalledTimes(1);
+    fireEvent.keyDown(document, { key: 'f' });
+    fireEvent.keyDown(document, { key: 'f', altKey: true, shiftKey: true, ctrlKey: true });
+    fireEvent.keyDown(document, { key: 'f', altKey: true, shiftKey: true, metaKey: true });
+    fireEvent.keyDown(document, { key: 'f', altKey: true, shiftKey: true, isComposing: true });
+    fireEvent.keyDown(document, { key: 'Process', altKey: true, shiftKey: true });
+    for (const label of ['Text entry', 'Multiline text', 'Selection', 'Editable region', 'Role textbox']) {
+      fireEvent.keyDown(screen.getByLabelText(label), { key: 'f', altKey: true, shiftKey: true });
+    }
+    expect(openFeedback).toHaveBeenCalledTimes(1);
+  });
+
+  it('hides the build chip and feedback launcher unless each capability and module are available', () => {
+    const openFeedback = vi.fn();
+    const capabilities: CapabilitySnapshot = {
+      ...allowedCapabilities,
+      capabilities: [
+        { capability: 'platform.about.view', state: 'allowed', reasonCode: 'workspace_member' },
+        { capability: 'feedback.submit', state: 'hidden', reasonCode: 'workspace_member' },
+      ],
+    };
+    render(<ThemeProvider systemTheme={() => 'light'}><AppShell capabilities={capabilities} currentPath="/overview" session={session} canViewAbout={false} canSubmitFeedback={false} onOpenFeedbackDialog={openFeedback}><p>Content</p></AppShell></ThemeProvider>);
+
+    expect(screen.queryByRole('link', { name: /System versions/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Give feedback' })).toBeNull();
+    fireEvent.keyDown(document, { key: 'f', altKey: true, shiftKey: true });
+    expect(openFeedback).not.toHaveBeenCalled();
+  });
+
   it('keeps direct Workspace settings routes reachable as a permission state when navigation is hidden', async () => {
     window.history.pushState(null, '', '/workspace-settings');
     render(<App loadCapabilities={async () => hiddenWorkspaceSettings} loadSession={async () => session} />);

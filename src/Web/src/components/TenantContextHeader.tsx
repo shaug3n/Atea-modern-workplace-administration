@@ -4,6 +4,7 @@ import { Icon } from './icons';
 
 export type AppSession = {
   user: {
+    objectId?: string | null;
     displayName?: string | null;
     userPrincipalName?: string | null;
   };

@@ -18,6 +18,7 @@ import { messages } from './messages';
 import { WorkspaceNotificationsProvider } from '../notifications/WorkspaceNotifications';
 import { fetchAuthenticationCampaigns } from '../features/authentication-campaigns/authenticationCampaignsApi';
 import type { AuthenticationCampaignsLoader } from '../features/authentication-campaigns/AuthenticationCampaignsPage';
+import { FeedbackComposerDialog } from '../features/feedback/FeedbackComposerDialog';
 
 export type SessionLoader = () => Promise<AppSession>;
 
@@ -146,6 +147,10 @@ function useInjectedCapabilities(loadCapabilities: CapabilityLoader) {
 }
 
 function LoadedWorkspaceExperience({ path, navigate, capabilities, capabilitiesLoading, capabilitiesError, refreshCapabilities, loadSession, loadConnectionHealth, loadAuthenticationCampaigns, signInAction, switchAccountAction }: { path: string; navigate: (path: string) => void; capabilities: CapabilitySnapshot | null; capabilitiesLoading: boolean; capabilitiesError: Error | null; refreshCapabilities: () => Promise<void>; loadSession: SessionLoader; loadConnectionHealth?: ConnectionHealthLoader; loadAuthenticationCampaigns?: AuthenticationCampaignsLoader; signInAction?: () => Promise<void>; switchAccountAction?: () => Promise<void> }) {
+  const [feedbackDialogOpen, setFeedbackDialogOpen] = useState(false);
+  const [feedbackRefreshRevision, setFeedbackRefreshRevision] = useState(0);
+  const onOpenFeedbackDialog = useCallback(() => setFeedbackDialogOpen(true), []);
+  const onFeedbackDialogOpenChange = useCallback((open: boolean) => setFeedbackDialogOpen(open), []);
   const { session, sessionRevision, loading: sessionLoading, error: sessionError, retry } = useSession(loadSession);
   const legacyDestinations: Record<string, string> = {
     '/onboarding': '/settings#connection', '/settings/setup': '/settings#connection',
@@ -168,6 +173,11 @@ function LoadedWorkspaceExperience({ path, navigate, capabilities, capabilitiesL
   const access = getRouteAccess(route, session, capabilities?.workspaceId === session.workspace.id ? capabilities.capabilities : []);
   const hasWorkspaceAccess = access.workspaceAllowed;
   const isDeviceSetupAdmin = route.module === 'devices' && canManageSettings;
+  const availableModules = session.workspace.moduleAccess ?? session.workspace.enabledModules;
+  const hasAssignedModuleAccess = !route.module || !availableModules || (
+    (!session.workspace.enabledModules || session.workspace.enabledModules.includes(route.module))
+    && availableModules.includes(route.module)
+  );
   const hasModuleAccess = access.moduleAllowed;
   const snapshotMatchesWorkspace = capabilities?.workspaceId === session.workspace.id;
   const decision = route.capability ? capabilityDecisionFor(route, snapshotMatchesWorkspace ? capabilities?.capabilities ?? [] : []) : null;
@@ -181,6 +191,16 @@ function LoadedWorkspaceExperience({ path, navigate, capabilities, capabilitiesL
         && (item.state === 'allowed' || item.state === 'read_only'))
     : [];
   const unavailableSnapshot = capabilities ?? { workspaceId: session.workspace.id, evaluatedAt: new Date().toISOString(), sourceState: 'unavailable', capabilities: [] } satisfies CapabilitySnapshot;
+  const platformControlAvailable = (path: string) => {
+    const platformRoute = appRoutes.find(item => item.path === path);
+    if (!platformRoute || capabilitiesLoading || capabilitiesError || !snapshotMatchesWorkspace) return false;
+    const platformAccess = getRouteAccess(platformRoute, session, capabilities?.capabilities ?? []);
+    return platformAccess.moduleAllowed
+      && (platformAccess.decision?.state === 'allowed' || platformAccess.decision?.state === 'read_only');
+  };
+  const canViewAbout = platformControlAvailable('/about');
+  const canSubmitFeedback = platformControlAvailable('/feedback');
+  const feedbackIdentityKey = `${session.workspace.id}:${session.user.objectId ?? ''}`;
   let routeContent: React.ReactNode;
   if (!hasWorkspaceAccess) {
     routeContent = <ModuleUnavailable kind="no-access" moduleName={route.label} canManageModules={canManageModules} onNavigate={navigate} message={messages.workspaceAccessDeniedBody} />;
@@ -199,10 +219,13 @@ function LoadedWorkspaceExperience({ path, navigate, capabilities, capabilitiesL
       ? route.module === 'authentication-campaigns'
         ? route.render({ loadConnectionHealth, loadAuthenticationCampaigns, capabilities: unavailableSnapshot.capabilities, navigate, session, authorizationUnavailable: true, onAuthorizationRetry: refreshCapabilities })
         : <GraphRouteState route={route} state="unavailable" onRetry={refreshCapabilities} reportCause={decision.state === 'hidden' || decision.state === 'disabled' ? 'access' : undefined} session={session} navigate={navigate} loadConnectionHealth={loadConnectionHealth} />
-      : route.render({ loadConnectionHealth, loadAuthenticationCampaigns, capabilities: unavailableSnapshot.capabilities, navigate, session, onRefreshAccess: refreshCapabilities, authorizedRoutes: getAuthorizedAppRoutes(session, inventoryDecisions) });
+      : route.render({ loadConnectionHealth, loadAuthenticationCampaigns, capabilities: unavailableSnapshot.capabilities, navigate, session, onRefreshAccess: refreshCapabilities, authorizedRoutes: getAuthorizedAppRoutes(session, inventoryDecisions), feedbackRefreshRevision, onOpenFeedbackDialog });
   }
 
-  return <WorkspaceNotificationsProvider key={`${session.workspace.id}:${sessionRevision}`} session={session} sessionScope={sessionRevision} capabilities={capabilities} capabilitiesError={capabilitiesError} onRefresh={refreshCapabilities} loadConnectionHealth={loadConnectionHealth}><AppShell capabilities={capabilities} currentPath={path.split('#')[0]} session={session} onNavigate={navigate} accessState={{ loading: capabilitiesLoading, error: capabilitiesError !== null, refresh: refreshCapabilities }}>{routeContent}</AppShell></WorkspaceNotificationsProvider>;
+  return <WorkspaceNotificationsProvider key={`${session.workspace.id}:${sessionRevision}`} session={session} sessionScope={sessionRevision} capabilities={capabilities} capabilitiesError={capabilitiesError} onRefresh={refreshCapabilities} loadConnectionHealth={loadConnectionHealth}>
+    <AppShell capabilities={capabilities} currentPath={path.split('#')[0]} session={session} onNavigate={navigate} accessState={{ loading: capabilitiesLoading, error: capabilitiesError !== null, refresh: refreshCapabilities }} canViewAbout={canViewAbout} canSubmitFeedback={canSubmitFeedback} onOpenFeedbackDialog={onOpenFeedbackDialog}>{routeContent}</AppShell>
+    <FeedbackComposerDialog key={feedbackIdentityKey} open={feedbackDialogOpen && canSubmitFeedback} onOpenChange={onFeedbackDialogOpenChange} workspaceId={session.workspace.id} submitterObjectId={session.user.objectId ?? ''} onSaved={() => setFeedbackRefreshRevision(revision => revision + 1)} />
+  </WorkspaceNotificationsProvider>;
 }
 
 function SessionFailure({ error, onRetry, onSignIn, onSwitchAccount }: { error: Error; onRetry: () => void; onSignIn?: () => Promise<void>; onSwitchAccount?: () => Promise<void> }) {
