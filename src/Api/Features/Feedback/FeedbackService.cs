@@ -40,7 +40,7 @@ public sealed class FeedbackService(
     {
         var retryKeyHash = Hash(idempotencyKey);
         var fingerprint = Fingerprint(request);
-        var nowUtc = getUtcNow().ToUniversalTime();
+        var nowUtc = NormalizeUtcTimestamp(getUtcNow());
         FeedbackSubmission? submission = null;
         try
         {
@@ -182,6 +182,12 @@ public sealed class FeedbackService(
 
     private static string Hash(string value) =>
         Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value))).ToLowerInvariant();
+
+    private static DateTimeOffset NormalizeUtcTimestamp(DateTimeOffset value)
+    {
+        var utcTicks = value.UtcTicks;
+        return new DateTimeOffset(utcTicks - utcTicks % 10, TimeSpan.Zero);
+    }
 
     private static string Fingerprint(FeedbackSubmissionRequest request) =>
         Hash(JsonSerializer.Serialize(new[] { request.Category, request.Subject, request.Message }));

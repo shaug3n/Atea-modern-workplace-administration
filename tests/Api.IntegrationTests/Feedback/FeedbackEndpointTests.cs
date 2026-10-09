@@ -38,6 +38,8 @@ public sealed class FeedbackEndpointTests : IAsyncLifetime
     private static readonly Guid TenantB = Guid.Parse("44444444-4444-4444-4444-444444444444");
     private static readonly Guid WorkspaceA = Guid.Parse("55555555-5555-5555-5555-555555555555");
     private static readonly Guid WorkspaceB = Guid.Parse("66666666-6666-6666-6666-666666666666");
+    private static readonly DateTimeOffset SubMicrosecondUtc =
+        new DateTimeOffset(2026, 10, 9, 12, 0, 0, TimeSpan.Zero).AddTicks(7);
 
     public async Task InitializeAsync()
     {
@@ -140,7 +142,7 @@ public sealed class FeedbackEndpointTests : IAsyncLifetime
     [Fact]
     public async Task Post_returns_created_and_identical_retry_replays_same_receipt()
     {
-        using var factory = CreateFactory(new TestIdentity(TenantA, UserA, WorkspaceA));
+        using var factory = CreateFactory(new TestIdentity(TenantA, UserA, WorkspaceA), utcNow: () => SubMicrosecondUtc);
         using var client = AuthorizedClient(factory);
 
         var created = await PostAsync(client, "retry-key-private", "Improvement", "Private subject", "Private message");
@@ -151,6 +153,13 @@ public sealed class FeedbackEndpointTests : IAsyncLifetime
         created.StatusCode.Should().Be(HttpStatusCode.Created);
         replayed.StatusCode.Should().Be(HttpStatusCode.OK);
         replayedBody.Should().Be(createdBody);
+        var receipt = JsonSerializer.Deserialize<FeedbackSubmissionReceipt>(
+            createdBody,
+            new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        receipt.Should().NotBeNull();
+        (receipt!.CreatedAt.UtcTicks % 10).Should().Be(0);
+        (receipt.ExpiresAt.UtcTicks % 10).Should().Be(0);
+        receipt.ExpiresAt.Should().Be(receipt.CreatedAt.AddDays(90));
         createdBody.Should().NotContain("Private subject").And.NotContain("Private message").And.NotContain("retry-key-private");
         await using var scope = factory.Services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<WorkplaceDbContext>();
@@ -158,6 +167,11 @@ public sealed class FeedbackEndpointTests : IAsyncLifetime
         var audits = await db.AuditEvents.ToListAsync();
         audits.Should().ContainSingle();
         audits[0].Action.Should().Be("feedback.submitted");
+        var submission = await db.FeedbackSubmissions.SingleAsync();
+        (submission.CreatedAt.UtcTicks % 10).Should().Be(0);
+        (submission.ExpiresAt.UtcTicks % 10).Should().Be(0);
+        submission.ExpiresAt.Should().Be(submission.CreatedAt.AddDays(90));
+        audits[0].Timestamp.Should().Be(submission.CreatedAt);
         var auditJson = JsonSerializer.Serialize(audits[0]);
         auditJson.Should().NotContain("Private subject").And.NotContain("Private message").And.NotContain("retry-key-private");
 
@@ -175,7 +189,8 @@ public sealed class FeedbackEndpointTests : IAsyncLifetime
         var interceptor = new ConcurrentRetryLookupInterceptor(requestCount);
         using var factory = CreateFactory(
             new TestIdentity(TenantA, UserA, WorkspaceA),
-            retryLookupInterceptor: interceptor);
+            retryLookupInterceptor: interceptor,
+            utcNow: () => SubMicrosecondUtc);
         using var client = AuthorizedClient(factory);
         var responses = await PostConcurrentlyAsync(
             client,
