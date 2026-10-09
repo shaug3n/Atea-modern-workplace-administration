@@ -129,6 +129,7 @@ describe('owned About and Feedback journeys', () => {
       '/about',
       '/about/system-versions',
       '/overview',
+      '/my-access',
     ]);
     expect(apiMock).toHaveBeenCalledWith('/api/about/system-versions', { cache: 'no-store' });
   });

@@ -3,6 +3,7 @@ using System.Net.Http.Headers;
 using System.Security.Claims;
 using Atea.UnifiedWorkplace.Api.Authorization;
 using Atea.UnifiedWorkplace.Api.Infrastructure.Graph;
+using Atea.UnifiedWorkplace.Api.Infrastructure.Persistence;
 using Atea.UnifiedWorkplace.Api.Infrastructure.Persistence.Repositories;
 using FluentAssertions;
 using Microsoft.AspNetCore.Authentication;
@@ -39,12 +40,14 @@ public sealed class CapabilityEndpointTests
         body.Should().Contain("\"workspaceModules\"");
         body.Should().Contain("\"module\":\"authentication-campaigns\"");
         body.Should().Contain("\"module\":\"license-hygiene\"");
+        body.Should().Contain("\"module\":\"about\"");
+        body.Should().Contain("\"module\":\"feedback\"");
         body.Should().Contain("\"capability\":\"authentication.campaigns.view\"");
         body.Should().Contain("\"capability\":\"authentication.campaigns.view\",\"state\":\"consent_required\"");
         body.Should().NotContain("\"capability\":\"authentication.campaigns.manage\"");
         body.Should().Contain("\"capability\":\"licenses.hygiene.view\"");
-        body.Should().NotContain("\"capability\":\"platform.about.view\"");
-        body.Should().NotContain("\"capability\":\"feedback.submit\"");
+        body.Should().Contain("\"capability\":\"platform.about.view\",\"state\":\"allowed\"");
+        body.Should().Contain("\"capability\":\"feedback.submit\",\"state\":\"allowed\"");
         body.Should().NotContain("access_token");
         body.Should().NotContain("Authorization");
     }
@@ -64,7 +67,7 @@ public sealed class CapabilityEndpointTests
             .Should().Be("55555555-5555-5555-5555-555555555555");
         var modules = body.RootElement.GetProperty("workspaceModules").EnumerateArray().ToArray();
         modules.Select(module => module.GetProperty("module").GetString())
-            .Should().Equal("users", "devices", "licenses", "exchange", "authentication-campaigns", "license-hygiene");
+            .Should().Equal("users", "devices", "licenses", "exchange", "authentication-campaigns", "license-hygiene", "about", "feedback");
         modules.Should().OnlyContain(module =>
             !module.GetProperty("effective").GetBoolean()
             && module.GetProperty("grantSource").GetString() == "none");
@@ -177,8 +180,19 @@ public sealed class CapabilityEndpointTests
                 services.AddSingleton<IGraphAuthorizationSnapshotReader>(reader ?? new RecordingSnapshotReader(snapshot ?? GraphAuthorizationSnapshot.Unavailable("temporarily_unavailable")));
                 services.RemoveAll<IConsentChallengeRepository>();
                 services.AddSingleton<IConsentChallengeRepository, RecordingConsentChallengeRepository>();
+                services.RemoveAll<IFeedbackRetentionService>();
+                services.AddSingleton<IFeedbackRetentionService, NoOpFeedbackRetentionService>();
             });
         });
+
+    private sealed class NoOpFeedbackRetentionService : IFeedbackRetentionService
+    {
+        public Task<int> DeleteExpiredBatchAsync(DateTimeOffset nowUtc, CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.FromResult(0);
+        }
+    }
 
     private sealed class RecordingSnapshotReader(GraphAuthorizationSnapshot snapshot) : IGraphAuthorizationSnapshotReader
     {

@@ -223,7 +223,9 @@ public sealed class CapabilityEvaluatorTests
             new WorkspaceModuleEvidence("licenses", "none", Enabled: false, Effective: false),
             new WorkspaceModuleEvidence("exchange", "none", Enabled: true, Effective: false),
             new WorkspaceModuleEvidence("authentication-campaigns", "none", Enabled: true, Effective: false),
-            new WorkspaceModuleEvidence("license-hygiene", "none", Enabled: false, Effective: false)
+            new WorkspaceModuleEvidence("license-hygiene", "none", Enabled: false, Effective: false),
+            new WorkspaceModuleEvidence("about", "none", Enabled: false, Effective: false),
+            new WorkspaceModuleEvidence("feedback", "explicit", Enabled: false, Effective: false)
         ], options => options.WithStrictOrdering());
     }
 
@@ -244,7 +246,9 @@ public sealed class CapabilityEvaluatorTests
             new WorkspaceModuleEvidence("licenses", "none", Enabled: false, Effective: false),
             new WorkspaceModuleEvidence("exchange", "owner_inherited", Enabled: true, Effective: true),
             new WorkspaceModuleEvidence("authentication-campaigns", "none", Enabled: false, Effective: false),
-            new WorkspaceModuleEvidence("license-hygiene", "owner_inherited", Enabled: true, Effective: true)
+            new WorkspaceModuleEvidence("license-hygiene", "owner_inherited", Enabled: true, Effective: true),
+            new WorkspaceModuleEvidence("about", "none", Enabled: false, Effective: false),
+            new WorkspaceModuleEvidence("feedback", "none", Enabled: false, Effective: false)
         ], options => options.WithStrictOrdering());
     }
 
