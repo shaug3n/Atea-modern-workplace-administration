@@ -24,6 +24,8 @@ The presentation mapping associates modules and read/write action groups with ca
 
 Authentication campaigns is represented as a read-only module here: `authentication.campaigns.view` is API-evaluated, while campaign management remains reserved and is not presented as a decision.
 
+License Hygiene is represented as a separate, opt-in read-only module here: `licenses.hygiene.view` is API-evaluated behind the `license-hygiene` module gate, with no write action.
+
 Use `DomainAccessChip` only when its existing contract accurately represents the available decisions. Supplement it with explicit text for mixed/partial evidence; never fabricate an API decision to fit a pill. Unmapped modules show that coverage is unavailable, not a fake capability.
 
 Workspace grants and Microsoft authorization are distinct:

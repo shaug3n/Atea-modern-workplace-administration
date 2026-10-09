@@ -39,6 +39,7 @@ const mappedCapabilities: Capability[] = [
   'devices.laps.reveal',
   'licenses.view',
   'licenses.assign',
+  'licenses.hygiene.view',
   'audit.view',
   'workspace.settings.manage',
   'workspace.members.manage',
@@ -64,6 +65,7 @@ function snapshot(overrides: Partial<CapabilitySnapshot> = {}): CapabilitySnapsh
       { module: 'users', grantSource: 'explicit', enabled: true, effective: true },
       { module: 'devices', grantSource: 'explicit', enabled: true, effective: true },
       { module: 'licenses', grantSource: 'explicit', enabled: true, effective: true },
+      { module: 'license-hygiene', grantSource: 'explicit', enabled: true, effective: true },
       { module: 'exchange', grantSource: 'explicit', enabled: true, effective: true },
       { module: 'authentication-campaigns', grantSource: 'explicit', enabled: true, effective: true },
     ],
@@ -80,8 +82,83 @@ function module(summary: ReturnType<typeof summarizeAccess>, key: string) {
 describe('summarizeAccess', () => {
   it('maps every evaluated API capability exactly once', () => {
     const flattened = accessSummaryCapabilityGroups.flatMap(group => [...group.read, ...group.write]);
-    expect(flattened).toHaveLength(25);
+    expect(flattened).toHaveLength(26);
     expect([...flattened].sort()).toEqual([...mappedCapabilities].sort());
+  });
+
+  it('maps license hygiene as a separately gated read-only module', () => {
+    const summary = summarizeAccess(snapshot(), session);
+    const hygiene = module(summary, 'license-hygiene');
+
+    expect(hygiene.read.state).toBe('allowed');
+    expect(hygiene.read.actions.map(action => action.capability)).toEqual(['licenses.hygiene.view']);
+    expect(hygiene.read.actions[0]?.decision?.capability).toBe('licenses.hygiene.view');
+    expect(hygiene.write.state).toBe('not_applicable');
+    expect(hygiene.write.actions).toEqual([]);
+
+    const notGranted = snapshot({
+      workspaceModules: snapshot().workspaceModules?.map(item =>
+        item.module === 'license-hygiene' ? { ...item, effective: false, grantSource: 'none' } : item),
+      capabilities: snapshot().capabilities.map(item => item.capability === 'licenses.hygiene.view'
+        ? decision(item.capability, 'pim_activation_required', 'available', {
+          reasonCode: 'pim_activation_required',
+          requiredRoleTemplateId: '4d6ac14f-3453-41d0-bef9-a3e0c569773a',
+          roleEvidence: {
+            state: 'available',
+            requiredRoleTemplateIds: ['4d6ac14f-3453-41d0-bef9-a3e0c569773a'],
+            assignments: [{
+              roleTemplateId: '4d6ac14f-3453-41d0-bef9-a3e0c569773a',
+              assignmentState: 'eligible',
+              scope: 'tenant_wide',
+              pimState: 'activation_required',
+            }],
+          },
+        })
+        : item),
+    });
+    const notGrantedRead = module(summarizeAccess(notGranted, session), 'license-hygiene').read;
+    expect(notGrantedRead.state).toBe('workspace_not_granted');
+    expect(notGrantedRead.actions[0]?.decision?.state).toBe('pim_activation_required');
+    expect(notGrantedRead.actions[0]?.decision?.roleEvidence?.assignments[0]?.assignmentState).toBe('eligible');
+    expect(module(summarizeAccess(notGranted, session), 'license-hygiene').write.state).toBe('not_applicable');
+
+    const disabled = snapshot({
+      workspaceModules: snapshot().workspaceModules?.map(item =>
+        item.module === 'license-hygiene' ? { ...item, enabled: false, effective: false } : item),
+    });
+    expect(module(summarizeAccess(disabled, session), 'license-hygiene').read.state).toBe('module_disabled');
+    expect(module(summarizeAccess(disabled, session), 'license-hygiene').write.state).toBe('not_applicable');
+
+    const missingModule = snapshot({ workspaceModules: snapshot().workspaceModules?.filter(item => item.module !== 'license-hygiene') });
+    expect(module(summarizeAccess(missingModule, session), 'license-hygiene').read.state).toBe('unavailable');
+    expect(module(summarizeAccess(missingModule, session), 'license-hygiene').write.state).toBe('not_applicable');
+
+    const unavailableSource = snapshot({
+      sourceState: 'temporarily_unavailable',
+      capabilities: snapshot().capabilities.map(item => item.capability === 'licenses.hygiene.view'
+        ? decision(item.capability, 'consent_required', 'available', {
+          reasonCode: 'delegated_scope_required',
+          missingScopes: ['Directory.Read.All'],
+          roleEvidence: {
+            state: 'available',
+            requiredRoleTemplateIds: ['4d6ac14f-3453-41d0-bef9-a3e0c569773a'],
+            assignments: [],
+          },
+        })
+        : item),
+    });
+    const unavailableRead = module(summarizeAccess(unavailableSource, session), 'license-hygiene').read;
+    expect(unavailableRead.state).toBe('unavailable');
+    expect(unavailableRead.actions[0]?.decision?.state).toBe('consent_required');
+    expect(unavailableRead.actions[0]?.consentEvidence).toContain('Directory.Read.All');
+    expect(unavailableRead.actions[0]?.decision?.roleEvidence?.requiredRoleTemplateIds)
+      .toEqual(['4d6ac14f-3453-41d0-bef9-a3e0c569773a']);
+
+    const missingDecision = snapshot({
+      capabilities: snapshot().capabilities.filter(item => item.capability !== 'licenses.hygiene.view'),
+    });
+    expect(module(summarizeAccess(missingDecision, session), 'license-hygiene').read.state).toBe('partial');
+    expect(module(summarizeAccess(missingDecision, session), 'license-hygiene').read.actions[0]?.decision).toBeNull();
   });
 
   it('maps authentication campaigns as a read-only module with its exact API decision and workspace gate', () => {

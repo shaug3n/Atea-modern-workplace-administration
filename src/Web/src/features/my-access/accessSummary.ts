@@ -10,7 +10,7 @@ export type AccessSummaryState = CapabilityState
   | 'module_disabled'
   | 'not_applicable';
 
-export type AccessModuleKey = 'users' | 'devices' | 'licenses' | 'workspace-administration' | 'exchange' | 'authentication-campaigns';
+export type AccessModuleKey = 'users' | 'devices' | 'licenses' | 'license-hygiene' | 'workspace-administration' | 'exchange' | 'authentication-campaigns';
 
 type AccessGroupDefinition = {
   key: AccessModuleKey;
@@ -55,6 +55,14 @@ export const accessSummaryCapabilityGroups: readonly AccessGroupDefinition[] = [
     coverageComplete: true,
     read: ['licenses.view'],
     write: ['licenses.assign'],
+  },
+  {
+    key: 'license-hygiene',
+    label: 'License hygiene',
+    moduleGate: 'license-hygiene',
+    coverageComplete: true,
+    read: ['licenses.hygiene.view'],
+    write: [],
   },
   {
     key: 'workspace-administration',

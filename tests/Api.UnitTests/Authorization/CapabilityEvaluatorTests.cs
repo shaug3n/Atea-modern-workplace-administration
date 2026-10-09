@@ -187,28 +187,25 @@ public sealed class CapabilityEvaluatorTests
         capabilities[Capability.LicensesAssign].State.Should().Be(CapabilityState.ConsentRequired);
     }
 
-    [Theory]
-    [InlineData(PimRequirement.ActivationRequired, CapabilityState.PimActivationRequired)]
-    [InlineData(PimRequirement.ApprovalRequired, CapabilityState.PimApprovalRequired)]
-    [InlineData(PimRequirement.MfaRequired, CapabilityState.PimMfaRequired)]
-    [InlineData(PimRequirement.EligibilityExpired, CapabilityState.PimEligibilityExpired)]
-    public void Hygiene_PIM_decisions_match_license_view(string pimRequirement, string expectedState)
+    [Fact]
+    public void Hygiene_role_evidence_uses_the_evaluated_license_reader_requirements()
     {
         var snapshot = AvailableSnapshot(
             ["Directory.Read.All"],
-            [EligibleRole(EntraRoleCatalog.LicenseAdministratorTemplateId, pimRequirement)]);
+            [
+                ActiveRole(EntraRoleCatalog.GlobalReaderTemplateId),
+                ActiveRole(EntraRoleCatalog.LicenseAdministratorTemplateId)
+            ]);
 
-        var capabilities = CapabilityEvaluator.Evaluate(snapshot, Member());
+        var decisions = CapabilityEvaluator.Evaluate(snapshot, Member());
+        var hygiene = decisions[Capability.LicensesHygieneView].RoleEvidence!;
+        var licenses = decisions[Capability.LicensesView].RoleEvidence!;
 
-        var licensesView = capabilities[Capability.LicensesView];
-        var hygieneView = capabilities[Capability.LicensesHygieneView];
-        licensesView.State.Should().Be(expectedState);
-        hygieneView.State.Should().Be(licensesView.State);
-        hygieneView.ReasonCode.Should().Be(licensesView.ReasonCode);
-        hygieneView.RequiredRoleTemplateId.Should().Be(licensesView.RequiredRoleTemplateId);
-        hygieneView.Pim.Should().Be(licensesView.Pim);
-        hygieneView.NextStep.Should().Be(licensesView.NextStep);
-        capabilities[Capability.LicensesAssign].State.Should().Be(CapabilityState.ConsentRequired);
+        hygiene.Should().BeEquivalentTo(licenses);
+        hygiene.State.Should().Be("available");
+        hygiene.RequiredRoleTemplateIds.Should().Contain(EntraRoleCatalog.LicenseAdministratorTemplateId);
+        hygiene.Assignments.Select(assignment => assignment.RoleTemplateId).Should().Contain(
+            [EntraRoleCatalog.GlobalReaderTemplateId, EntraRoleCatalog.LicenseAdministratorTemplateId]);
     }
 
     [Fact]
@@ -227,7 +224,8 @@ public sealed class CapabilityEvaluatorTests
             new WorkspaceModuleEvidence("devices", "none", Enabled: false, Effective: false),
             new WorkspaceModuleEvidence("licenses", "none", Enabled: false, Effective: false),
             new WorkspaceModuleEvidence("exchange", "none", Enabled: true, Effective: false),
-            new WorkspaceModuleEvidence("authentication-campaigns", "none", Enabled: true, Effective: false)
+            new WorkspaceModuleEvidence("authentication-campaigns", "none", Enabled: true, Effective: false),
+            new WorkspaceModuleEvidence("license-hygiene", "none", Enabled: false, Effective: false)
         ], options => options.WithStrictOrdering());
     }
 
@@ -239,7 +237,7 @@ public sealed class CapabilityEvaluatorTests
         var snapshot = CapabilityEvaluator.Evaluate(
             GraphAuthorizationSnapshot.Unavailable("temporarily_unavailable"),
             membership,
-            ["users", "exchange"]);
+            ["users", "exchange", "license-hygiene"]);
 
         snapshot.WorkspaceModules.Should().BeEquivalentTo(
         [
@@ -247,7 +245,8 @@ public sealed class CapabilityEvaluatorTests
             new WorkspaceModuleEvidence("devices", "none", Enabled: false, Effective: false),
             new WorkspaceModuleEvidence("licenses", "none", Enabled: false, Effective: false),
             new WorkspaceModuleEvidence("exchange", "owner_inherited", Enabled: true, Effective: true),
-            new WorkspaceModuleEvidence("authentication-campaigns", "none", Enabled: false, Effective: false)
+            new WorkspaceModuleEvidence("authentication-campaigns", "none", Enabled: false, Effective: false),
+            new WorkspaceModuleEvidence("license-hygiene", "owner_inherited", Enabled: true, Effective: true)
         ], options => options.WithStrictOrdering());
     }
 
