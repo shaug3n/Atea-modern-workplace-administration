@@ -138,6 +138,7 @@ public static class AuthenticationMethodEndpoints
             "denied" => Results.Json(result, statusCode: StatusCodes.Status403Forbidden),
             "invalid_target" => Results.BadRequest(result),
             "idempotency_key_reused" => Results.Conflict(result),
+            "unsupported_options" => Results.Json(result, statusCode: StatusCodes.Status422UnprocessableEntity),
             "policy_rejected" => Results.Json(result, statusCode: StatusCodes.Status422UnprocessableEntity),
             _ => Results.Json(result, statusCode: StatusCodes.Status503ServiceUnavailable)
         };

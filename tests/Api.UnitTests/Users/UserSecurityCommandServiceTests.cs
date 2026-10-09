@@ -116,6 +116,33 @@ public sealed class UserSecurityCommandServiceTests
         idempotency.Records.Single().SafeResultJson.Should().NotContain("fixture-tap-value");
     }
 
+    [Fact]
+    public async Task Request_aware_service_overload_preserves_legacy_implementations_and_rejects_unsupported_options()
+    {
+        var legacyService = new LegacyAuthenticationMethodService();
+        IAuthenticationMethodService service = legacyService;
+
+        var delegated = await service.CreateTemporaryAccessPassAsync(
+            Context(),
+            "user-1",
+            "legacy-default",
+            new TemporaryAccessPassRequest(60, true, "legacy reason"),
+            CancellationToken.None);
+        var unsupported = await service.CreateTemporaryAccessPassAsync(
+            Context(),
+            "user-1",
+            "legacy-options",
+            new TemporaryAccessPassRequest(61, false, "other reason"),
+            CancellationToken.None);
+
+        delegated.Status.Should().Be("succeeded");
+        legacyService.TapCalls.Should().Be(1);
+        legacyService.LastReason.Should().Be("legacy reason");
+        unsupported.Status.Should().Be("unsupported_options");
+        unsupported.Error.Should().Be("unsupported_options");
+        legacyService.TapCalls.Should().Be(1);
+    }
+
     [Theory]
     [InlineData(9)]
     [InlineData(1441)]
@@ -317,6 +344,28 @@ public sealed class UserSecurityCommandServiceTests
         {
             TemporaryAccessPassCalls++;
             return Task.FromResult(tap);
+        }
+    }
+
+    private sealed class LegacyAuthenticationMethodService : IAuthenticationMethodService
+    {
+        public int TapCalls { get; private set; }
+        public string? LastReason { get; private set; }
+
+        public Task<AuthenticationMethodsResponse> GetAsync(WorkspaceContext context, string userObjectId, CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
+
+        public Task<AuthenticationMethodCommandResult> RemoveAsync(WorkspaceContext context, string userObjectId, string methodObjectId, string methodType, string idempotencyKey, CancellationToken cancellationToken, string? reason = null) =>
+            throw new NotSupportedException();
+
+        public Task<AuthenticationMethodCommandResult> ResetMfaAsync(WorkspaceContext context, string userObjectId, string idempotencyKey, CancellationToken cancellationToken, string? reason = null) =>
+            throw new NotSupportedException();
+
+        public Task<TemporaryAccessPassCommandResult> CreateTemporaryAccessPassAsync(WorkspaceContext context, string userObjectId, string idempotencyKey, CancellationToken cancellationToken, string? reason = null)
+        {
+            TapCalls++;
+            LastReason = reason;
+            return Task.FromResult(new TemporaryAccessPassCommandResult("succeeded", Capability.AuthenticationMethodsManage, "legacy-tap"));
         }
     }
 

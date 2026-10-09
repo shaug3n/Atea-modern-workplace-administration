@@ -14,7 +14,18 @@ public interface IAuthenticationMethodService
     Task<AuthenticationMethodCommandResult> RemoveAsync(WorkspaceContext context, string userObjectId, string methodObjectId, string methodType, string idempotencyKey, CancellationToken cancellationToken, string? reason = null);
     Task<AuthenticationMethodCommandResult> ResetMfaAsync(WorkspaceContext context, string userObjectId, string idempotencyKey, CancellationToken cancellationToken, string? reason = null);
     Task<TemporaryAccessPassCommandResult> CreateTemporaryAccessPassAsync(WorkspaceContext context, string userObjectId, string idempotencyKey, CancellationToken cancellationToken, string? reason = null);
-    Task<TemporaryAccessPassCommandResult> CreateTemporaryAccessPassAsync(WorkspaceContext context, string userObjectId, string idempotencyKey, TemporaryAccessPassRequest request, CancellationToken cancellationToken);
+    Task<TemporaryAccessPassCommandResult> CreateTemporaryAccessPassAsync(WorkspaceContext context, string userObjectId, string idempotencyKey, TemporaryAccessPassRequest request, CancellationToken cancellationToken)
+    {
+        if (request.LifetimeInMinutes != 60 || !request.IsUsableOnce)
+        {
+            return Task.FromResult(new TemporaryAccessPassCommandResult(
+                "unsupported_options",
+                Capability.AuthenticationMethodsManage,
+                Error: "unsupported_options"));
+        }
+
+        return CreateTemporaryAccessPassAsync(context, userObjectId, idempotencyKey, cancellationToken, request.Reason);
+    }
 }
 
 public sealed class AuthenticationMethodService(
