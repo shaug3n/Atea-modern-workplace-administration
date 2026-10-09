@@ -1,130 +1,235 @@
 import React from 'react';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { OverviewPage } from '../../../../src/Web/src/features/overview/OverviewPage';
 import { overviewMessages } from '../../../../src/Web/src/features/overview/messages';
 import { messages } from '../../../../src/Web/src/messages/en';
 
-const overview = {
-  freshness: 'live', fetchedAt: '2026-09-25T08:00:00Z', totalUsers: 42,
-  licenseCoverage: { assigned: 30, available: 12, percentage: 71 },
-  permissionHealth: { state: 'allowed', allowedCount: 3, totalCount: 4 },
-  pimAttention: { requiresAttention: true, count: 2 }, partialData: false,
-  access: { state: 'allowed' }, totalDevices: 1, deviceAccess: { state: 'allowed' },
+const fetchedAt = '2026-10-08T08:00:00Z';
+
+function source<T>(state: string, data: T | null, scope: string, partialData = false) {
+  return { state, fetchedAt, partialData, data, scope };
+}
+
+function decision(capability: string, state: string, nextStep?: { label: string; href?: string }) {
+  return { capability, state, reasonCode: state, ...(nextStep ? { nextStep } : {}) };
+}
+
+const completeOverview = {
+  effectiveModules: ['users', 'licenses', 'devices'],
+  effectiveCapabilities: [
+    decision('users.view', 'allowed'),
+    decision('licenses.view', 'allowed'),
+    decision('devices.view', 'allowed'),
+    decision('audit.view', 'allowed'),
+  ],
+  users: source('fresh', { totalUsers: 42 }, 'tenant_wide_verified'),
+  licenseCoverage: source('fresh', { assignedUsers: 30, totalUsers: 42, percentage: 71 }, 'tenant_wide_verified'),
+  activity: source('fresh', { items: [
+    { action: 'User created', outcome: 'Succeeded', timestamp: fetchedAt },
+    { action: 'Password reset', outcome: 'Failed', timestamp: fetchedAt },
+  ] }, 'workspace'),
+};
+
+const session = {
+  user: { displayName: 'Alex Admin' },
+  workspace: { id: 'w', name: 'Customer', moduleAccess: ['users', 'licenses', 'devices'] },
+  workspaceAccess: { role: 'workspace_owner', canManageMembers: true, canManageSettings: true },
 };
 
 describe('OverviewPage', () => {
   afterEach(cleanup);
 
-  it('renders the existing Overview English copy from the feature message composition', () => {
-    expect(overviewMessages).toEqual({
-      overviewEyebrow: 'Operational overview',
-      overviewTitle: 'Overview',
-      overviewLoading: 'Loading overview…',
-      overviewUnavailable: 'Overview data is unavailable. Try again later.',
-      overviewPermissionHealth: 'Permission health',
-      overviewPimAttention: 'PIM attention needed',
-    });
+  it('composes feature copy into the existing English messages', () => {
     expect(messages.overviewEyebrow).toBe(overviewMessages.overviewEyebrow);
     expect(messages.overviewTitle).toBe(overviewMessages.overviewTitle);
     expect(messages.overviewLoading).toBe(overviewMessages.overviewLoading);
     expect(messages.overviewUnavailable).toBe(overviewMessages.overviewUnavailable);
-    expect(messages.overviewPermissionHealth).toBe(overviewMessages.overviewPermissionHealth);
-    expect(messages.overviewPimAttention).toBe(overviewMessages.overviewPimAttention);
-
-    render(<OverviewPage loadOverview={() => new Promise(() => {})} />);
-    expect(screen.getByRole('heading', { name: 'Overview' })).toBeTruthy();
-    expect(screen.getByText('Loading overview…')).toBeTruthy();
+    expect(messages.overviewRole).toBe(overviewMessages.overviewRole);
   });
 
-  it('renders the state returned by the connection-health loader', async () => {
-    render(<OverviewPage loadConnectionHealth={async () => ({ status: 'permission_incomplete', lastVerifiedAt: null })} />);
-    await waitFor(() => expect(screen.getByTestId('connection-state').textContent).toBe('Permissions incomplete'));
+  it('shows_workspace_role_and_section_specific_scope', async () => {
+    render(<OverviewPage loadOverview={async () => completeOverview} session={session} />);
+    expect(await screen.findByText('workspace_owner')).toBeTruthy();
+    expect(screen.getByText('Users access: Allowed')).toBeTruthy();
+    expect(screen.getByText('Licenses access: Allowed')).toBeTruthy();
+    expect(screen.getByText(/users.*verified tenant-wide/i)).toBeTruthy();
+    expect(screen.getByText(/license coverage.*verified tenant-wide/i)).toBeTruthy();
+    expect(screen.getByText(/app activity.*workspace/i)).toBeTruthy();
   });
 
-  it('calls the consent API boundary and exposes the returned descriptor', async () => {
-    render(<OverviewPage
-      loadConnectionHealth={async () => ({ status: 'consent_required', lastVerifiedAt: null })}
-      actions={{ check: async () => ({ status: 'connected', lastVerifiedAt: new Date().toISOString() }), startConsent: async () => ({ authorizationUrl: 'https://login.example/authorize?state=safe' }) }} />);
-    await waitFor(() => expect(screen.getByTestId('connection-state').textContent).toBe('Consent required'));
-    fireEvent.click(screen.getByRole('button', { name: 'Start consent' }));
-    await waitFor(() => expect(screen.getByRole('link', { name: 'Continue consent' }).getAttribute('href')).toContain('state=safe'));
+  it('shows_only_verified_user_and_user_license_coverage_as_destination_links', async () => {
+    const navigate = vi.fn();
+    render(<OverviewPage loadOverview={async () => completeOverview} session={session} onNavigate={navigate} />);
+    const users = await screen.findByRole('link', { name: 'Users: 42, open Users page' });
+    const licenses = screen.getByRole('link', { name: 'License coverage: 30 of 42, open Licenses page' });
+    expect(users.getAttribute('aria-pressed')).toBeNull();
+    expect(licenses.getAttribute('aria-pressed')).toBeNull();
+    expect(screen.queryByRole('button', { name: /Users.*42/i })).toBeNull();
+    expect(screen.getByText('assigned users of total users')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'About license coverage' }));
+    expect(screen.getByRole('dialog', { name: 'About license coverage' }).textContent).toMatch(/not.*purchased-seat/i);
+    fireEvent.click(users);
+    fireEvent.click(licenses);
+    expect(navigate.mock.calls).toEqual([['/users'], ['/licenses']]);
   });
 
-  it('does not present a device search page count as the tenant total', async () => {
-    render(<OverviewPage loadOverview={async () => overview} session={{ user: {}, workspace: { id: 'w', name: 'Customer', moduleAccess: ['devices'] } }} />);
-    const card = await screen.findByRole('link', { name: /Managed devices/ });
-    expect(card.getAttribute('href')).toBe('/devices');
-    expect(card.textContent).toContain('View compliance and remote actions');
-    expect(screen.queryByText('Unavailable')).toBeNull();
+  it('preserves_modified_native_link_navigation', async () => {
+    const navigate = vi.fn();
+    render(<OverviewPage loadOverview={async () => completeOverview} session={session} onNavigate={navigate} />);
+    const users = await screen.findByRole('link', { name: 'Users: 42, open Users page' });
+    let defaultPreventedByOverview = false;
+    const stopNavigation = (event: MouseEvent) => {
+      defaultPreventedByOverview = event.defaultPrevented;
+      event.preventDefault();
+    };
+    document.addEventListener('click', stopNavigation);
+    try {
+      fireEvent.click(users, { ctrlKey: true });
+    } finally {
+      document.removeEventListener('click', stopNavigation);
+    }
+    expect(defaultPreventedByOverview).toBe(false);
+    expect(navigate).not.toHaveBeenCalled();
   });
 
-  it('keeps connection status off the overview while the summary request is loading', async () => {
-    render(<OverviewPage loadOverview={() => new Promise(() => {})} loadConnectionHealth={async () => ({ status: 'connected', lastVerifiedAt: new Date().toISOString() })} />);
-    expect(screen.getByText('Loading overview…')).toBeTruthy();
-    expect(screen.queryByTestId('connection-state')).toBeNull();
+  it('does_not_render_links_or_numbers_for_restricted_sections', async () => {
+    const restricted = {
+      ...completeOverview,
+      effectiveCapabilities: [
+        decision('users.view', 'read_only'),
+        decision('licenses.view', 'consent_required'),
+        decision('devices.view', 'hidden'),
+        decision('audit.view', 'hidden'),
+      ],
+      users: source('restricted', { totalUsers: 42 }, 'scoped'),
+      licenseCoverage: source('fresh', { assignedUsers: 30, totalUsers: 42, percentage: 71 }, 'unverified'),
+      activity: source('restricted', null, 'workspace'),
+    };
+    render(<OverviewPage loadOverview={async () => restricted} session={session} />);
+    await screen.findByText('Users access: Read-only');
+    expect(screen.queryByRole('link', { name: /Users.*42/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: /License coverage/i })).toBeNull();
+    expect(screen.queryByRole('link', { name: /Open devices/i })).toBeNull();
+    expect(screen.queryByText('42')).toBeNull();
+    expect(screen.queryByText('30')).toBeNull();
+    expect(within(screen.getByRole('region', { name: 'Recent app activity' })).getByText(/app activity is restricted/i)).toBeTruthy();
   });
 
-  it('shows a verified permission count from the API healthy state', async () => {
-    render(<OverviewPage loadOverview={async () => ({ ...overview, permissionHealth: { state: 'healthy', allowedCount: 3, totalCount: 4 } })} />);
-    await waitFor(() => expect(screen.getByText('3/4')).toBeTruthy());
+  it('keeps_empty_restricted_unavailable_stale_and_partial_states_distinct', async () => {
+    const mixed = {
+      ...completeOverview,
+      users: source('stale', { totalUsers: 42 }, 'tenant_wide_verified', true),
+      licenseCoverage: source('unavailable', null, 'tenant_wide_verified'),
+      activity: source('empty', { items: [] }, 'workspace'),
+    };
+    render(<OverviewPage loadOverview={async () => mixed} session={session} />);
+    expect(await screen.findByRole('link', { name: 'Users: 42, open Users page' })).toBeTruthy();
+    expect(screen.getAllByText(/may be out of date/i).length).toBeGreaterThan(0);
+    expect(screen.getByText(/partly loaded/i)).toBeTruthy();
+    expect(screen.getByText('No recent app activity.')).toBeTruthy();
+    expect(screen.getByText(/license coverage.*unavailable/i)).toBeTruthy();
+
+    cleanup();
+    const denied = { ...completeOverview, activity: source('restricted', null, 'workspace') };
+    render(<OverviewPage loadOverview={async () => denied} session={session} />);
+    const activityRegion = await screen.findByRole('region', { name: 'Recent app activity' });
+    expect(await within(activityRegion).findByText(/app activity is restricted/i)).toBeTruthy();
+    expect(screen.queryByText('No recent app activity.')).toBeNull();
   });
 
-  it('calls out incomplete permission health in the attention list', async () => {
-    render(<OverviewPage loadOverview={async () => ({
-      ...overview,
-      pimAttention: { requiresAttention: false, count: 0 },
-      permissionHealth: { state: 'incomplete', allowedCount: 3, totalCount: 4 },
-    })} />);
-    await waitFor(() => expect(screen.getByText('3/4')).toBeTruthy());
-    expect(screen.getByText('Workspace permissions need attention (3 of 4 available).')).toBeTruthy();
-    expect(screen.queryByText('No issues need attention right now.')).toBeNull();
+  it('renders_unknown_capability_states_as_readable_unknown_without_exposing_identifiers', async () => {
+    const unknown = {
+      ...completeOverview,
+      effectiveCapabilities: [
+        decision('users.view', 'future_state'),
+        decision('licenses.view', 'allowed'),
+        decision('devices.view', 'allowed'),
+        decision('audit.view', 'constructor'),
+      ],
+    };
+    render(<OverviewPage loadOverview={async () => unknown} session={session} />);
+    expect(await screen.findByText('Users access: unknown')).toBeTruthy();
+    expect(screen.getByText('App activity access: unknown')).toBeTruthy();
+    expect(document.body.textContent).not.toContain('future_state');
+    expect(document.body.textContent).not.toContain('constructor');
+    expect(screen.queryByRole('link', { name: /Users.*42/i })).toBeNull();
   });
 
-  it('shows cached counts and the retrieval timestamp when authorized summary data is stale', async () => {
-    render(<OverviewPage loadOverview={async () => ({
-      ...overview,
-      freshness: 'stale',
-      partialData: true,
-    })} />);
-
-    await waitFor(() => expect(screen.getByText('42')).toBeTruthy());
-    expect(screen.getByRole('status').textContent).toMatch(/Updated|stale|Partial/i);
-    expect(document.body.textContent).not.toContain('Data freshness');
-    expect(screen.queryByText('Entra permission needed')).toBeNull();
-  });
-
-  it('describes authorized unavailable summary data without claiming missing permission', async () => {
-    render(<OverviewPage loadOverview={async () => ({
-      ...overview,
-      freshness: 'unavailable',
-      partialData: true,
-    })} />);
-
-    await waitFor(() => expect(screen.getAllByText('Unavailable').length).toBeGreaterThan(0));
-    expect(screen.getAllByText('Summary data temporarily unavailable.').length).toBeGreaterThan(0);
-    expect(screen.queryByText('Entra permission needed')).toBeNull();
-  });
-
-  it('keeps every metric unavailable when the summary is unavailable despite zero payload values', async () => {
-    render(<OverviewPage loadOverview={async () => ({ ...overview, freshness: 'unavailable', partialData: true, totalUsers: 0, licenseCoverage: { assigned: 0, available: 0, percentage: 0 }, permissionHealth: { state: 'healthy', allowedCount: 0, totalCount: 0 } })} />);
-    await screen.findByRole('heading', { name: 'Overview' });
-    for (const label of ['Users', 'Licenses', 'Permission health']) expect(screen.getByText(label).closest('.metric-card')?.textContent).toContain('—');
-    expect(document.body.textContent).not.toContain('0/0');
-  });
-
-  it('links metric cards and gives each attention row one action', async () => {
-    const calls = vi.fn(async () => ({ ...overview, pimAttention: { requiresAttention: true }, partialData: true }) as never);
-    render(<OverviewPage loadOverview={calls} />);
-    expect((await screen.findByRole('link', { name: /Users.*open users/i })).getAttribute('href')).toBe('/users');
-    expect(screen.getByRole('link', { name: /Licenses.*open licenses/i }).getAttribute('href')).toBe('/licenses');
+  it('ranks_access_then_freshness_then_supported_navigation_stably', async () => {
+    const overview = {
+      ...completeOverview,
+      effectiveCapabilities: [
+        decision('users.view', 'pim_activation_required', { label: 'Unsafe API suggestion', href: '/api/overview' }),
+        decision('licenses.view', 'consent_required'),
+        decision('devices.view', 'allowed'),
+        decision('audit.view', 'allowed'),
+      ],
+      users: source('restricted', null, 'unknown'),
+      licenseCoverage: source('unavailable', null, 'tenant_wide_verified'),
+      activity: source('stale', { items: [{ action: 'Recent action', outcome: 'Succeeded', timestamp: fetchedAt }] }, 'workspace', true),
+    };
+    render(<OverviewPage loadOverview={async () => overview} session={session} />);
+    await screen.findByRole('link', { name: 'Open PIM guidance' });
+    expect(screen.getByText('Users access: PIM activation required')).toBeTruthy();
+    expect(document.body.textContent).not.toContain('pim_activation_required');
+    expect(document.body.textContent).not.toContain('consent_required');
+    const actions = Array.from(document.querySelectorAll('.overview-priority-actions a, .overview-priority-actions button'));
+    expect(actions.map(item => item.textContent?.trim())).toEqual(['Open PIM guidance', 'Open setup', 'Retry', 'Open devices', 'Open activity']);
+    expect(screen.queryByRole('link', { name: /Unsafe API/i })).toBeNull();
     expect(screen.getByRole('link', { name: 'Open PIM guidance' }).getAttribute('href')).toBe('/identity');
-    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
-    await waitFor(() => expect(calls).toHaveBeenCalledTimes(2));
+    expect(screen.getByRole('link', { name: 'Open setup' }).getAttribute('href')).toBe('/settings#connection');
+    expect(screen.getByRole('link', { name: 'Open devices' }).getAttribute('href')).toBe('/devices');
+    expect(screen.getByRole('link', { name: 'Open activity' }).getAttribute('href')).toBe('/activity');
+    expect(Array.from(document.querySelectorAll('.overview-priority-actions a')).map(link => link.getAttribute('href'))).toEqual([
+      '/identity', '/settings#connection', '/devices', '/activity',
+    ]);
   });
 
-  it('shows an empty attention state', async () => {
-    render(<OverviewPage loadOverview={async () => ({ ...overview, pimAttention: { requiresAttention: false }, partialData: false }) as never} />);
-    expect(await screen.findByText('Nothing needs your attention.')).toBeTruthy();
+  it('uses_only_supported_routes_for_actions', async () => {
+    const restrictedSettings = {
+      ...completeOverview,
+      effectiveCapabilities: [
+        decision('users.view', 'consent_required', { label: 'Unsafe', href: 'https://example.invalid' }),
+        decision('licenses.view', 'allowed'),
+        decision('devices.view', 'hidden'),
+        decision('audit.view', 'hidden'),
+      ],
+      users: source('unavailable', null, 'tenant_wide_verified'),
+      activity: source('restricted', null, 'workspace'),
+    };
+    const limitedSession = { ...session, workspaceAccess: { role: 'member', canManageMembers: false, canManageSettings: false } };
+    render(<OverviewPage loadOverview={async () => restrictedSettings} session={limitedSession} />);
+    expect(await screen.findByText('Licenses access: Allowed')).toBeTruthy();
+    expect(screen.queryByRole('link', { name: 'Open setup' })).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Unsafe' })).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Open devices' })).toBeNull();
+    expect(screen.getByRole('link', { name: 'License coverage: 30 of 42, open Licenses page' })).toBeTruthy();
+  });
+
+  it('unknown_source_state_fails_closed', async () => {
+    const unknown = {
+      ...completeOverview,
+      users: source('future_state', { totalUsers: 42 }, 'tenant_wide_verified'),
+      licenseCoverage: source('fresh', { assignedUsers: 42, totalUsers: 30, percentage: 140 }, 'tenant_wide_verified'),
+      activity: source('fresh', { items: [{ action: 'Unexpected scope row', outcome: 'Succeeded', timestamp: fetchedAt }] }, 'unknown'),
+    };
+    render(<OverviewPage loadOverview={async () => unknown} session={session} />);
+    await screen.findByText(/users.*unavailable/i);
+    expect(screen.queryByRole('link', { name: /Users.*42/i })).toBeNull();
+    expect(screen.queryByRole('link', { name: /Users/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: /License coverage 42 of 30/i })).toBeNull();
+    expect(screen.getByText('Retry Licenses')).toBeTruthy();
+    expect(screen.queryByText('Unexpected scope row')).toBeNull();
+  });
+
+  it('retries by issuing one new overview load', async () => {
+    const loadOverview = vi.fn()
+      .mockResolvedValueOnce({ ...completeOverview, users: source('stale', { totalUsers: 42 }, 'tenant_wide_verified') })
+      .mockResolvedValueOnce(completeOverview);
+    render(<OverviewPage loadOverview={loadOverview} session={session} />);
+    await screen.findByRole('link', { name: 'Users: 42, open Users page' });
+    fireEvent.click(screen.getAllByRole('button', { name: 'Retry' })[0]);
+    await waitFor(() => expect(loadOverview).toHaveBeenCalledTimes(2));
   });
 });
