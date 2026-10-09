@@ -23,7 +23,7 @@ public sealed class GraphAuthenticationCampaignsDirectoryReaderTests
         result.Users["user-1"].Should().Be(new AuthenticationCampaignsDirectoryEntry("user-1", "Engineering", "Oslo", "Contoso"));
         factory.RequestedScopes.Should().Equal("User.Read.All");
         transport.Requests.Select(request => request.PathAndQuery).Should().Equal(
-            "/v1.0/users?$select=id,department,officeLocation,companyName");
+            "/v1.0/users?$select=id,department,officeLocation,companyName&$top=999");
         transport.Requests.Should().OnlyContain(request => request.Method == HttpMethod.Get);
     }
 

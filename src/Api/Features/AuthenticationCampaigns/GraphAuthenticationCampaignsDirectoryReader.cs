@@ -9,7 +9,7 @@ namespace Atea.UnifiedWorkplace.Api.Features.AuthenticationCampaigns;
 public sealed class GraphAuthenticationCampaignsDirectoryReader(IDelegatedGraphClientFactory clientFactory)
     : IAuthenticationCampaignsDirectoryReader
 {
-    private const string DirectoryPath = "/v1.0/users?$select=id,department,officeLocation,companyName";
+    private const string DirectoryPath = "/v1.0/users?$select=id,department,officeLocation,companyName&$top=999";
 
     public async Task<AuthenticationCampaignsDirectoryReadResult> ReadAsync(
         WorkspaceContext context,

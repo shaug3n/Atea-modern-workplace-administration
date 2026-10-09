@@ -138,6 +138,20 @@
   border-collapse: collapse;
 }
 
+.authentication-campaigns__panel > .responsive-data-view__table {
+  overflow-x: auto;
+}
+
+.authentication-campaigns__table--wide {
+  min-width: 96rem;
+}
+
+.authentication-campaigns__table--wide th,
+.authentication-campaigns__table--wide td {
+  overflow-wrap: normal;
+  word-break: normal;
+}
+
 .authentication-campaigns__table th,
 .authentication-campaigns__table td,
 .authentication-campaigns__rollup th,

@@ -249,7 +249,7 @@ function PhoneKpis({ accounts, filter, setFilter, population }: { accounts: Auth
 }
 
 function AccountTable({ items, accessToUsers, onNavigate }: { items: AuthenticationCampaignsRegistration[]; accessToUsers: boolean; onNavigate?: (path: string) => void }) {
-  return <table className="authentication-campaigns__table" aria-label={copy.authenticationCampaignsAccountResults}>
+  return <table className="authentication-campaigns__table authentication-campaigns__table--wide" aria-label={copy.authenticationCampaignsAccountResults}>
     <caption className="sr-only">{copy.authenticationCampaignsAccountResults}</caption>
     <thead><tr><th scope="col">Account</th><th scope="col">{copy.authenticationCampaignsUserType}</th><th scope="col">{copy.authenticationCampaignsPasskeyState}</th><th scope="col">{copy.authenticationCampaignsFidoState}</th><th scope="col">{copy.authenticationCampaignsMfaRegistered}</th><th scope="col">{copy.authenticationCampaignsMfaCapable}</th><th scope="col">{copy.authenticationCampaignsPasswordlessCapable}</th><th scope="col">{copy.authenticationCampaignsPhoneState}</th><th scope="col">{copy.authenticationCampaignsPhonePreference}</th><th scope="col">{copy.authenticationCampaignsMethods}</th></tr></thead>
     <tbody>{items.map(item => <tr key={item.id}>

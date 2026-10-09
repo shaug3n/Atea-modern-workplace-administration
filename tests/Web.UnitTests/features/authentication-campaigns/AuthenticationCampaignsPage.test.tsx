@@ -332,7 +332,11 @@ describe('AuthenticationCampaignsPage', () => {
     renderPage([baseRegistration]);
 
     const passkeys = await screen.findByRole('tab', { name: 'Passkeys' });
-    await screen.findByRole('table', { name: /account registration results/i });
+    const wideRegion = await screen.findByRole('region', { name: 'Account registration results' });
+    const table = await within(wideRegion).findByRole('table', { name: /account registration results/i });
+    expect(wideRegion.classList.contains('responsive-data-view__table')).toBe(true);
+    expect(table.classList.contains('authentication-campaigns__table--wide')).toBe(true);
+    expect(table.closest('[role="region"]')).toBe(wideRegion);
     expect(screen.getByLabelText('Account population')).not.toBeNull();
     passkeys.focus();
     fireEvent.keyDown(passkeys, { key: 'ArrowRight' });
