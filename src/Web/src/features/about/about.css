@@ -249,6 +249,11 @@
 }
 
 @media (max-width: 42rem) {
+  .about-tabs {
+    flex-wrap: wrap;
+    overflow-x: visible;
+  }
+
   .about-version-grid {
     grid-template-columns: minmax(0, 1fr);
   }

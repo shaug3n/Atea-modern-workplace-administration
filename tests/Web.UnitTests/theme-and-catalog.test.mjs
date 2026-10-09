@@ -65,6 +65,13 @@ test('skeleton convention disables shimmer for reduced motion', async () => {
   assert.match(components, /@media\s*\(prefers-reduced-motion:\s*reduce\)[\s\S]*?\.loading-skeleton[\s\S]*?animation:\s*none/);
 });
 
+test('narrow About tabs wrap and feedback launcher returns to document flow', async () => {
+  const about = await readFile('../../src/Web/src/features/about/about.css', 'utf8');
+  const feedback = await readFile('../../src/Web/src/features/feedback/feedback.css', 'utf8');
+  assert.match(about, /@media\s*\(max-width:\s*42rem\)[\s\S]*?\.about-tabs\s*\{[^}]*flex-wrap:\s*wrap[^}]*overflow-x:\s*visible/);
+  assert.match(feedback, /@media\s*\(max-width:\s*42rem\)[\s\S]*?\.app-feedback-fab\s*\{[^}]*position:\s*static[^}]*margin:\s*1rem 0\.75rem 0\.75rem auto/);
+});
+
 test('reserved capability names match FE and BE', async () => {
   const frontend = await readFile('../../src/Web/src/capabilities/capabilityTypes.ts', 'utf8');
   const backend = await readFile('../../src/Api/Authorization/Capability.cs', 'utf8');
