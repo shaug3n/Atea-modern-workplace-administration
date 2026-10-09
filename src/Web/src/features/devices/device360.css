@@ -1,0 +1,180 @@
+.device360-tabs {
+  display: flex;
+  gap: var(--atea-space-2);
+  min-width: 0;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--uw-border);
+}
+
+.device360-tabs button {
+  flex: 0 0 auto;
+  min-height: 2.75rem;
+  padding: var(--atea-space-2) var(--atea-space-3);
+  border: 0;
+  border-bottom: 3px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  color: var(--uw-text);
+  font: inherit;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.device360-tabs button[aria-selected='true'] {
+  border-bottom-color: var(--uw-primary);
+  color: var(--uw-heading);
+}
+
+.device360-tabs button:focus-visible {
+  outline: 3px solid var(--uw-focus);
+  outline-offset: -3px;
+}
+
+.device360-tabpanel {
+  min-width: 0;
+}
+
+.device360-core-retrieval {
+  color: var(--uw-muted);
+  font-size: var(--atea-text-s);
+}
+
+.device360-header-identity {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--atea-space-2) var(--atea-space-4);
+  min-width: 0;
+  color: var(--uw-text);
+  font-size: var(--atea-text-s);
+}
+
+.device360-overview {
+  display: grid;
+  gap: var(--atea-space-4);
+  min-width: 0;
+}
+
+.device360-overview__grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  align-items: start;
+  gap: var(--atea-space-4);
+  min-width: 0;
+}
+
+.device360-facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--atea-space-3) var(--atea-space-4);
+  margin: 0;
+}
+
+.device360-fact {
+  display: grid;
+  align-content: start;
+  gap: var(--atea-space-1);
+  min-width: 0;
+}
+
+.device360-fact dt {
+  color: var(--uw-muted);
+  font-size: var(--atea-text-s);
+  font-weight: 600;
+}
+
+.device360-fact dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.device360-fact .provenance-chip {
+  justify-self: start;
+}
+
+.device360-fact dt .info-tip {
+  display: inline-flex;
+  vertical-align: middle;
+}
+
+.device360-section-heading,
+.device360-portal {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--atea-space-3);
+  min-width: 0;
+}
+
+.device360-section-heading h2,
+.device360-portal h2 {
+  margin-top: 0;
+}
+
+.device360-section-heading p,
+.device360-portal p {
+  margin-bottom: 0;
+}
+
+.device360-retrieved {
+  color: var(--uw-muted);
+  font-size: var(--atea-text-s);
+  text-align: right;
+}
+
+.device360-policies__list {
+  display: grid;
+  gap: var(--atea-space-2);
+  padding: 0;
+  margin: var(--atea-space-3) 0 0;
+  list-style: none;
+}
+
+.device360-policies__list li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: baseline;
+  gap: var(--atea-space-3);
+  padding: var(--atea-space-3) 0;
+  border-top: 1px solid var(--uw-border);
+}
+
+.device360-policies__list li > * {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.device360-portal {
+  align-items: center;
+}
+
+.device360-actions {
+  display: grid;
+  gap: var(--atea-space-4);
+}
+
+@media (max-width: 60rem) {
+  .device360-overview__grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 38rem) {
+  .device360-facts {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .device360-section-heading,
+  .device360-portal {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .device360-retrieved {
+    text-align: left;
+  }
+
+  .device360-policies__list li {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--atea-space-1);
+  }
+}

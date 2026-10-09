@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { useApi } from '../../auth/useApi';
 import { messages } from '../../app/messages';
 import { ConfirmationDialog } from '../../components/ConfirmationDialog';
@@ -6,16 +6,29 @@ import type { CapabilityDecision } from '../../capabilities/capabilityTypes';
 import type { ApiFetch } from '../users/userDetailApi';
 import { executeDeviceAction, fetchBitlockerMetadata, fetchDeviceDetail, fetchLapsMetadata, revealBitlocker, revealLaps, RecoveryFailure, type BitlockerMetadata, type DeviceAction, type LapsMetadata, type ManagedDevice, type RecoveryResponse } from './devicesApi';
 import { ActionGroup } from '../../components/ActionGroup';
-import { DataFreshness } from '../../components/DataFreshness';
 import { StatusBadge } from '../../components/StatusBadge';
-import { TechnicalDetails } from '../../components/TechnicalDetails';
 import { formatDateTime, formatRelative } from '../../format/dateTime';
 import { humanizeCapability } from '../../format/humanize';
 import { WorkspacePageHeader } from '../../components/WorkspacePageHeader';
 import { WorkspaceDataState } from '../../components/WorkspaceDataState';
 import { useWorkspaceIssueReporter } from '../../notifications/WorkspaceNotifications';
+import { InfoTip } from '../../components/InfoTip';
+import { devicesMessages } from './devicesMessages';
+import { Device360OverviewTab, reportedOwnershipLabel, reportedUserDomain } from './Device360OverviewTab';
+import { fetchDeviceCompliancePolicies, type Device360Response, type DeviceCompliancePolicyState } from './device360Api';
 
 type VisibleSecret = { type: 'bitlocker'; value: string } | { type: 'laps'; value: string; accountName?: string | null };
+type Device360Tab = keyof typeof devicesMessages.device360Tabs;
+const emptyPolicies: Device360Response<DeviceCompliancePolicyState[]> = {
+  status: 'succeeded',
+  data: [],
+  retrievedAt: null,
+  partialData: false,
+  error: null,
+  retryAfterSeconds: null,
+  graphCorrelationId: null,
+  graphRequestId: null,
+};
 
 export function DeviceDetailPage({ deviceId, capabilities = [], onNavigate }: { deviceId?: string; capabilities?: CapabilityDecision[]; onNavigate?: (path: string) => void }) {
   const id = deviceId ?? deviceIdFromPath();
@@ -30,6 +43,12 @@ function DeviceDetailContent({ id, capabilities, onNavigate }: { id: string; cap
   const [deviceFetchedAt, setDeviceFetchedAt] = useState<string | null>(null);
   const [detailError, setDetailError] = useState<RecoveryResponse<never> | null>(null);
   const [busy, setBusy] = useState(true);
+  const [activeTab, setActiveTab] = useState<Device360Tab>('overview');
+  const [policies, setPolicies] = useState<Device360Response<DeviceCompliancePolicyState[]> | null>(null);
+  const [policiesBusy, setPoliciesBusy] = useState(false);
+  const [policyRefreshVersion, setPolicyRefreshVersion] = useState(0);
+  const policyGenerationRef = useRef(0);
+  const tabRefs = useRef<Partial<Record<Device360Tab, HTMLButtonElement>>>({});
   const [bitlocker, setBitlocker] = useState<BitlockerMetadata[] | null>(null);
   const [laps, setLaps] = useState<LapsMetadata | null>(null);
   const [bitlockerFetchedAt, setBitlockerFetchedAt] = useState<string | null>(null);
@@ -65,9 +84,15 @@ function DeviceDetailContent({ id, capabilities, onNavigate }: { id: string; cap
   }, []);
 
   useEffect(() => {
+    if (activeTab !== 'security') clearSecret();
+    if (activeTab !== 'actions') setActionTarget(null);
+  }, [activeTab, clearSecret]);
+
+  useEffect(() => {
     activeRef.current = true;
     let cancelled = false;
-    setBusy(true); setDetailError(null); setDevice(null); setDeviceFetchedAt(null);
+    setBusy(true); setDetailError(null); setDevice(null); setDeviceFetchedAt(null); setActiveTab('overview');
+    setPolicies(null); setPoliciesBusy(false); setPolicyRefreshVersion(0);
     setBitlocker(null); setLaps(null); setBitlockerFetchedAt(null); setLapsFetchedAt(null);
     setBitlockerError(null); setLapsError(null); setBitlockerBusy(false); setLapsBusy(false); setReason(''); clearSecret();
     if (!id) { setDetailError({ status: 'invalid_target' }); setBusy(false); return () => { activeRef.current = false; }; }
@@ -78,6 +103,20 @@ function DeviceDetailContent({ id, capabilities, onNavigate }: { id: string; cap
       metadataGenerationRef.current.bitlocker += 1; metadataGenerationRef.current.laps += 1;
       if (clearTimerRef.current) clearTimeout(clearTimerRef.current); clearTimerRef.current = null; setSecret(null); };
   }, [api, id, clearSecret, refreshVersion, issueReporter]);
+
+  useEffect(() => {
+    if (!device || activeTab !== 'overview' || policies) return;
+    let cancelled = false;
+    const requestDeviceId = device.id;
+    const requestGeneration = ++policyGenerationRef.current;
+    setPoliciesBusy(true);
+    fetchDeviceCompliancePolicies(api, requestDeviceId).then(result => {
+      if (!cancelled && activeTab === 'overview' && requestDeviceId === device.id && policyGenerationRef.current === requestGeneration) setPolicies(result);
+    }).finally(() => {
+      if (!cancelled && activeTab === 'overview' && requestDeviceId === device.id && policyGenerationRef.current === requestGeneration) setPoliciesBusy(false);
+    });
+    return () => { cancelled = true; policyGenerationRef.current += 1; };
+  }, [api, device, activeTab, policies, policyRefreshVersion]);
 
   const loadMetadata = async (type: 'bitlocker' | 'laps') => {
     const requestDeviceId = id;
@@ -150,21 +189,69 @@ function DeviceDetailContent({ id, capabilities, onNavigate }: { id: string; cap
   const complianceTone = device?.complianceState?.toLowerCase() === 'compliant' ? 'success' : device?.complianceState?.toLowerCase() === 'noncompliant' ? 'warning' : 'neutral';
   const blockerProps = (name: CapabilityDecision['capability'], shared = false) => ({ decision: recoveryDecision(name), capability: name, canManageSettings, suppressed: shared });
   const describedBy = (name: CapabilityDecision['capability'], shared = false) => shared ? 'recovery-shared-blocker' : blocked(name) ? `blocker-${name}` : undefined;
+  const tabNames = Object.keys(devicesMessages.device360Tabs) as Device360Tab[];
+  const handleTabKeyDown = (event: KeyboardEvent<HTMLButtonElement>, current: Device360Tab) => {
+    const index = tabNames.indexOf(current);
+    const next = event.key === 'ArrowRight' ? tabNames[(index + 1) % tabNames.length]
+      : event.key === 'ArrowLeft' ? tabNames[(index - 1 + tabNames.length) % tabNames.length]
+        : event.key === 'Home' ? tabNames[0]
+          : event.key === 'End' ? tabNames[tabNames.length - 1]
+            : undefined;
+    if (!next) return;
+    event.preventDefault();
+    setActiveTab(next);
+    tabRefs.current[next]?.focus();
+  };
+  const retryPolicies = () => { setPolicies(null); setPoliciesBusy(true); setPolicyRefreshVersion(version => version + 1); };
 
   return <div className="device-full-page">
     <WorkspacePageHeader title={title} backLink={{ label: 'Back to Devices', href: '/devices', onNavigate: goBack }}
-      meta={device ? <><StatusBadge tone={complianceTone} label={device.complianceState ? humanizeCompliance(device.complianceState) : 'Compliance unknown'} /><DataFreshness freshness="fresh" partialData={false} fetchedAt={deviceFetchedAt} source="Microsoft Graph" /></> : undefined} />
+      meta={device ? <>
+        <StatusBadge tone={complianceTone} label={`${devicesMessages.device360.complianceLabel}: ${device.complianceState ? humanizeCompliance(device.complianceState) : devicesMessages.device360.complianceUnknown}`} />
+        <StatusBadge tone="neutral" label={device.lastSyncDateTime ? devicesMessages.device360.activityReported : devicesMessages.device360.activityUnknown} detail={device.lastSyncDateTime ? formatRelative(device.lastSyncDateTime) : undefined} />
+        <StatusBadge tone={device.managedDeviceOwnerType?.toLowerCase() === 'personal' ? 'warning' : 'neutral'} label={`${devicesMessages.device360.ownershipLabel}: ${reportedOwnershipLabel(device.managedDeviceOwnerType)}`} />
+        <InfoTip label={devicesMessages.device360.activityHelpLabel} content={devicesMessages.device360.activityHelp} />
+        <div className="device360-header-identity">
+          <span>{devicesMessages.device360.primaryUserPrefix}: {device.userId && device.userDisplayName
+            ? <a href={`/users/${encodeURIComponent(device.userId)}`} onClick={event => { if (onNavigate) { event.preventDefault(); onNavigate(`/users/${encodeURIComponent(device.userId!)}`); } }}>{device.userDisplayName}</a>
+            : device.userId ? devicesMessages.device360.primaryUserUnavailable : devicesMessages.device360.noPrimaryUser}</span>
+          <span>{devicesMessages.device360.userDomainPrefix}: {reportedUserDomain(device.userPrincipalName)}</span>
+          <span>{devicesMessages.device360.lastCheckInPrefix}: {device.lastSyncDateTime ? formatDateTime(device.lastSyncDateTime) : devicesMessages.device360.unknownValue}</span>
+        </div>
+        {deviceFetchedAt && <span className="device360-core-retrieval">{devicesMessages.device360.coreRetrieved} <time dateTime={deviceFetchedAt}>{formatDateTime(deviceFetchedAt)}</time> · {devicesMessages.device360.source}</span>}
+      </> : undefined} />
     {busy && <WorkspaceDataState state="loading" message="Loading device details…" />}
     {detailError && <div className="permission-panel"><WorkspaceDataState state="unavailable" message="Device details are unavailable. Check Notifications for details." onRetry={() => setRefreshVersion(version => version + 1)} /></div>}
     {device && <>
-      <div className="device-detail-layout">
-        <section className="content-panel"><h2>Overview</h2><dl className="detail-list"><Field label="Device name" value={device.deviceName || 'Unnamed device'} /><Field label="Operating system" value={[device.operatingSystem, device.osVersion].filter(Boolean).join(' ')} /><Field label="Ownership" value={device.managedDeviceOwnerType} />{device.userId && <><dt>Primary user</dt><dd><a href={`/users/${encodeURIComponent(device.userId)}`} onClick={(event) => { if (onNavigate) { event.preventDefault(); onNavigate(`/users/${encodeURIComponent(device.userId!)}`); } }}>Open user profile</a></dd></>}</dl></section>
-        <section className="content-panel"><h2>Security and management</h2><dl className="detail-list"><Field label="Compliance" value={device.complianceState ? humanizeCompliance(device.complianceState) : null} /><Field label="Management state" value={device.managementState} /><Field label="Last check-in" value={device.lastSyncDateTime ? formatDateTime(device.lastSyncDateTime) : null} /></dl></section>
-        <section className="content-panel"><h2>Hardware</h2><dl className="detail-list"><Field label="Manufacturer" value={device.manufacturer} /><Field label="Model" value={device.model} /></dl></section>
-        <section className="content-panel"><h2>Identifiers</h2><TechnicalDetails items={[{ label: 'Device ID', value: device.id, copy: true }, { label: 'Primary user ID', value: device.userId, copy: true }, { label: 'Entra device ID', value: device.azureAdDeviceId, copy: true }, { label: 'Serial number', value: device.serialNumber, copy: true }]} /></section>
+      <div className="device360-tabs" role="tablist" aria-label={devicesMessages.device360.tablistLabel}>
+        {tabNames.map(tab => <button
+          key={tab}
+          ref={element => { tabRefs.current[tab] = element ?? undefined; }}
+          id={`device360-tab-${tab}`}
+          type="button"
+          role="tab"
+          aria-selected={activeTab === tab}
+          aria-controls={`device360-panel-${tab}`}
+          tabIndex={activeTab === tab ? 0 : -1}
+          onClick={() => setActiveTab(tab)}
+          onKeyDown={event => handleTabKeyDown(event, tab)}
+        >{devicesMessages.device360Tabs[tab]}</button>)}
       </div>
+      {tabNames.map(tab => <section
+        key={tab}
+        id={`device360-panel-${tab}`}
+        className="device360-tabpanel"
+        role="tabpanel"
+        aria-labelledby={`device360-tab-${tab}`}
+        aria-busy={activeTab === tab && tab === 'overview' && policiesBusy ? 'true' : undefined}
+        hidden={activeTab !== tab}
+        tabIndex={0}
+      >
+        {activeTab === tab && tab === 'overview' && <Device360OverviewTab device={device} policies={policies ?? emptyPolicies} policyLoading={policiesBusy || !policies} onRetryPolicies={retryPolicies} onNavigate={onNavigate} />}
+        {activeTab === tab && tab === 'configuration' && <WorkspaceDataState kind="empty" message={devicesMessages.device360.configurationUnavailable} />}
+        {activeTab === tab && tab === 'apps' && <WorkspaceDataState kind="empty" message={devicesMessages.device360.appsUnavailable} />}
 
-      <section className="content-panel device-recovery" aria-labelledby="device-recovery-title"><h2 id="device-recovery-title">Recovery data</h2><p>Load recovery records only when needed. Microsoft Graph checks your access to this device.</p>
+      {activeTab === tab && tab === 'security' && <section className="content-panel device-recovery" aria-labelledby="device-recovery-title"><h2 id="device-recovery-title">Recovery data</h2><p>Load recovery records only when needed. Microsoft Graph checks your access to this device.</p>
         {sharedBlock && <div id="recovery-shared-blocker"><WorkspaceDataState kind="permission" compact message={`Recovery data isn't available to you.${sharedBlock.state === 'temporarily_unavailable' ? ' Authorization checks are temporarily unavailable. Retry after the checks recover.' : ''}`} action={blockerLink(sharedBlock, canManageSettings)} /></div>}
         <div className="device-recovery__groups">
           <section><h3>BitLocker</h3><RecoveryStamp label="BitLocker metadata" fetchedAt={bitlockerFetchedAt} /><button type="button" className="button button--secondary" aria-describedby={describedBy('devices.bitlocker.metadata', Boolean(sharedBlock))} disabled={bitlockerBusy || !recoveryAllowed('devices.bitlocker.metadata')} onClick={() => void loadMetadata('bitlocker')}>Load BitLocker metadata</button>
@@ -185,9 +272,10 @@ function DeviceDetailContent({ id, capabilities, onNavigate }: { id: string; cap
         <div className="device-recovery__reason"><label htmlFor="recovery-reason">Reason for recovery access</label><input id="recovery-reason" value={reason} maxLength={500} aria-describedby="recovery-reason-hint" onChange={event => setReason(event.target.value)} placeholder="Incident or support case" /><p id="recovery-reason-hint" className="field-hint">Required before revealing a key or password. It is saved in the audit record.</p></div>
         {revealError && <p role="alert">{recoveryMessage(revealError)}{correlationDetails(revealError)}</p>}
         {secret && <div className="device-recovery__secret" role="status"><strong>{secret.type === 'laps' ? `Windows LAPS password${secret.accountName ? ` for ${secret.accountName}` : ''}` : 'BitLocker recovery key'}</strong><code>{secret.value}</code><p>Clears automatically after 60 seconds.</p><button type="button" className="button button--secondary" onClick={clearSecret}>Close secret</button></div>}
-      </section>
+      </section>}
 
-      {canManage && <>
+      {activeTab === tab && tab === 'actions' && <div className="device360-actions">
+      {canManage ? <>
         <ActionGroup title="Device actions" description="These requests are sent to the device through Intune.">
           <div className="device-actions">{(['sync', 'restart', 'remote-lock'] as DeviceAction[]).map(action => <div key={action} className="device-actions__item"><button type="button" className="button button--secondary" onClick={() => setActionTarget(action)}>{actionLabel(action)}</button><span>{actionDescription[action]}</span></div>)}</div>
         </ActionGroup>
@@ -195,8 +283,10 @@ function DeviceDetailContent({ id, capabilities, onNavigate }: { id: string; cap
         <ActionGroup tone="danger" title="Danger zone">
           <div className="device-actions">{(['retire', 'wipe'] as DeviceAction[]).map(action => <div key={action} className="device-actions__item"><button type="button" className="button button--danger" onClick={() => setActionTarget(action)}>{actionLabel(action)}</button><span>{actionDescription[action]}</span></div>)}</div>
         </ActionGroup>
-      </>}
+      </> : <WorkspaceDataState kind="permission" message={devicesMessages.device360.actionsCapabilityRequired} />}
       {actionTarget && <ConfirmationDialog title={actionLabel(actionTarget)} target={title} proposedChange={`${actionLabel(actionTarget)} this managed device.`} requiredCapability="devices.privileged.manage" confirmLabel={messages.deviceActionConfirm[actionTarget].label} consequence={messages.deviceActionConfirm[actionTarget].consequence} tone={messages.deviceActionConfirm[actionTarget].tone as 'default' | 'danger'} destructivePhrase={actionTarget === 'sync' ? null : actionTarget === 'remote-lock' ? 'REMOTE LOCK' : actionTarget.toUpperCase()} busy={actionBusy} onConfirm={() => void runAction()} onCancel={() => { if (!actionBusy) setActionTarget(null); }} />}
+      </div>}
+      </section>)}
     </>}
   </div>;
 }
@@ -208,7 +298,11 @@ const actionDescription: Record<DeviceAction, string> = {
   retire: 'Removes company data and management. This cannot be undone.',
   wipe: 'Erases everything and resets the device. This cannot be undone.'
 };
-function humanizeCompliance(state: string) { const lower = state.toLowerCase(); return lower === 'compliant' ? 'Compliant' : lower === 'noncompliant' ? 'Noncompliant' : lower === 'ingraceperiod' ? 'In grace period' : lower === 'unknown' ? 'Unknown' : 'Needs review'; }
+function humanizeCompliance(state: string) {
+  const copy = devicesMessages.device360Overview;
+  const lower = state.toLowerCase();
+  return lower === 'compliant' ? copy.compliant : lower === 'noncompliant' ? copy.noncompliant : lower === 'ingraceperiod' ? copy.gracePeriod : lower === 'unknown' ? copy.unknownCompliance : state;
+}
 function blockerLink(decision: CapabilityDecision, canManageSettings: boolean) {
   return decision.state === 'consent_required' && canManageSettings ? { label: 'Open setup', href: '/settings#connection' } : { label: 'Open PIM guidance', href: '/identity' };
 }
