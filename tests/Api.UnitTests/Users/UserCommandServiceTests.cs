@@ -13,11 +13,46 @@ namespace Atea.UnifiedWorkplace.Api.UnitTests.Users;
 
 public sealed class UserCommandServiceTests
 {
+    [Theory]
+    [InlineData(null, false, "reason_required")]
+    [InlineData("", false, "reason_required")]
+    [InlineData("   ", false, "reason_required")]
+    [InlineData(" reason ", true, "")]
+    [InlineData("x", true, "")]
+    public void Write_reason_validation_requires_nonblank_trimmed_reason(string? reason, bool expectedValid, string expectedError)
+    {
+        var valid = UserWriteReasonValidation.TryNormalize(reason, out var normalized, out var error);
+
+        valid.Should().Be(expectedValid);
+        error.Should().Be(expectedError);
+        if (expectedValid) normalized.Should().Be(reason!.Trim());
+    }
+
+    [Fact]
+    public void Write_reason_validation_rejects_more_than_one_thousand_normalized_characters()
+    {
+        var valid = UserWriteReasonValidation.TryNormalize($" {new string('x', 1001)} ", out _, out var error);
+
+        valid.Should().BeFalse();
+        error.Should().Be("reason_too_long");
+    }
+
+    [Fact]
+    public void Write_reason_validation_accepts_exactly_one_thousand_normalized_characters()
+    {
+        var valid = UserWriteReasonValidation.TryNormalize($" {new string('x', 1000)} ", out var normalized, out var error);
+
+        valid.Should().BeTrue();
+        normalized.Should().HaveLength(1000);
+        error.Should().BeEmpty();
+    }
+
     [Fact]
     public async Task Create_user_sends_only_approved_fields_and_returns_temporary_password_after_graph_success()
     {
         var graph = new RecordingUserCommands();
-        var service = CreateService(userCommands: graph);
+        var idempotency = new MemoryIdempotencyService();
+        var service = CreateService(userCommands: graph, idempotency: idempotency);
 
         var result = await service.CreateAsync(Workspace, new CreateUserCommand(
             "Ada Lovelace",
@@ -42,6 +77,7 @@ public sealed class UserCommandServiceTests
         graph.Created[0].GivenName.Should().Be("Ada");
         graph.Created[0].Surname.Should().Be("Lovelace");
         graph.Created[0].UsageLocation.Should().Be("NO");
+        idempotency.Records.Single().SafeResultJson.Should().NotContain(result.TemporaryCredentialNotice!.TemporaryPassword);
     }
 
     [Fact]
@@ -65,6 +101,24 @@ public sealed class UserCommandServiceTests
         result.Status.Should().Be(UserCommandStatus.SourceOfAuthorityReadOnly);
         result.Error.Should().Be("source_of_authority_read_only");
         graph.Updated.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task Account_state_write_is_not_blocked_by_profile_source_of_authority_lock()
+    {
+        var graph = new RecordingUserCommands();
+        var directory = new RecordingDirectoryReader { User = CloudUser with { IsReadOnly = true, SourceOfAuthority = "on_premises_sync" } };
+        var service = CreateService(directory, graph);
+
+        var result = await service.SetAccountEnabledAsync(
+            Workspace,
+            "user-1",
+            new SetAccountEnabledCommand(false, "disable compromised account"),
+            "key-disable-readonly",
+            CancellationToken.None);
+
+        result.Status.Should().Be(UserCommandStatus.Succeeded);
+        graph.AccountStates.Should().ContainSingle().Which.Should().Be(("user-1", false));
     }
 
     [Fact]
@@ -136,6 +190,42 @@ public sealed class UserCommandServiceTests
     }
 
     [Fact]
+    public async Task Update_audit_metadata_contains_only_trimmed_reason_and_reason_changes_idempotency_fingerprint()
+    {
+        var graph = new RecordingUserCommands();
+        var audit = new RecordingAuditWriter();
+        var idempotency = new MemoryIdempotencyService();
+        var service = CreateService(userCommands: graph, audit: audit, idempotency: idempotency);
+
+        var first = await service.UpdateAsync(Workspace, "user-1", ValidUpdate with { Reason = "  role change  " }, "reason-key", CancellationToken.None);
+        var replay = await service.UpdateAsync(Workspace, "user-1", ValidUpdate with { Reason = "role change" }, "reason-key", CancellationToken.None);
+        var reused = await service.UpdateAsync(Workspace, "user-1", ValidUpdate with { Reason = "different reason" }, "reason-key", CancellationToken.None);
+
+        first.Status.Should().Be(UserCommandStatus.Succeeded);
+        replay.Replayed.Should().BeTrue();
+        reused.Status.Should().Be(UserCommandStatus.IdempotencyKeyReused);
+        graph.Updated.Should().ContainSingle();
+        audit.Events.Should().ContainSingle();
+        audit.Events.Single().SafeMetadataJson.Should().Be("""{"reason":"role change"}""");
+    }
+
+    [Fact]
+    public async Task Failed_write_audits_only_reason_and_surfaces_audit_persistence_warning()
+    {
+        var graph = new RecordingUserCommands { Result = new GraphOperationResult(false, "temporarily_unavailable", 503) };
+        var audit = new RecordingAuditWriter { FailAfterRecording = true };
+        var service = CreateService(userCommands: graph, audit: audit);
+
+        var result = await service.CreateAsync(Workspace, ValidCreate with { Reason = "  urgent access  " }, "audit-failure-key", CancellationToken.None);
+
+        result.Status.Should().Be(UserCommandStatus.TemporarilyUnavailable);
+        result.AuditWarning.Should().Be("audit_persistence_failed");
+        audit.Events.Should().ContainSingle();
+        audit.Events.Single().SafeMetadataJson.Should().Be("""{"reason":"urgent access"}""");
+        audit.Events.Single().SafeMetadataJson.Should().NotContain("Temp-Password");
+    }
+
+    [Fact]
     public async Task Graph_conflict_maps_to_command_conflict_without_temporary_credential()
     {
         var graph = new RecordingUserCommands { Result = new GraphOperationResult(false, "conflict", 409) };
@@ -154,7 +244,8 @@ public sealed class UserCommandServiceTests
         RecordingGroupCommands? groupCommands = null,
         RecordingLicenseCommands? licenseCommands = null,
         GraphAuthorizationSnapshot? snapshot = null,
-        IIdempotencyService? idempotency = null) =>
+        IIdempotencyService? idempotency = null,
+        RecordingAuditWriter? audit = null) =>
         new(
             directory ?? new RecordingDirectoryReader { User = CloudUser },
             userCommands ?? new RecordingUserCommands(),
@@ -162,7 +253,7 @@ public sealed class UserCommandServiceTests
             licenseCommands ?? new RecordingLicenseCommands(),
             new StaticCapabilityReader(snapshot ?? AdminSnapshot),
             idempotency ?? new MemoryIdempotencyService(),
-            new RecordingAuditWriter(),
+            audit ?? new RecordingAuditWriter(),
             new RecordingGroupCatalogReader(),
             new RecordingLicenseCatalogReader(),
             () => "Temp-Password-12345!");
@@ -327,6 +418,13 @@ public sealed class UserCommandServiceTests
 
     private sealed class RecordingAuditWriter : IAuditWriter
     {
-        public Task WriteAsync(AuditEvent auditEvent, CancellationToken cancellationToken) => Task.CompletedTask;
+        public List<AuditEvent> Events { get; } = [];
+        public bool FailAfterRecording { get; init; }
+        public Task WriteAsync(AuditEvent auditEvent, CancellationToken cancellationToken)
+        {
+            Events.Add(auditEvent);
+            if (FailAfterRecording) throw new InvalidOperationException("audit unavailable");
+            return Task.CompletedTask;
+        }
     }
 }

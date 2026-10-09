@@ -26,6 +26,12 @@ public static class UserCommandEndpoints
         HttpRequest request,
         CancellationToken cancellationToken)
     {
+        if (!TryNormalizeReason(command.Reason, out var reason, out var invalidReason))
+        {
+            return invalidReason;
+        }
+
+        command = command with { Reason = reason };
         if (!TryContext(accessor, out var context, out var missingContext))
         {
             return missingContext;
@@ -47,6 +53,12 @@ public static class UserCommandEndpoints
         HttpRequest request,
         CancellationToken cancellationToken)
     {
+        if (!TryNormalizeReason(command.Reason, out var reason, out var invalidReason))
+        {
+            return invalidReason;
+        }
+
+        command = command with { Reason = reason };
         if (!TryContext(accessor, out var context, out var missingContext))
         {
             return missingContext;
@@ -62,27 +74,35 @@ public static class UserCommandEndpoints
 
     private static Task<IResult> DisableUserAsync(
         string userObjectId,
+        [FromBody] UserWriteReasonCommand? command,
         IWorkspaceContextAccessor accessor,
         IUserCommandService service,
         HttpRequest request,
         CancellationToken cancellationToken) =>
-        SetAccountEnabledAsync(userObjectId, false, accessor, service, request, cancellationToken);
+        SetAccountEnabledAsync(userObjectId, false, command, accessor, service, request, cancellationToken);
 
     private static Task<IResult> ReactivateUserAsync(
         string userObjectId,
+        [FromBody] UserWriteReasonCommand? command,
         IWorkspaceContextAccessor accessor,
         IUserCommandService service,
         HttpRequest request,
         CancellationToken cancellationToken) =>
-        SetAccountEnabledAsync(userObjectId, true, accessor, service, request, cancellationToken);
+        SetAccountEnabledAsync(userObjectId, true, command, accessor, service, request, cancellationToken);
 
     private static async Task<IResult> ResetPasswordAsync(
         string userObjectId,
+        [FromBody] ResetPasswordCommand? command,
         IWorkspaceContextAccessor accessor,
         IUserCommandService service,
         HttpRequest request,
         CancellationToken cancellationToken)
     {
+        if (!TryNormalizeReason(command?.Reason, out var reason, out var invalidReason))
+        {
+            return invalidReason;
+        }
+
         if (!TryContext(accessor, out var context, out var missingContext))
         {
             return missingContext;
@@ -93,17 +113,23 @@ public static class UserCommandEndpoints
             return missingKey;
         }
 
-        return ToResult(await service.ResetPasswordAsync(context, userObjectId, idempotencyKey, cancellationToken));
+        return ToResult(await service.ResetPasswordAsync(context, userObjectId, idempotencyKey, cancellationToken, reason));
     }
 
     private static async Task<IResult> SetAccountEnabledAsync(
         string userObjectId,
         bool enabled,
+        UserWriteReasonCommand? command,
         IWorkspaceContextAccessor accessor,
         IUserCommandService service,
         HttpRequest request,
         CancellationToken cancellationToken)
     {
+        if (!TryNormalizeReason(command?.Reason, out var reason, out var invalidReason))
+        {
+            return invalidReason;
+        }
+
         if (!TryContext(accessor, out var context, out var missingContext))
         {
             return missingContext;
@@ -114,7 +140,7 @@ public static class UserCommandEndpoints
             return missingKey;
         }
 
-        return ToResult(await service.SetAccountEnabledAsync(context, userObjectId, new SetAccountEnabledCommand(enabled), idempotencyKey, cancellationToken));
+        return ToResult(await service.SetAccountEnabledAsync(context, userObjectId, new SetAccountEnabledCommand(enabled, reason), idempotencyKey, cancellationToken, reason));
     }
 
     private static async Task<IResult> AddGroupAsync(
@@ -136,6 +162,11 @@ public static class UserCommandEndpoints
             return mismatch;
         }
 
+        if (!TryNormalizeReason(command?.Reason, out var reason, out var invalidReason))
+        {
+            return invalidReason;
+        }
+
         if (!TryContext(accessor, out var context, out var missingContext))
         {
             return missingContext;
@@ -146,7 +177,7 @@ public static class UserCommandEndpoints
             return missingKey;
         }
 
-        return ToResult(await service.AddGroupAsync(context, userObjectId, new GroupMembershipCommand(routeGroupObjectId), idempotencyKey, cancellationToken));
+        return ToResult(await service.AddGroupAsync(context, userObjectId, new GroupMembershipCommand(routeGroupObjectId, reason), idempotencyKey, cancellationToken));
     }
 
     private static async Task<IResult> RemoveGroupAsync(
@@ -168,6 +199,11 @@ public static class UserCommandEndpoints
             return mismatch;
         }
 
+        if (!TryNormalizeReason(command?.Reason, out var reason, out var invalidReason))
+        {
+            return invalidReason;
+        }
+
         if (!TryContext(accessor, out var context, out var missingContext))
         {
             return missingContext;
@@ -178,7 +214,7 @@ public static class UserCommandEndpoints
             return missingKey;
         }
 
-        return ToResult(await service.RemoveGroupAsync(context, userObjectId, new GroupMembershipCommand(routeGroupObjectId), idempotencyKey, cancellationToken));
+        return ToResult(await service.RemoveGroupAsync(context, userObjectId, new GroupMembershipCommand(routeGroupObjectId, reason), idempotencyKey, cancellationToken));
     }
 
     private static async Task<IResult> AssignLicenseAsync(
@@ -200,6 +236,11 @@ public static class UserCommandEndpoints
             return mismatch;
         }
 
+        if (!TryNormalizeReason(command?.Reason, out var reason, out var invalidReason))
+        {
+            return invalidReason;
+        }
+
         if (!TryContext(accessor, out var context, out var missingContext))
         {
             return missingContext;
@@ -213,7 +254,7 @@ public static class UserCommandEndpoints
         return ToResult(await service.AssignLicenseAsync(
             context,
             userObjectId,
-            new LicenseAssignmentCommand(routeSkuId, command?.DisabledPlans ?? []),
+            new LicenseAssignmentCommand(routeSkuId, command?.DisabledPlans ?? [], reason),
             idempotencyKey,
             cancellationToken));
     }
@@ -237,6 +278,11 @@ public static class UserCommandEndpoints
             return mismatch;
         }
 
+        if (!TryNormalizeReason(command?.Reason, out var reason, out var invalidReason))
+        {
+            return invalidReason;
+        }
+
         if (!TryContext(accessor, out var context, out var missingContext))
         {
             return missingContext;
@@ -247,7 +293,7 @@ public static class UserCommandEndpoints
             return missingKey;
         }
 
-        return ToResult(await service.RemoveLicenseAsync(context, userObjectId, new LicenseAssignmentCommand(routeSkuId, []), idempotencyKey, cancellationToken));
+        return ToResult(await service.RemoveLicenseAsync(context, userObjectId, new LicenseAssignmentCommand(routeSkuId, [], reason), idempotencyKey, cancellationToken));
     }
 
     private static bool TryContext(IWorkspaceContextAccessor accessor, out WorkspaceContext context, out IResult result)
@@ -280,7 +326,7 @@ public static class UserCommandEndpoints
     private static IResult ToResult(UserCommandResult result, int successStatus = StatusCodes.Status200OK) => result.Status switch
     {
         UserCommandStatus.Succeeded => Results.Json(result, statusCode: successStatus),
-        UserCommandStatus.Denied => Results.Json(new { error = result.Error, capability = result.RequiredCapability, state = result.Authorization?.State }, statusCode: StatusCodes.Status403Forbidden),
+        UserCommandStatus.Denied => Results.Json(new { error = result.Error, capability = result.RequiredCapability, state = result.Authorization?.State, auditWarning = result.AuditWarning }, statusCode: StatusCodes.Status403Forbidden),
         UserCommandStatus.SourceOfAuthorityReadOnly => Results.Json(result, statusCode: StatusCodes.Status409Conflict),
         UserCommandStatus.Conflict => Results.Json(result, statusCode: StatusCodes.Status409Conflict),
         UserCommandStatus.IdempotencyKeyReused => Results.Json(result, statusCode: StatusCodes.Status409Conflict),
@@ -288,6 +334,18 @@ public static class UserCommandEndpoints
         UserCommandStatus.InvalidTarget => Results.Json(result, statusCode: StatusCodes.Status400BadRequest),
         _ => Results.Json(result, statusCode: StatusCodes.Status503ServiceUnavailable)
     };
+
+    private static bool TryNormalizeReason(string? value, out string normalized, out IResult result)
+    {
+        if (!UserWriteReasonValidation.TryNormalize(value, out normalized, out var error))
+        {
+            result = Results.BadRequest(new { error });
+            return false;
+        }
+
+        result = Results.Empty;
+        return true;
+    }
 
     private static bool TryValidatedTarget(string targetId, string fieldName, out string validTargetId, out IResult result)
     {

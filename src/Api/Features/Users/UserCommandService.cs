@@ -13,8 +13,8 @@ public interface IUserCommandService
 {
     Task<UserCommandResult> CreateAsync(WorkspaceContext context, CreateUserCommand command, string idempotencyKey, CancellationToken cancellationToken);
     Task<UserCommandResult> UpdateAsync(WorkspaceContext context, string userObjectId, UpdateUserCommand command, string idempotencyKey, CancellationToken cancellationToken);
-    Task<UserCommandResult> SetAccountEnabledAsync(WorkspaceContext context, string userObjectId, SetAccountEnabledCommand command, string idempotencyKey, CancellationToken cancellationToken);
-    Task<UserCommandResult> ResetPasswordAsync(WorkspaceContext context, string userObjectId, string idempotencyKey, CancellationToken cancellationToken);
+    Task<UserCommandResult> SetAccountEnabledAsync(WorkspaceContext context, string userObjectId, SetAccountEnabledCommand command, string idempotencyKey, CancellationToken cancellationToken, string? reason = null);
+    Task<UserCommandResult> ResetPasswordAsync(WorkspaceContext context, string userObjectId, string idempotencyKey, CancellationToken cancellationToken, string? reason = null);
     Task<UserCommandResult> AddGroupAsync(WorkspaceContext context, string userObjectId, GroupMembershipCommand command, string idempotencyKey, CancellationToken cancellationToken);
     Task<UserCommandResult> RemoveGroupAsync(WorkspaceContext context, string userObjectId, GroupMembershipCommand command, string idempotencyKey, CancellationToken cancellationToken);
     Task<UserCommandResult> AssignLicenseAsync(WorkspaceContext context, string userObjectId, LicenseAssignmentCommand command, string idempotencyKey, CancellationToken cancellationToken);
@@ -39,10 +39,11 @@ public sealed class UserCommandService(
 
     public async Task<UserCommandResult> CreateAsync(WorkspaceContext context, CreateUserCommand command, string idempotencyKey, CancellationToken cancellationToken)
     {
+        command = command with { Reason = NormalizeReason(command.Reason) };
         var authorization = await AuthorizeAsync(context, Capability.UsersCreate, cancellationToken);
         if (authorization.State != CapabilityState.Allowed)
         {
-            return await DenyAsync(context, Capability.UsersCreate, "new", authorization, cancellationToken);
+            return await DenyAsync(context, Capability.UsersCreate, "new", authorization, cancellationToken, command.Reason);
         }
 
         var temporaryPassword = temporaryPasswordGenerator();
@@ -72,11 +73,14 @@ public sealed class UserCommandService(
                 var result = await userCommands.CreateUserAsync(graphRequest, idempotencyKey, cancellationToken);
                 return MapGraphResult(result, Capability.UsersCreate, temporaryPassword);
             },
-            cancellationToken);
+            cancellationToken,
+            command.Reason);
     }
 
-    public Task<UserCommandResult> UpdateAsync(WorkspaceContext context, string userObjectId, UpdateUserCommand command, string idempotencyKey, CancellationToken cancellationToken) =>
-        ExecuteVerifiedUserMutationAsync(
+    public Task<UserCommandResult> UpdateAsync(WorkspaceContext context, string userObjectId, UpdateUserCommand command, string idempotencyKey, CancellationToken cancellationToken)
+    {
+        command = command with { Reason = NormalizeReason(command.Reason) };
+        return ExecuteVerifiedUserMutationAsync(
             context,
             userObjectId,
             Capability.UsersUpdate,
@@ -97,10 +101,15 @@ public sealed class UserCommandService(
                     command.AccountEnabled),
                 idempotencyKey,
                 cancellationToken),
-            cancellationToken);
+            cancellationToken,
+            reason: command.Reason);
+    }
 
-    public Task<UserCommandResult> SetAccountEnabledAsync(WorkspaceContext context, string userObjectId, SetAccountEnabledCommand command, string idempotencyKey, CancellationToken cancellationToken) =>
-        ExecuteVerifiedUserMutationAsync(
+    public Task<UserCommandResult> SetAccountEnabledAsync(WorkspaceContext context, string userObjectId, SetAccountEnabledCommand command, string idempotencyKey, CancellationToken cancellationToken, string? reason = null)
+    {
+        reason = NormalizeReason(reason ?? command.Reason);
+        command = command with { Reason = reason };
+        return ExecuteVerifiedUserMutationAsync(
             context,
             userObjectId,
             Capability.UsersDisable,
@@ -108,17 +117,20 @@ public sealed class UserCommandService(
             command,
             idempotencyKey,
             () => userCommands.SetAccountEnabledAsync(userObjectId, command.Enabled, idempotencyKey, cancellationToken),
-            cancellationToken);
+            cancellationToken,
+            reason: reason);
+    }
 
-    public Task<UserCommandResult> ResetPasswordAsync(WorkspaceContext context, string userObjectId, string idempotencyKey, CancellationToken cancellationToken)
+    public Task<UserCommandResult> ResetPasswordAsync(WorkspaceContext context, string userObjectId, string idempotencyKey, CancellationToken cancellationToken, string? reason = null)
     {
+        reason = NormalizeReason(reason);
         string? temporaryPassword = null;
         return ExecuteVerifiedUserMutationAsync(
             context,
             userObjectId,
             Capability.UsersResetPassword,
             "users.reset_password",
-            new { forceChangePasswordNextSignIn = true },
+            new { forceChangePasswordNextSignIn = true, reason },
             idempotencyKey,
             () =>
             {
@@ -130,11 +142,14 @@ public sealed class UserCommandService(
                     cancellationToken);
             },
             cancellationToken,
-            () => temporaryPassword);
+            () => temporaryPassword,
+            reason);
     }
 
-    public Task<UserCommandResult> AddGroupAsync(WorkspaceContext context, string userObjectId, GroupMembershipCommand command, string idempotencyKey, CancellationToken cancellationToken) =>
-        ExecuteVerifiedUserMutationAsync(
+    public Task<UserCommandResult> AddGroupAsync(WorkspaceContext context, string userObjectId, GroupMembershipCommand command, string idempotencyKey, CancellationToken cancellationToken)
+    {
+        command = command with { Reason = NormalizeReason(command.Reason) };
+        return ExecuteVerifiedUserMutationAsync(
             context,
             userObjectId,
             Capability.GroupsManageMembers,
@@ -142,10 +157,14 @@ public sealed class UserCommandService(
             command,
             idempotencyKey,
             () => groupCommands.AddMemberAsync(command.GroupObjectId, userObjectId, idempotencyKey, cancellationToken),
-            cancellationToken);
+            cancellationToken,
+            reason: command.Reason);
+    }
 
-    public Task<UserCommandResult> RemoveGroupAsync(WorkspaceContext context, string userObjectId, GroupMembershipCommand command, string idempotencyKey, CancellationToken cancellationToken) =>
-        ExecuteVerifiedUserMutationAsync(
+    public Task<UserCommandResult> RemoveGroupAsync(WorkspaceContext context, string userObjectId, GroupMembershipCommand command, string idempotencyKey, CancellationToken cancellationToken)
+    {
+        command = command with { Reason = NormalizeReason(command.Reason) };
+        return ExecuteVerifiedUserMutationAsync(
             context,
             userObjectId,
             Capability.GroupsManageMembers,
@@ -153,10 +172,14 @@ public sealed class UserCommandService(
             command,
             idempotencyKey,
             () => groupCommands.RemoveMemberAsync(command.GroupObjectId, userObjectId, idempotencyKey, cancellationToken),
-            cancellationToken);
+            cancellationToken,
+            reason: command.Reason);
+    }
 
-    public Task<UserCommandResult> AssignLicenseAsync(WorkspaceContext context, string userObjectId, LicenseAssignmentCommand command, string idempotencyKey, CancellationToken cancellationToken) =>
-        ExecuteVerifiedUserMutationAsync(
+    public Task<UserCommandResult> AssignLicenseAsync(WorkspaceContext context, string userObjectId, LicenseAssignmentCommand command, string idempotencyKey, CancellationToken cancellationToken)
+    {
+        command = command with { Reason = NormalizeReason(command.Reason) };
+        return ExecuteVerifiedUserMutationAsync(
             context,
             userObjectId,
             Capability.LicensesAssign,
@@ -164,10 +187,14 @@ public sealed class UserCommandService(
             command,
             idempotencyKey,
             () => licenseCommands.AssignLicenseAsync(userObjectId, command, idempotencyKey, cancellationToken),
-            cancellationToken);
+            cancellationToken,
+            reason: command.Reason);
+    }
 
-    public Task<UserCommandResult> RemoveLicenseAsync(WorkspaceContext context, string userObjectId, LicenseAssignmentCommand command, string idempotencyKey, CancellationToken cancellationToken) =>
-        ExecuteVerifiedUserMutationAsync(
+    public Task<UserCommandResult> RemoveLicenseAsync(WorkspaceContext context, string userObjectId, LicenseAssignmentCommand command, string idempotencyKey, CancellationToken cancellationToken)
+    {
+        command = command with { Reason = NormalizeReason(command.Reason) };
+        return ExecuteVerifiedUserMutationAsync(
             context,
             userObjectId,
             Capability.LicensesAssign,
@@ -175,7 +202,9 @@ public sealed class UserCommandService(
             command,
             idempotencyKey,
             () => licenseCommands.RemoveLicenseAsync(userObjectId, command.SkuId, idempotencyKey, cancellationToken),
-            cancellationToken);
+            cancellationToken,
+            reason: command.Reason);
+    }
 
     private async Task<UserCommandResult> ExecuteVerifiedUserMutationAsync(
         WorkspaceContext context,
@@ -186,12 +215,13 @@ public sealed class UserCommandService(
         string idempotencyKey,
         Func<Task<GraphOperationResult>> graphMutation,
         CancellationToken cancellationToken,
-        Func<string?>? temporaryPasswordProvider = null)
+        Func<string?>? temporaryPasswordProvider = null,
+        string? reason = null)
     {
         var authorization = await AuthorizeAsync(context, capability, cancellationToken);
         if (authorization.State != CapabilityState.Allowed)
         {
-            return await DenyAsync(context, capability, userObjectId, authorization, cancellationToken);
+            return await DenyAsync(context, capability, userObjectId, authorization, cancellationToken, reason);
         }
 
         var user = await directoryReader.GetAsync(context, userObjectId, cancellationToken);
@@ -205,9 +235,9 @@ public sealed class UserCommandService(
             return new UserCommandResult(UserCommandStatus.NotFound, capability, Error: "user_not_found");
         }
 
-        if (user.IsReadOnly)
+        if (user.IsReadOnly && operation == "users.update")
         {
-            var auditWarning = await AuditAsync(context, operation, userObjectId, UserCommandStatus.SourceOfAuthorityReadOnly, "source_of_authority_read_only", null, null, cancellationToken);
+            var auditWarning = await AuditAsync(context, operation, userObjectId, UserCommandStatus.SourceOfAuthorityReadOnly, "source_of_authority_read_only", null, null, cancellationToken, reason);
             return new UserCommandResult(
                 UserCommandStatus.SourceOfAuthorityReadOnly,
                 capability,
@@ -218,7 +248,7 @@ public sealed class UserCommandService(
         var catalogFailure = await ValidateCatalogTargetAsync(context, capability, requestPayload, cancellationToken);
         if (catalogFailure is not null)
         {
-            return await AuditCatalogFailureAsync(context, operation, userObjectId, catalogFailure, cancellationToken);
+            return await AuditCatalogFailureAsync(context, operation, userObjectId, catalogFailure, cancellationToken, reason);
         }
 
         return await ExecuteAsync(
@@ -229,7 +259,8 @@ public sealed class UserCommandService(
             requestPayload,
             idempotencyKey,
             async () => MapGraphResult(await graphMutation(), capability, temporaryPasswordProvider?.Invoke()),
-            cancellationToken);
+            cancellationToken,
+            reason);
     }
 
     private async Task<UserCommandResult?> ValidateCatalogTargetAsync(WorkspaceContext context, string capability, object requestPayload, CancellationToken cancellationToken)
@@ -258,9 +289,9 @@ public sealed class UserCommandService(
         _ => new UserCommandResult(UserCommandStatus.TemporarilyUnavailable, capability, Error: error.Category, GraphCorrelationId: error.CorrelationId, GraphRequestId: error.RequestId)
     };
 
-    private async Task<UserCommandResult> AuditCatalogFailureAsync(WorkspaceContext context, string operation, string targetId, UserCommandResult result, CancellationToken cancellationToken)
+    private async Task<UserCommandResult> AuditCatalogFailureAsync(WorkspaceContext context, string operation, string targetId, UserCommandResult result, CancellationToken cancellationToken, string? reason)
     {
-        return result with { AuditWarning = await AuditAsync(context, operation, targetId, result.Status, result.Error, result.GraphCorrelationId, result.GraphRequestId, cancellationToken) };
+        return result with { AuditWarning = await AuditAsync(context, operation, targetId, result.Status, result.Error, result.GraphCorrelationId, result.GraphRequestId, cancellationToken, reason) };
     }
 
     private async Task<UserCommandResult> ExecuteAsync(
@@ -271,7 +302,8 @@ public sealed class UserCommandService(
         object requestPayload,
         string idempotencyKey,
         Func<Task<UserCommandResult>> execute,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? reason)
     {
         UserCommandResult? liveResult = null;
         var outcome = await idempotency.ExecuteAsync(
@@ -282,7 +314,7 @@ public sealed class UserCommandService(
                 var result = await execute();
                 var auditedResult = result with
                 {
-                    AuditWarning = await AuditAsync(context, operation, targetId, result.Status, result.Error, result.GraphCorrelationId, result.GraphRequestId, cancellationToken)
+                    AuditWarning = await AuditAsync(context, operation, targetId, result.Status, result.Error, result.GraphCorrelationId, result.GraphRequestId, cancellationToken, reason)
                 };
                 liveResult = auditedResult;
                 return new IdempotentOperationResult(
@@ -336,9 +368,10 @@ public sealed class UserCommandService(
         string capability,
         string targetId,
         CapabilityDecision authorization,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? reason)
     {
-        var auditWarning = await AuditAsync(context, capability, targetId, UserCommandStatus.Denied, "capability_required", null, null, cancellationToken);
+        var auditWarning = await AuditAsync(context, capability, targetId, UserCommandStatus.Denied, "capability_required", null, null, cancellationToken, reason);
         return new UserCommandResult(
             UserCommandStatus.Denied,
             capability,
@@ -377,7 +410,8 @@ public sealed class UserCommandService(
         string? failureCategory,
         string? graphCorrelationId,
         string? graphRequestId,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? reason)
     {
         try
         {
@@ -396,7 +430,7 @@ public sealed class UserCommandService(
                     GraphCorrelationId = graphCorrelationId,
                     GraphRequestId = graphRequestId,
                     FailureCategory = failureCategory,
-                    SafeMetadataJson = "{}"
+                    SafeMetadataJson = SafeReasonMetadata(reason)
                 },
                 cancellationToken);
             return null;
@@ -430,4 +464,9 @@ public sealed class UserCommandService(
     }
 
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+
+    private static string? NormalizeReason(string? reason) => string.IsNullOrWhiteSpace(reason) ? null : reason.Trim();
+
+    private static string SafeReasonMetadata(string? reason) =>
+        reason is null ? "{}" : JsonSerializer.Serialize(new { reason }, JsonOptions);
 }

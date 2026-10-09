@@ -13,7 +13,8 @@ public sealed record CreateUserCommand(
     string? OfficeLocation,
     string? MobilePhone,
     string UsageLocation,
-    bool AccountEnabled);
+    bool AccountEnabled,
+    string? Reason = null);
 
 public sealed record UpdateUserCommand(
     string? DisplayName,
@@ -24,13 +25,18 @@ public sealed record UpdateUserCommand(
     string? OfficeLocation,
     string? MobilePhone,
     string? UsageLocation,
-    bool? AccountEnabled);
+    bool? AccountEnabled,
+    string? Reason = null);
 
-public sealed record SetAccountEnabledCommand(bool Enabled);
+public sealed record SetAccountEnabledCommand(bool Enabled, string? Reason = null);
 
-public sealed record GroupMembershipCommand(string GroupObjectId);
+public sealed record GroupMembershipCommand(string GroupObjectId, string? Reason = null);
 
-public sealed record LicenseAssignmentCommand(string SkuId, IReadOnlyList<string> DisabledPlans);
+public sealed record LicenseAssignmentCommand(string SkuId, IReadOnlyList<string> DisabledPlans, string? Reason = null);
+
+public sealed record UserWriteReasonCommand(string? Reason);
+
+public sealed record ResetPasswordCommand(string? Reason);
 
 public sealed record TemporaryCredentialNotice(
     string TemporaryPassword,

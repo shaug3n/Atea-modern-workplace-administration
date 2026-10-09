@@ -23,13 +23,67 @@ namespace Atea.UnifiedWorkplace.Api.IntegrationTests.Users;
 public sealed class UserMutationEndpointTests
 {
     [Fact]
+    public async Task Every_user_group_and_license_write_rejects_missing_blank_and_oversized_reasons_before_dispatch()
+    {
+        var commands = new RecordingUserCommands();
+        var groups = new RecordingGroupCommands();
+        var licenses = new RecordingLicenseCommands();
+        var audit = new RecordingAuditWriter();
+        using var factory = CreateFactory(commands, groupCommands: groups, licenseCommands: licenses, auditWriter: audit);
+        using var client = AuthenticatedClient(factory);
+        var writes = new (HttpMethod Method, string Path, string Payload)[]
+        {
+            (HttpMethod.Post, "/api/users", """{"displayName":"Ada Lovelace","givenName":"Ada","surname":"Lovelace","userPrincipalName":"ada@example.com","mailNickname":"ada","usageLocation":"NO","accountEnabled":true}"""),
+            (HttpMethod.Patch, "/api/users/user-1", """{"displayName":"Ada Updated"}"""),
+            (HttpMethod.Post, "/api/users/user-1/disable", "{}"),
+            (HttpMethod.Post, "/api/users/user-1/reactivate", "{}"),
+            (HttpMethod.Post, "/api/users/user-1/reset-password", "{}"),
+            (HttpMethod.Post, "/api/users/user-1/groups/route-group", """{"groupObjectId":"route-group"}"""),
+            (HttpMethod.Delete, "/api/users/user-1/groups/route-group", """{"groupObjectId":"route-group"}"""),
+            (HttpMethod.Post, "/api/users/user-1/licenses/route-sku", """{"skuId":"route-sku","disabledPlans":[]}"""),
+            (HttpMethod.Delete, "/api/users/user-1/licenses/route-sku", """{"skuId":"route-sku","disabledPlans":[]}""")
+        };
+        var reasons = new (string? Value, string Error)[]
+        {
+            (null, "reason_required"),
+            ("   ", "reason_required"),
+            (new string('x', 1001), "reason_too_long")
+        };
+        var requestIndex = 0;
+
+        foreach (var (method, path, payload) in writes)
+        foreach (var (reason, error) in reasons)
+        {
+            var body = System.Text.Json.Nodes.JsonNode.Parse(payload)!.AsObject();
+            if (reason is not null) body["reason"] = reason;
+            using var request = new HttpRequestMessage(method, path)
+            {
+                Content = Json(body.ToJsonString(), $"invalid-reason-{requestIndex++}")
+            };
+            var response = await client.SendAsync(request);
+
+            response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+            (await response.Content.ReadAsStringAsync()).Should().Contain(error);
+        }
+
+        commands.CreateCalls.Should().Be(0);
+        commands.UpdateCalls.Should().Be(0);
+        commands.AccountStateCalls.Should().Be(0);
+        commands.PasswordResets.Should().BeEmpty();
+        groups.Added.Should().BeEmpty();
+        groups.Removed.Should().BeEmpty();
+        licenses.Assignments.Should().BeEmpty();
+        audit.Events.Should().BeEmpty();
+    }
+
+    [Fact]
     public async Task Global_reader_receives_structured_read_only_without_graph_mutation()
     {
         var commands = new RecordingUserCommands();
         using var factory = CreateFactory(commands, snapshot: ReaderSnapshot);
         using var client = AuthenticatedClient(factory);
 
-        var request = JsonPatch("/api/users/user-1", """{"displayName":"Ada Updated"}""", "edit-key");
+        var request = JsonPatch("/api/users/user-1", """{"displayName":"Ada Updated","reason":"profile update"}""", "edit-key");
         var response = await client.SendAsync(request);
         var body = await response.Content.ReadAsStringAsync();
 
@@ -47,7 +101,7 @@ public sealed class UserMutationEndpointTests
         using var factory = CreateFactory(commands);
         using var client = AuthenticatedClient(factory);
 
-        var response = await client.PostAsync("/api/users", Json("""{"displayName":"Ada Lovelace","givenName":"Ada","surname":"Lovelace","userPrincipalName":"ada@example.com","mailNickname":"ada","jobTitle":"Principal Engineer","department":"Digital Workplace","officeLocation":"Oslo","mobilePhone":"+47 22 00 00 00","usageLocation":"NO","accountEnabled":true}""", "create-key"));
+        var response = await client.PostAsync("/api/users", Json("""{"displayName":"Ada Lovelace","givenName":"Ada","surname":"Lovelace","userPrincipalName":"ada@example.com","mailNickname":"ada","jobTitle":"Principal Engineer","department":"Digital Workplace","officeLocation":"Oslo","mobilePhone":"+47 22 00 00 00","usageLocation":"NO","accountEnabled":true,"reason":"new employee"}""", "create-key"));
         var body = await response.Content.ReadAsStringAsync();
 
         response.StatusCode.Should().Be(HttpStatusCode.Created);
@@ -67,10 +121,11 @@ public sealed class UserMutationEndpointTests
         using var factory = CreateFactory(commands, auditWriter: audit);
         using var client = AuthenticatedClient(factory);
 
-        var first = await client.PostAsync("/api/users/user-1/reset-password", Json("{}", "password-reset-key"));
+        var first = await client.PostAsync("/api/users/user-1/reset-password", Json("""{"reason":"account recovery"}""", "password-reset-key"));
         var firstBody = await first.Content.ReadAsStringAsync();
-        var replay = await client.PostAsync("/api/users/user-1/reset-password", Json("{}", "password-reset-key"));
+        var replay = await client.PostAsync("/api/users/user-1/reset-password", Json("""{"reason":"account recovery"}""", "password-reset-key"));
         var replayBody = await replay.Content.ReadAsStringAsync();
+        var changed = await client.PostAsync("/api/users/user-1/reset-password", Json("""{"reason":"different purpose"}""", "password-reset-key"));
 
         first.StatusCode.Should().Be(HttpStatusCode.OK);
         firstBody.Should().Contain("\"temporaryPassword\"");
@@ -78,10 +133,13 @@ public sealed class UserMutationEndpointTests
         replay.StatusCode.Should().Be(HttpStatusCode.OK);
         replayBody.Should().Contain("\"replayed\":true");
         replayBody.Should().NotContain("\"temporaryPassword\"");
+        changed.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        (await changed.Content.ReadAsStringAsync()).Should().Contain("idempotency_key_reused");
         commands.PasswordResets.Should().ContainSingle().Which.ForceChangePasswordNextSignIn.Should().BeTrue();
         commands.PasswordResets.Single().IdempotencyKey.Should().Be("password-reset-key");
         audit.Events.Should().ContainSingle();
         audit.Events.Single().Action.Should().Be("users.reset_password");
+        audit.Events.Single().SafeMetadataJson.Should().Be("""{"reason":"account recovery"}""");
         audit.Events.Single().SafeMetadataJson.Should().NotContain(commands.PasswordResets.Single().TemporaryPassword);
         replayBody.Should().NotContain(commands.PasswordResets.Single().TemporaryPassword);
     }
@@ -93,9 +151,9 @@ public sealed class UserMutationEndpointTests
         using var factory = CreateFactory(commands);
         using var client = AuthenticatedClient(factory);
 
-        var first = await client.SendAsync(JsonPatch("/api/users/user-1", """{"displayName":"Ada Updated"}""", "same-edit-key"));
-        var replay = await client.SendAsync(JsonPatch("/api/users/user-1", """{"displayName":"Ada Updated"}""", "same-edit-key"));
-        var changed = await client.SendAsync(JsonPatch("/api/users/user-1", """{"displayName":"Grace Hopper"}""", "same-edit-key"));
+        var first = await client.SendAsync(JsonPatch("/api/users/user-1", """{"displayName":"Ada Updated","reason":"profile update"}""", "same-edit-key"));
+        var replay = await client.SendAsync(JsonPatch("/api/users/user-1", """{"displayName":"Ada Updated","reason":"profile update"}""", "same-edit-key"));
+        var changed = await client.SendAsync(JsonPatch("/api/users/user-1", """{"displayName":"Grace Hopper","reason":"profile update"}""", "same-edit-key"));
         var replayBody = await replay.Content.ReadAsStringAsync();
         var changedBody = await changed.Content.ReadAsStringAsync();
 
@@ -113,7 +171,7 @@ public sealed class UserMutationEndpointTests
         using var factory = CreateFactory(new RecordingUserCommands());
         using var client = AuthenticatedClient(factory);
 
-        var response = await client.PatchAsync("/api/users/user-1", new StringContent("""{"displayName":"Ada"}""", Encoding.UTF8, "application/json"));
+        var response = await client.PatchAsync("/api/users/user-1", new StringContent("""{"displayName":"Ada","reason":"profile update"}""", Encoding.UTF8, "application/json"));
         var body = await response.Content.ReadAsStringAsync();
 
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
@@ -129,7 +187,7 @@ public sealed class UserMutationEndpointTests
 
         var response = await client.PostAsync(
             "/api/users/user-1/licenses/route-sku",
-            Json("""{"skuId":"body-sku","disabledPlans":[]}""", "license-mismatch-key"));
+            Json("""{"skuId":"body-sku","disabledPlans":[],"reason":"license change"}""", "license-mismatch-key"));
         var body = await response.Content.ReadAsStringAsync();
 
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
@@ -138,18 +196,48 @@ public sealed class UserMutationEndpointTests
     }
 
     [Fact]
-    public async Task License_route_without_body_sends_route_sku_to_graph()
+    public async Task License_route_preserves_reason_and_sends_route_sku_to_graph()
     {
         var licenses = new RecordingLicenseCommands();
         using var factory = CreateFactory(new RecordingUserCommands(), licenseCommands: licenses);
         using var client = AuthenticatedClient(factory);
-        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/users/user-1/licenses/route-sku");
-        request.Headers.Add("Idempotency-Key", "license-route-key");
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/users/user-1/licenses/route-sku")
+        {
+            Content = Json("""{"reason":"license assignment"}""", "license-route-key")
+        };
 
         var response = await client.SendAsync(request);
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         licenses.Assignments.Should().ContainSingle().Which.Should().Be(("user-1", "route-sku", true));
+    }
+
+    [Fact]
+    public async Task Account_group_and_license_writes_accept_trimmed_reasons()
+    {
+        var commands = new RecordingUserCommands();
+        var groups = new RecordingGroupCommands();
+        var licenses = new RecordingLicenseCommands();
+        var audit = new RecordingAuditWriter();
+        using var factory = CreateFactory(commands, groupCommands: groups, licenseCommands: licenses, auditWriter: audit);
+        using var client = AuthenticatedClient(factory);
+
+        var disabled = await client.PostAsync("/api/users/user-1/disable", Json("""{"reason":"  risk mitigation  "}""", "disable-reason-key"));
+        var reactivated = await client.PostAsync("/api/users/user-1/reactivate", Json("""{"reason":"  access restored  "}""", "reactivate-reason-key"));
+        var groupAdd = await client.PostAsync("/api/users/user-1/groups/route-group", Json("""{"groupObjectId":"route-group","reason":"  project access  "}""", "group-add-reason-key"));
+        var groupRemove = await client.SendAsync(JsonRequest(HttpMethod.Delete, "/api/users/user-1/groups/route-group", """{"groupObjectId":"route-group","reason":"  project completed  "}""", "group-remove-reason-key"));
+        var licenseAdd = await client.PostAsync("/api/users/user-1/licenses/route-sku", Json("""{"skuId":"route-sku","disabledPlans":[],"reason":"  license request  "}""", "license-add-reason-key"));
+        var licenseRemove = await client.SendAsync(JsonRequest(HttpMethod.Delete, "/api/users/user-1/licenses/route-sku", """{"skuId":"route-sku","disabledPlans":[],"reason":"  license no longer needed  "}""", "license-remove-reason-key"));
+
+        new[] { disabled, reactivated, groupAdd, groupRemove, licenseAdd, licenseRemove }
+            .Should().OnlyContain(response => response.StatusCode == HttpStatusCode.OK);
+        commands.AccountStateCalls.Should().Be(2);
+        groups.Added.Should().ContainSingle().Which.Should().Be(("route-group", "user-1"));
+        groups.Removed.Should().ContainSingle().Which.Should().Be(("route-group", "user-1"));
+        licenses.Assignments.Should().HaveCount(2);
+        audit.Events.Should().HaveCount(6);
+        audit.Events.Select(entry => entry.SafeMetadataJson).Should().Contain("""{"reason":"risk mitigation"}""");
+        audit.Events.Select(entry => entry.SafeMetadataJson).Should().Contain("""{"reason":"license no longer needed"}""");
     }
 
     [Fact]
@@ -161,7 +249,7 @@ public sealed class UserMutationEndpointTests
 
         var response = await client.PostAsync(
             "/api/users/user-1/groups/route-group",
-            Json("""{"groupObjectId":"body-group"}""", "group-mismatch-key"));
+            Json("""{"groupObjectId":"body-group","reason":"group update"}""", "group-mismatch-key"));
         var body = await response.Content.ReadAsStringAsync();
 
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
@@ -176,7 +264,7 @@ public sealed class UserMutationEndpointTests
         using var factory = CreateFactory(new RecordingUserCommands(), groupCommands: groups, groupCatalog: new RecordingGroupCatalogReader { Items = [new GroupCatalogItem("known-group", "Known", null, true, [])] });
         using var client = AuthenticatedClient(factory);
 
-        var response = await client.PostAsync("/api/users/user-1/groups/unknown-group", Json("{\"groupObjectId\":\"unknown-group\"}", "unknown-group-key"));
+        var response = await client.PostAsync("/api/users/user-1/groups/unknown-group", Json("{\"groupObjectId\":\"unknown-group\",\"reason\":\"group update\"}", "unknown-group-key"));
         var body = await response.Content.ReadAsStringAsync();
 
         response.StatusCode.Should().Be(HttpStatusCode.NotFound);
@@ -191,7 +279,7 @@ public sealed class UserMutationEndpointTests
         using var factory = CreateFactory(new RecordingUserCommands(), licenseCommands: licenses, licenseCatalog: new RecordingLicenseCatalogReader { Items = [new LicenseOverviewItem("known-sku", "E3", "Microsoft 365 E3", 1, 1)] });
         using var client = AuthenticatedClient(factory);
 
-        var response = await client.PostAsync("/api/users/user-1/licenses/unknown-sku", Json("{\"skuId\":\"unknown-sku\",\"disabledPlans\":[]}", "unknown-license-key"));
+        var response = await client.PostAsync("/api/users/user-1/licenses/unknown-sku", Json("{\"skuId\":\"unknown-sku\",\"disabledPlans\":[],\"reason\":\"license assignment\"}", "unknown-license-key"));
         var body = await response.Content.ReadAsStringAsync();
 
         response.StatusCode.Should().Be(HttpStatusCode.NotFound);
@@ -212,8 +300,8 @@ public sealed class UserMutationEndpointTests
             licenseCatalog: new RecordingLicenseCatalogReader { Error = new GraphOperationResult(false, "invalid_license", 400) });
         using var client = AuthenticatedClient(factory);
 
-        var groupResponse = await client.PostAsync("/api/users/user-1/groups/route-group", Json("{\"groupObjectId\":\"route-group\"}", "invalid-group-key"));
-        var licenseResponse = await client.PostAsync("/api/users/user-1/licenses/route-sku", Json("{\"skuId\":\"route-sku\",\"disabledPlans\":[]}", "invalid-license-key"));
+        var groupResponse = await client.PostAsync("/api/users/user-1/groups/route-group", Json("{\"groupObjectId\":\"route-group\",\"reason\":\"group update\"}", "invalid-group-key"));
+        var licenseResponse = await client.PostAsync("/api/users/user-1/licenses/route-sku", Json("{\"skuId\":\"route-sku\",\"disabledPlans\":[],\"reason\":\"license assignment\"}", "invalid-license-key"));
 
         groupResponse.StatusCode.Should().Be(HttpStatusCode.BadRequest);
         licenseResponse.StatusCode.Should().Be(HttpStatusCode.BadRequest);
@@ -261,6 +349,16 @@ public sealed class UserMutationEndpointTests
     private static HttpRequestMessage JsonPatch(string path, string payload, string key)
     {
         var request = new HttpRequestMessage(HttpMethod.Patch, path)
+        {
+            Content = new StringContent(payload, Encoding.UTF8, "application/json")
+        };
+        request.Headers.Add("Idempotency-Key", key);
+        return request;
+    }
+
+    private static HttpRequestMessage JsonRequest(HttpMethod method, string path, string payload, string key)
+    {
+        var request = new HttpRequestMessage(method, path)
         {
             Content = new StringContent(payload, Encoding.UTF8, "application/json")
         };
@@ -355,6 +453,7 @@ public sealed class UserMutationEndpointTests
     {
         public int CreateCalls { get; private set; }
         public int UpdateCalls { get; private set; }
+        public int AccountStateCalls { get; private set; }
         public List<(string UserId, string TemporaryPassword, bool ForceChangePasswordNextSignIn, string IdempotencyKey)> PasswordResets { get; } = [];
 
         public Task<GraphOperationResult> CreateUserAsync(GraphUserCreateRequest request, string idempotencyKey, CancellationToken cancellationToken)
@@ -370,7 +469,13 @@ public sealed class UserMutationEndpointTests
         }
 
         public Task<GraphOperationResult> SetAccountEnabledAsync(string userObjectId, bool accountEnabled, string idempotencyKey, CancellationToken cancellationToken) =>
-            Task.FromResult(GraphOperationResult.Success("corr-1", "req-1"));
+            CountAccountStateAsync();
+
+        private Task<GraphOperationResult> CountAccountStateAsync()
+        {
+            AccountStateCalls++;
+            return Task.FromResult(GraphOperationResult.Success("corr-1", "req-1"));
+        }
 
         public Task<GraphOperationResult> ResetPasswordAsync(string userObjectId, TemporaryPasswordProfile passwordProfile, string idempotencyKey, CancellationToken cancellationToken)
         {

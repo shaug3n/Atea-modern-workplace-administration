@@ -69,6 +69,70 @@ public sealed class UserSecurityCommandServiceTests
     }
 
     [Fact]
+    public async Task Tap_reason_is_audited_and_part_of_idempotency_fingerprint_without_persisting_the_secret()
+    {
+        var idempotency = new MemoryIdempotencyService();
+        var audit = new RecordingAuditWriter();
+        var commands = new StubAuthenticationMethodCommands(new GraphTemporaryAccessPassResult("fixture-tap-value", "tap-1", null, 60, true));
+        var service = CreateAuthenticationService(idempotency, audit, commands: commands);
+
+        var first = await service.CreateTemporaryAccessPassAsync(Context(), "user-1", "same-tap-key", CancellationToken.None, "  onboarding  ");
+        var replay = await service.CreateTemporaryAccessPassAsync(Context(), "user-1", "same-tap-key", CancellationToken.None, "onboarding");
+        var reused = await service.CreateTemporaryAccessPassAsync(Context(), "user-1", "same-tap-key", CancellationToken.None, "different reason");
+
+        first.TemporaryAccessPass.Should().Be("fixture-tap-value");
+        replay.Replayed.Should().BeTrue();
+        replay.TemporaryAccessPass.Should().BeNull();
+        reused.Status.Should().Be("idempotency_key_reused");
+        commands.TemporaryAccessPassCalls.Should().Be(1);
+        audit.Events.Should().ContainSingle();
+        audit.Events.Single().SafeMetadataJson.Should().Be("""{"reason":"onboarding"}""");
+        idempotency.Records.Single().SafeResultJson.Should().NotContain("fixture-tap-value");
+    }
+
+    [Fact]
+    public async Task Authentication_method_remove_and_reset_reject_changed_reasons_for_reused_keys()
+    {
+        var idempotency = new MemoryIdempotencyService();
+        var audit = new RecordingAuditWriter();
+        var commands = new StubAuthenticationMethodCommands(new GraphTemporaryAccessPassResult("fixture-tap-value", "tap-1", null, 60, true));
+        var service = CreateAuthenticationService(idempotency, audit, commands: commands);
+
+        var remove = await service.RemoveAsync(Context(), "user-1", "method-1", "fido2AuthenticationMethod", "same-method-key", CancellationToken.None, "security cleanup");
+        var removeReplay = await service.RemoveAsync(Context(), "user-1", "method-1", "fido2AuthenticationMethod", "same-method-key", CancellationToken.None, "security cleanup");
+        var removeReused = await service.RemoveAsync(Context(), "user-1", "method-1", "fido2AuthenticationMethod", "same-method-key", CancellationToken.None, "different reason");
+        var reset = await service.ResetMfaAsync(Context(), "user-1", "same-reset-key", CancellationToken.None, "lost device");
+        var resetReused = await service.ResetMfaAsync(Context(), "user-1", "same-reset-key", CancellationToken.None, "different reason");
+
+        remove.Status.Should().Be("succeeded");
+        removeReplay.Replayed.Should().BeTrue();
+        removeReused.Status.Should().Be("idempotency_key_reused");
+        reset.Status.Should().Be("succeeded");
+        resetReused.Status.Should().Be("idempotency_key_reused");
+        commands.RemoveCalls.Should().Be(1);
+        audit.Events.Should().HaveCount(2);
+        audit.Events[0].SafeMetadataJson.Should().Be("""{"reason":"security cleanup"}""");
+        audit.Events[1].SafeMetadataJson.Should().Be("""{"reason":"lost device"}""");
+    }
+
+    [Fact]
+    public async Task Session_reason_is_audited_and_changed_reason_conflicts_without_a_second_graph_call()
+    {
+        var commands = new RecordingSessionCommands();
+        var audit = new RecordingAuditWriter();
+        var service = CreateSessionService(commands, audit: audit);
+
+        var first = await service.RevokeAsync(Context(), "user-1", "same-session-key", CancellationToken.None, "  offboarding  ");
+        var reused = await service.RevokeAsync(Context(), "user-1", "same-session-key", CancellationToken.None, "different reason");
+
+        first.Status.Should().Be("succeeded");
+        reused.Status.Should().Be("idempotency_key_reused");
+        commands.Calls.Should().Be(1);
+        audit.Events.Should().ContainSingle();
+        audit.Events.Single().SafeMetadataJson.Should().Be("""{"reason":"offboarding"}""");
+    }
+
+    [Fact]
     public async Task Missing_tap_consent_denies_direct_service_call_without_command_dispatch()
     {
         var commands = new StubAuthenticationMethodCommands(new GraphTemporaryAccessPassResult("fixture-tap-value", "tap-1", null, 60, true));
@@ -122,8 +186,8 @@ public sealed class UserSecurityCommandServiceTests
             idempotency,
             audit);
 
-    private static UserSessionCommandService CreateSessionService(RecordingSessionCommands commands, GraphAuthorizationSnapshot? snapshot = null) =>
-        new(new StaticAuthorizationReader(snapshot ?? AllowedSnapshot), commands, new MemoryIdempotencyService(), new RecordingAuditWriter());
+    private static UserSessionCommandService CreateSessionService(RecordingSessionCommands commands, GraphAuthorizationSnapshot? snapshot = null, RecordingAuditWriter? audit = null) =>
+        new(new StaticAuthorizationReader(snapshot ?? AllowedSnapshot), commands, new MemoryIdempotencyService(), audit ?? new RecordingAuditWriter());
 
     private static WorkspaceContext Context() => new(
         new AuthenticatedUser(Guid.Parse("11111111-1111-1111-1111-111111111111"), Guid.Parse("22222222-2222-2222-2222-222222222222"), "admin@example.com", "Admin", "Member", null),
@@ -138,8 +202,12 @@ public sealed class UserSecurityCommandServiceTests
     private sealed class StubAuthenticationMethodCommands(GraphTemporaryAccessPassResult tap) : IAuthenticationMethodCommands
     {
         public int TemporaryAccessPassCalls { get; private set; }
-        public Task<GraphOperationResult> RemoveAsync(string userObjectId, string methodObjectId, string methodType, string idempotencyKey, CancellationToken cancellationToken) =>
-            Task.FromResult(GraphOperationResult.Success());
+        public int RemoveCalls { get; private set; }
+        public Task<GraphOperationResult> RemoveAsync(string userObjectId, string methodObjectId, string methodType, string idempotencyKey, CancellationToken cancellationToken)
+        {
+            RemoveCalls++;
+            return Task.FromResult(GraphOperationResult.Success());
+        }
 
         public Task<GraphTemporaryAccessPassResult> CreateTemporaryAccessPassAsync(string userObjectId, string idempotencyKey, CancellationToken cancellationToken) =>
             CountTapAsync();

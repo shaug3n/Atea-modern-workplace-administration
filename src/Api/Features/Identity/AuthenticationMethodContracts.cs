@@ -25,7 +25,9 @@ public sealed record AuthenticationMethodCommandResult(
     CapabilityDecision? Authorization = null,
     bool Replayed = false,
     string? AuditWarning = null,
-    int RemovedCount = 0);
+    int RemovedCount = 0,
+    string? GraphCorrelationId = null,
+    string? GraphRequestId = null);
 
 public sealed record TemporaryAccessPassCommandResult(
     string Status,

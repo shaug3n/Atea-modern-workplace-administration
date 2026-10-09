@@ -1,4 +1,5 @@
 using Atea.UnifiedWorkplace.Api.Authorization;
+using Microsoft.AspNetCore.Mvc;
 
 namespace Atea.UnifiedWorkplace.Api.Features.Users;
 
@@ -11,12 +12,13 @@ public static class UserSessionCommandEndpoints
         return endpoints;
     }
 
-    private static async Task<IResult> RevokeAsync(string userObjectId, IWorkspaceContextAccessor accessor, IUserSessionCommandService service, HttpRequest request, CancellationToken cancellationToken)
+    private static async Task<IResult> RevokeAsync(string userObjectId, [FromBody] UserWriteReasonCommand? command, IWorkspaceContextAccessor accessor, IUserSessionCommandService service, HttpRequest request, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(userObjectId) || userObjectId.Any(character => char.IsControl(character) || character is '/' or '\\')) return Results.BadRequest(new { error = "invalid_target" });
+        if (!UserWriteReasonValidation.TryNormalize(command?.Reason, out var reason, out var reasonError)) return Results.BadRequest(new { error = reasonError });
         if (!request.Headers.TryGetValue("Idempotency-Key", out var values) || string.IsNullOrWhiteSpace(values.ToString())) return Results.BadRequest(new { error = "idempotency_key_required" });
         if (accessor.Current is not { } context) return Results.Json(new { error = "workspace_membership_required" }, statusCode: StatusCodes.Status403Forbidden);
-        var result = await service.RevokeAsync(context, userObjectId, values.ToString().Trim(), cancellationToken);
+        var result = await service.RevokeAsync(context, userObjectId, values.ToString().Trim(), cancellationToken, reason);
         return result.Status switch
         {
             "succeeded" => Results.Ok(result), "denied" => Results.Json(result, statusCode: StatusCodes.Status403Forbidden),
