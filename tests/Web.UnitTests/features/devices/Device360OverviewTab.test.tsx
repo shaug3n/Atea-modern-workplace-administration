@@ -112,7 +112,30 @@ describe('Device 360 API helpers', () => {
 
   it('device360_helpers_use_same_origin_no_store_routes', async () => {
     for (const [helper, suffix] of helpers) {
-      const api = vi.fn<ApiFetch>().mockResolvedValue(new Response(JSON.stringify({ status: 'succeeded', data: [] }), { status: 200 }));
+      const data = suffix === '/protection' ? {
+        antiMalwareVersion: null,
+        controlledConfigurationEnabled: null,
+        deviceState: null,
+        engineVersion: null,
+        fullScanOverdue: null,
+        fullScanRequired: null,
+        isVirtualMachine: null,
+        lastFullScanDateTime: null,
+        lastFullScanSignatureVersion: null,
+        lastQuickScanDateTime: null,
+        lastQuickScanSignatureVersion: null,
+        lastReportedDateTime: null,
+        malwareProtectionEnabled: null,
+        networkInspectionSystemEnabled: null,
+        productStatus: null,
+        quickScanOverdue: null,
+        realTimeProtectionEnabled: null,
+        rebootRequired: null,
+        signatureUpdateOverdue: null,
+        signatureVersion: null,
+        tamperProtectionEnabled: null,
+      } : [];
+      const api = vi.fn<ApiFetch>().mockResolvedValue(new Response(JSON.stringify({ status: 'succeeded', data }), { status: 200 }));
       await helper(api, 'managed/device 360');
       expect(api).toHaveBeenCalledWith(`/api/devices/managed%2Fdevice%20360${suffix}`, { cache: 'no-store' });
     }
@@ -138,5 +161,17 @@ describe('Device 360 API helpers', () => {
     const malformedResult = await fetchDeviceCompliancePolicies(malformed, 'managed-device-360');
     expect(malformedResult.status).toBe('failed');
     expect(malformedResult.data).toBeNull();
+  });
+
+  it('returns_unavailable_for_null_primitive_and_array_envelopes', async () => {
+    for (const body of [null, 'succeeded', 42, [], [{ status: 'succeeded', data: [] }], { status: 'succeeded' }]) {
+      const api = vi.fn<ApiFetch>().mockResolvedValue(new Response(JSON.stringify(body), { status: 200 }));
+
+      const result = await fetchDeviceCompliancePolicies(api, 'managed-device-360');
+
+      expect(result.status).toBe('failed');
+      expect(result.data).toBeNull();
+      expect(result.error?.category).toBe('unavailable');
+    }
   });
 });

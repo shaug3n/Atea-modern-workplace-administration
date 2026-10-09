@@ -105,6 +105,18 @@ describe('DeviceDetailPage', () => {
     expect(document.querySelector('.workspace-page-header__meta')?.textContent).toContain('Compliance: Noncompliant');
   });
 
+  it('shows_a_retryable_unavailable_state_when_policy_response_is_valid_json_null', async () => {
+    apiMock.mockImplementation(async (path: string) => path === '/api/devices/device-1'
+      ? response({ id: 'device-1', deviceName: 'WIN-01' })
+      : response(null));
+    render(<DeviceDetailPage deviceId="device-1" />);
+
+    await screen.findByRole('heading', { name: 'WIN-01' });
+    expect(await screen.findByText(/per-policy compliance reports are unavailable/i)).toBeTruthy();
+    expect(screen.queryByText('Loading per-policy compliance reports…')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Retry policies' })).toBeTruthy();
+  });
+
   it('keeps_the_overview_bound_to_the_current_device_when_a_policy_read_finishes_late', async () => {
     const pending = deferred<ReturnType<typeof response>>();
     apiMock.mockImplementation((path: string) => {
