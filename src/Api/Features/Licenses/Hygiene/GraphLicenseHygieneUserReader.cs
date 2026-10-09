@@ -9,13 +9,16 @@ public sealed class GraphLicenseHygieneUserReader : ILicenseHygieneUserReader
     private const string UserSelect = "id,displayName,userPrincipalName,accountEnabled,assignedLicenses";
     private readonly IDelegatedGraphClientFactory clientFactory;
     private readonly LicenseHygieneScanLimits limits;
+    private readonly TimeProvider timeProvider;
 
     public GraphLicenseHygieneUserReader(
         IDelegatedGraphClientFactory clientFactory,
-        LicenseHygieneScanLimits? limits = null)
+        LicenseHygieneScanLimits? limits = null,
+        TimeProvider? timeProvider = null)
     {
         this.clientFactory = clientFactory;
         this.limits = limits ?? LicenseHygieneScanLimits.ProductionDefault;
+        this.timeProvider = timeProvider ?? TimeProvider.System;
 
         if (this.limits.MaxRecords is < 1 or > 10_000
             || this.limits.MaxPages is < 1 or > 100
@@ -38,7 +41,7 @@ public sealed class GraphLicenseHygieneUserReader : ILicenseHygieneUserReader
         var pagesRead = 0;
         GraphClientLease? lease = null;
 
-        using var deadline = new CancellationTokenSource(limits.TimeBudget);
+        using var deadline = new CancellationTokenSource(limits.TimeBudget, timeProvider);
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, deadline.Token);
 
         try

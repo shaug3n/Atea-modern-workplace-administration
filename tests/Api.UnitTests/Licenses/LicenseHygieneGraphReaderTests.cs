@@ -165,6 +165,8 @@ public sealed class LicenseHygieneGraphReaderTests
         var enteredSecondPage = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var secondPageCancelled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var retryAttempts = 0;
+        var timeProvider = new ManualTimeProvider();
+        var limits = new LicenseHygieneScanLimits(10, 10, 100, TimeSpan.FromMilliseconds(80));
         var transport = new TestTransport(async (index, token) =>
         {
             if (index == 0)
@@ -172,16 +174,15 @@ public sealed class LicenseHygieneGraphReaderTests
                 return Success("""{"value":[{"id":"verified"}],"@odata.nextLink":"https://graph.microsoft.com/v1.0/users?$skiptoken=two"}""");
             }
 
-            enteredSecondPage.TrySetResult();
             retryAttempts++;
-            await WaitForCancellation(token, secondPageCancelled);
+            await WaitForCancellation(token, secondPageCancelled, enteredSecondPage);
             retryAttempts++;
             return Success("""{"value":[{"id":"too-late"}]}""");
         });
 
-        var scan = Reader(transport, new LicenseHygieneScanLimits(10, 10, 100, TimeSpan.FromMilliseconds(80)))
-            .ScanAsync(Context, CancellationToken.None);
+        var scan = Reader(transport, limits, timeProvider).ScanAsync(Context, CancellationToken.None);
         await enteredSecondPage.Task.WaitAsync(TimeSpan.FromSeconds(1));
+        timeProvider.Advance(limits.TimeBudget);
         var result = await scan.WaitAsync(TimeSpan.FromSeconds(1));
 
         await secondPageCancelled.Task.WaitAsync(TimeSpan.FromSeconds(1));
@@ -214,8 +215,9 @@ public sealed class LicenseHygieneGraphReaderTests
 
     private static GraphLicenseHygieneUserReader Reader(
         TestTransport transport,
-        LicenseHygieneScanLimits? limits = null) =>
-        new(new TestFactory(transport), limits);
+        LicenseHygieneScanLimits? limits = null,
+        TimeProvider? timeProvider = null) =>
+        new(new TestFactory(transport), limits, timeProvider);
 
     private static GraphTransportResponse Success(string content) =>
         new(GraphOperationResult.Success(), content, 1, EmptyHeaders);
@@ -225,15 +227,73 @@ public sealed class LicenseHygieneGraphReaderTests
 
     private static async Task<GraphTransportResponse> WaitForCancellation(
         CancellationToken cancellationToken,
-        TaskCompletionSource cancelled)
+        TaskCompletionSource cancelled,
+        TaskCompletionSource entered)
     {
-        using var registration = cancellationToken.Register(() => cancelled.TrySetResult());
-        await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
-        throw new InvalidOperationException("The infinite wait completed without cancellation.");
+        var wait = Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+        entered.TrySetResult();
+        try
+        {
+            await wait;
+            throw new InvalidOperationException("The infinite wait completed without cancellation.");
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            cancelled.TrySetResult();
+            throw;
+        }
     }
 
     private static readonly IReadOnlyDictionary<string, IReadOnlyCollection<string>> EmptyHeaders =
         new Dictionary<string, IReadOnlyCollection<string>>();
+
+    private sealed class ManualTimeProvider : TimeProvider
+    {
+        private ManualTimer? timer;
+
+        public override ITimer CreateTimer(
+            TimerCallback callback,
+            object? state,
+            TimeSpan dueTime,
+            TimeSpan period)
+        {
+            timer = new ManualTimer(callback, state);
+            return timer;
+        }
+
+        public void Advance(TimeSpan elapsed)
+        {
+            if (elapsed <= TimeSpan.Zero)
+            {
+                throw new ArgumentOutOfRangeException(nameof(elapsed));
+            }
+
+            (timer ?? throw new InvalidOperationException("No scan deadline timer was created.")).Fire();
+        }
+
+        private sealed class ManualTimer(TimerCallback callback, object? state) : ITimer
+        {
+            private bool disposed;
+
+            public bool Change(TimeSpan dueTime, TimeSpan period) => !disposed;
+
+            public void Dispose() => disposed = true;
+
+            public ValueTask DisposeAsync()
+            {
+                Dispose();
+                return ValueTask.CompletedTask;
+            }
+
+            public void Fire()
+            {
+                if (!disposed)
+                {
+                    callback(state);
+                }
+            }
+        }
+    }
 
     private sealed class TestFactory(TestTransport transport) : IDelegatedGraphClientFactory
     {
