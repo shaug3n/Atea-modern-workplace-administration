@@ -10,6 +10,8 @@ public sealed record AuthenticationMethodItem(
     string? Model = null,
     string? AttestationLevel = null);
 
+public sealed record TemporaryAccessPassRequest(int LifetimeInMinutes = 60, bool IsUsableOnce = true, string? Reason = null);
+
 public static class AuthenticationMethodActions
 {
     public const string Remove = "remove";

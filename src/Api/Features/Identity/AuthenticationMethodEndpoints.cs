@@ -118,7 +118,7 @@ public static class AuthenticationMethodEndpoints
 
     private static async Task<IResult> CreateTemporaryAccessPassAsync(
         string userObjectId,
-        [FromBody] UserWriteReasonCommand? command,
+        [FromBody] TemporaryAccessPassRequest? command,
         IWorkspaceContextAccessor accessor,
         IAuthenticationMethodService service,
         HttpRequest request,
@@ -126,16 +126,19 @@ public static class AuthenticationMethodEndpoints
     {
         if (string.IsNullOrWhiteSpace(userObjectId) || userObjectId.Any(IsUnsafe)) return Results.BadRequest(new { error = "invalid_target" });
         if (!UserWriteReasonValidation.TryNormalize(command?.Reason, out var reason, out var reasonError)) return Results.BadRequest(new { error = reasonError });
+        var tapRequest = command ?? new TemporaryAccessPassRequest();
+        if (tapRequest.LifetimeInMinutes is < 10 or > 1440) return Results.BadRequest(new { error = "invalid_request" });
         if (!request.Headers.TryGetValue("Idempotency-Key", out var values) || string.IsNullOrWhiteSpace(values.ToString())) return Results.BadRequest(new { error = "idempotency_key_required" });
         var context = accessor.Current;
         if (context is null) return Results.Json(new { error = "workspace_membership_required" }, statusCode: StatusCodes.Status403Forbidden);
-        var result = await service.CreateTemporaryAccessPassAsync(context, userObjectId, values.ToString().Trim(), cancellationToken, reason);
+        var result = await service.CreateTemporaryAccessPassAsync(context, userObjectId, values.ToString().Trim(), tapRequest with { Reason = reason }, cancellationToken);
         return result.Status switch
         {
             "succeeded" => Results.Ok(result),
             "denied" => Results.Json(result, statusCode: StatusCodes.Status403Forbidden),
             "invalid_target" => Results.BadRequest(result),
             "idempotency_key_reused" => Results.Conflict(result),
+            "policy_rejected" => Results.Json(result, statusCode: StatusCodes.Status422UnprocessableEntity),
             _ => Results.Json(result, statusCode: StatusCodes.Status503ServiceUnavailable)
         };
     }

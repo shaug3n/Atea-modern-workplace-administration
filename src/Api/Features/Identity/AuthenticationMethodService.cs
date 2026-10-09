@@ -14,6 +14,7 @@ public interface IAuthenticationMethodService
     Task<AuthenticationMethodCommandResult> RemoveAsync(WorkspaceContext context, string userObjectId, string methodObjectId, string methodType, string idempotencyKey, CancellationToken cancellationToken, string? reason = null);
     Task<AuthenticationMethodCommandResult> ResetMfaAsync(WorkspaceContext context, string userObjectId, string idempotencyKey, CancellationToken cancellationToken, string? reason = null);
     Task<TemporaryAccessPassCommandResult> CreateTemporaryAccessPassAsync(WorkspaceContext context, string userObjectId, string idempotencyKey, CancellationToken cancellationToken, string? reason = null);
+    Task<TemporaryAccessPassCommandResult> CreateTemporaryAccessPassAsync(WorkspaceContext context, string userObjectId, string idempotencyKey, TemporaryAccessPassRequest request, CancellationToken cancellationToken);
 }
 
 public sealed class AuthenticationMethodService(
@@ -164,11 +165,16 @@ public sealed class AuthenticationMethodService(
         return stored with { Replayed = outcome.Kind == IdempotencyOutcomeKind.Replayed };
     }
 
-    public async Task<TemporaryAccessPassCommandResult> CreateTemporaryAccessPassAsync(WorkspaceContext context, string userObjectId, string idempotencyKey, CancellationToken cancellationToken, string? reason = null)
+    public Task<TemporaryAccessPassCommandResult> CreateTemporaryAccessPassAsync(WorkspaceContext context, string userObjectId, string idempotencyKey, CancellationToken cancellationToken, string? reason = null) =>
+        CreateTemporaryAccessPassAsync(context, userObjectId, idempotencyKey, new TemporaryAccessPassRequest(Reason: reason), cancellationToken);
+
+    public async Task<TemporaryAccessPassCommandResult> CreateTemporaryAccessPassAsync(WorkspaceContext context, string userObjectId, string idempotencyKey, TemporaryAccessPassRequest request, CancellationToken cancellationToken)
     {
-        reason = NormalizeReason(reason);
+        ArgumentNullException.ThrowIfNull(request);
+        var reason = NormalizeReason(request.Reason);
         if (string.IsNullOrWhiteSpace(userObjectId)) return new("invalid_target", Capability.AuthenticationMethodsManage, Error: "invalid_target");
         if (string.IsNullOrWhiteSpace(idempotencyKey)) return new("invalid_target", Capability.AuthenticationMethodsManage, Error: "idempotency_key_required");
+        if (request.LifetimeInMinutes is < 10 or > 1440) return new("invalid_target", Capability.AuthenticationMethodsManage, Error: "invalid_request");
 
         var snapshot = await authorizationSnapshotReader.ReadAsync(context, cancellationToken);
         var authorization = CapabilityEvaluator.Evaluate(snapshot, context.Membership)[Capability.AuthenticationMethodsManage];
@@ -181,14 +187,21 @@ public sealed class AuthenticationMethodService(
         const string operation = "users.authentication_methods.temporary_access_pass";
         var outcome = await idempotency.ExecuteAsync(
             new IdempotencyScope(context.Membership.WorkspaceId, context.User.ObjectId, operation, userObjectId, idempotencyKey),
-            new { reason },
+            new { request.LifetimeInMinutes, request.IsUsableOnce, reason },
             async () =>
             {
-                var graph = await commands.CreateTemporaryAccessPassAsync(userObjectId, idempotencyKey, cancellationToken);
-                var valid = graph.Error is null && !string.IsNullOrWhiteSpace(graph.TemporaryAccessPass) && !string.IsNullOrWhiteSpace(graph.Id) && graph.LifetimeInMinutes == 60 && graph.IsUsableOnce == true;
+                var graph = await commands.CreateTemporaryAccessPassAsync(userObjectId, idempotencyKey, request with { Reason = null }, cancellationToken);
+                var valid = graph.Error is null && !string.IsNullOrWhiteSpace(graph.TemporaryAccessPass) && !string.IsNullOrWhiteSpace(graph.Id)
+                    && graph.LifetimeInMinutes == request.LifetimeInMinutes && graph.IsUsableOnce == request.IsUsableOnce;
                 var result = valid
                     ? new TemporaryAccessPassCommandResult("succeeded", Capability.AuthenticationMethodsManage, graph.TemporaryAccessPass, graph.Id, graph.StartDateTime, graph.LifetimeInMinutes, graph.IsUsableOnce, GraphCorrelationId: graph.CorrelationId, GraphRequestId: graph.RequestId, Authorization: authorization)
-                    : new TemporaryAccessPassCommandResult("temporarily_unavailable", Capability.AuthenticationMethodsManage, Error: graph.Error?.Category ?? "invalid_response", GraphCorrelationId: graph.Error?.CorrelationId ?? graph.CorrelationId, GraphRequestId: graph.Error?.RequestId ?? graph.RequestId, Authorization: authorization);
+                    : new TemporaryAccessPassCommandResult(
+                        graph.Error?.Category == "tenant_policy_rejected" ? "policy_rejected" : "temporarily_unavailable",
+                        Capability.AuthenticationMethodsManage,
+                        Error: graph.Error?.Category ?? "invalid_response",
+                        GraphCorrelationId: graph.Error?.CorrelationId ?? graph.CorrelationId,
+                        GraphRequestId: graph.Error?.RequestId ?? graph.RequestId,
+                        Authorization: authorization);
                 liveResult = result with { AuditWarning = await AuditAsync(context, operation, userObjectId, result.Status, result.Error, cancellationToken, reason, result.GraphCorrelationId, result.GraphRequestId) };
                 var safe = liveResult with { TemporaryAccessPass = null };
                 return new IdempotentOperationResult(StatusCodeFor(safe), safe.Status, JsonSerializer.Serialize(safe, JsonOptions), safe.GraphCorrelationId, safe.GraphRequestId);
@@ -251,6 +264,7 @@ public sealed class AuthenticationMethodService(
         "denied" => StatusCodes.Status403Forbidden,
         "invalid_target" => StatusCodes.Status400BadRequest,
         "idempotency_key_reused" => StatusCodes.Status409Conflict,
+        "policy_rejected" => StatusCodes.Status422UnprocessableEntity,
         _ => StatusCodes.Status503ServiceUnavailable
     };
 

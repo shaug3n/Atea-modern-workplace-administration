@@ -120,6 +120,7 @@ public sealed class UserSecurityCommandEndpointTests
         tap.StatusCode.Should().Be(HttpStatusCode.OK);
         tapBody.Should().Contain("fixture-tap-value");
         tapBody.Should().NotContain("secret");
+        authentication.TemporaryAccessPassRequests.Should().ContainSingle().Which.Should().Be(new TemporaryAccessPassRequest());
         reset.StatusCode.Should().Be(HttpStatusCode.OK);
         remove.StatusCode.Should().Be(HttpStatusCode.OK);
         revoke.StatusCode.Should().Be(HttpStatusCode.OK);
@@ -130,6 +131,70 @@ public sealed class UserSecurityCommandEndpointTests
         audit.Events.Should().HaveCount(4);
         audit.Events.Select(entry => entry.SafeMetadataJson).Should().Contain("""{"reason":"security operation"}""");
         audit.Events.Select(entry => entry.SafeMetadataJson).Should().Contain("""{"reason":"device replaced"}""");
+    }
+
+    [Theory]
+    [InlineData("""{"reason":"recovery","lifetimeInMinutes":9,"isUsableOnce":true}""")]
+    [InlineData("""{"reason":"recovery","lifetimeInMinutes":1441,"isUsableOnce":true}""")]
+    [InlineData("""{"reason":"recovery","lifetimeInMinutes":61.5,"isUsableOnce":true}""")]
+    public async Task Temporary_access_pass_rejects_invalid_lifetime_before_graph_dispatch(string body)
+    {
+        var authentication = new RecordingAuthenticationCommands();
+        var audit = new RecordingAuditWriter();
+        using var factory = CreateFactory(authentication, auditWriter: audit);
+        using var client = AuthenticatedClient(factory);
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/users/user-1/authentication-methods/temporary-access-pass")
+        {
+            Content = new StringContent(body, Encoding.UTF8, "application/json")
+        };
+        request.Headers.Add("Idempotency-Key", "invalid-tap-lifetime");
+
+        var response = await client.SendAsync(request);
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        authentication.Calls.Should().Be(0);
+        audit.Events.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task Temporary_access_pass_options_reach_service_and_changed_options_conflict_for_same_key()
+    {
+        var authentication = new RecordingAuthenticationCommands();
+        var audit = new RecordingAuditWriter();
+        using var factory = CreateFactory(authentication, auditWriter: audit);
+        using var client = AuthenticatedClient(factory);
+
+        var first = await SendTapAsync(client, "same-tap-options", """{"reason":"recovery","lifetimeInMinutes":61,"isUsableOnce":false}""");
+        var reused = await SendTapAsync(client, "same-tap-options", """{"reason":"recovery","lifetimeInMinutes":61,"isUsableOnce":true}""");
+
+        first.StatusCode.Should().Be(HttpStatusCode.OK);
+        reused.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        (await reused.Content.ReadAsStringAsync()).Should().Contain("idempotency_key_reused");
+        authentication.Calls.Should().Be(1);
+        authentication.TemporaryAccessPassRequests.Should().ContainSingle().Which.Should().Be(new TemporaryAccessPassRequest(61, false));
+        audit.Events.Should().ContainSingle();
+        audit.Events.Single().SafeMetadataJson.Should().Be("""{"reason":"recovery"}""");
+    }
+
+    [Fact]
+    public async Task Temporary_access_pass_policy_failure_is_explicit_safe_and_keeps_graph_ids()
+    {
+        var authentication = new RecordingAuthenticationCommands
+        {
+            TapResult = new GraphTemporaryAccessPassResult(null, null, null, null, null,
+                new GraphOperationResult(false, "tenant_policy_rejected", 400, CorrelationId: "corr-policy", RequestId: "req-policy"))
+        };
+        using var factory = CreateFactory(authentication);
+        using var client = AuthenticatedClient(factory);
+
+        var response = await SendTapAsync(client, "policy-tap", """{"reason":"recovery","lifetimeInMinutes":480,"isUsableOnce":true}""");
+        var body = await response.Content.ReadAsStringAsync();
+
+        response.StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
+        body.Should().Contain("tenant_policy_rejected");
+        body.Should().Contain("corr-policy");
+        body.Should().Contain("req-policy");
+        body.Should().NotContain("raw");
     }
 
     [Fact]
@@ -197,6 +262,7 @@ public sealed class UserSecurityCommandEndpointTests
 
     private static StringContent Content(string key) { var content = new StringContent("""{"reason":"session revocation"}""", Encoding.UTF8, "application/json"); content.Headers.Add("Idempotency-Key", key); return content; }
     private static Task<HttpResponseMessage> SendAsync(HttpClient client, string path, string key) { var request = new HttpRequestMessage(HttpMethod.Post, path) { Content = new StringContent("""{"reason":"security operation"}""", Encoding.UTF8, "application/json") }; request.Headers.Add("Idempotency-Key", key); return client.SendAsync(request); }
+    private static Task<HttpResponseMessage> SendTapAsync(HttpClient client, string key, string body) { var request = new HttpRequestMessage(HttpMethod.Post, "/api/users/user-1/authentication-methods/temporary-access-pass") { Content = new StringContent(body, Encoding.UTF8, "application/json") }; request.Headers.Add("Idempotency-Key", key); return client.SendAsync(request); }
     private static HttpClient AuthenticatedClient(WebApplicationFactory<Program> factory) { var client = factory.CreateClient(); client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Test"); return client; }
 
     private static WebApplicationFactory<Program> CreateFactory(
@@ -237,8 +303,16 @@ public sealed class UserSecurityCommandEndpointTests
     {
         public int Calls { get; private set; }
         public int RemoveCalls { get; private set; }
+        public List<TemporaryAccessPassRequest> TemporaryAccessPassRequests { get; } = [];
+        public GraphTemporaryAccessPassResult TapResult { get; set; } = new("fixture-tap-value", "tap-1", DateTimeOffset.Parse("2026-09-23T10:00:00Z"), 60, true);
         public Task<GraphOperationResult> RemoveAsync(string userObjectId, string methodObjectId, string methodType, string idempotencyKey, CancellationToken cancellationToken) { RemoveCalls++; return Task.FromResult(GraphOperationResult.Success()); }
-        public Task<GraphTemporaryAccessPassResult> CreateTemporaryAccessPassAsync(string userObjectId, string idempotencyKey, CancellationToken cancellationToken) { Calls++; return Task.FromResult(new GraphTemporaryAccessPassResult("fixture-tap-value", "tap-1", DateTimeOffset.Parse("2026-09-23T10:00:00Z"), 60, true)); }
+        public Task<GraphTemporaryAccessPassResult> CreateTemporaryAccessPassAsync(string userObjectId, string idempotencyKey, CancellationToken cancellationToken) => CreateTemporaryAccessPassAsync(userObjectId, idempotencyKey, new TemporaryAccessPassRequest(), cancellationToken);
+        public Task<GraphTemporaryAccessPassResult> CreateTemporaryAccessPassAsync(string userObjectId, string idempotencyKey, TemporaryAccessPassRequest request, CancellationToken cancellationToken)
+        {
+            Calls++;
+            TemporaryAccessPassRequests.Add(request with { Reason = null });
+            return Task.FromResult(TapResult.Error is null ? TapResult with { LifetimeInMinutes = request.LifetimeInMinutes, IsUsableOnce = request.IsUsableOnce } : TapResult);
+        }
     }
     private sealed class RecordingAuditWriter : IAuditWriter
     {

@@ -53,18 +53,48 @@ export async function resetAuthenticationMethods(api: ApiFetch, userId: string, 
   return body as { status: string; removedCount: number; auditWarning?: string | null };
 }
 
-export type TemporaryAccessPassResponse = { status: string; temporaryAccessPass?: string | null; replayed?: boolean; auditWarning?: string | null };
+export type TemporaryAccessPassResponse = {
+  status: string;
+  temporaryAccessPass?: string | null;
+  id?: string | null;
+  startDateTime?: string | null;
+  lifetimeInMinutes?: number | null;
+  isUsableOnce?: boolean | null;
+  error?: string | null;
+  replayed?: boolean;
+  auditWarning?: string | null;
+  graphCorrelationId?: string | null;
+  graphRequestId?: string | null;
+};
 
-export async function grantTemporaryAccessPass(api: ApiFetch, userId: string, reason: string) {
+export class TemporaryAccessPassRequestError extends Error {
+  constructor(
+    readonly category: string,
+    readonly graphCorrelationId?: string | null,
+    readonly graphRequestId?: string | null,
+    readonly auditWarning?: string | null,
+  ) {
+    super(category);
+  }
+}
+
+export async function grantTemporaryAccessPass(api: ApiFetch, userId: string, reason: string, lifetimeInMinutes = 60, isUsableOnce = true) {
   const response = await api(`/api/users/${encodeURIComponent(userId)}/authentication-methods/temporary-access-pass`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       'Idempotency-Key': globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`,
     },
-    body: JSON.stringify({ reason }),
+    body: JSON.stringify({ reason, lifetimeInMinutes, isUsableOnce }),
   });
   const body = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(body.error ?? 'temporary_access_pass_failed');
+  if (!response.ok) {
+    throw new TemporaryAccessPassRequestError(
+      typeof body.error === 'string' ? body.error : 'temporary_access_pass_failed',
+      typeof body.graphCorrelationId === 'string' ? body.graphCorrelationId : null,
+      typeof body.graphRequestId === 'string' ? body.graphRequestId : null,
+      typeof body.auditWarning === 'string' ? body.auditWarning : null,
+    );
+  }
   return body as TemporaryAccessPassResponse;
 }

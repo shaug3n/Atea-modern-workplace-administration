@@ -91,6 +91,64 @@ public sealed class UserSecurityCommandServiceTests
     }
 
     [Fact]
+    public async Task Tap_options_and_normalized_reason_are_forwarded_and_conflicting_options_reuse_is_rejected()
+    {
+        var idempotency = new MemoryIdempotencyService();
+        var audit = new RecordingAuditWriter();
+        var commands = new StubAuthenticationMethodCommands(new GraphTemporaryAccessPassResult("fixture-tap-value", "tap-1", null, 61, false));
+        var service = CreateAuthenticationService(idempotency, audit, commands: commands);
+        var request = new TemporaryAccessPassRequest(61, false, "  account recovery  ");
+
+        var first = await service.CreateTemporaryAccessPassAsync(Context(), "user-1", "same-options-key", request, CancellationToken.None);
+        var replay = await service.CreateTemporaryAccessPassAsync(Context(), "user-1", "same-options-key", new TemporaryAccessPassRequest(61, false, "account recovery"), CancellationToken.None);
+        var reused = await service.CreateTemporaryAccessPassAsync(Context(), "user-1", "same-options-key", new TemporaryAccessPassRequest(61, true, "account recovery"), CancellationToken.None);
+
+        first.Status.Should().Be("succeeded");
+        first.LifetimeInMinutes.Should().Be(61);
+        first.IsUsableOnce.Should().BeFalse();
+        replay.Replayed.Should().BeTrue();
+        replay.TemporaryAccessPass.Should().BeNull();
+        reused.Status.Should().Be("idempotency_key_reused");
+        commands.TemporaryAccessPassCalls.Should().Be(1);
+        commands.TemporaryAccessPassRequests.Should().ContainSingle().Which.Should().Be(new TemporaryAccessPassRequest(61, false));
+        audit.Events.Should().ContainSingle();
+        audit.Events.Single().SafeMetadataJson.Should().Be("""{"reason":"account recovery"}""");
+        idempotency.Records.Single().SafeResultJson.Should().NotContain("fixture-tap-value");
+    }
+
+    [Theory]
+    [InlineData(9)]
+    [InlineData(1441)]
+    public async Task Tap_service_rejects_out_of_range_options_without_command_dispatch(int lifetimeInMinutes)
+    {
+        var commands = new StubAuthenticationMethodCommands(new GraphTemporaryAccessPassResult("fixture-tap-value", "tap-1", null, lifetimeInMinutes, true));
+        var service = CreateAuthenticationService(new MemoryIdempotencyService(), new RecordingAuditWriter(), commands: commands);
+
+        var result = await service.CreateTemporaryAccessPassAsync(Context(), "user-1", "invalid-options", new TemporaryAccessPassRequest(lifetimeInMinutes), CancellationToken.None);
+
+        result.Status.Should().Be("invalid_target");
+        result.Error.Should().Be("invalid_request");
+        commands.TemporaryAccessPassCalls.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task Tap_tenant_policy_rejection_is_actionable_and_keeps_graph_correlation_ids()
+    {
+        var policyError = new GraphOperationResult(false, "tenant_policy_rejected", 400, CorrelationId: "corr-policy", RequestId: "req-policy");
+        var commands = new StubAuthenticationMethodCommands(new GraphTemporaryAccessPassResult(null, null, null, null, null, policyError));
+        var audit = new RecordingAuditWriter();
+        var service = CreateAuthenticationService(new MemoryIdempotencyService(), audit, commands: commands);
+
+        var result = await service.CreateTemporaryAccessPassAsync(Context(), "user-1", "policy-options", new TemporaryAccessPassRequest(480, Reason: "recovery access"), CancellationToken.None);
+
+        result.Status.Should().Be("policy_rejected");
+        result.Error.Should().Be("tenant_policy_rejected");
+        result.GraphCorrelationId.Should().Be("corr-policy");
+        result.GraphRequestId.Should().Be("req-policy");
+        audit.Events.Single().FailureCategory.Should().Be("tenant_policy_rejected");
+    }
+
+    [Fact]
     public async Task Authentication_method_remove_and_reset_reject_changed_reasons_for_reused_keys()
     {
         var idempotency = new MemoryIdempotencyService();
@@ -239,6 +297,7 @@ public sealed class UserSecurityCommandServiceTests
     {
         public int TemporaryAccessPassCalls { get; private set; }
         public int RemoveCalls { get; private set; }
+        public List<TemporaryAccessPassRequest> TemporaryAccessPassRequests { get; } = [];
         public Task<GraphOperationResult> RemoveAsync(string userObjectId, string methodObjectId, string methodType, string idempotencyKey, CancellationToken cancellationToken)
         {
             RemoveCalls++;
@@ -247,6 +306,12 @@ public sealed class UserSecurityCommandServiceTests
 
         public Task<GraphTemporaryAccessPassResult> CreateTemporaryAccessPassAsync(string userObjectId, string idempotencyKey, CancellationToken cancellationToken) =>
             CountTapAsync();
+
+        public Task<GraphTemporaryAccessPassResult> CreateTemporaryAccessPassAsync(string userObjectId, string idempotencyKey, TemporaryAccessPassRequest request, CancellationToken cancellationToken)
+        {
+            TemporaryAccessPassRequests.Add(request with { Reason = null });
+            return CountTapAsync();
+        }
 
         private Task<GraphTemporaryAccessPassResult> CountTapAsync()
         {
