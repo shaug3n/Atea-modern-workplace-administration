@@ -97,8 +97,8 @@ describe('AuthenticationMethodsSection', () => {
     }} />);
 
     const tap = await screen.findByRole('button', { name: 'Grant Temporary Access Pass' }) as HTMLButtonElement;
-    const remove = screen.getByRole('button', { name: 'Remove' }) as HTMLButtonElement;
-    const reset = screen.getByRole('button', { name: 'Reset MFA methods' }) as HTMLButtonElement;
+    const remove = await screen.findByRole('button', { name: 'Remove' }) as HTMLButtonElement;
+    const reset = await screen.findByRole('button', { name: 'Reset MFA methods' }) as HTMLButtonElement;
     expect(tap.disabled).toBe(true);
     expect(remove.disabled).toBe(true);
     expect(reset.disabled).toBe(true);
