@@ -107,13 +107,24 @@ names, capability states, and safe correlation/request IDs.
    capability state. The application must show an activation/handoff state
    until Entra reports the role active; never bypass or silently activate PIM.
 3. **Disposable-user TAP check.** Create or select a disposable test user and
-   open its security methods. Issue the fixed local-MVP Temporary Access Pass:
-   single-use, immediately available, valid for 60 minutes. Copy it only into
-   the approved test sign-in flow. The TAP code is shown exactly once and is
-   intentionally unrecoverable once the dialog is closed; closing the dialog,
-   refreshing, replaying the request, or losing the clipboard cannot reveal it
-   again. Never place the code in a ticket, screenshot, log, audit record, or
-   test output.
+   open its security methods. Defaults are single-use and 60 minutes. Select a
+   1-hour, 8-hour, or 24-hour preset, or enter a whole duration from 10 through
+   1,440 minutes; the stepper moves in 10-minute increments. The one-time-use
+   option can be changed. These are requested settings, not a promise of tenant
+   support: Microsoft Graph and tenant TAP policy remain authoritative. A
+   policy rejection must be shown without silently changing or retrying the
+   request; correct the tenant policy or explicitly choose supported settings.
+   Enter the required reason (at most 1,000 characters) for the audited
+   operation. Use only operational context; never enter a password, passcode,
+   TAP code, or other secret. The reason is operational free text propagated
+   through the existing safe audit metadata; it is not a secret-storage field.
+   The TAP secret is never persisted in browser storage, audit records, URLs,
+   telemetry, or idempotency results, and replay never reveals it. Copy the
+   TAP code only into the approved test sign-in flow. The code is shown exactly
+   once and is unrecoverable after closing; refreshing, replaying the request,
+   or losing the clipboard cannot reveal it again.
+   Never place the code in a ticket, screenshot, log, audit record, or test
+   output.
 4. **Authentication-method reset/remove.** On the same disposable user, use
    reset all removable MFA methods, then remove one individual non-password
    method. Verify that password authentication remains non-removable and that a

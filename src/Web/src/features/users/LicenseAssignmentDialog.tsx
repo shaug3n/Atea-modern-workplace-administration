@@ -3,6 +3,7 @@ import { messages } from '../../app/messages';
 import { useApi } from '../../auth/useApi';
 import { ConfirmationDialog } from '../../components/ConfirmationDialog';
 import { mutateUser, type UserCommandResponse } from './userMutationApi';
+import { UserWriteReasonField, normalizeUserWriteReason } from './UserWriteReasonField';
 
 type LicenseChoice = { skuId: string; partNumber: string; displayName: string };
 type LicenseCatalogPayload = { items?: LicenseChoice[]; error?: string | { category?: string; code?: string }; access?: { state?: string } };
@@ -14,6 +15,8 @@ export function LicenseAssignmentDialog({ userId, skuId, target, mode, assignedS
   const [catalogError, setCatalogError] = useState<string | null>(null);
   const [catalogLoading, setCatalogLoading] = useState(mode === 'assign');
   const [pending, setPending] = useState(false);
+  const [reason, setReason] = useState('');
+  const [reasonError, setReasonError] = useState<'reason_required' | 'reason_too_long' | null>(null);
   useEffect(() => {
     if (mode !== 'assign') return;
     let cancelled = false;
@@ -33,10 +36,16 @@ export function LicenseAssignmentDialog({ userId, skuId, target, mode, assignedS
   const effectiveTarget = mode === 'assign' ? selected?.displayName || selected?.partNumber || selected?.skuId || 'Select a license' : target || skuId || '';
   const submit = async () => {
     if (!effectiveId || pending) return;
+    const normalizedReason = normalizeUserWriteReason(reason);
+    if (normalizedReason.error) {
+      setReasonError(normalizedReason.error);
+      return;
+    }
+    setReasonError(null);
     const path = `/api/users/${encodeURIComponent(userId)}/licenses/${encodeURIComponent(effectiveId)}`;
     setPending(true);
     try {
-      const result = await mutateUser(api, path, mode === 'assign' ? 'POST' : 'DELETE', { skuId: effectiveId, disabledPlans });
+      const result = await mutateUser(api, path, mode === 'assign' ? 'POST' : 'DELETE', { skuId: effectiveId, disabledPlans, reason: normalizedReason.reason });
       onCompleted?.(result);
     }
     catch { onCompleted?.({ status: 'temporarily_unavailable', requiredCapability: 'licenses.assign', replayed: false, error: 'temporarily_unavailable' }); }
@@ -51,11 +60,13 @@ export function LicenseAssignmentDialog({ userId, skuId, target, mode, assignedS
       requiredCapability="licenses.assign"
       confirmLabel={mode === 'assign' ? messages.confirmAssignLicense : messages.confirmRemoveLicense}
       busy={pending}
+      confirmBlocked={Boolean(reasonError)}
       onConfirm={submit}
       onCancel={onCancel}
       sourceLimitation={catalogError || (mode === 'assign' && !catalogLoading && choices.length === 0 ? 'No eligible licenses are available for this user.' : mode === 'assign' && !selectedId ? 'Select a license before confirming.' : null)}
     >
       {mode === 'assign' && <label>License<select aria-label="License" value={selectedId} onChange={(event) => setSelectedId(event.target.value)}><option value="">Select a license</option>{selectable.map((choice) => <option key={choice.skuId} value={choice.skuId}>{choice.displayName || choice.partNumber || choice.skuId}</option>)}</select></label>}
+      <UserWriteReasonField value={reason} onChange={(value) => { setReason(value); setReasonError(null); }} error={reasonError} />
     </ConfirmationDialog>
   );
 }

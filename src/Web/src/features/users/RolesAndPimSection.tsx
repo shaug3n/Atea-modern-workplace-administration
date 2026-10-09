@@ -3,14 +3,16 @@ import { messages } from '../../app/messages';
 import { PimActivationDialog } from '../pim/PimActivationDialog';
 import type { DirectoryRoleAssignment, PimEligibility, UserDetailSection } from './userDetailApi';
 import { StatusBadge } from '../../components/StatusBadge';
+import { LoadingSkeleton } from '../../components/LoadingSkeleton';
 import { humanizeAssignmentState } from '../../format/humanize';
 import { SectionHeader } from './IdentitySection';
 
-export function RolesAndPimSection({ roles, pim }: { roles: UserDetailSection<DirectoryRoleAssignment>; pim: UserDetailSection<PimEligibility> }) {
+export function RolesAndPimSection({ roles, pim, busy = false }: { roles: UserDetailSection<DirectoryRoleAssignment>; pim: UserDetailSection<PimEligibility>; busy?: boolean }) {
   const [selectedEligibility, setSelectedEligibility] = useState<PimEligibility | null>(null);
   return (
-    <section className="detail-section" aria-labelledby="roles-pim-section-title">
-      <SectionHeader id="roles-pim-section-title" title={messages.userRolesPimSection} access={pim.access.partialData ? pim.access : roles.access} />
+    <section className="detail-section" aria-labelledby="roles-pim-section-title" aria-busy={busy}>
+      <SectionHeader id="roles-pim-section-title" title={messages.userRolesPimSection} access={pim.access.partialData ? pim.access : roles.access} section="roles" />
+      {busy && <LoadingSkeleton label={messages.statusLoading} lines={2} />}
       <div className="detail-section__split">
         <div>
           <h3>{messages.userActiveRoles}</h3>

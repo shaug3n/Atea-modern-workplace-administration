@@ -151,3 +151,24 @@ test('module inventory distinguishes shipped modules from planned candidates', a
   assert.doesNotMatch(candidateTable, /^\| License Hygiene \|/m);
   assert.match(inventory, /`license-hygiene`.*`licenses\.hygiene\.view`|`licenses\.hygiene\.view`.*`license-hygiene`/s);
 });
+
+test('users feature copy is uniquely composed into the typed application catalog', async () => {
+  const feature = await readFile('../../src/Web/src/features/users/messages.ts', 'utf8');
+  const catalog = await readFile('../../src/Web/src/messages/en.ts', 'utf8');
+  const typedCatalog = await readFile('../../src/Web/src/app/messages.ts', 'utf8');
+  const overview = await readFile('../../src/Web/src/features/overview/messages.ts', 'utf8');
+  const featureKeys = [...feature.matchAll(/^\s{2}([A-Za-z]\w*):/gm)].map(([, key]) => key);
+
+  assert.match(feature, /export const userFeatureMessages/);
+  assert.match(catalog, /import \{ userFeatureMessages \} from '\.\.\/features\/users\/messages'/);
+  assert.match(catalog, /\.\.\.userFeatureMessages/);
+  assert.match(typedCatalog, /keyof typeof import\('\.\.\/messages\/en'\)\.messages/);
+  assert.ok(featureKeys.includes('usersViewAllLabel'));
+  assert.ok(featureKeys.includes('userFeatureReasonLabel'));
+  assert.ok(featureKeys.includes('userTapDurationMinutesLabel'));
+  for (const key of featureKeys) {
+    const keyPattern = new RegExp(`\\b${key}:`);
+    assert.doesNotMatch(catalog, keyPattern, `${key} must not be shadowed by an application-level message`);
+    assert.doesNotMatch(overview, keyPattern, `${key} must not be shadowed by overviewMessages`);
+  }
+});

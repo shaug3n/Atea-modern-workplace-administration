@@ -130,12 +130,26 @@ export async function fetchAssociatedDevices(api: ApiFetch, userId: string) {
   return await response.json() as AssociatedDevicesResponse;
 }
 
-export async function revokeUserSessions(api: ApiFetch, userId: string) {
+export class RevokeUserSessionsRequestError extends Error {
+  constructor(message: string, readonly auditWarning?: string | null) {
+    super(message);
+    this.name = 'RevokeUserSessionsRequestError';
+  }
+}
+
+export async function revokeUserSessions(api: ApiFetch, userId: string, reason: string) {
   const response = await api(`/api/users/${encodeURIComponent(userId)}/revoke-sessions`, {
     method: 'POST',
-    headers: { 'Idempotency-Key': globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}` },
+    headers: {
+      'Content-Type': 'application/json',
+      'Idempotency-Key': globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`,
+    },
+    body: JSON.stringify({ reason }),
   });
   const body = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(body.error ?? 'revoke_sessions_failed');
-  return body as { status: string; replayed?: boolean };
+  if (!response.ok) throw new RevokeUserSessionsRequestError(
+    typeof body.error === 'string' ? body.error : 'revoke_sessions_failed',
+    typeof body.auditWarning === 'string' ? body.auditWarning : null,
+  );
+  return body as { status: string; replayed?: boolean; auditWarning?: string | null };
 }

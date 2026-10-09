@@ -36,6 +36,7 @@ export type UserCommandResponse = {
   requiredCapability: string;
   replayed: boolean;
   error?: string | null;
+  auditWarning?: string | null;
   temporaryCredentialNotice?: {
     temporaryPassword: string;
     forceChangePasswordNextSignIn: boolean;
@@ -49,7 +50,7 @@ export async function mutateUser(api: ApiFetch, path: string, method: 'POST' | '
       'Content-Type': 'application/json',
       'Idempotency-Key': idempotencyKey,
     },
-    body: method === 'DELETE' ? undefined : JSON.stringify(body),
+    body: method === 'DELETE' ? (body === undefined ? undefined : JSON.stringify(body)) : JSON.stringify(body),
   });
   const payload = await response.json().catch(() => ({})) as UserCommandResponse;
   if (!response.ok && !payload.error) {

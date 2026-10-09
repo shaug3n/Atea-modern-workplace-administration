@@ -1,12 +1,14 @@
 import React from 'react';
 import { messages } from '../../app/messages';
+import { LoadingSkeleton } from '../../components/LoadingSkeleton';
 import type { GroupMembership, UserDetailSection } from './userDetailApi';
 import { SectionHeader } from './IdentitySection';
 
-export function GroupsSection({ section, canManage, onAdd, onRemove }: { section: UserDetailSection<GroupMembership>; canManage?: boolean; onAdd?: () => void; onRemove?: (group: GroupMembership) => void }) {
+export function GroupsSection({ section, canManage, onAdd, onRemove, busy = false }: { section: UserDetailSection<GroupMembership>; canManage?: boolean; onAdd?: () => void; onRemove?: (group: GroupMembership) => void; busy?: boolean }) {
   return (
-    <section className="detail-section" aria-labelledby="groups-section-title">
-      <SectionHeader id="groups-section-title" title={messages.userGroupsSection} access={section.access} />
+    <section className="detail-section" aria-labelledby="groups-section-title" aria-busy={busy}>
+      <SectionHeader id="groups-section-title" title={messages.userGroupsSection} access={section.access} section="groups" />
+      {busy && <LoadingSkeleton label={messages.statusLoading} lines={2} />}
       {canManage && <button type="button" className="button button--secondary button--sm" onClick={onAdd}>Add group</button>}
       {section.items.length === 0 ? <p>{section.access.error?.message ?? messages.userSectionNoData}</p> : (
         <ul className="record-list">

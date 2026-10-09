@@ -629,6 +629,64 @@
   width: 100%;
 }
 
+.temporary-access-pass-options {
+  display: grid;
+  gap: var(--uw-gap-md);
+}
+
+.temporary-access-pass-options__presets {
+  display: grid;
+  gap: var(--uw-gap-xs);
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.temporary-access-pass-options__presets legend,
+.temporary-access-pass-options__duration > label {
+  margin-bottom: var(--uw-gap-xs);
+  font-weight: 600;
+}
+
+.temporary-access-pass-options__preset-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--uw-gap-xs);
+}
+
+.temporary-access-pass-options__duration {
+  display: grid;
+  gap: var(--uw-gap-xs);
+}
+
+.temporary-access-pass-options__stepper {
+  display: grid;
+  grid-template-columns: auto minmax(4rem, 8rem) auto;
+  align-items: center;
+  gap: var(--uw-gap-xs);
+}
+
+.temporary-access-pass-options__stepper input {
+  width: 100%;
+  min-width: 0;
+  padding: var(--uw-gap-xs) var(--uw-gap-sm);
+  border: 1px solid var(--uw-border);
+  border-radius: var(--uw-radius-sm);
+  background: var(--uw-surface);
+  color: var(--uw-text);
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+}
+
+.temporary-access-pass-options__hint {
+  color: var(--uw-muted);
+  font-size: var(--uw-font-meta);
+}
+
+.temporary-access-pass-options__single-use {
+  margin: 0;
+}
+
 .mutation-reason-required,
 .mutation-reason-hint {
   color: var(--uw-muted);

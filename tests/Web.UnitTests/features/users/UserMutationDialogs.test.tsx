@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import React from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ConfirmationDialog } from '../../../../src/Web/src/components/ConfirmationDialog';
@@ -6,7 +6,10 @@ import { DataFreshness } from '../../../../src/Web/src/components/DataFreshness'
 import { PasswordResetDialog } from '../../../../src/Web/src/features/users/PasswordResetDialog';
 import { UserCreateDialog } from '../../../../src/Web/src/features/users/UserCreateDialog';
 import { UserEditDialog } from '../../../../src/Web/src/features/users/UserEditDialog';
+import { GroupMembershipDialog } from '../../../../src/Web/src/features/users/GroupMembershipDialog';
+import { LicenseAssignmentDialog } from '../../../../src/Web/src/features/users/LicenseAssignmentDialog';
 import type { UserDetails } from '../../../../src/Web/src/features/users/userDetailApi';
+import { mutateUser } from '../../../../src/Web/src/features/users/userMutationApi';
 
 const apiMock = vi.hoisted(() => vi.fn());
 
@@ -127,6 +130,7 @@ describe('UserMutationDialogs', () => {
     render(<UserCreateDialog />);
     fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Ada Lovelace' } });
     fireEvent.change(screen.getByLabelText('User principal name'), { target: { value: 'ada@example.com' } });
+    fireEvent.change(screen.getByLabelText('Reason'), { target: { value: '  New employee onboarding  ' } });
     fireEvent.click(screen.getByLabelText('I reviewed the target, change and required capability.'));
     fireEvent.click(screen.getByRole('button', { name: 'Create user' }));
 
@@ -135,8 +139,85 @@ describe('UserMutationDialogs', () => {
     expect(path).toBe('/api/users');
     expect(path).not.toMatch(/graph\.microsoft\.com/i);
     expect(init.headers['Idempotency-Key']).toBeTruthy();
+    expect(JSON.parse(init.body)).toEqual({
+      displayName: 'Ada Lovelace',
+      givenName: 'Ada',
+      surname: 'Lovelace',
+      userPrincipalName: 'ada@example.com',
+      mailNickname: 'ada',
+      jobTitle: null,
+      department: null,
+      officeLocation: null,
+      mobilePhone: null,
+      usageLocation: 'NO',
+      accountEnabled: true,
+      reason: 'New employee onboarding',
+    });
     expect(await screen.findByText('Temp-Password-12345!')).toBeTruthy();
     expect(screen.getByText('The user must change this password at next sign-in.')).toBeTruthy();
+  });
+
+  it('keeps the entire create form inside the keyboard-contained confirmation dialog', () => {
+    render(<UserCreateDialog />);
+
+    const dialog = screen.getByRole('dialog', { name: 'Create user' });
+    const name = within(dialog).getByLabelText('Name');
+    const upn = within(dialog).getByLabelText('User principal name');
+    const location = within(dialog).getByLabelText('Usage location');
+    const reason = within(dialog).getByLabelText('Reason');
+    expect(name).toBeTruthy();
+    expect(upn).toBeTruthy();
+    expect(location).toBeTruthy();
+    expect(reason).toBeTruthy();
+
+    const reviewed = within(dialog).getByLabelText('I reviewed the target, change and required capability.');
+    reviewed.focus();
+    fireEvent.keyDown(dialog, { key: 'Tab' });
+    expect(document.activeElement).toBe(name);
+  });
+
+  it('allows keyboard-reachable reason entry and returns focus after Cancel or Escape', () => {
+    function Harness() {
+      const [open, setOpen] = React.useState(false);
+      return <><button type="button" onClick={() => setOpen(true)}>Open create user</button>{open && <UserCreateDialog onCancel={() => setOpen(false)} />}</>;
+    }
+    render(<Harness />);
+    const trigger = screen.getByRole('button', { name: 'Open create user' });
+    trigger.focus();
+    fireEvent.click(trigger);
+
+    let dialog = screen.getByRole('dialog', { name: 'Create user' });
+    expect(within(dialog).getByLabelText('Reason')).toBeTruthy();
+    expect(within(dialog).getByRole('button', { name: 'Cancel' })).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(document.activeElement).toBe(trigger);
+
+    trigger.focus();
+    fireEvent.click(trigger);
+    dialog = screen.getByRole('dialog', { name: 'Create user' });
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(document.activeElement).toBe(trigger);
+  });
+
+  it('blocks create-dialog cancellation while the create request is pending', async () => {
+    let finishCreate: ((response: Response) => void) | undefined;
+    apiMock.mockImplementation(() => new Promise<Response>(resolve => { finishCreate = resolve; }));
+    render(<UserCreateDialog onCancel={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Ada Lovelace' } });
+    fireEvent.change(screen.getByLabelText('User principal name'), { target: { value: 'ada@example.com' } });
+    fireEvent.change(screen.getByLabelText('Reason'), { target: { value: 'New employee onboarding' } });
+    fireEvent.click(screen.getByLabelText('I reviewed the target, change and required capability.'));
+    fireEvent.click(screen.getByRole('button', { name: 'Create user' }));
+
+    const dialog = screen.getByRole('dialog', { name: 'Create user' });
+    expect(await within(dialog).findByRole('button', { name: 'Create user…' })).toBeTruthy();
+    expect(within(dialog).queryByRole('button', { name: 'Cancel' })).toBeNull();
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(screen.getByRole('dialog', { name: 'Create user' })).toBeTruthy();
+    expect(apiMock).toHaveBeenCalledTimes(1);
+    finishCreate?.(new Response(JSON.stringify({ status: 'failed', error: 'user_mutation_failed' }), { status: 500 }));
   });
 
   it('opens the password reset confirmation and cancels without calling the API', () => {
@@ -161,6 +242,7 @@ describe('UserMutationDialogs', () => {
     }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
 
     render(<PasswordResetDialog user={user} onClose={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText('Reason'), { target: { value: '  Account recovery  ' } });
     fireEvent.click(screen.getByLabelText('I reviewed the target, change and required capability.'));
     fireEvent.click(screen.getByRole('button', { name: 'Reset password' }));
 
@@ -168,6 +250,7 @@ describe('UserMutationDialogs', () => {
     const [path, init] = apiMock.mock.calls[0];
     expect(path).toBe('/api/users/user-1/reset-password');
     expect(init.headers['Idempotency-Key']).toBeTruthy();
+    expect(JSON.parse(init.body)).toEqual({ reason: 'Account recovery' });
     expect(await screen.findByText('Temp-Reset-12345!')).toBeTruthy();
     expect(screen.getByText('The user must change this password at next sign-in.')).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Reset password' })).toBeNull();
@@ -182,10 +265,140 @@ describe('UserMutationDialogs', () => {
     }), { status: 403, headers: { 'Content-Type': 'application/json' } }));
 
     render(<PasswordResetDialog user={user} onClose={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText('Reason'), { target: { value: 'Account recovery' } });
     fireEvent.click(screen.getByLabelText('I reviewed the target, change and required capability.'));
     fireEvent.click(screen.getByRole('button', { name: 'Reset password' }));
 
-    expect((await screen.findByRole('alert')).textContent).toContain('Microsoft Graph consent is required before this action can be completed.');
-    expect(screen.getByRole('dialog')).toBeTruthy();
+    const dialog = screen.getByRole('dialog', { name: 'Reset password' });
+    expect((await within(dialog).findByRole('alert')).textContent).toContain('Microsoft Graph consent is required before this action can be completed.');
+    expect((within(dialog).getByLabelText('Reason') as HTMLTextAreaElement).value).toBe('Account recovery');
+  });
+
+  it('preserves edited profile fields and adds a trimmed reason to the update body', async () => {
+    apiMock.mockResolvedValue(new Response(JSON.stringify({ status: 'succeeded' }), { status: 200 }));
+    render(<UserEditDialog user={user} />);
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Ada Byron' } });
+    fireEvent.change(screen.getByLabelText('Job title'), { target: { value: 'Mathematician' } });
+    fireEvent.change(screen.getByLabelText('Reason'), { target: { value: '  Correcting profile data  ' } });
+    fireEvent.click(screen.getByLabelText('I reviewed the target, change and required capability.'));
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+
+    await waitFor(() => expect(apiMock).toHaveBeenCalledTimes(1));
+    const [, init] = apiMock.mock.calls[0];
+    expect(init.method).toBe('PATCH');
+    expect(JSON.parse(init.body)).toEqual({
+      displayName: 'Ada Byron',
+      givenName: null,
+      surname: null,
+      jobTitle: 'Mathematician',
+      department: null,
+      officeLocation: null,
+      mobilePhone: null,
+      usageLocation: null,
+      accountEnabled: true,
+      reason: 'Correcting profile data',
+    });
+  });
+
+  it('serializes provided DELETE bodies while retaining bodyless DELETE compatibility', async () => {
+    apiMock.mockResolvedValue(new Response(JSON.stringify({ status: 'succeeded' }), { status: 200 }));
+    await mutateUser(apiMock, '/api/users/user-1/groups/group-1', 'DELETE', { groupObjectId: 'group-1', reason: 'Removal requested' });
+    await mutateUser(apiMock, '/api/users/user-1/groups/group-1', 'DELETE', undefined);
+
+    expect(apiMock.mock.calls[0][1].body).toBe('{"groupObjectId":"group-1","reason":"Removal requested"}');
+    expect(apiMock.mock.calls[1][1].body).toBeUndefined();
+  });
+
+  it('rejects blank and overlength create reasons but accepts exactly 1,000 UTF-16 units', async () => {
+    apiMock.mockResolvedValue(new Response(JSON.stringify({ status: 'succeeded' }), { status: 201 }));
+    render(<UserCreateDialog />);
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Ada Lovelace' } });
+    fireEvent.change(screen.getByLabelText('User principal name'), { target: { value: 'ada@example.com' } });
+    fireEvent.change(screen.getByLabelText('Reason'), { target: { value: '   ' } });
+    fireEvent.click(screen.getByLabelText('I reviewed the target, change and required capability.'));
+    fireEvent.click(screen.getByRole('button', { name: 'Create user' }));
+    expect(screen.getByText('Enter a reason before continuing.')).toBeTruthy();
+    const dialog = screen.getByRole('dialog', { name: 'Create user' });
+    expect(within(dialog).getByRole('alert').textContent).toContain('Enter a reason');
+    expect(document.activeElement).toBe(within(dialog).getByLabelText('Reason'));
+    expect(apiMock).not.toHaveBeenCalled();
+
+    fireEvent.change(screen.getByLabelText('Reason'), { target: { value: '😀'.repeat(501) } });
+    fireEvent.click(screen.getByRole('button', { name: 'Create user' }));
+    expect(within(dialog).getByRole('alert').textContent).toContain('Keep the reason to 1,000 characters or fewer.');
+    expect(document.activeElement).toBe(within(dialog).getByLabelText('Reason'));
+    expect(apiMock).not.toHaveBeenCalled();
+
+    fireEvent.change(screen.getByLabelText('Reason'), { target: { value: '😀'.repeat(500) } });
+    fireEvent.click(screen.getByRole('button', { name: 'Create user' }));
+    await waitFor(() => expect(apiMock).toHaveBeenCalledTimes(1));
+    expect(JSON.parse(apiMock.mock.calls[0][1].body).reason).toBe('😀'.repeat(500));
+  });
+
+  it('keeps create form values and its failure alert inside the active dialog', async () => {
+    apiMock.mockRejectedValue(new Error('offline'));
+    render(<UserCreateDialog />);
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Ada Lovelace' } });
+    fireEvent.change(screen.getByLabelText('User principal name'), { target: { value: 'ada@example.com' } });
+    fireEvent.change(screen.getByLabelText('Reason'), { target: { value: 'New employee onboarding' } });
+    fireEvent.click(screen.getByLabelText('I reviewed the target, change and required capability.'));
+    fireEvent.click(screen.getByRole('button', { name: 'Create user' }));
+
+    const dialog = screen.getByRole('dialog', { name: 'Create user' });
+    expect((await within(dialog).findByRole('alert')).textContent).toContain('User creation could not be completed');
+    expect((within(dialog).getByLabelText('Name') as HTMLInputElement).value).toBe('Ada Lovelace');
+    expect((within(dialog).getByLabelText('User principal name') as HTMLInputElement).value).toBe('ada@example.com');
+    expect((within(dialog).getByLabelText('Reason') as HTMLTextAreaElement).value).toBe('New employee onboarding');
+  });
+
+  it('sends reason with the existing group-add request body', async () => {
+    apiMock.mockImplementation(async (path: string) => path === '/api/groups?pageSize=100'
+      ? new Response(JSON.stringify({ items: [{ id: 'group-1', displayName: 'Operators' }] }), { status: 200 })
+      : new Response(JSON.stringify({ status: 'succeeded' }), { status: 200 }));
+    render(<GroupMembershipDialog userId="user-1" groupId={null} mode="add" />);
+    fireEvent.change(await screen.findByLabelText('Group'), { target: { value: 'group-1' } });
+    fireEvent.change(screen.getByLabelText('Reason'), { target: { value: '  Team membership  ' } });
+    fireEvent.click(screen.getByLabelText('I reviewed the target, change and required capability.'));
+    fireEvent.click(screen.getByRole('button', { name: 'Add to group' }));
+
+    await waitFor(() => expect(apiMock.mock.calls.some(([path]) => path === '/api/users/user-1/groups/group-1')).toBe(true));
+    const [, init] = apiMock.mock.calls.find(([path]) => path === '/api/users/user-1/groups/group-1')!;
+    expect(init.method).toBe('POST');
+    expect(JSON.parse(init.body)).toEqual({ groupObjectId: 'group-1', reason: 'Team membership' });
+  });
+
+  it('sends a JSON reason body with group DELETE requests', async () => {
+    apiMock.mockResolvedValue(new Response(JSON.stringify({ status: 'succeeded' }), { status: 200 }));
+    render(<GroupMembershipDialog userId="user-1" groupId="group-1" target="Operators" mode="remove" />);
+    fireEvent.change(screen.getByLabelText('Reason'), { target: { value: '  No longer required  ' } });
+    fireEvent.click(screen.getByLabelText('I reviewed the target, change and required capability.'));
+    fireEvent.click(screen.getByRole('button', { name: 'Remove from group' }));
+
+    await waitFor(() => expect(apiMock).toHaveBeenCalledTimes(1));
+    expect(apiMock.mock.calls[0][1].method).toBe('DELETE');
+    expect(JSON.parse(apiMock.mock.calls[0][1].body)).toEqual({ groupObjectId: 'group-1', reason: 'No longer required' });
+  });
+
+  it('preserves license options and sends reason bodies for assignment and removal', async () => {
+    apiMock.mockImplementation(async (path: string) => path === '/api/licenses?pageSize=100'
+      ? new Response(JSON.stringify({ items: [{ skuId: 'sku-1', partNumber: 'E3', displayName: 'Microsoft 365 E3' }] }), { status: 200 })
+      : new Response(JSON.stringify({ status: 'succeeded' }), { status: 200 }));
+    const { rerender } = render(<LicenseAssignmentDialog userId="user-1" skuId={null} mode="assign" />);
+    fireEvent.change(await screen.findByLabelText('License'), { target: { value: 'sku-1' } });
+    fireEvent.change(screen.getByLabelText('Reason'), { target: { value: '  Required for the role  ' } });
+    fireEvent.click(screen.getByLabelText('I reviewed the target, change and required capability.'));
+    fireEvent.click(screen.getByRole('button', { name: 'Assign license' }));
+    await waitFor(() => expect(apiMock.mock.calls.some(([path]) => path === '/api/users/user-1/licenses/sku-1')).toBe(true));
+    const [, assignInit] = apiMock.mock.calls.find(([path]) => path === '/api/users/user-1/licenses/sku-1')!;
+    expect(assignInit.method).toBe('POST');
+    expect(JSON.parse(assignInit.body)).toEqual({ skuId: 'sku-1', disabledPlans: [], reason: 'Required for the role' });
+
+    apiMock.mockClear();
+    rerender(<LicenseAssignmentDialog userId="user-1" skuId="sku-1" target="Microsoft 365 E3" mode="remove" disabledPlans={['plan-1']} />);
+    fireEvent.change(screen.getByLabelText('Reason'), { target: { value: '  License no longer needed  ' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Remove license' }));
+    await waitFor(() => expect(apiMock).toHaveBeenCalledTimes(1));
+    expect(apiMock.mock.calls[0][1].method).toBe('DELETE');
+    expect(JSON.parse(apiMock.mock.calls[0][1].body)).toEqual({ skuId: 'sku-1', disabledPlans: ['plan-1'], reason: 'License no longer needed' });
   });
 });

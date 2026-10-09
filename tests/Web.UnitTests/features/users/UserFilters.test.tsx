@@ -30,7 +30,7 @@ describe('UserFilters', () => {
       tenantRole: '',
       license: 'ENTERPRISEPACK',
       userType: 'Member',
-    });
+    }, 'push');
   });
 
   it('renders active filter chips and allows clearing one filter at a time', () => {
@@ -49,7 +49,37 @@ describe('UserFilters', () => {
       tenantRole: '',
       license: '',
       userType: 'Member',
-    });
+    }, 'replace');
+  });
+
+  it('renders four accessible shortcut tiles without numeric values', () => {
+    render(<UserFilters filters={{ search: '', accountStatus: 'enabled', tenantRole: '', license: '', userType: '' }} onChange={vi.fn()} />);
+
+    for (const label of ['All users', 'Enabled', 'Disabled', 'Guests']) {
+      const tile = screen.getByRole('button', { name: new RegExp(label) });
+      expect(tile.getAttribute('aria-pressed')).toBe(label === 'Enabled' ? 'true' : 'false');
+      expect(tile.querySelector('.metric-card__value')).toBeNull();
+    }
+  });
+
+  it.each([
+    ['All users', '', ''],
+    ['Enabled', 'enabled', ''],
+    ['Disabled', 'disabled', ''],
+    ['Guests', '', 'Guest'],
+  ])('selecting %s changes only its view predicates', (label, accountStatus, userType) => {
+    const onChange = vi.fn();
+    render(<UserFilters filters={{ search: 'ada', accountStatus: 'disabled', tenantRole: '', license: 'E3', userType: 'Member' }} onChange={onChange} />);
+
+    fireEvent.click(screen.getByRole('button', { name: new RegExp(label) }));
+
+    expect(onChange).toHaveBeenLastCalledWith({
+      search: 'ada',
+      accountStatus,
+      tenantRole: '',
+      license: 'E3',
+      userType,
+    }, 'push');
   });
 
   it('renders chips for tenant role and license values', () => {

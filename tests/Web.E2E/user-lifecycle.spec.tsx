@@ -44,12 +44,14 @@ describe('user lifecycle browser boundary', () => {
     render(<UserCreateDialog />);
     fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Ada Lovelace' } });
     fireEvent.change(screen.getByLabelText('User principal name'), { target: { value: 'ada@example.com' } });
+    fireEvent.change(screen.getByLabelText('Reason'), { target: { value: 'Approved onboarding request' } });
     fireEvent.click(screen.getByLabelText('I reviewed the target, change and required capability.'));
     fireEvent.click(screen.getByRole('button', { name: 'Create user' }));
 
     await waitFor(() => expect(apiMock).toHaveBeenCalledTimes(1));
     expect(apiMock.mock.calls[0][0]).toBe('/api/users');
     expect(apiMock.mock.calls[0][0]).not.toContain('graph.microsoft.com');
+    expect(JSON.parse(apiMock.mock.calls[0][1].body)).toMatchObject({ reason: 'Approved onboarding request' });
     expect(screen.getByRole('alert').textContent).toContain('idempotency key');
   });
 
@@ -67,6 +69,7 @@ describe('user lifecycle browser boundary', () => {
     fireEvent.click(screen.getByRole('menuitem', { name: 'Disable user' }));
     const confirm = screen.getByRole('button', { name: 'Disable user' }) as HTMLButtonElement;
     fireEvent.change(screen.getByLabelText('Type DISABLE to confirm'), { target: { value: 'DISABLE' } });
+    fireEvent.change(screen.getByLabelText('Reason'), { target: { value: 'Access ended' } });
     expect(confirm.disabled).toBe(true);
     expect(apiMock).not.toHaveBeenCalled();
 
@@ -81,5 +84,6 @@ describe('user lifecycle browser boundary', () => {
     expect(path).not.toMatch(/graph\.microsoft\.com/i);
     expect(init.method).toBe('POST');
     expect(init.headers['Idempotency-Key']).toBeTruthy();
+    expect(JSON.parse(init.body)).toEqual({ reason: 'Access ended' });
   });
 });

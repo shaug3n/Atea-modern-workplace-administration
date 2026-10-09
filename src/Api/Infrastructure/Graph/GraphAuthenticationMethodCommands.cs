@@ -8,6 +8,10 @@ public interface IAuthenticationMethodCommands
 {
     Task<GraphOperationResult> RemoveAsync(string userObjectId, string methodObjectId, string methodType, string idempotencyKey, CancellationToken cancellationToken);
     Task<GraphTemporaryAccessPassResult> CreateTemporaryAccessPassAsync(string userObjectId, string idempotencyKey, CancellationToken cancellationToken);
+    Task<GraphTemporaryAccessPassResult> CreateTemporaryAccessPassAsync(string userObjectId, string idempotencyKey, TemporaryAccessPassRequest request, CancellationToken cancellationToken) =>
+        request.LifetimeInMinutes == 60 && request.IsUsableOnce
+            ? CreateTemporaryAccessPassAsync(userObjectId, idempotencyKey, cancellationToken)
+            : Task.FromResult(new GraphTemporaryAccessPassResult(null, null, null, null, null, new GraphOperationResult(false, "invalid_request")));
 }
 
 public sealed record GraphTemporaryAccessPassResult(
@@ -22,10 +26,18 @@ public sealed record GraphTemporaryAccessPassResult(
 
 public sealed class GraphAuthenticationMethodCommands(IDelegatedGraphClientFactory clientFactory) : IAuthenticationMethodCommands
 {
-    public async Task<GraphTemporaryAccessPassResult> CreateTemporaryAccessPassAsync(string userObjectId, string idempotencyKey, CancellationToken cancellationToken)
+    public Task<GraphTemporaryAccessPassResult> CreateTemporaryAccessPassAsync(string userObjectId, string idempotencyKey, CancellationToken cancellationToken) =>
+        CreateTemporaryAccessPassAsync(userObjectId, idempotencyKey, new TemporaryAccessPassRequest(), cancellationToken);
+
+    public async Task<GraphTemporaryAccessPassResult> CreateTemporaryAccessPassAsync(string userObjectId, string idempotencyKey, TemporaryAccessPassRequest request, CancellationToken cancellationToken)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(userObjectId);
         ArgumentException.ThrowIfNullOrWhiteSpace(idempotencyKey);
+        ArgumentNullException.ThrowIfNull(request);
+        if (request.LifetimeInMinutes is < 10 or > 1440)
+        {
+            return new(null, null, null, null, null, new GraphOperationResult(false, "invalid_request"));
+        }
 
         GraphClientLease lease;
         try
@@ -43,7 +55,10 @@ public sealed class GraphAuthenticationMethodCommands(IDelegatedGraphClientFacto
 
         await using (lease)
         {
-            using var body = new StringContent("{\"lifetimeInMinutes\":60,\"isUsableOnce\":true}", System.Text.Encoding.UTF8, "application/json");
+            using var body = new StringContent(
+                JsonSerializer.Serialize(new { lifetimeInMinutes = request.LifetimeInMinutes, isUsableOnce = request.IsUsableOnce }),
+                System.Text.Encoding.UTF8,
+                "application/json");
             var response = await lease.Transport.SendAsync(new GraphRequest(
                 HttpMethod.Post,
                 $"/v1.0/users/{Uri.EscapeDataString(userObjectId)}/authentication/temporaryAccessPassMethods",
@@ -51,7 +66,8 @@ public sealed class GraphAuthenticationMethodCommands(IDelegatedGraphClientFacto
                 new Dictionary<string, string> { ["Idempotency-Key"] = idempotencyKey }), cancellationToken);
             if (!response.Result.IsSuccess)
             {
-                return new(null, null, null, null, null, response.Result);
+                var error = response.Result with { Category = TenantPolicyCategory(response.Content) ?? response.Result.Category };
+                return new(null, null, null, null, null, error, error.CorrelationId, error.RequestId);
             }
 
             try
@@ -62,7 +78,8 @@ public sealed class GraphAuthenticationMethodCommands(IDelegatedGraphClientFacto
                 var id = Optional(root, "id");
                 var lifetimeInMinutes = Integer(root, "lifetimeInMinutes");
                 var isUsableOnce = Boolean(root, "isUsableOnce");
-                if (string.IsNullOrWhiteSpace(temporaryAccessPass) || string.IsNullOrWhiteSpace(id) || lifetimeInMinutes != 60 || isUsableOnce != true)
+                if (string.IsNullOrWhiteSpace(temporaryAccessPass) || string.IsNullOrWhiteSpace(id)
+                    || lifetimeInMinutes != request.LifetimeInMinutes || isUsableOnce != request.IsUsableOnce)
                 {
                     return InvalidResponse(response.Result);
                 }
@@ -109,6 +126,30 @@ public sealed class GraphAuthenticationMethodCommands(IDelegatedGraphClientFacto
     private static int? Integer(JsonElement root, string name) => root.TryGetProperty(name, out var property) && property.TryGetInt32(out var value) ? value : null;
     private static bool? Boolean(JsonElement root, string name) => root.TryGetProperty(name, out var property) && property.ValueKind is JsonValueKind.True or JsonValueKind.False ? property.GetBoolean() : null;
     private static GraphTemporaryAccessPassResult InvalidResponse(GraphOperationResult result) => new(null, null, null, null, null, new GraphOperationResult(false, "invalid_response", result.StatusCode, CorrelationId: result.CorrelationId, RequestId: result.RequestId), result.CorrelationId, result.RequestId);
+
+    private static string? TenantPolicyCategory(string content)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(content);
+            if (!document.RootElement.TryGetProperty("error", out var error) || error.ValueKind != JsonValueKind.Object)
+            {
+                return null;
+            }
+
+            var code = Optional(error, "code");
+            var message = Optional(error, "message");
+            return string.Equals(code, "RoleAssignmentRequestPolicyValidationFailed", StringComparison.OrdinalIgnoreCase)
+                || (message?.Contains("temporary access pass", StringComparison.OrdinalIgnoreCase) == true
+                    && message.Contains("policy", StringComparison.OrdinalIgnoreCase))
+                ? "tenant_policy_rejected"
+                : null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
 }
 
 internal sealed record DeleteAuthenticationMethodMutation(string UserObjectId, string MethodObjectId, string Collection) : JsonGraphMutation(GraphScopeCatalog.AuthenticationMethodWriteScopes)

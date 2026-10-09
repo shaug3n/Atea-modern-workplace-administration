@@ -1,4 +1,6 @@
 using Atea.UnifiedWorkplace.Api.Authorization;
+using Atea.UnifiedWorkplace.Api.Features.Users;
+using Microsoft.AspNetCore.Mvc;
 
 namespace Atea.UnifiedWorkplace.Api.Features.Identity;
 
@@ -22,6 +24,7 @@ public static class AuthenticationMethodEndpoints
     private static async Task<IResult> RemoveAsync(
         string userObjectId,
         string methodObjectId,
+        [FromBody] UserWriteReasonCommand? command,
         IWorkspaceContextAccessor accessor,
         IAuthenticationMethodService service,
         HttpRequest request,
@@ -33,6 +36,11 @@ public static class AuthenticationMethodEndpoints
             return Results.BadRequest(new { error = "invalid_target" });
         }
 
+        if (!UserWriteReasonValidation.TryNormalize(command?.Reason, out var reason, out var reasonError))
+        {
+            return Results.BadRequest(new { error = reasonError });
+        }
+
         if (!request.Headers.TryGetValue("Idempotency-Key", out var values) || string.IsNullOrWhiteSpace(values.ToString()))
         {
             return Results.BadRequest(new { error = "idempotency_key_required" });
@@ -40,13 +48,14 @@ public static class AuthenticationMethodEndpoints
 
         var context = accessor.Current;
         if (context is null) return Results.Json(new { error = "workspace_membership_required" }, statusCode: StatusCodes.Status403Forbidden);
-        var result = await service.RemoveAsync(context, userObjectId, methodObjectId, methodType, values.ToString().Trim(), cancellationToken);
+        var result = await service.RemoveAsync(context, userObjectId, methodObjectId, methodType, values.ToString().Trim(), cancellationToken, reason);
         return result.Status switch
         {
             "succeeded" => Results.Ok(result),
             "denied" => Results.Json(result, statusCode: StatusCodes.Status403Forbidden),
             "not_found" => Results.NotFound(result),
             "invalid_target" => Results.BadRequest(result),
+            "idempotency_key_reused" => Results.Conflict(result),
             _ => Results.Json(result, statusCode: StatusCodes.Status503ServiceUnavailable)
         };
     }
@@ -73,6 +82,7 @@ public static class AuthenticationMethodEndpoints
 
     private static async Task<IResult> ResetMfaAsync(
         string userObjectId,
+        [FromBody] UserWriteReasonCommand? command,
         IWorkspaceContextAccessor accessor,
         IAuthenticationMethodService service,
         HttpRequest request,
@@ -83,6 +93,11 @@ public static class AuthenticationMethodEndpoints
             return Results.BadRequest(new { error = "invalid_target" });
         }
 
+        if (!UserWriteReasonValidation.TryNormalize(command?.Reason, out var reason, out var reasonError))
+        {
+            return Results.BadRequest(new { error = reasonError });
+        }
+
         if (!request.Headers.TryGetValue("Idempotency-Key", out var values) || string.IsNullOrWhiteSpace(values.ToString()))
         {
             return Results.BadRequest(new { error = "idempotency_key_required" });
@@ -90,7 +105,7 @@ public static class AuthenticationMethodEndpoints
 
         var context = accessor.Current;
         if (context is null) return Results.Json(new { error = "workspace_membership_required" }, statusCode: StatusCodes.Status403Forbidden);
-        var result = await service.ResetMfaAsync(context, userObjectId, values.ToString().Trim(), cancellationToken);
+        var result = await service.ResetMfaAsync(context, userObjectId, values.ToString().Trim(), cancellationToken, reason);
         return result.Status switch
         {
             "succeeded" => Results.Ok(result),
@@ -103,22 +118,28 @@ public static class AuthenticationMethodEndpoints
 
     private static async Task<IResult> CreateTemporaryAccessPassAsync(
         string userObjectId,
+        [FromBody] TemporaryAccessPassRequest? command,
         IWorkspaceContextAccessor accessor,
         IAuthenticationMethodService service,
         HttpRequest request,
         CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(userObjectId) || userObjectId.Any(IsUnsafe)) return Results.BadRequest(new { error = "invalid_target" });
+        if (!UserWriteReasonValidation.TryNormalize(command?.Reason, out var reason, out var reasonError)) return Results.BadRequest(new { error = reasonError });
+        var tapRequest = command ?? new TemporaryAccessPassRequest();
+        if (tapRequest.LifetimeInMinutes is < 10 or > 1440) return Results.BadRequest(new { error = "invalid_request" });
         if (!request.Headers.TryGetValue("Idempotency-Key", out var values) || string.IsNullOrWhiteSpace(values.ToString())) return Results.BadRequest(new { error = "idempotency_key_required" });
         var context = accessor.Current;
         if (context is null) return Results.Json(new { error = "workspace_membership_required" }, statusCode: StatusCodes.Status403Forbidden);
-        var result = await service.CreateTemporaryAccessPassAsync(context, userObjectId, values.ToString().Trim(), cancellationToken);
+        var result = await service.CreateTemporaryAccessPassAsync(context, userObjectId, values.ToString().Trim(), tapRequest with { Reason = reason }, cancellationToken);
         return result.Status switch
         {
             "succeeded" => Results.Ok(result),
             "denied" => Results.Json(result, statusCode: StatusCodes.Status403Forbidden),
             "invalid_target" => Results.BadRequest(result),
             "idempotency_key_reused" => Results.Conflict(result),
+            "unsupported_options" => Results.Json(result, statusCode: StatusCodes.Status422UnprocessableEntity),
+            "policy_rejected" => Results.Json(result, statusCode: StatusCodes.Status422UnprocessableEntity),
             _ => Results.Json(result, statusCode: StatusCodes.Status503ServiceUnavailable)
         };
     }

@@ -4,17 +4,31 @@ import { useApi } from '../../auth/useApi';
 import { ConfirmationDialog } from '../../components/ConfirmationDialog';
 import type { UserDetails } from './userDetailApi';
 import { mutateUser, type UserCommandResponse } from './userMutationApi';
+import { normalizeUserWriteReason, UserWriteReasonField } from './UserWriteReasonField';
 
-export function PasswordResetDialog({ user, onClose }: { user: UserDetails; onClose: () => void }) {
+export function PasswordResetDialog({ user, onClose, onAuditWarning }: { user: UserDetails; onClose: () => void; onAuditWarning?: (warning: string | null) => void }) {
   const api = useApi();
   const [pending, setPending] = useState(false);
   const [result, setResult] = useState<UserCommandResponse | null>(null);
+  const [auditWarning, setAuditWarning] = useState<string | null>(null);
+  const [reason, setReason] = useState('');
+  const [reasonError, setReasonError] = useState<'reason_required' | 'reason_too_long' | null>(null);
 
-  const submit = async () => {
+  const submit = async (value: string) => {
     if (pending) return;
+    const normalizedReason = normalizeUserWriteReason(value);
+    if (normalizedReason.error) {
+      setReasonError(normalizedReason.error);
+      return;
+    }
+    setReasonError(null);
     setPending(true);
     try {
-      setResult(await mutateUser(api, `/api/users/${encodeURIComponent(user.id)}/reset-password`, 'POST', {}));
+      const response = await mutateUser(api, `/api/users/${encodeURIComponent(user.id)}/reset-password`, 'POST', { reason: normalizedReason.reason });
+      setResult(response);
+      const warning = readAuditWarning(response);
+      setAuditWarning(warning);
+      onAuditWarning?.(warning);
     } catch {
       setResult({ status: 'temporarily_unavailable', requiredCapability: 'users.reset_password', replayed: false, error: 'user_mutation_failed' });
     } finally {
@@ -27,6 +41,7 @@ export function PasswordResetDialog({ user, onClose }: { user: UserDetails; onCl
       <section className="mutation-dialog" role="dialog" aria-modal="true" aria-labelledby="password-reset-result-title">
         <h2 id="password-reset-result-title">{messages.userResetPasswordSucceeded}</h2>
         <p>{messages.userResetPasswordCopyWarning}</p>
+        {auditWarning && <p role="alert" className="audit-warning">{auditWarning}</p>}
         <section className="temporary-credential" role="status" aria-label={messages.userTemporaryPasswordNotice}>
           <strong>{messages.userTemporaryPasswordNotice}</strong>
           <code>{result.temporaryCredentialNotice.temporaryPassword}</code>
@@ -40,20 +55,26 @@ export function PasswordResetDialog({ user, onClose }: { user: UserDetails; onCl
   }
 
   return (
-    <div>
-      <ConfirmationDialog
-        title={messages.userResetPasswordDialogTitle}
-        target={user.displayName || user.userPrincipalName || user.id}
-        proposedChange={messages.userResetPasswordProposedChange}
-        requiredCapability="users.reset_password"
-        confirmLabel={messages.confirmResetPassword}
-        busy={pending}
-        onConfirm={submit}
-        onCancel={onClose}
-      />
+    <ConfirmationDialog
+      title={messages.userResetPasswordDialogTitle}
+      target={user.displayName || user.userPrincipalName || user.id}
+      proposedChange={messages.userResetPasswordProposedChange}
+      requiredCapability="users.reset_password"
+      confirmLabel={messages.confirmResetPassword}
+      busy={pending}
+      confirmBlocked={Boolean(reasonError) || !reason.trim()}
+      onConfirm={() => void submit(reason)}
+      onCancel={onClose}
+    >
+      <UserWriteReasonField value={reason} onChange={(value) => { setReason(value); setReasonError(null); }} error={reasonError} />
       {result && <p role="alert">{formatResetError(result)}</p>}
-    </div>
+    </ConfirmationDialog>
   );
+}
+
+function readAuditWarning(response: UserCommandResponse) {
+  const warning = (response as UserCommandResponse & { auditWarning?: unknown }).auditWarning;
+  return typeof warning === 'string' && warning.trim() ? warning : null;
 }
 
 function formatResetError(response: UserCommandResponse) {

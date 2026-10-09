@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import React from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AssociatedDevicesSection } from '../../../../src/Web/src/features/users/AssociatedDevicesSection';
@@ -64,5 +64,17 @@ describe('AssociatedDevicesSection', () => {
     const alert = await screen.findByRole('alert');
     expect(alert.textContent).toBe('Managed devices are unavailable. Check delegated permissions and try again.');
     expect(alert.textContent).not.toContain('secret tenant diagnostic');
+  });
+
+  it('retries a failed device read without leaving the device region', async () => {
+    apiMock.mockRejectedValueOnce(new Error('offline')).mockResolvedValueOnce(new Response(JSON.stringify({
+      items: [{ id: 'device-2', deviceName: 'WIN-TEST-02' }],
+      fetchedAt: '2026-09-23T08:00:00Z', freshness: 'live', partialData: false, access: { state: 'allowed' },
+    }), { status: 200 }));
+    render(<AssociatedDevicesSection userId="user-1" decision={allowed} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Retry devices' }));
+    expect(await screen.findByText('WIN-TEST-02')).toBeTruthy();
+    expect(apiMock).toHaveBeenCalledTimes(2);
   });
 });

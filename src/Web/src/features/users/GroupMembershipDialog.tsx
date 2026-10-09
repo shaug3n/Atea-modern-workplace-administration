@@ -3,6 +3,7 @@ import { messages } from '../../app/messages';
 import { useApi } from '../../auth/useApi';
 import { ConfirmationDialog } from '../../components/ConfirmationDialog';
 import { mutateUser, type UserCommandResponse } from './userMutationApi';
+import { UserWriteReasonField, normalizeUserWriteReason } from './UserWriteReasonField';
 
 type GroupChoice = { id: string; displayName: string | null; mailNickname?: string | null };
 type GroupCatalogPayload = { items?: GroupChoice[]; error?: string | { category?: string; code?: string }; access?: { state?: string } };
@@ -14,6 +15,8 @@ export function GroupMembershipDialog({ userId, groupId, target, mode, assignedG
   const [catalogError, setCatalogError] = useState<string | null>(null);
   const [catalogLoading, setCatalogLoading] = useState(mode === 'add');
   const [pending, setPending] = useState(false);
+  const [reason, setReason] = useState('');
+  const [reasonError, setReasonError] = useState<'reason_required' | 'reason_too_long' | null>(null);
   useEffect(() => {
     if (mode !== 'add') return;
     let cancelled = false;
@@ -33,10 +36,16 @@ export function GroupMembershipDialog({ userId, groupId, target, mode, assignedG
   const effectiveTarget = mode === 'add' ? selected?.displayName || selected?.id || 'Select a group' : target || groupId || '';
   const submit = async () => {
     if (!effectiveId || pending) return;
+    const normalizedReason = normalizeUserWriteReason(reason);
+    if (normalizedReason.error) {
+      setReasonError(normalizedReason.error);
+      return;
+    }
+    setReasonError(null);
     const path = `/api/users/${encodeURIComponent(userId)}/groups/${encodeURIComponent(effectiveId)}`;
     setPending(true);
     try {
-      const result = await mutateUser(api, path, mode === 'add' ? 'POST' : 'DELETE', { groupObjectId: effectiveId });
+      const result = await mutateUser(api, path, mode === 'add' ? 'POST' : 'DELETE', { groupObjectId: effectiveId, reason: normalizedReason.reason });
       onCompleted?.(result);
     }
     catch { onCompleted?.({ status: 'temporarily_unavailable', requiredCapability: 'groups.manage_members', replayed: false, error: 'temporarily_unavailable' }); }
@@ -51,11 +60,13 @@ export function GroupMembershipDialog({ userId, groupId, target, mode, assignedG
       requiredCapability="groups.manage_members"
       confirmLabel={mode === 'add' ? messages.confirmAddToGroup : messages.confirmRemoveFromGroup}
       busy={pending}
+      confirmBlocked={Boolean(reasonError)}
       onConfirm={submit}
       onCancel={onCancel}
       sourceLimitation={catalogError || (mode === 'add' && !catalogLoading && choices.length === 0 ? 'No eligible groups are available for this user.' : mode === 'add' && !selectedId ? 'Select a group before confirming.' : null)}
     >
       {mode === 'add' && <label>Group<select aria-label="Group" value={selectedId} onChange={(event) => setSelectedId(event.target.value)}><option value="">Select a group</option>{selectable.map((choice) => <option key={choice.id} value={choice.id}>{choice.displayName || choice.mailNickname || choice.id}</option>)}</select></label>}
+      <UserWriteReasonField value={reason} onChange={(value) => { setReason(value); setReasonError(null); }} error={reasonError} />
     </ConfirmationDialog>
   );
 }
