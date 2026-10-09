@@ -1,3 +1,4 @@
+using System.Data.Common;
 using Atea.UnifiedWorkplace.Api.Features.Feedback;
 using Microsoft.EntityFrameworkCore;
 
@@ -53,7 +54,11 @@ public sealed class FeedbackRetentionWorker(
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
         }
-        catch (Exception)
+        catch (DbException)
+        {
+            logger.LogError("Feedback retention cleanup failed.");
+        }
+        catch (TimeoutException)
         {
             logger.LogError("Feedback retention cleanup failed.");
         }
