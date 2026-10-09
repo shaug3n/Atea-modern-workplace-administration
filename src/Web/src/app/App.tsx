@@ -16,12 +16,14 @@ import { DevicesPage } from '../features/devices/DevicesPage';
 import type { ConnectionHealthLoader } from '../features/overview/OverviewPage';
 import { messages } from './messages';
 import { WorkspaceNotificationsProvider } from '../notifications/WorkspaceNotifications';
+import { fetchAuthenticationCampaigns } from '../features/authentication-campaigns/authenticationCampaignsApi';
+import type { AuthenticationCampaignsLoader } from '../features/authentication-campaigns/AuthenticationCampaignsPage';
 
 export type SessionLoader = () => Promise<AppSession>;
 
-export function App({ loadCapabilities, loadSession, loadConnectionHealth, themePreferenceStore, signInAction }: { loadCapabilities?: CapabilityLoader; loadSession?: SessionLoader; loadConnectionHealth?: ConnectionHealthLoader; themePreferenceStore?: ThemePreferenceStore; signInAction?: () => Promise<void> }) {
+export function App({ loadCapabilities, loadSession, loadConnectionHealth, loadAuthenticationCampaigns, themePreferenceStore, signInAction }: { loadCapabilities?: CapabilityLoader; loadSession?: SessionLoader; loadConnectionHealth?: ConnectionHealthLoader; loadAuthenticationCampaigns?: AuthenticationCampaignsLoader; themePreferenceStore?: ThemePreferenceStore; signInAction?: () => Promise<void> }) {
   if (loadCapabilities && loadSession) {
-    return <ThemeProvider preferenceStore={themePreferenceStore}><AppExperience loadCapabilities={loadCapabilities} loadSession={loadSession} loadConnectionHealth={loadConnectionHealth} signInAction={signInAction} /></ThemeProvider>;
+    return <ThemeProvider preferenceStore={themePreferenceStore}><AppExperience loadCapabilities={loadCapabilities} loadSession={loadSession} loadConnectionHealth={loadConnectionHealth} loadAuthenticationCampaigns={loadAuthenticationCampaigns} signInAction={signInAction} /></ThemeProvider>;
   }
   return <AuthenticatedApp loadConnectionHealth={loadConnectionHealth} />;
 }
@@ -42,14 +44,15 @@ function AuthenticatedApp({ loadConnectionHealth }: { loadConnectionHealth?: Con
     if (!response.ok) throw new Error('connection_health_unavailable');
     return await response.json() as Awaited<ReturnType<ConnectionHealthLoader>>;
   }, [api]);
-  return <AppThemeProvider><AppExperience loadSession={loadSession} loadConnectionHealth={loadConnectionHealth ?? loadHealth} signInAction={signIn} switchAccountAction={switchAccount} /></AppThemeProvider>;
+  const loadAuthenticationCampaigns = useCallback(() => fetchAuthenticationCampaigns(api), [api]);
+  return <AppThemeProvider><AppExperience loadSession={loadSession} loadConnectionHealth={loadConnectionHealth ?? loadHealth} loadAuthenticationCampaigns={loadAuthenticationCampaigns} signInAction={signIn} switchAccountAction={switchAccount} /></AppThemeProvider>;
 }
 
 async function safeProblem(response: Response): Promise<{ title?: string; correlationId?: string }> {
   try { return await response.json() as { title?: string; correlationId?: string }; } catch { return {}; }
 }
 
-function AppExperience({ loadCapabilities, loadSession, loadConnectionHealth, signInAction, switchAccountAction }: { loadCapabilities?: CapabilityLoader; loadSession: SessionLoader; loadConnectionHealth?: ConnectionHealthLoader; signInAction?: () => Promise<void>; switchAccountAction?: () => Promise<void> }) {
+function AppExperience({ loadCapabilities, loadSession, loadConnectionHealth, loadAuthenticationCampaigns, signInAction, switchAccountAction }: { loadCapabilities?: CapabilityLoader; loadSession: SessionLoader; loadConnectionHealth?: ConnectionHealthLoader; loadAuthenticationCampaigns?: AuthenticationCampaignsLoader; signInAction?: () => Promise<void>; switchAccountAction?: () => Promise<void> }) {
   const [path, setPath] = useState(() => window.location.pathname + window.location.hash);
   useEffect(() => {
     const onPopState = () => setPath(window.location.pathname + window.location.hash);
@@ -66,20 +69,20 @@ function AppExperience({ loadCapabilities, loadSession, loadConnectionHealth, si
   }, []);
 
   if (isInvitationPath(path)) return <InvitationRedemptionPage nonce={path.slice('/invitations/'.length)} />;
-  return <WorkspaceExperience path={path} navigate={navigate} loadCapabilities={loadCapabilities} loadSession={loadSession} loadConnectionHealth={loadConnectionHealth} signInAction={signInAction} switchAccountAction={switchAccountAction} />;
+  return <WorkspaceExperience path={path} navigate={navigate} loadCapabilities={loadCapabilities} loadSession={loadSession} loadConnectionHealth={loadConnectionHealth} loadAuthenticationCampaigns={loadAuthenticationCampaigns} signInAction={signInAction} switchAccountAction={switchAccountAction} />;
 }
 
-function WorkspaceExperience({ path, navigate, loadCapabilities, loadSession, loadConnectionHealth, signInAction, switchAccountAction }: { path: string; navigate: (path: string) => void; loadCapabilities?: CapabilityLoader; loadSession: SessionLoader; loadConnectionHealth?: ConnectionHealthLoader; signInAction?: () => Promise<void>; switchAccountAction?: () => Promise<void> }) {
-  if (loadCapabilities) return <InjectedWorkspaceExperience path={path} navigate={navigate} loadCapabilities={loadCapabilities} loadSession={loadSession} loadConnectionHealth={loadConnectionHealth} signInAction={signInAction} switchAccountAction={switchAccountAction} />;
-  return <ApiWorkspaceExperience path={path} navigate={navigate} loadSession={loadSession} loadConnectionHealth={loadConnectionHealth} signInAction={signInAction} switchAccountAction={switchAccountAction} />;
+function WorkspaceExperience({ path, navigate, loadCapabilities, loadSession, loadConnectionHealth, loadAuthenticationCampaigns, signInAction, switchAccountAction }: { path: string; navigate: (path: string) => void; loadCapabilities?: CapabilityLoader; loadSession: SessionLoader; loadConnectionHealth?: ConnectionHealthLoader; loadAuthenticationCampaigns?: AuthenticationCampaignsLoader; signInAction?: () => Promise<void>; switchAccountAction?: () => Promise<void> }) {
+  if (loadCapabilities) return <InjectedWorkspaceExperience path={path} navigate={navigate} loadCapabilities={loadCapabilities} loadSession={loadSession} loadConnectionHealth={loadConnectionHealth} loadAuthenticationCampaigns={loadAuthenticationCampaigns} signInAction={signInAction} switchAccountAction={switchAccountAction} />;
+  return <ApiWorkspaceExperience path={path} navigate={navigate} loadSession={loadSession} loadConnectionHealth={loadConnectionHealth} loadAuthenticationCampaigns={loadAuthenticationCampaigns} signInAction={signInAction} switchAccountAction={switchAccountAction} />;
 }
 
-function ApiWorkspaceExperience(props: { path: string; navigate: (path: string) => void; loadSession: SessionLoader; loadConnectionHealth?: ConnectionHealthLoader; signInAction?: () => Promise<void>; switchAccountAction?: () => Promise<void> }) {
+function ApiWorkspaceExperience(props: { path: string; navigate: (path: string) => void; loadSession: SessionLoader; loadConnectionHealth?: ConnectionHealthLoader; loadAuthenticationCampaigns?: AuthenticationCampaignsLoader; signInAction?: () => Promise<void>; switchAccountAction?: () => Promise<void> }) {
   const state = useCapabilities();
   return <LoadedWorkspaceExperience {...props} capabilities={state.capabilities} capabilitiesLoading={state.loading} capabilitiesError={state.error} refreshCapabilities={state.refresh} />;
 }
 
-function InjectedWorkspaceExperience(props: { path: string; navigate: (path: string) => void; loadCapabilities: CapabilityLoader; loadSession: SessionLoader; loadConnectionHealth?: ConnectionHealthLoader; signInAction?: () => Promise<void>; switchAccountAction?: () => Promise<void> }) {
+function InjectedWorkspaceExperience(props: { path: string; navigate: (path: string) => void; loadCapabilities: CapabilityLoader; loadSession: SessionLoader; loadConnectionHealth?: ConnectionHealthLoader; loadAuthenticationCampaigns?: AuthenticationCampaignsLoader; signInAction?: () => Promise<void>; switchAccountAction?: () => Promise<void> }) {
   const state = useInjectedCapabilities(props.loadCapabilities);
   return <LoadedWorkspaceExperience {...props} capabilities={state.capabilities} capabilitiesLoading={state.loading} capabilitiesError={state.error} refreshCapabilities={state.refresh} />;
 }
@@ -101,7 +104,7 @@ function useInjectedCapabilities(loadCapabilities: CapabilityLoader) {
   return { capabilities, loading, error, refresh };
 }
 
-function LoadedWorkspaceExperience({ path, navigate, capabilities, capabilitiesLoading, capabilitiesError, refreshCapabilities, loadSession, loadConnectionHealth, signInAction, switchAccountAction }: { path: string; navigate: (path: string) => void; capabilities: CapabilitySnapshot | null; capabilitiesLoading: boolean; capabilitiesError: Error | null; refreshCapabilities: () => Promise<void>; loadSession: SessionLoader; loadConnectionHealth?: ConnectionHealthLoader; signInAction?: () => Promise<void>; switchAccountAction?: () => Promise<void> }) {
+function LoadedWorkspaceExperience({ path, navigate, capabilities, capabilitiesLoading, capabilitiesError, refreshCapabilities, loadSession, loadConnectionHealth, loadAuthenticationCampaigns, signInAction, switchAccountAction }: { path: string; navigate: (path: string) => void; capabilities: CapabilitySnapshot | null; capabilitiesLoading: boolean; capabilitiesError: Error | null; refreshCapabilities: () => Promise<void>; loadSession: SessionLoader; loadConnectionHealth?: ConnectionHealthLoader; loadAuthenticationCampaigns?: AuthenticationCampaignsLoader; signInAction?: () => Promise<void>; switchAccountAction?: () => Promise<void> }) {
   const { session, sessionRevision, loading: sessionLoading, error: sessionError, retry } = useSession(loadSession);
   const legacyDestinations: Record<string, string> = {
     '/onboarding': '/settings#connection', '/settings/setup': '/settings#connection',
@@ -138,12 +141,16 @@ function LoadedWorkspaceExperience({ path, navigate, capabilities, capabilitiesL
   } else if (route.capability && capabilitiesLoading) {
     routeContent = <GraphRouteState route={route} state="loading" />;
   } else if (route.capability && (capabilitiesError || !capabilities || capabilities.sourceState !== 'graph_authoritative' || capabilities.workspaceId !== session.workspace.id)) {
-    routeContent = <GraphRouteState route={route} state="unavailable" onRetry={refreshCapabilities} reportCause={capabilitiesError ? undefined : 'service'} session={session} navigate={navigate} loadConnectionHealth={loadConnectionHealth} />;
+    routeContent = route.module === 'authentication-campaigns'
+      ? route.render({ loadConnectionHealth, loadAuthenticationCampaigns, capabilities: unavailableSnapshot.capabilities, navigate, session, authorizationUnavailable: true, onAuthorizationRetry: refreshCapabilities })
+      : <GraphRouteState route={route} state="unavailable" onRetry={refreshCapabilities} reportCause={capabilitiesError ? undefined : 'service'} session={session} navigate={navigate} loadConnectionHealth={loadConnectionHealth} />;
   } else {
     const decision = capabilityDecisionFor(route, unavailableSnapshot.capabilities);
     routeContent = decision && decision.state !== 'allowed' && decision.state !== 'read_only'
-      ? <GraphRouteState route={route} state="unavailable" onRetry={refreshCapabilities} reportCause={decision.state === 'hidden' || decision.state === 'disabled' ? 'access' : undefined} session={session} navigate={navigate} loadConnectionHealth={loadConnectionHealth} />
-      : route.render({ loadConnectionHealth, capabilities: unavailableSnapshot.capabilities, navigate, session, onRefreshAccess: refreshCapabilities });
+      ? route.module === 'authentication-campaigns'
+        ? route.render({ loadConnectionHealth, loadAuthenticationCampaigns, capabilities: unavailableSnapshot.capabilities, navigate, session, authorizationUnavailable: true, onAuthorizationRetry: refreshCapabilities })
+        : <GraphRouteState route={route} state="unavailable" onRetry={refreshCapabilities} reportCause={decision.state === 'hidden' || decision.state === 'disabled' ? 'access' : undefined} session={session} navigate={navigate} loadConnectionHealth={loadConnectionHealth} />
+      : route.render({ loadConnectionHealth, loadAuthenticationCampaigns, capabilities: unavailableSnapshot.capabilities, navigate, session, onRefreshAccess: refreshCapabilities });
   }
 
   return <WorkspaceNotificationsProvider key={`${session.workspace.id}:${sessionRevision}`} session={session} sessionScope={sessionRevision} capabilities={capabilities} capabilitiesError={capabilitiesError} onRefresh={refreshCapabilities} loadConnectionHealth={loadConnectionHealth}><AppShell capabilities={capabilities} currentPath={path.split('#')[0]} session={session} onNavigate={navigate}>{routeContent}</AppShell></WorkspaceNotificationsProvider>;

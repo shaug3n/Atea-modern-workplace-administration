@@ -77,7 +77,6 @@ test('reserved capability names match FE and BE', async () => {
   });
 
   assert.deepEqual(frontendValues, [
-    'authentication.campaigns.view',
     'authentication.campaigns.manage',
     'licenses.hygiene.view',
     'platform.about.view',
@@ -88,9 +87,17 @@ test('reserved capability names match FE and BE', async () => {
 
 test('module inventory labels reserved candidates planned and not active', async () => {
   const inventory = await readFile('../../docs/module-inventory.md', 'utf8');
+  const campaigns = inventory.split('\n').find(line => line.startsWith('| Authentication campaigns |'));
+  assert.ok(campaigns, 'Authentication campaigns should be an active workspace module');
+  assert.match(campaigns, /authentication-campaigns/);
+  assert.match(campaigns, /authentication\.campaigns\.view/);
+  assert.match(campaigns, /AuditLog\.Read\.All/);
+  assert.match(campaigns, /User\.Read\.All/);
+  assert.match(campaigns, /Reports Reader, Security Reader, Security Administrator, or Global Reader/);
+  assert.match(campaigns, /Entra ID P1 or P2/);
+  assert.match(campaigns, /authentication\.campaigns\.manage.*reserved and denied/);
+
   const plannedCandidates = [
-    'Passkeys',
-    'MFA campaigns',
     'License Hygiene',
     'About',
     'Feedback',
@@ -101,5 +108,8 @@ test('module inventory labels reserved candidates planned and not active', async
     assert.ok(row, `${candidate} should have an inventory row`);
     assert.match(row, /planned wave 1/i, `${candidate} should be planned for wave 1`);
     assert.match(row, /not shipped, enabled, validated, or granted/i, `${candidate} should be explicitly inactive`);
+  }
+  for (const retiredCandidate of ['Passkeys', 'MFA campaigns']) {
+    assert.equal(inventory.split('\n').some(line => line.startsWith(`| ${retiredCandidate} |`)), false);
   }
 });

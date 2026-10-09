@@ -15,6 +15,7 @@ describe('route navigation metadata', () => {
       { path: '/settings', group: 'platform', visibility: 'workspace-manager', icon: 'settings' },
       { path: '/overview', group: 'overview', visibility: 'always', icon: 'overview' },
       { path: '/users', group: 'identity-access', visibility: 'module', icon: 'users' },
+      { path: '/authentication-campaigns', group: 'identity-access', visibility: 'module', icon: 'lock' },
       { path: '/licenses', group: 'licenses', visibility: 'module', icon: 'licenses' },
       { path: '/activity', group: 'operations', visibility: 'audit-not-hidden', icon: 'activity' },
       { path: '/devices', group: 'devices', visibility: 'device-module-or-settings-manager', icon: 'devices' },
@@ -24,7 +25,7 @@ describe('route navigation metadata', () => {
     const groupOrder: NavigationGroup[] = ['overview', 'identity-access', 'devices', 'licenses', 'services', 'operations', 'platform'];
     const visibilityKinds: NavigationVisibility[] = ['always', 'module', 'device-module-or-settings-manager', 'audit-not-hidden', 'workspace-manager'];
     expect([...new Set(navigationRoutes.map((route) => route.navigation!.group))].sort((a, b) => groupOrder.indexOf(a) - groupOrder.indexOf(b))).toEqual(groupOrder);
-    expect(navigationRoutes.map((route) => route.navigation!.order)).toEqual([0, 0, 0, 0, 0, 0, 0]);
+    expect(navigationRoutes.map((route) => route.navigation!.order)).toEqual([0, 0, 0, 1, 0, 0, 0, 0]);
     expect(navigationRoutes.every((route) => visibilityKinds.includes(route.navigation!.visibility))).toBe(true);
 
     const nonNavigablePaths = [

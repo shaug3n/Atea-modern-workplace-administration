@@ -1,4 +1,5 @@
 using Atea.UnifiedWorkplace.Api.Authorization;
+using Atea.UnifiedWorkplace.Api.Infrastructure.Graph;
 using FluentAssertions;
 
 namespace Atea.UnifiedWorkplace.Api.UnitTests.Authorization;
@@ -6,11 +7,101 @@ namespace Atea.UnifiedWorkplace.Api.UnitTests.Authorization;
 public sealed class CapabilityEvaluatorTests
 {
     [Fact]
-    public void Reserved_capabilities_are_not_evaluated_or_granted()
+    public void Authentication_campaign_view_is_activated_but_management_remains_reserved()
+    {
+        EntraRoleCatalog.ReportsReaderTemplateId.Should().Be("4a5d8f65-41da-4de4-8968-e035b65339cf");
+        EntraRoleCatalog.DisplayNames[EntraRoleCatalog.ReportsReaderTemplateId].Should().Be("Reports Reader");
+        Capability.Reserved.Should().Contain(Capability.AuthenticationCampaignsManage);
+        Capability.Reserved.Should().NotContain(Capability.AuthenticationCampaignsView);
+        Capability.All.Should().Contain(Capability.AuthenticationCampaignsView);
+        Capability.All.Should().NotContain(Capability.AuthenticationCampaignsManage);
+
+        var snapshot = AvailableSnapshot(
+            GraphScopeCatalog.AuthenticationCampaignReportScopes,
+            [ActiveRole(EntraRoleCatalog.ReportsReaderTemplateId)]);
+        var decisions = CapabilityEvaluator.Evaluate(snapshot, Member());
+        decisions.Capabilities.Select(decision => decision.Capability).Should().Contain(Capability.AuthenticationCampaignsView);
+        decisions.Capabilities.Select(decision => decision.Capability).Should().NotContain(Capability.AuthenticationCampaignsManage);
+        decisions[Capability.AuthenticationCampaignsView].State.Should().Be(CapabilityState.Allowed);
+    }
+
+    [Theory]
+    [InlineData(EntraRoleCatalog.ReportsReaderTemplateId)]
+    [InlineData(EntraRoleCatalog.SecurityReaderTemplateId)]
+    [InlineData(EntraRoleCatalog.SecurityAdministratorTemplateId)]
+    [InlineData(EntraRoleCatalog.GlobalReaderTemplateId)]
+    public void Authentication_campaign_view_allows_supported_tenant_wide_active_roles(string roleTemplateId)
+    {
+        var decision = CapabilityEvaluator.Evaluate(
+            AvailableSnapshot(GraphScopeCatalog.AuthenticationCampaignReportScopes, [ActiveRole(roleTemplateId)]),
+            Member())[Capability.AuthenticationCampaignsView];
+
+        decision.State.Should().Be(CapabilityState.Allowed);
+    }
+
+    [Fact]
+    public void Authentication_campaign_view_requires_audit_log_read_scope()
+    {
+        var decision = CapabilityEvaluator.Evaluate(
+            AvailableSnapshot(["Directory.Read.All"], [ActiveRole(EntraRoleCatalog.ReportsReaderTemplateId)]),
+            Member())[Capability.AuthenticationCampaignsView];
+
+        decision.State.Should().Be(CapabilityState.ConsentRequired);
+        decision.MissingScopes.Should().ContainSingle("AuditLog.Read.All");
+    }
+
+    [Fact]
+    public void Authentication_campaign_view_does_not_allow_unsupported_roles()
+    {
+        var decision = CapabilityEvaluator.Evaluate(
+            AvailableSnapshot(GraphScopeCatalog.AuthenticationCampaignReportScopes, [ActiveRole(EntraRoleCatalog.GlobalAdministratorTemplateId)]),
+            Member())[Capability.AuthenticationCampaignsView];
+
+        decision.State.Should().Be(CapabilityState.Hidden);
+        decision.State.Should().NotBe(CapabilityState.Allowed);
+    }
+
+    [Theory]
+    [InlineData(PimRequirement.ActivationRequired, CapabilityState.PimActivationRequired)]
+    [InlineData(PimRequirement.ApprovalRequired, CapabilityState.PimApprovalRequired)]
+    [InlineData(PimRequirement.MfaRequired, CapabilityState.PimMfaRequired)]
+    [InlineData(PimRequirement.EligibilityExpired, CapabilityState.PimEligibilityExpired)]
+    public void Authentication_campaign_view_preserves_supported_eligible_role_PIM_state(
+        string pimRequirement,
+        string expectedState)
+    {
+        var decision = CapabilityEvaluator.Evaluate(
+            AvailableSnapshot(
+                GraphScopeCatalog.AuthenticationCampaignReportScopes,
+                [EligibleRole(EntraRoleCatalog.ReportsReaderTemplateId, pimRequirement)]),
+            Member())[Capability.AuthenticationCampaignsView];
+
+        decision.State.Should().Be(expectedState);
+        decision.State.Should().NotBe(CapabilityState.Allowed);
+    }
+
+    [Theory]
+    [InlineData(DirectoryRoleAssignmentState.Active)]
+    [InlineData(DirectoryRoleAssignmentState.Eligible)]
+    public void Authentication_campaign_view_does_not_allow_administrative_unit_scoped_roles(string assignmentState)
+    {
+        var role = assignmentState == DirectoryRoleAssignmentState.Active
+            ? ActiveRole(EntraRoleCatalog.ReportsReaderTemplateId, "/administrativeUnits/au-1")
+            : EligibleRole(EntraRoleCatalog.ReportsReaderTemplateId, PimRequirement.ActivationRequired, "/administrativeUnits/au-1");
+        var decision = CapabilityEvaluator.Evaluate(
+            AvailableSnapshot(GraphScopeCatalog.AuthenticationCampaignReportScopes, [role]),
+            Member())[Capability.AuthenticationCampaignsView];
+
+        decision.State.Should().NotBe(CapabilityState.Allowed);
+        decision.State.Should().NotBe(CapabilityState.ReadOnly);
+        decision.ReasonCode.Should().Be("directory_role_scope_not_tenant_wide");
+    }
+
+    [Fact]
+    public void Unsupported_reserved_capabilities_are_not_evaluated_or_granted()
     {
         var expected = new[]
         {
-            Capability.AuthenticationCampaignsView,
             Capability.AuthenticationCampaignsManage,
             Capability.LicensesHygieneView,
             Capability.PlatformAboutView,

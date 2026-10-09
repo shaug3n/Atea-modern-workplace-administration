@@ -29,7 +29,6 @@ export type Capability =
   | 'workspace.settings.manage';
 
 export const reservedCapabilities = [
-  'authentication.campaigns.view',
   'authentication.campaigns.manage',
   'licenses.hygiene.view',
   'platform.about.view',

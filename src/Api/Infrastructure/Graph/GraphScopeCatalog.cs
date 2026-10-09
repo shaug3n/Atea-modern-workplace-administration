@@ -21,6 +21,8 @@ public static class GraphScopeCatalog
     public static readonly IReadOnlyList<string> LapsSecretScopes = ["DeviceLocalCredential.Read.All"];
     public static readonly IReadOnlyList<string> AuthenticationMethodReadScopes = ["UserAuthenticationMethod.Read.All"];
     public static readonly IReadOnlyList<string> AuthenticationMethodWriteScopes = ["UserAuthenticationMethod.ReadWrite.All"];
+    public static readonly IReadOnlyList<string> AuthenticationCampaignReportScopes = ["AuditLog.Read.All"];
+    public static readonly IReadOnlyList<string> DirectoryProfileReadScopes = ["User.Read.All"];
     public static readonly IReadOnlyList<string> ExchangeMailboxSettingsReadScopes = ["MailboxSettings.Read"];
     public static readonly IReadOnlyList<string> AuthorizationReadScopes = ["Directory.Read.All", "RoleManagement.Read.Directory"];
 
@@ -51,6 +53,7 @@ public static class GraphScopeCatalog
         "DeviceLocalCredential.Read.All",
         "UserAuthenticationMethod.Read.All",
         "UserAuthenticationMethod.ReadWrite.All",
+        "AuditLog.Read.All",
         "MailboxSettings.Read"
     ];
 }

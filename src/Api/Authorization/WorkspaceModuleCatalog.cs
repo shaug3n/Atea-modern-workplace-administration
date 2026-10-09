@@ -6,9 +6,9 @@ namespace Atea.UnifiedWorkplace.Api.Authorization;
 
 public static class WorkspaceModuleCatalog
 {
-    private static readonly string[] KnownModules = ["users", "devices", "licenses", "exchange"];
+    private static readonly string[] KnownModules = ["users", "devices", "licenses", "exchange", "authentication-campaigns"];
 
-    public static IReadOnlyList<string> ReservedModules => ["authentication-campaigns", "license-hygiene", "about", "feedback"];
+    public static IReadOnlyList<string> ReservedModules => ["license-hygiene", "about", "feedback"];
     public static IReadOnlyList<string> All => KnownModules;
     public static IReadOnlyList<string> Core => ["users", "devices", "licenses"];
 
