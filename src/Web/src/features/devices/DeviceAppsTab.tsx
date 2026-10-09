@@ -7,6 +7,12 @@ import { devicesMessages } from './devicesMessages';
 import { fetchDeviceApps, type Device360ReadStatus, type Device360Response, type DeviceDetectedApp } from './device360Api';
 
 type DeviceAppsResponse = { managedDeviceId: string; response: Device360Response<DeviceDetectedApp[]> };
+const dnAttribute = String.raw`(?:[A-Za-z][A-Za-z0-9-]*|[0-9]+(?:\.[0-9]+)+)`;
+const dnValue = String.raw`(?:\\.|[^,])+`;
+const distinguishedNamePattern = new RegExp(
+  `^\\s*${dnAttribute}\\s*=\\s*${dnValue}(?:\\s*,\\s*${dnAttribute}\\s*=\\s*${dnValue})+\\s*$`,
+  'i',
+);
 
 export function DeviceAppsTab({ managedDeviceId, active }: { managedDeviceId: string; active: boolean }) {
   const copy = devicesMessages.deviceApps;
@@ -77,8 +83,7 @@ export function DeviceAppsTab({ managedDeviceId, active }: { managedDeviceId: st
 export function normalizeDetectedAppPublisher(publisher: string | null): string | null {
   const normalized = publisher?.trim();
   if (!normalized) return null;
-  if (/^CN\s*=\s*[^,\r\n]+$/i.test(normalized)
-    || /^(?:CN|OU|O|L|ST|S|C|DC|E|EMAILADDRESS)\s*=\s*[^,\r\n]+(?:\s*,\s*(?:CN|OU|O|L|ST|S|C|DC|E|EMAILADDRESS)\s*=\s*[^,\r\n]+)+$/i.test(normalized)) return null;
+  if (/^CN\s*=\s*[^,\r\n]+$/i.test(normalized) || distinguishedNamePattern.test(normalized)) return null;
   return normalized;
 }
 

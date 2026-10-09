@@ -63,6 +63,10 @@ describe('DeviceAppsTab', () => {
     expect(normalizeDetectedAppPublisher('CN=agent.example, OU=Engineering, O=Contoso, C=US')).toBeNull();
     expect(normalizeDetectedAppPublisher('CN=agent.example')).toBeNull();
     expect(normalizeDetectedAppPublisher('O=Contoso, C=US')).toBeNull();
+    expect(normalizeDetectedAppPublisher('CN=Agent, SERIALNUMBER=123, O=Contoso')).toBeNull();
+    expect(normalizeDetectedAppPublisher('2.5.4.3=Agent, 2.5.4.5=123')).toBeNull();
+    expect(normalizeDetectedAppPublisher('Contoso, Inc.')).toBe('Contoso, Inc.');
+    expect(normalizeDetectedAppPublisher('Research, Development')).toBe('Research, Development');
     expect(normalizeDetectedAppPublisher('  ')).toBeNull();
     expect(normalizeDetectedAppPublisher(null)).toBeNull();
   });
