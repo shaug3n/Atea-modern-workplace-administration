@@ -26,7 +26,6 @@ import type { IconName } from '../components/icons';
 import { AboutPage } from '../features/about/AboutPage';
 import { SystemVersionsPage } from '../features/about/SystemVersionsPage';
 import { FeedbackPage } from '../features/feedback/FeedbackPage';
-import { FeedbackPage } from '../features/feedback/FeedbackPage';
 
 export type NavigationGroup = 'overview' | 'identity-access' | 'devices' | 'licenses' | 'services' | 'operations' | 'platform';
 export type NavigationVisibility = 'always' | 'module' | 'device-module-or-settings-manager' | 'audit-not-hidden' | 'workspace-manager';
@@ -67,14 +66,6 @@ export const appRoutes: AppRoute[] = [
     module: 'about',
     capability: 'platform.about.view',
     render: (options) => <SystemVersionsPage authorizedRoutes={options?.authorizedRoutes ?? []} />,
-  },
-  {
-    path: '/feedback',
-    label: messages.navFeedback,
-    module: 'feedback',
-    capability: 'feedback.submit',
-    navigation: { group: 'platform', order: 2, icon: 'activity', visibility: 'module' },
-    render: (options) => <FeedbackPage refreshRevision={options?.feedbackRefreshRevision ?? 0} onOpenFeedbackDialog={options?.onOpenFeedbackDialog ?? (() => {})} />,
   },
   {
     path: '/feedback',

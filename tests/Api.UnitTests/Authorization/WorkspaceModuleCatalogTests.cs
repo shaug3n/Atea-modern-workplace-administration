@@ -8,7 +8,6 @@ public sealed class WorkspaceModuleCatalogTests
     [Fact]
     public void Shipped_modules_are_known_without_changing_the_core_set()
     {
-    {
         WorkspaceModuleCatalog.All.Should().Equal(
             "users",
             "devices",
@@ -101,7 +100,15 @@ public sealed class WorkspaceModuleCatalogTests
     {
         WorkspaceModuleCatalog.IsKnown("about").Should().BeTrue();
         WorkspaceModuleCatalog.IsKnown("feedback").Should().BeTrue();
-        WorkspaceModuleCatalog.All.Should().Equal("users", "devices", "licenses", "exchange", "about", "feedback");
+        WorkspaceModuleCatalog.All.Should().Equal(
+            "users",
+            "devices",
+            "licenses",
+            "exchange",
+            "authentication-campaigns",
+            "license-hygiene",
+            "about",
+            "feedback");
         WorkspaceModuleCatalog.Core.Should().Equal("users", "devices", "licenses");
         WorkspaceModuleCatalog.Normalize(["FEEDBACK", " About ", "unknown"])
             .Should().Equal("about", "feedback");

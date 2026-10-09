@@ -224,7 +224,7 @@ function LoadedWorkspaceExperience({ path, navigate, capabilities, capabilitiesL
 
   return <WorkspaceNotificationsProvider key={`${session.workspace.id}:${sessionRevision}`} session={session} sessionScope={sessionRevision} capabilities={capabilities} capabilitiesError={capabilitiesError} onRefresh={refreshCapabilities} loadConnectionHealth={loadConnectionHealth}>
     <AppShell capabilities={capabilities} currentPath={path.split('#')[0]} session={session} onNavigate={navigate} accessState={{ loading: capabilitiesLoading, error: capabilitiesError !== null, refresh: refreshCapabilities }} canViewAbout={canViewAbout} canSubmitFeedback={canSubmitFeedback} onOpenFeedbackDialog={onOpenFeedbackDialog}>{routeContent}</AppShell>
-    <FeedbackComposerDialog key={feedbackIdentityKey} open={feedbackDialogOpen && canSubmitFeedback} onOpenChange={onFeedbackDialogOpenChange} workspaceId={session.workspace.id} submitterObjectId={session.user.objectId ?? ''} onSaved={() => setFeedbackRefreshRevision(revision => revision + 1)} />
+    {canSubmitFeedback && <FeedbackComposerDialog key={feedbackIdentityKey} open={feedbackDialogOpen} onOpenChange={onFeedbackDialogOpenChange} workspaceId={session.workspace.id} submitterObjectId={session.user.objectId ?? ''} onSaved={() => setFeedbackRefreshRevision(revision => revision + 1)} />}
   </WorkspaceNotificationsProvider>;
 }
 

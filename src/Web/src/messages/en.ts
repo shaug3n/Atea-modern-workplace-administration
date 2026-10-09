@@ -3,7 +3,6 @@ import { authenticationCampaignMessages } from '../features/authentication-campa
 import { licenseHygieneMessages } from '../features/licenses/hygiene/messages';
 import { aboutMessages } from '../features/about/messages';
 import { feedbackMessages } from '../features/feedback/messages';
-import { feedbackMessages } from '../features/feedback/messages';
 
 export type ConnectionState = 'awaiting_invitation' | 'consent_required' | 'connected' | 'permission_incomplete' | 'temporarily_unavailable' | 'consent_revoked' | 'connection_failed';
 

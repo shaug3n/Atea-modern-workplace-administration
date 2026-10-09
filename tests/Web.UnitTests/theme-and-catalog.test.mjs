@@ -142,9 +142,9 @@ test('module inventory distinguishes shipped modules from planned candidates', a
   assert.doesNotMatch(hygiene, /pending|not shipped/i);
   const modules = inventory.split('\n').find((line) => line.startsWith('| Modules |'));
   assert.ok(modules, 'Modules should have an inventory row');
-  assert.match(modules, /supported keys are Users, Devices, Licenses, Exchange, Authentication campaigns, and License Hygiene \(`license-hygiene`\)/);
+  assert.match(modules, /supported keys are Users, Devices, Licenses, Exchange, Authentication campaigns, License Hygiene \(`license-hygiene`\), About, and Feedback/);
   assert.match(modules, /License Hygiene, About and Feedback are opt-in/i);
-  assert.match(modules, /does not grant it by default to a workspace or member/i);
+  assert.match(modules, /does not grant them by default to a workspace or member/i);
   assert.match(modules, /About.*Feedback/);
   const candidateTable = inventory.split('## Prism-inspired candidates, outside live navigation')[1];
   assert.ok(candidateTable, 'the inactive candidate table should exist');
