@@ -5,6 +5,7 @@ using System.Text.Encodings.Web;
 using Atea.UnifiedWorkplace.Api.Authorization;
 using Atea.UnifiedWorkplace.Api.Features.PlatformAbout;
 using Atea.UnifiedWorkplace.Api.Features.Workspaces;
+using Atea.UnifiedWorkplace.Api.Infrastructure.Persistence;
 using FluentAssertions;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -115,8 +116,19 @@ public sealed class PlatformAboutEndpointTests
                     : null));
                 services.RemoveAll<IWorkspaceSettingsService>();
                 services.AddSingleton<IWorkspaceSettingsService, FixtureWorkspaceSettingsService>();
+                services.RemoveAll<IFeedbackRetentionService>();
+                services.AddSingleton<IFeedbackRetentionService, NoOpFeedbackRetentionService>();
             });
         });
+
+    private sealed class NoOpFeedbackRetentionService : IFeedbackRetentionService
+    {
+        public Task<int> DeleteExpiredBatchAsync(DateTimeOffset nowUtc, CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.FromResult(0);
+        }
+    }
 
     private sealed class FixtureMembershipReader(WorkspaceMembership? membership) : IWorkspaceMembershipReader
     {

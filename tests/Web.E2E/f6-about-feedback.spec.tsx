@@ -122,10 +122,14 @@ describe('owned About and Feedback journeys', () => {
     expect(within(webCard).queryByText('api-commit-fixture')).toBeNull();
     expect(within(webCard).queryByText('api-release-fixture')).toBeNull();
     const inventory = screen.getByRole('region', { name: 'Authorized application routes' });
-    expect(inventory.textContent).toContain('/about/system-versions');
-    expect(inventory.textContent).not.toContain('/feedback');
-    expect(inventory.textContent).not.toContain('/users');
-    expect(inventory.textContent).not.toContain('/api/');
+    const inventoryPaths = Array.from(inventory.querySelectorAll('code'), code => code.textContent);
+    expect(inventoryPaths).toEqual([
+      '/onboarding',
+      '/identity',
+      '/about',
+      '/about/system-versions',
+      '/overview',
+    ]);
     expect(apiMock).toHaveBeenCalledWith('/api/about/system-versions', { cache: 'no-store' });
   });
 
@@ -276,6 +280,38 @@ describe('owned About and Feedback journeys', () => {
     finishOldPage(feedbackPage([feedbackItem('66666666-6666-4666-8666-666666666666', 'Late stale response')]));
     await waitFor(() => expect(screen.queryByText('Late stale response')).toBeNull());
     expect(screen.getByText('Workspace B private entry')).toBeTruthy();
+  });
+
+  it('discards a pending list response when identity changes within the same workspace', async () => {
+    let finishOldPage!: (response: Response) => void;
+    apiMock
+      .mockResolvedValueOnce(feedbackPage([feedbackItem('77777777-7777-4777-8777-777777777777', 'First identity private entry')], 'old-cursor'))
+      .mockImplementationOnce(() => new Promise<Response>(resolve => { finishOldPage = resolve; }))
+      .mockResolvedValueOnce(feedbackPage([feedbackItem('88888888-8888-4888-8888-888888888888', 'Second identity private entry')]));
+    const firstCapabilities = capabilities(workspaceA, [feedbackCapability]);
+    const firstSession = session(workspaceA, ['feedback'], '22222222-2222-4222-8222-222222222222');
+    window.history.replaceState({}, '', '/feedback');
+    const { rerender } = render(<App
+      loadCapabilities={async () => firstCapabilities}
+      loadSession={async () => firstSession}
+    />);
+
+    expect(await screen.findByText('First identity private entry')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Load more feedback' }));
+    await waitFor(() => expect(apiMock).toHaveBeenCalledTimes(2));
+
+    const secondCapabilities = capabilities(workspaceA, [feedbackCapability]);
+    const secondSession = session(workspaceA, ['feedback'], '33333333-3333-4333-8333-333333333333');
+    rerender(<App
+      loadCapabilities={async () => secondCapabilities}
+      loadSession={async () => secondSession}
+    />);
+
+    expect(await screen.findByText('Second identity private entry')).toBeTruthy();
+    expect(screen.queryByText('First identity private entry')).toBeNull();
+    finishOldPage(feedbackPage([feedbackItem('99999999-9999-4999-8999-999999999999', 'Late stale identity response')]));
+    await waitFor(() => expect(screen.queryByText('Late stale identity response')).toBeNull());
+    expect(screen.getByText('Second identity private entry')).toBeTruthy();
   });
 
   it.each([

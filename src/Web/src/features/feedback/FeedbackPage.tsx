@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useApi } from '../../auth/useApi';
 import { WorkspacePageHeader } from '../../components/WorkspacePageHeader';
 import { messages } from '../../app/messages';
+import { formatDate } from '../../format/dateTime';
 import { listFeedback, type FeedbackSubmission } from './feedbackApi';
 import './feedback.css';
 
@@ -74,7 +75,7 @@ export function FeedbackPage({ refreshRevision, onOpenFeedbackDialog }: { refres
             <article className="feedback-card" key={item.id}>
               <div className="feedback-card__meta">
                 <span className="feedback-card__category">{item.category}</span>
-                <time dateTime={item.createdAt}>{messages.feedbackCreatedAt} · {new Date(item.createdAt).toLocaleDateString()}</time>
+                <time dateTime={item.createdAt}>{messages.feedbackCreatedAt} · {formatDate(item.createdAt)}</time>
               </div>
               <h2 data-feedback-subject>{item.subject}</h2>
               <p className="feedback-card__message">{item.message}</p>

@@ -2,6 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import React from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { FeedbackPage } from '../../../../src/Web/src/features/feedback/FeedbackPage';
+import { formatDate } from '../../../../src/Web/src/format/dateTime';
 
 const apiMock = vi.hoisted(() => vi.fn());
 vi.mock('../../../../src/Web/src/auth/useApi', () => ({ useApi: () => apiMock }));
@@ -49,6 +50,21 @@ describe('FeedbackPage', () => {
     expect(apiMock.mock.calls[1][0]).toContain('cursor=next-page');
     const titles = Array.from(document.querySelectorAll('[data-feedback-subject]')).map(node => node.textContent);
     expect(titles).toEqual(['Newer', '<b>Older</b>', 'Oldest']);
+  });
+
+  it('formats submission dates with the shared date formatter', async () => {
+    const createdAt = '2026-10-09T08:00:00Z';
+    apiMock.mockResolvedValue(Response.json({
+      items: [{ id: 'date-entry', category: 'General', subject: 'Dated entry', message: 'Message', createdAt, expiresAt: '2027-01-07T08:00:00Z' }],
+      nextCursor: null,
+    }));
+    render(<FeedbackPage refreshRevision={0} onOpenFeedbackDialog={vi.fn()} />);
+
+    await screen.findByText('Dated entry');
+    const date = document.querySelector('time')!;
+    expect(date.textContent).toContain(formatDate(createdAt));
+    expect(date.tagName).toBe('TIME');
+    expect(date.getAttribute('datetime')).toBe(createdAt);
   });
 
   it('shows an actionable error instead of an empty list when the response is invalid', async () => {
