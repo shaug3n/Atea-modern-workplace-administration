@@ -109,7 +109,7 @@ public sealed class CrossTenantAccessTests : IAsyncLifetime
         using var client = AuthenticatedClient(factory);
         using var request = new HttpRequestMessage(HttpMethod.Patch, "/api/users/foreign-user")
         {
-            Content = new StringContent("{\"displayName\":\"Must not change\"}", Encoding.UTF8, "application/json")
+            Content = new StringContent("{\"displayName\":\"Must not change\",\"reason\":\"Approved scope test\"}", Encoding.UTF8, "application/json")
         };
         request.Headers.Add("Idempotency-Key", "foreign-user-mutation");
 

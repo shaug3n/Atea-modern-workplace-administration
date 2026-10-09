@@ -2,6 +2,7 @@ import React, { useId, useRef, useState } from 'react';
 import { messages } from '../../app/messages';
 import { useApi } from '../../auth/useApi';
 import { ConfirmationDialog } from '../../components/ConfirmationDialog';
+import { formatDateTime } from '../../format/dateTime';
 import { TechnicalDetails } from '../../components/TechnicalDetails';
 import type { ApiFetch } from './userDetailApi';
 import { grantTemporaryAccessPass, TemporaryAccessPassRequestError } from './authenticationMethodsApi';
@@ -88,7 +89,7 @@ export function TemporaryAccessPassDialog({ userId, target, onClose, onAuditWarn
     ? Date.parse(passDetails.startDateTime) + Number(passDetails.lifetimeInMinutes) * 60_000
     : Number.NaN;
   const proposedLifetime = Number.isInteger(duration) && duration >= 10 && duration <= 1440 ? duration : 60;
-  if (code) return <div className="modal-backdrop"><section ref={resultRef} className="mutation-dialog" role="dialog" aria-modal="true" aria-labelledby="tap-result-title"><h2 id="tap-result-title">{userFeatureMessages.userTapResultTitle}</h2><p>{userFeatureMessages.userTapOneTimeCodeNotice}</p>{passDetails?.lifetimeInMinutes && <p>{userFeatureMessages.userTapUsageNotice(passDetails.lifetimeInMinutes, passDetails.isUsableOnce === true)}</p>}{Number.isFinite(expiry) && <p>{`${userFeatureMessages.userTapExpiresAt}: ${new Date(expiry).toLocaleString()}`}</p>}{auditWarning && <p role="alert" className="audit-warning">{auditWarning}</p>}<code className="temporary-access-pass__code">{code}</code><button type="button" className="button button--quiet" onClick={() => void navigator.clipboard?.writeText(code)}>{userFeatureMessages.userTapCopyCode}</button><button type="button" className="button button--secondary" onClick={close}>{userFeatureMessages.userTapClose}</button></section></div>;
+  if (code) return <div className="modal-backdrop"><section ref={resultRef} className="mutation-dialog" role="dialog" aria-modal="true" aria-labelledby="tap-result-title"><h2 id="tap-result-title">{userFeatureMessages.userTapResultTitle}</h2><p>{userFeatureMessages.userTapOneTimeCodeNotice}</p>{passDetails?.lifetimeInMinutes && <p>{userFeatureMessages.userTapUsageNotice(passDetails.lifetimeInMinutes, passDetails.isUsableOnce === true)}</p>}{Number.isFinite(expiry) && <p>{`${userFeatureMessages.userTapExpiresAt}: ${formatDateTime(new Date(expiry).toISOString())}`}</p>}{auditWarning && <p role="alert" className="audit-warning">{auditWarning}</p>}<code className="temporary-access-pass__code">{code}</code><button type="button" className="button button--quiet" onClick={() => void navigator.clipboard?.writeText(code)}>{userFeatureMessages.userTapCopyCode}</button><button type="button" className="button button--secondary" onClick={close}>{userFeatureMessages.userTapClose}</button></section></div>;
   return <ConfirmationDialog title="Grant Temporary Access Pass" target={target} proposedChange={userFeatureMessages.userTapProposedChange(proposedLifetime, isUsableOnce)} requiredCapability="authentication.methods.manage" confirmLabel={messages.confirmIssueTap} busy={pending} confirmBlocked={Boolean(reasonError) || lifetimeError} onConfirm={() => void submit()} onCancel={close}>
     <div className="temporary-access-pass-options">
       <fieldset className="temporary-access-pass-options__presets">
