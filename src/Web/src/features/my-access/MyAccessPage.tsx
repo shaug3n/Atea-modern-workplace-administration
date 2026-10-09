@@ -90,8 +90,8 @@ function supportedDestination(action: AccessActionSummary, canManageSettings: bo
   if (!decision) return null;
 
   if (decision.state === 'consent_required') {
-    if (canManageSettings && decision.nextStep?.href === '/onboarding') {
-      return { href: '/onboarding', external: false, label: decision.nextStep.label || 'Review Microsoft permission setup' };
+    if (canManageSettings && (decision.nextStep?.href === '/onboarding' || decision.nextStep?.href === '/api/workspaces/current/consent/start')) {
+      return { href: '/settings#connection', external: false, label: decision.nextStep.label || 'Review Microsoft permission setup' };
     }
     return null;
   }

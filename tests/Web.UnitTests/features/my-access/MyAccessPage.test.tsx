@@ -191,24 +191,35 @@ describe('MyAccessPage', () => {
     expect(within(updateAction).queryByText(/^Required role:/)).toBeNull();
   });
 
-  it('offers consent navigation only for an API-supported setup flow to a settings manager', () => {
+  it('routes API consent markers to workspace connection settings only for a settings manager', () => {
+    const fetchSpy = vi.fn();
+    vi.stubGlobal('fetch', fetchSpy);
     const currentSnapshot = snapshot({
-      capabilities: capabilities.map(capability => decision(capability, capability === 'users.update'
-        ? { state: 'consent_required', reasonCode: 'consent_required', nextStep: { label: 'Review setup', href: '/onboarding' } }
-        : {})),
+      capabilities: capabilities.map(capability => decision(capability,
+        capability === 'users.create'
+          ? { state: 'consent_required', reasonCode: 'consent_required', nextStep: { label: 'Review setup', href: '/api/workspaces/current/consent/start' } }
+          : capability === 'users.update'
+            ? { state: 'consent_required', reasonCode: 'consent_required', nextStep: { label: 'Unsupported setup', href: '/api/workspaces/current/consent/start?unsupported=true' } }
+            : {})),
     });
-    const { unmount } = renderPage({ currentSnapshot });
-    expect(screen.queryByRole('link', { name: 'Review setup' })).toBeNull();
-    unmount();
-
     const managerSession = {
       ...session,
       workspaceAccess: { role: 'workspace_owner', canManageSettings: true },
     } satisfies AppSession;
     const onNavigate = vi.fn();
-    renderPage({ currentSession: managerSession, currentSnapshot, onNavigate });
-    fireEvent.click(screen.getByRole('link', { name: 'Review setup' }));
-    expect(onNavigate).toHaveBeenCalledWith('/onboarding');
+    const { unmount } = renderPage({ currentSession: managerSession, currentSnapshot, onNavigate });
+    const setupLink = screen.getByRole('link', { name: 'Review setup' });
+    expect(setupLink.getAttribute('href')).toBe('/settings#connection');
+    expect(screen.queryByRole('link', { name: 'Unsupported setup' })).toBeNull();
+    fireEvent.click(setupLink);
+    expect(onNavigate).toHaveBeenCalledWith('/settings#connection');
+    expect(fetchSpy).not.toHaveBeenCalled();
+    unmount();
+
+    renderPage({ currentSnapshot });
+    expect(screen.queryByRole('link', { name: 'Review setup' })).toBeNull();
+    expect(screen.getAllByText(/contact your workspace administrator/).length).toBeGreaterThan(0);
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
 
   it('marks_graph_authoritative_workspace_administration_actions_unavailable_without_hiding_platform_decisions', () => {
