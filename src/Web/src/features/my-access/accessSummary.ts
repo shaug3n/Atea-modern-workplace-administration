@@ -197,6 +197,10 @@ function summarizeGroup(
     };
   }
 
+  if (capabilities.length === 0) {
+    return { state: 'not_applicable', workspaceGateState: null, actions: [] };
+  }
+
   if (moduleGate) {
     const evidence = snapshot.workspaceModules?.find(item => item.module === moduleGate);
     if (!evidence) {
@@ -208,10 +212,6 @@ function summarizeGroup(
     if (!evidence.effective) {
       return gatedGroup(capabilities, snapshot, 'workspace_not_granted');
     }
-  }
-
-  if (capabilities.length === 0) {
-    return { state: 'not_applicable', workspaceGateState: null, actions: [] };
   }
 
   if (snapshot.sourceState !== 'graph_authoritative') {

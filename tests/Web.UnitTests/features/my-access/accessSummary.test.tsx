@@ -99,13 +99,18 @@ describe('summarizeAccess', () => {
         item.module === 'authentication-campaigns' ? { ...item, effective: false, grantSource: 'none' } : item),
     });
     expect(module(summarizeAccess(notGranted, session), 'authentication-campaigns').read.state).toBe('workspace_not_granted');
+    expect(module(summarizeAccess(notGranted, session), 'authentication-campaigns').write.state).toBe('not_applicable');
 
     const disabled = snapshot({
       workspaceModules: snapshot().workspaceModules?.map(item =>
         item.module === 'authentication-campaigns' ? { ...item, enabled: false, effective: false } : item),
     });
     expect(module(summarizeAccess(disabled, session), 'authentication-campaigns').read.state).toBe('module_disabled');
-    expect(module(summarizeAccess(snapshot({ workspaceModules: [] }), session), 'authentication-campaigns').read.state).toBe('unavailable');
+    expect(module(summarizeAccess(disabled, session), 'authentication-campaigns').write.state).toBe('not_applicable');
+
+    const missingModule = snapshot({ workspaceModules: [] });
+    expect(module(summarizeAccess(missingModule, session), 'authentication-campaigns').read.state).toBe('unavailable');
+    expect(module(summarizeAccess(missingModule, session), 'authentication-campaigns').write.state).toBe('not_applicable');
   });
 
   it('keeps campaign consent and PIM evidence distinct from missing API decisions', () => {
