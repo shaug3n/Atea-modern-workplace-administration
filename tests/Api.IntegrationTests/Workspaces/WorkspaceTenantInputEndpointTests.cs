@@ -130,7 +130,7 @@ public sealed class WorkspaceTenantInputEndpointTests
     private static WebApplicationFactory<Program> CreateFactory(
         RecordingProvisioningService provisioning,
         StubTenantResolver resolver) =>
-        new WebApplicationFactory<Program>().WithWebHostBuilder(builder => builder.ConfigureAppConfiguration((_, config) =>
+        new ApiIntegrationTestFactory().WithWebHostBuilder(builder => builder.ConfigureAppConfiguration((_, config) =>
         {
             config.AddInMemoryCollection(new Dictionary<string, string?>
             {
