@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import React from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AuditActivityPage, type AuditEventsResponse } from '../../../../src/Web/src/features/audit/AuditActivityPage';
@@ -32,7 +32,15 @@ const response: AuditEventsResponse = {
 };
 
 describe('AuditActivityPage', () => {
-  afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
+  afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.useRealTimers(); });
+
+  async function flushPromises() {
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+  }
 
   it('renders workspace audit events with safe correlation references', async () => {
     render(<AuditActivityPage loadAuditEvents={async () => response} />);
@@ -63,6 +71,112 @@ describe('AuditActivityPage', () => {
     await waitFor(() => expect(screen.getByRole('alert').textContent).toContain('Audit activity is unavailable. Try again later.'));
     expect(document.body.textContent).not.toContain('raw Graph payload');
     expect(document.body.textContent).not.toContain('access_token');
+  });
+
+  it('marks_the_activity_loading_state_busy_until_the_first_response', async () => {
+    let finish!: (value: AuditEventsResponse) => void;
+    const pending = new Promise<AuditEventsResponse>(resolve => { finish = resolve; });
+    render(<AuditActivityPage loadAuditEvents={() => pending} />);
+
+    expect(screen.getByRole('status').getAttribute('aria-busy')).toBe('true');
+    await act(async () => { finish(response); });
+    expect(await screen.findByText('Disabled user')).toBeTruthy();
+  });
+
+  it('debounces_text_filters_for_300ms_and_resets_pagination_after_apply', async () => {
+    vi.useFakeTimers();
+    const loadAuditEvents = vi.fn()
+      .mockResolvedValueOnce({ ...response, nextContinuationToken: 'page-2' })
+      .mockResolvedValue({ ...response, nextContinuationToken: 'page-3' });
+    render(<AuditActivityPage loadAuditEvents={loadAuditEvents} />);
+    await flushPromises();
+    expect(loadAuditEvents).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Load next page' }));
+    await flushPromises();
+    expect(loadAuditEvents).toHaveBeenCalledTimes(2);
+    expect(loadAuditEvents.mock.calls[1][0]).toMatchObject({ continuationToken: 'page-2' });
+
+    fireEvent.change(screen.getByRole('textbox', { name: 'Person' }), { target: { value: 'actor-final' } });
+    fireEvent.change(screen.getByRole('textbox', { name: /Action/ }), { target: { value: 'action-final' } });
+    await act(async () => { await vi.advanceTimersByTimeAsync(299); });
+    expect(loadAuditEvents).toHaveBeenCalledTimes(2);
+    expect(loadAuditEvents.mock.calls[1][0]).toMatchObject({ continuationToken: 'page-2' });
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+    await flushPromises();
+    expect(loadAuditEvents).toHaveBeenCalledTimes(3);
+    expect(loadAuditEvents.mock.calls[2][0]).toMatchObject({
+      actorObjectId: 'actor-final',
+      action: 'action-final',
+      continuationToken: null,
+    });
+  });
+
+  it('applies_outcome_immediately_with_the_visible_text_draft', async () => {
+    vi.useFakeTimers();
+    const loadAuditEvents = vi.fn()
+      .mockResolvedValueOnce({ ...response, nextContinuationToken: 'page-2' })
+      .mockResolvedValue(response);
+    render(<AuditActivityPage loadAuditEvents={loadAuditEvents} />);
+    await flushPromises();
+
+    fireEvent.change(screen.getByRole('textbox', { name: 'Person' }), { target: { value: 'draft-actor' } });
+    fireEvent.change(screen.getByRole('textbox', { name: /Action/ }), { target: { value: 'draft-action' } });
+    expect(loadAuditEvents).toHaveBeenCalledTimes(1);
+    fireEvent.change(screen.getByRole('combobox', { name: /Outcome/ }), { target: { value: 'denied' } });
+    await flushPromises();
+
+    expect(loadAuditEvents).toHaveBeenCalledTimes(2);
+    expect(loadAuditEvents.mock.calls[1][0]).toMatchObject({
+      actorObjectId: 'draft-actor',
+      action: 'draft-action',
+      outcome: 'denied',
+      continuationToken: null,
+    });
+    await act(async () => { await vi.advanceTimersByTimeAsync(300); });
+    expect(loadAuditEvents).toHaveBeenCalledTimes(2);
+  });
+
+  it('ignores_stale_filter_responses', async () => {
+    vi.useFakeTimers();
+    let finishOld!: (value: AuditEventsResponse) => void;
+    let finishNew!: (value: AuditEventsResponse) => void;
+    const oldResponse = new Promise<AuditEventsResponse>(resolve => { finishOld = resolve; });
+    const newResponse = new Promise<AuditEventsResponse>(resolve => { finishNew = resolve; });
+    const loadAuditEvents = vi.fn()
+      .mockResolvedValueOnce(response)
+      .mockReturnValueOnce(oldResponse)
+      .mockReturnValueOnce(newResponse);
+    render(<AuditActivityPage loadAuditEvents={loadAuditEvents} />);
+    await flushPromises();
+
+    const action = screen.getByRole('textbox', { name: /Action/ });
+    fireEvent.change(action, { target: { value: 'old' } });
+    await act(async () => { await vi.advanceTimersByTimeAsync(300); });
+    expect(loadAuditEvents).toHaveBeenCalledTimes(2);
+    fireEvent.change(action, { target: { value: 'new' } });
+    await act(async () => { await vi.advanceTimersByTimeAsync(300); });
+    expect(loadAuditEvents).toHaveBeenCalledTimes(3);
+
+    await act(async () => { finishNew({ ...response, items: [{ ...response.items[0], targetId: 'new-result' }] }); });
+    await flushPromises();
+    expect(screen.getAllByText('new-result').length).toBeGreaterThan(0);
+    await act(async () => { finishOld({ ...response, items: [{ ...response.items[0], targetId: 'old-result' }] }); });
+    await flushPromises();
+    expect(screen.getAllByText('new-result').length).toBeGreaterThan(0);
+    expect(screen.queryByText('old-result')).toBeNull();
+  });
+
+  it('cancels_pending_filter_debounce_on_unmount', async () => {
+    vi.useFakeTimers();
+    const loadAuditEvents = vi.fn().mockResolvedValue(response);
+    const { unmount } = render(<AuditActivityPage loadAuditEvents={loadAuditEvents} />);
+    await flushPromises();
+    fireEvent.change(screen.getByRole('textbox', { name: 'Person' }), { target: { value: 'pending' } });
+    unmount();
+    await act(async () => { await vi.advanceTimersByTimeAsync(300); });
+    expect(loadAuditEvents).toHaveBeenCalledTimes(1);
   });
 
   it('retries audit loading after a transient read failure', async () => {

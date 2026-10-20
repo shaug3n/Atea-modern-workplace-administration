@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useApi } from '../../auth/useApi';
 import { messages } from '../../app/messages';
 import { WorkspacePageHeader } from '../../components/WorkspacePageHeader';
@@ -67,10 +67,22 @@ function LoadedAuditActivityPage({ loadAuditEvents, authorizationUnavailable, on
   const issueReporter = useWorkspaceIssueReporter();
   const [result, setResult] = useState<AuditEventsResponse | null>(null);
   const [filters, setFilters] = useState<AuditFilters>({ actorObjectId: '', action: '', outcome: '' });
+  const [draftFilters, setDraftFilters] = useState<AuditFilters>({ actorObjectId: '', action: '', outcome: '' });
   const [continuationToken, setContinuationToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
   const [retry, setRetry] = useState(0);
+  const filterDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => () => {
+    if (filterDebounce.current !== null) clearTimeout(filterDebounce.current);
+  }, []);
+
+  const applyFilters = (nextFilters: AuditFilters) => {
+    if (sameAuditFilters(filters, nextFilters)) return;
+    setFilters(nextFilters);
+    setContinuationToken(null);
+  };
 
   useEffect(() => {
     if (authorizationUnavailable) return;
@@ -103,24 +115,26 @@ function LoadedAuditActivityPage({ loadAuditEvents, authorizationUnavailable, on
       <p className="audit-note" role="note">Shows actions taken in Atea Unified Workplace. For a complete record, use Microsoft 365 audit logs.</p>
 
       <AuditFiltersBar
-        filters={filters}
-        onChange={(nextFilters) => {
-          setFilters(nextFilters);
-          setContinuationToken(null);
+        filters={draftFilters}
+        onChange={(nextFilters, immediate) => {
+          setDraftFilters(nextFilters);
+          if (filterDebounce.current !== null) clearTimeout(filterDebounce.current);
+          filterDebounce.current = null;
+          if (immediate) {
+            applyFilters(nextFilters);
+            return;
+          }
+          filterDebounce.current = setTimeout(() => {
+            filterDebounce.current = null;
+            applyFilters(nextFilters);
+          }, 300);
         }}
       />
 
       {!authorizationUnavailable && !loading && !failed && result?.partialData && <p className="workspace-partial-notice" role="status">Partial results. Check Notifications for details.</p>}
 
       {authorizationUnavailable && <WorkspaceDataState state="unavailable" message="Data cannot be shown right now. Check Notifications for details." onRetry={onAuthorizationRetry ? () => void onAuthorizationRetry() : undefined} />}
-      {!authorizationUnavailable && state === 'loading' && (
-        <div className="async-state async-state--loading" role="status" aria-live="polite">
-          <span className="async-state__bar" />
-          <span className="async-state__bar" />
-          <span className="async-state__bar" />
-          <span>{messages.auditLoading}</span>
-        </div>
-      )}
+      {!authorizationUnavailable && state === 'loading' && <WorkspaceDataState state="loading" message={messages.auditLoading} />}
       {!authorizationUnavailable && state === 'error' && <WorkspaceDataState state="unavailable" message={messages.auditUnavailable} onRetry={() => setRetry(value => value + 1)} />}
       {!authorizationUnavailable && state === 'empty' && <WorkspaceDataState state="empty" message={messages.auditNoResults} />}
       {!authorizationUnavailable && state === 'ready' && result && (
@@ -137,7 +151,7 @@ function LoadedAuditActivityPage({ loadAuditEvents, authorizationUnavailable, on
   );
 }
 
-function AuditFiltersBar({ filters, onChange }: { filters: AuditFilters; onChange: (filters: AuditFilters) => void }) {
+function AuditFiltersBar({ filters, onChange }: { filters: AuditFilters; onChange: (filters: AuditFilters, immediate: boolean) => void }) {
   return (
     <form className="audit-filters" onSubmit={(event) => event.preventDefault()}>
       <label>
@@ -145,7 +159,7 @@ function AuditFiltersBar({ filters, onChange }: { filters: AuditFilters; onChang
         <input
           value={filters.actorObjectId}
           placeholder={messages.auditActorPlaceholder}
-          onChange={(event) => onChange({ ...filters, actorObjectId: event.target.value })}
+          onChange={(event) => onChange({ ...filters, actorObjectId: event.target.value }, false)}
         />
       </label>
       <label>
@@ -153,12 +167,12 @@ function AuditFiltersBar({ filters, onChange }: { filters: AuditFilters; onChang
         <input
           value={filters.action}
           placeholder={messages.auditActionPlaceholder}
-          onChange={(event) => onChange({ ...filters, action: event.target.value })}
+          onChange={(event) => onChange({ ...filters, action: event.target.value }, false)}
         />
       </label>
       <label>
         {messages.auditOutcomeFilter}
-        <select value={filters.outcome} onChange={(event) => onChange({ ...filters, outcome: event.target.value })}>
+        <select value={filters.outcome} onChange={(event) => onChange({ ...filters, outcome: event.target.value }, true)}>
           <option value="">{messages.auditAnyOutcome}</option>
           <option value="succeeded">Succeeded</option>
           <option value="denied">Denied</option>
@@ -167,6 +181,12 @@ function AuditFiltersBar({ filters, onChange }: { filters: AuditFilters; onChang
       </label>
     </form>
   );
+}
+
+function sameAuditFilters(left: AuditFilters, right: AuditFilters) {
+  return left.actorObjectId === right.actorObjectId
+    && left.action === right.action
+    && left.outcome === right.outcome;
 }
 
 async function fetchAuditEvents(api: (path: string, init?: RequestInit) => Promise<Response>, filters?: AuditFilters & { continuationToken?: string | null }) {
