@@ -1,5 +1,5 @@
 import React from 'react';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { WorkspaceSettingsPage } from '../../../../src/Web/src/features/workspace-settings/WorkspaceSettingsPage';
 
@@ -53,5 +53,17 @@ describe('WorkspaceSettingsPage', () => {
     expect(document.body.textContent).not.toContain('private settings detail');
     screen.getByRole('button', { name: 'Retry' }).click();
     await waitFor(() => expect(screen.queryByRole('alert')).toBeNull());
+  });
+
+  it('uses_the_shared_loading_and_permission_states', async () => {
+    let finish!: (value: { displayName: string; enabledModules: string[]; defaultColumns: string[]; defaultFilters: Record<string, string>; supportInstructions: string; defaultTheme: 'light'; access: { state: string } }) => void;
+    const pending = new Promise<Parameters<typeof finish>[0]>(resolve => { finish = resolve; });
+    render(<WorkspaceSettingsPage loadSettings={() => pending} />);
+    expect(screen.getByRole('status').textContent).toContain('Loading workspace settings…');
+    expect(document.querySelector('.loading-skeleton')).toBeTruthy();
+
+    await act(async () => { finish({ displayName: '', enabledModules: [], defaultColumns: [], defaultFilters: {}, supportInstructions: '', defaultTheme: 'light', access: { state: 'hidden' } }); });
+    expect(await screen.findByRole('heading', { name: 'Permission required' })).toBeTruthy();
+    expect(document.querySelector('.workspace-data-state--permission')).toBeTruthy();
   });
 });

@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { formatDate, formatDateTime } from '../../format/dateTime';
 import { useApi } from '../../auth/useApi';
 import { useFocusContainment } from '../../components/useFocusContainment';
+import { LoadingSkeleton } from '../../components/LoadingSkeleton';
+import { WorkspaceDataState } from '../../components/WorkspaceDataState';
 
 type Membership = { id: string; tenantObjectId: string; email: string; platformRole: 'member' | 'customer_admin' | string; moduleKeys?: string[]; createdAt: string };
 type Invitation = { id: string; email: string; displayName: string; role: 'member' | 'customer_admin' | string; moduleKeys?: string[]; expiresAt: string; redeemedAt: string | null; revokedAt: string | null };
@@ -140,7 +142,9 @@ export function WorkspaceAccessPage({ isOwner = false, canManageModules = false,
   };
 
   const header = <header className="page-header"><div>{!embedded && <p className="eyebrow">Settings</p>}{embedded ? <h2 id="workspace-access-title" tabIndex={-1}>Access</h2> : <h1 id="workspace-access-title">Workspace access</h1>}<p>Grant application access to people who already exist in your Microsoft Entra tenant. Microsoft 365 actions still follow each person’s Entra roles and PIM activation.</p></div></header>;
-  if (loading || loadError || !data) return <section className="content-panel workspace-access-page" aria-labelledby="workspace-access-title">{header}{loading ? <p role="status">Loading workspace access…</p> : <div className="async-state" role="alert">Workspace members and invitations are unavailable right now. <button type="button" onClick={() => setRetry(value => value + 1)}>Retry</button></div>}</section>;
+  if (loading || loadError || !data) return <section className="content-panel workspace-access-page" aria-labelledby="workspace-access-title">{header}{loading
+    ? <LoadingSkeleton label="Loading workspace access…" />
+    : <WorkspaceDataState state="unavailable" message="Workspace members and invitations are unavailable right now." onRetry={() => setRetry(value => value + 1)} />}</section>;
 
   const pendingInvitations = data.invitations.filter(invitation => !invitation.redeemedAt && !invitation.revokedAt);
   return <section className="content-panel workspace-access-page" aria-labelledby="workspace-access-title">

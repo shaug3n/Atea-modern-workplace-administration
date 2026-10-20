@@ -1,5 +1,5 @@
 import React from 'react';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { WorkspaceModulesPage } from '../../../../src/Web/src/features/workspace-settings/WorkspaceModulesPage';
 import { WorkspaceAccessPage } from '../../../../src/Web/src/features/workspace-access/WorkspaceAccessPage';
@@ -23,6 +23,19 @@ describe('Settings data pages', () => {
     expect(screen.getByRole('switch', { name: 'Feedback' })).toBeTruthy();
     expect((screen.getByRole('switch', { name: 'About' }) as HTMLInputElement).checked).toBe(false);
     expect((screen.getByRole('switch', { name: 'Feedback' }) as HTMLInputElement).checked).toBe(false);
+  });
+
+  it('uses_shared_loading_and_unavailable_states_for_modules', async () => {
+    let finish!: (response: { ok: boolean }) => void;
+    api.mockReturnValueOnce(new Promise(resolve => { finish = resolve; }));
+    render(<WorkspaceModulesPage />);
+    expect(screen.getByRole('status').textContent).toContain('Loading modules…');
+    expect(document.querySelector('.loading-skeleton')).toBeTruthy();
+
+    await act(async () => { finish({ ok: false }); });
+    expect(await screen.findByRole('alert')).toBeTruthy();
+    expect(document.querySelector('.workspace-data-state--unavailable')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy();
   });
 
   it('lets the owner deliberately enable the license hygiene module', async () => {
@@ -53,6 +66,19 @@ describe('Settings data pages', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
     await waitFor(() => expect(screen.getByText('No workspace members have been added yet.')).toBeTruthy());
     expect(screen.getByText('No workspace members have been added yet.')).toBeTruthy();
+  });
+
+  it('uses_shared_loading_and_unavailable_states_for_access', async () => {
+    let finish!: (response: { ok: boolean }) => void;
+    api.mockReturnValueOnce(new Promise(resolve => { finish = resolve; }));
+    render(<WorkspaceAccessPage />);
+    expect(screen.getByRole('status').textContent).toContain('Loading workspace access…');
+    expect(document.querySelector('.loading-skeleton')).toBeTruthy();
+
+    await act(async () => { finish({ ok: false }); });
+    expect(await screen.findByRole('alert')).toBeTruthy();
+    expect(document.querySelector('.workspace-data-state--unavailable')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy();
   });
 
   it('allows deliberate hygiene assignment only when the module is enabled', async () => {

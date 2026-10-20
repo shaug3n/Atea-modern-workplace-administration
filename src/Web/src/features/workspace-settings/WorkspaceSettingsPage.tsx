@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useApi } from '../../auth/useApi';
 import { messages } from '../../messages/en';
+import { LoadingSkeleton } from '../../components/LoadingSkeleton';
+import { WorkspaceDataState } from '../../components/WorkspaceDataState';
 import { WorkspaceAdminForm } from './WorkspaceAdminForm';
 
 export type WorkspaceSettings = { displayName: string; enabledModules: string[]; defaultColumns: string[]; defaultFilters: Record<string, string>; supportInstructions: string; defaultTheme: 'light' | 'dark'; access: { state: string } };
@@ -24,9 +26,9 @@ function LoadedWorkspaceSettingsPage({ loader, saver, embedded }: { loader: Sett
   useEffect(() => { let cancelled = false; setLoading(true); setFailed(false); setSettings(null); loader().then(value => { if (!cancelled) { setSettings(value); } }).catch(() => { if (!cancelled) setFailed(true); }).finally(() => { if (!cancelled) setLoading(false); }); return () => { cancelled = true; }; }, [loader, retry]);
   return <section className="settings-page content-panel" aria-labelledby="general-title">
     <header className="page-header"><div>{!embedded && <p className="eyebrow">Settings</p>}{embedded ? <h2 id="general-title" tabIndex={-1}>General</h2> : <h1 id="general-title">General</h1>}<p>Update the workspace name and customer-facing preferences.</p></div></header>
-    {loading && <p role="status">Loading workspace settings…</p>}
-    {!loading && failed && <div className="async-state" role="alert">Workspace settings are unavailable. <button type="button" onClick={() => setRetry(value => value + 1)}>{messages.retry}</button></div>}
-    {!loading && !failed && settings?.access.state !== 'allowed' && <div className="permission-panel"><h2>{messages.permissionRequiredTitle}</h2><p>{messages.permissionRequiredBody}</p></div>}
+    {loading && <LoadingSkeleton label="Loading workspace settings…" />}
+    {!loading && failed && <WorkspaceDataState state="unavailable" message="Workspace settings are unavailable." onRetry={() => setRetry(value => value + 1)} retryLabel={messages.retry} />}
+    {!loading && !failed && settings?.access.state !== 'allowed' && <div className="permission-panel"><h2>{messages.permissionRequiredTitle}</h2><WorkspaceDataState kind="permission" message={messages.permissionRequiredBody} /></div>}
     {!loading && !failed && settings?.access.state === 'allowed' && <>{saver && <WorkspaceAdminForm settings={settings} saveSettings={async next => { const saved = await saver(next); setSettings(saved); return saved; }} />}</>}
   </section>;
 }
