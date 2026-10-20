@@ -93,6 +93,9 @@ describe('OverviewPage', () => {
       expect(defaultPreventedByOverview).toBe(false);
       expect(navigate).not.toHaveBeenCalled();
     }
+    users.addEventListener('click', event => event.preventDefault(), { capture: true, once: true });
+    fireEvent.click(users);
+    expect(navigate).not.toHaveBeenCalled();
   });
 
   it('does_not_render_links_or_numbers_for_restricted_sections', async () => {

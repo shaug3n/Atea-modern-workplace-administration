@@ -11,6 +11,7 @@ import { WorkspaceDataState } from '../../components/WorkspaceDataState';
 import { DateTime } from '../../components/DateTime';
 import { useWorkspaceIssueReporter } from '../../notifications/WorkspaceNotifications';
 import { KpiFilterTile } from '../../components/KpiFilterTile';
+import { shouldHandleSpaNavigation } from '../../app/navigation';
 
 export type ConnectionHealth = { status: ConnectionState; lastVerifiedAt: string | null };
 export type ConsentDescriptor = { authorizationUrl: string };
@@ -234,7 +235,7 @@ function LoadedOverviewMetrics({ loadOverview, session, onNavigate }: { loadOver
     }
   };
   const navigateKpi = (path: string) => (event: React.MouseEvent<HTMLAnchorElement>) => {
-    if (onNavigate && event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey) {
+    if (onNavigate && shouldHandleSpaNavigation(event)) {
       event.preventDefault();
       onNavigate(path);
     }

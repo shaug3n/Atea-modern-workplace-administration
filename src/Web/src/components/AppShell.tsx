@@ -11,6 +11,7 @@ import { useWorkspaceNotifications } from '../notifications/WorkspaceNotificatio
 import { AccessTransparencyProvider } from '../features/my-access/accessContext';
 import { AccountAccessMenu } from '../features/my-access/AccountAccessMenu';
 import { readWebBuildMetadata } from '../features/about/buildMetadata';
+import { shouldHandleSpaNavigation } from '../app/navigation';
 
 const webBuild = readWebBuildMetadata(import.meta.env);
 
@@ -57,9 +58,7 @@ export function AppShell({ children, capabilities, currentPath, session, onNavig
       <a className="skip-link" href="#main-content">{messages.skipToContent}</a>
       <header className="app-header">
         <a className="brand-link" href="/overview" aria-label={messages.homeLinkLabel} onClick={(event) => {
-          if (!onNavigate) {
-            return;
-          }
+          if (!onNavigate || !shouldHandleSpaNavigation(event)) return;
           event.preventDefault();
           onNavigate('/overview');
         }}>
@@ -73,7 +72,7 @@ export function AppShell({ children, capabilities, currentPath, session, onNavig
         </div>
         <div className="app-header__account"><AccountSummary session={session} /><AccountAccessMenu session={session} onNavigate={path => { setMobileNavOpen(false); onNavigate?.(path); }} /></div>
         {canViewAbout && <a className="app-build-chip" href="/about/system-versions" title={`Web build ${webBuild.productVersion}, commit ${webBuild.commit}, branch ${webBuild.branch}`} aria-label={`System versions, version ${webBuild.productVersion}, commit ${webBuild.commit}, branch ${webBuild.branch}`} onClick={event => {
-          if (!onNavigate) return;
+          if (!onNavigate || !shouldHandleSpaNavigation(event)) return;
           event.preventDefault();
           onNavigate('/about/system-versions');
         }}>
@@ -88,8 +87,12 @@ export function AppShell({ children, capabilities, currentPath, session, onNavig
           <PrimaryNav capabilities={capabilities} session={session} currentPath={currentPath} onNavigate={path => { setMobileNavOpen(false); onNavigate?.(path); }} />
           {mobileNavOpen && <div className="mobile-nav-extras"><ThemeToggle variant="row" /><AccountSummary session={session} /><AccountAccessMenu session={session} onNavigate={path => { setMobileNavOpen(false); onNavigate?.(path); }} /></div>}
         </div>
-        <main id="main-content" className="app-main" aria-labelledby="page-title" tabIndex={-1}>
-          {breadcrumbs.length > 1 && <nav className="breadcrumbs" aria-label="Breadcrumbs"><ol>{breadcrumbs.map((item, index) => <li key={item.href}>{index === breadcrumbs.length - 1 ? <span aria-current="page">{item.label}</span> : linkable.includes(item.href) ? <a href={item.href} onClick={event => { if (onNavigate) { event.preventDefault(); onNavigate(item.href); } }}>{item.label}</a> : <span>{item.label}</span>}</li>)}</ol></nav>}
+        <main id="main-content" className="app-main" aria-label={messages.mainLandmarkLabel} tabIndex={-1}>
+          {breadcrumbs.length > 1 && <nav className="breadcrumbs" aria-label="Breadcrumbs"><ol>{breadcrumbs.map((item, index) => <li key={item.href}>{index === breadcrumbs.length - 1 ? <span aria-current="page">{item.label}</span> : linkable.includes(item.href) ? <a href={item.href} onClick={event => {
+            if (!onNavigate || !shouldHandleSpaNavigation(event)) return;
+            event.preventDefault();
+            onNavigate(item.href);
+          }}>{item.label}</a> : <span>{item.label}</span>}</li>)}</ol></nav>}
           {children}
         </main>
       </div>
