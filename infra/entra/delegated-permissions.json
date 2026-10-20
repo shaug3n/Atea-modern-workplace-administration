@@ -4,6 +4,10 @@
       "resourceAppId": "00000003-0000-0000-c000-000000000000",
       "resourceAccess": [
         {
+          "name": "AuditLog.Read.All",
+          "type": "Scope"
+        },
+        {
           "name": "BitlockerKey.Read.All",
           "type": "Scope"
         },
@@ -17,6 +21,10 @@
         },
         {
           "name": "DeviceLocalCredential.ReadBasic.All",
+          "type": "Scope"
+        },
+        {
+          "name": "DeviceManagementConfiguration.Read.All",
           "type": "Scope"
         },
         {

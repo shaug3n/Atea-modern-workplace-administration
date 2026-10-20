@@ -34,10 +34,13 @@ when rendering PIM activation requirements. `RoleManagement.Read.Directory`
 is used for that read; the policy response is never treated as a permission
 grant and does not replace the signed-in user's active role or PIM state.
 
-For the optional Devices and authentication-method modules, also add these
+For optional Devices, authentication-method, and authentication-campaign
+modules, also add these
 delegated permissions to the API registration and grant admin consent:
 
+- `AuditLog.Read.All`
 - `DeviceManagementManagedDevices.Read.All`
+- `DeviceManagementConfiguration.Read.All`
 - `DeviceManagementManagedDevices.ReadWrite.All`
 - `DeviceManagementManagedDevices.PrivilegedOperations.All`
 - `BitlockerKey.ReadBasic.All` (BitLocker metadata)
@@ -46,6 +49,9 @@ delegated permissions to the API registration and grant admin consent:
 - `DeviceLocalCredential.Read.All` (Windows LAPS password reveal)
 - `UserAuthenticationMethod.Read.All`
 - `UserAuthenticationMethod.ReadWrite.All`
+
+Admin consent now includes `AuditLog.Read.All` and
+`DeviceManagementConfiguration.Read.All` for these optional capabilities.
 
 If these optional permissions are not granted, the platform intentionally
 hides the corresponding Devices and MFA/passkey operational sections while

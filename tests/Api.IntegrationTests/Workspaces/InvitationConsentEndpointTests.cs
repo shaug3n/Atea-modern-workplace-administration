@@ -267,7 +267,7 @@ public sealed class InvitationConsentEndpointTests
         var readRepository = new FixtureInvitationReadRepository(lookup);
         var fixtureChallenges = new FixtureConsentChallengeRepository();
         challenges = fixtureChallenges;
-        return new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
+        return new ApiIntegrationTestFactory().WithWebHostBuilder(builder =>
         {
             builder.UseEnvironment("Development");
             builder.ConfigureAppConfiguration((_, configuration) => configuration.AddInMemoryCollection(new Dictionary<string, string?>
