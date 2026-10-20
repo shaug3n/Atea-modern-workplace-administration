@@ -1152,6 +1152,7 @@ p {
   display: grid;
   place-items: center;
   overflow: auto;
+  overscroll-behavior: contain;
   padding: var(--atea-space-6);
   background: color-mix(in srgb, #0b1012 68%, transparent);
 }
@@ -1162,6 +1163,7 @@ p {
   width: min(100%, 38rem);
   max-height: min(90vh, 52rem);
   overflow: auto;
+  overscroll-behavior: contain;
   padding: var(--atea-space-6);
   border: 1px solid var(--uw-border-strong);
   border-radius: var(--atea-radius-lg, 1rem);
