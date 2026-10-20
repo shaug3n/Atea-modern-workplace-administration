@@ -26,6 +26,8 @@ Task 9 snapshot, 9 October 2026. “Current” means implemented in this branch;
 
 The precise current gate is the API, not this table. See [Graph scope catalog](../src/Api/Infrastructure/Graph/GraphScopeCatalog.cs), [role capability matrix](security/entra-role-capability-matrix.md), and the device recovery implementation for per-target decisions.
 
+Navigation discoverability does not grant authorization; the API remains the enforcement boundary. The W2 UI consistency changes do not alter any module, route, Graph-scope, or workspace-permission contract.
+
 The standalone **Identity & Security** page/module is deferred and is not
 implemented in this branch. Existing user-detail security actions remain part
 of the supported Users workflow; there is no standalone Identity & Security

@@ -112,9 +112,10 @@ accessibility, or audit checks.
 | --- | --- |
 | Access decision | `PermissionState` accepts a `CapabilityDecision`, children, and optional `reasonText`; hidden decisions render nothing, allowed decisions render children, and other states disable supported native buttons, inputs, selects, textareas, and links among its children and explain the state. Custom React controls must disable their own actions for non-allowed decisions. Backend authorization remains the enforcement boundary. `DomainAccessChip` accepts a label and view decision/reason, with optional write decision/reason. `DisabledReason` accepts children, a required reason, and optional source of truth. |
 | Freshness | `DataFreshness` accepts a freshness state (`fresh`, `stale`, or `unavailable`), `partialData`, optional fetch time, message, labels, presentation, source, and refresh callback/state. Preserve the source response's actual freshness; do not label unavailable or partial data as fresh. |
-| Filters | `StatusPillFilter` is controlled by a label, option values/labels/counts/selected state, and `onToggle(value)`. `KpiFilterTile` is a controlled button with label, optional value/detail, selected state, and `onClick`. Keep the result set and selected state in the feature that owns the query. |
+| Filters | `StatusPillFilter` is controlled by a label, option values/labels/counts/selected state, and `onToggle(value)`. `KpiFilterTile` retains a controlled toggle-button mode (`selected`/`onClick`) and adds a native-link mode (`href`/`linkLabel`/optional SPA click handler) with no pressed state. Keep the result set and selected state in the feature that owns the query. Activity text filters apply after a 300 ms debounce; outcome selection applies immediately, including any visible text draft. |
 | Help | `InfoTip` accepts an accessible label and content; it exposes a button and a dialog popover. `ExplainerPanel` accepts a title, children, and optional id for persistent page-level explanation. |
-| Reasons | `ReasonDialog` extends the confirmation-dialog props with `onConfirm(reason)` and optional `reasonHint`; it trims and requires a non-empty reason before invoking the callback. The caller must submit that reason through the approved operation and preserve that operation's audit behavior. A required text field by itself is not an audit record. |
+| Reasons | `ReasonDialog` extends the confirmation-dialog props with `onConfirm(reason)`, optional `reasonHint`, and optional caller-controlled `extraFields?: ReactNode`; it trims and requires a non-empty reason before invoking the callback. The extra-fields slot is not itself an audit event or permission check. The caller must submit the reason through the approved operation and preserve that operation's audit behavior. A required text field by itself is not an audit record. |
+| Menus | `ActionMenu` uses a button-triggered menu pattern: Enter/Space/click or trigger ArrowDown opens on the first non-busy item; trigger ArrowUp opens on the last. Menu ArrowUp/ArrowDown wrap, Home/End move to the first/last non-busy item, and Escape closes and returns focus to the trigger. Busy items are skipped; `aria-disabled` items remain focusable but inert. Empty/all-busy menus keep focus on the trigger until dismissed. |
 | Loading | `WorkspaceDataState` supports loading, empty, unavailable, partial, permission, and stale states with optional retry/action details. `LoadingSkeleton` accepts an optional label and line count; the shared skeleton styling disables shimmer for reduced-motion preferences. Both expose status semantics for their own rendered state. |
 
 The async-state components do not set `aria-busy` on the page section, table,
@@ -130,8 +131,8 @@ Existing consumers worth checking when changing shared behavior include
 of a primitive such as `InfoTip`, `StatusPillFilter`, `ReasonDialog`, or
 `LoadingSkeleton` does not establish that every feature uses or validates that
 pattern. These primitives, along with `DomainAccessChip`, `DisabledReason`,
-`ExplainerPanel`, and `KpiFilterTile`, have no direct feature-page call site in
-this branch. Inspect real call sites and tests before treating a pattern as
-deployed behavior. Any new consumer should verify keyboard and screen-reader
-behavior, reason handling and audit integration where applicable, and
-graceful partial/unavailable states.
+and `ExplainerPanel`, have no direct feature-page call site in this branch.
+`KpiFilterTile` is used by Overview. Inspect real call sites and tests before
+treating a pattern as deployed behavior. Any new consumer should verify
+keyboard and screen-reader behavior, reason handling and audit integration
+where applicable, and graceful partial/unavailable states.
