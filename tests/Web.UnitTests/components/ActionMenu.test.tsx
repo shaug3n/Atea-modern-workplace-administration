@@ -68,7 +68,7 @@ describe('ActionMenu', () => {
     expect(document.activeElement).toBe(last);
   });
 
-  it('keeps_disabled_items_inert_and_handles_empty_menus', () => {
+  it('keeps_disabled_items_inert_and_handles_empty_and_all_busy_menus', () => {
     const onSelect = vi.fn();
     render(<ActionMenu label="Actions" items={[
       { label: 'Unavailable', onSelect, disabled: true },
@@ -83,6 +83,16 @@ describe('ActionMenu', () => {
     fireEvent.keyDown(screen.getByRole('menu'), { key: 'Escape' });
     expect(screen.queryByRole('menu')).toBeNull();
     expect(document.activeElement).toBe(trigger);
+
+    const busyMenu = render(<ActionMenu label="Busy actions" items={[{ label: 'Loading action', onSelect, busy: true }]} />);
+    const busyTrigger = screen.getByRole('button', { name: 'Busy actions' });
+    fireEvent.click(busyTrigger);
+    expect(screen.getByRole('menu', { name: 'Busy actions' })).toBeTruthy();
+    expect(document.activeElement).toBe(busyTrigger);
+    fireEvent.keyDown(screen.getByRole('menu', { name: 'Busy actions' }), { key: 'Escape' });
+    expect(screen.queryByRole('menu', { name: 'Busy actions' })).toBeNull();
+    expect(document.activeElement).toBe(busyTrigger);
+    busyMenu.unmount();
 
     const { unmount } = render(<ActionMenu label="Empty actions" items={[]} />);
     const emptyTrigger = screen.getByRole('button', { name: 'Empty actions' });
