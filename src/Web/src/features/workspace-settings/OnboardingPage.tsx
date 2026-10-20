@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useApi } from '../../auth/useApi';
 import { ConnectionStatusCard } from '../../components/ConnectionStatusCard';
+import { LoadingSkeleton } from '../../components/LoadingSkeleton';
 import { messages, type ConnectionState } from '../../messages/en';
 import { writePendingFlow } from '../invitations/pendingFlow';
 
@@ -76,7 +77,7 @@ export function OnboardingPage({ onNavigate, embedded = false }: { onNavigate?: 
     {embedded ? <h2 id="onboarding-title" tabIndex={-1}>Connection</h2> : <h1 id="onboarding-title">{messages.onboardingTitle}</h1>}
     <p>{messages.onboardingDescription}</p>
     {failed ? <div role="alert"><p>{messages.connectionUnavailable}</p>{correlationId && <p>{messages.correlationIdLabel}: <code>{correlationId}</code></p>}<button type="button" onClick={() => void load()}>{messages.retry}</button></div>
-      : !health ? <p role="status">{messages.connectionLoading}</p>
+      : !health ? <LoadingSkeleton label={messages.connectionLoading} />
         : <ConnectionStatusCard state={health.status} lastVerifiedAt={health.lastVerifiedAt} onCheck={() => void check()} onConsent={() => void consent()} consentUrl={consentUrl} actionPending={busy} actionError={error} />}
     {health?.status === 'connected' && <a href="/overview" onClick={event => { if (onNavigate) { event.preventDefault(); onNavigate('/overview'); } }}>{messages.onboardingContinue}</a>}
     <details className="setup-permissions" open={!embedded}>

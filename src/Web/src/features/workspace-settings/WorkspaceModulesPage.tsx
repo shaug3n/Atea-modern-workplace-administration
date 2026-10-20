@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useApi } from '../../auth/useApi';
 import { StatusBadge } from '../../components/StatusBadge';
+import { LoadingSkeleton } from '../../components/LoadingSkeleton';
+import { WorkspaceDataState } from '../../components/WorkspaceDataState';
 import { SettingsFormFooter } from './SettingsFormFooter';
 
 export const workspaceModules = [
@@ -58,8 +60,8 @@ export function WorkspaceModulesPage({ embedded = false }: { embedded?: boolean 
   };
   return <section className="settings-page" aria-labelledby="modules-title">
     <header className="page-header"><div>{!embedded && <p className="eyebrow">Settings</p>}{embedded ? <h2 id="modules-title" tabIndex={-1}>Modules</h2> : <h1 id="modules-title">Modules</h1>}<p>Enable services for this workspace. People only see modules that are enabled here and assigned to them.</p></div></header>
-    {loading && <p className="async-state" role="status">Loading modules…</p>}
-    {!loading && error && <div className="async-state" role="alert">{error} <button type="button" onClick={() => void load()}>Retry</button></div>}
+    {loading && <LoadingSkeleton label="Loading modules…" />}
+    {!loading && error && <WorkspaceDataState state="unavailable" message={error} onRetry={() => void load()} />}
     {!loading && !error && <>
     {dormantGrantCount > 0 && <p className="integration-note">{dormantGrantCount} existing member or invitation module grant{dormantGrantCount === 1 ? '' : 's'} are dormant because a module is disabled. They remain stored and will become effective again if you re-enable that module.</p>}
     <div className="module-settings-list">{workspaceModules.map(module => <label className="module-setting" key={module.key}>

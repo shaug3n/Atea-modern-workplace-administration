@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { readPendingFlow } from '../../../../src/Web/src/features/invitations/pendingFlow';
@@ -47,5 +47,16 @@ describe('OnboardingPage consent transaction', () => {
 
     expect(await screen.findByRole('alert')).toBeTruthy();
     expect(readPendingFlow()).toBeNull();
+  });
+
+  it('uses_the_shared_loading_skeleton_for_pending_connection_health', async () => {
+    let finish!: (response: Response) => void;
+    api.mockReturnValueOnce(new Promise(resolve => { finish = resolve; }));
+    render(<OnboardingPage />);
+    expect(screen.getByRole('status').textContent).toContain('Loading connection status…');
+    expect(document.querySelector('.loading-skeleton')).toBeTruthy();
+
+    await act(async () => { finish(Response.json({ status: 'connected', lastVerifiedAt: null })); });
+    expect(await screen.findByTestId('connection-status-card')).toBeTruthy();
   });
 });

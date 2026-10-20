@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import React from 'react';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { CapabilitySnapshot, CapabilityState } from '../../../src/Web/src/capabilities/capabilityTypes';
 import { PrimaryNav } from '../../../src/Web/src/components/PrimaryNav';
 
@@ -74,6 +74,36 @@ describe('PrimaryNav', () => {
 
     expect(screen.getByRole('link', { name: 'Licenses' }).getAttribute('aria-current')).toBe('page');
     expect(screen.getByRole('link', { name: 'Workspace Settings' })).toBeTruthy();
+  });
+
+  it('intercepts_only_unmodified_primary_clicks_and_preserves_prevented_events', () => {
+    const onNavigate = vi.fn();
+    render(<PrimaryNav capabilities={snapshot()} currentPath="/overview" onNavigate={onNavigate} />);
+    const users = screen.getByRole('link', { name: 'Users' });
+
+    expect(fireEvent.click(users)).toBe(false);
+    expect(onNavigate).toHaveBeenCalledWith('/users');
+    onNavigate.mockClear();
+
+    for (const modifiers of [{ ctrlKey: true }, { metaKey: true }, { shiftKey: true }, { altKey: true }, { button: 1 }]) {
+      let preventedBySpa = false;
+      const stopNavigation = (event: MouseEvent) => {
+        preventedBySpa = event.defaultPrevented;
+        event.preventDefault();
+      };
+      document.addEventListener('click', stopNavigation);
+      try {
+        fireEvent.click(users, modifiers);
+      } finally {
+        document.removeEventListener('click', stopNavigation);
+      }
+      expect(preventedBySpa).toBe(false);
+      expect(onNavigate).not.toHaveBeenCalled();
+    }
+
+    users.addEventListener('click', event => event.preventDefault(), { capture: true, once: true });
+    fireEvent.click(users);
+    expect(onNavigate).not.toHaveBeenCalled();
   });
 
   it('exposes Identity & Access and Services as keyboard-operable disclosures with reachable sublinks', () => {

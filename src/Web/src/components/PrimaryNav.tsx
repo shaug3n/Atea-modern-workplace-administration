@@ -4,6 +4,7 @@ import { messages } from '../app/messages';
 import { appRoutes, type NavigationGroup } from '../app/routes';
 import type { AppSession } from './TenantContextHeader';
 import { Icon } from './icons';
+import { shouldHandleSpaNavigation } from '../app/navigation';
 
 type NavGroup = { key: NavigationGroup; label: string; disclosure?: boolean };
 
@@ -58,7 +59,7 @@ export function PrimaryNav({ capabilities, session = { user: {}, workspace: { id
           <ul id={group.disclosure ? `primary-nav-${group.key}` : undefined} hidden={!isExpanded}>{group.items.map(item => (
             <li key={item.path}>
               <a href={item.path} aria-current={activeItem?.path === item.path ? 'page' : undefined} onClick={event => {
-                if (!onNavigate) return;
+                if (!onNavigate || !shouldHandleSpaNavigation(event)) return;
                 event.preventDefault();
                 onNavigate(item.path);
               }}><Icon name={item.navigation!.icon} size={18} /><span>{item.label}</span></a>

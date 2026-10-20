@@ -163,6 +163,17 @@ The `tests/Web.E2E` command runs TAP contracts plus Vitest/jsdom scenarios; it
 does not launch a real browser or sign in to Entra. These deterministic fixtures
 do not verify live Graph permissions, tenant consent, Entra roles, or PIM
 policy. Follow the dedicated test-tenant runbooks for those real-tenant checks.
+
+For local UI inspection, serve the separate test-only visual fixture on loopback:
+
+```bash
+npm run dev --prefix src/Web -- --config ../../tests/Web.Visual/vite.config.ts --host 127.0.0.1 --port 5173 --strictPort
+```
+
+Open `http://127.0.0.1:5173`. The fixture uses sanitized local data and a
+test-only API stub; it does not authenticate, contact Entra or Microsoft
+Graph, or call a real tenant/API.
+
 Run `python3 infra/tests/test_configure_entra_onboarding.py`,
 `python3 infra/tests/validate_contract.py`, and `docker compose config --quiet`
 for the registration-script, hosted-infrastructure and local Compose

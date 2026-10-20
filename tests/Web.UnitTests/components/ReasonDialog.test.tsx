@@ -65,6 +65,41 @@ describe('ReasonDialog', () => {
     expect(screen.getByText('This action will be written to the platform audit stream without secrets.')).toBeTruthy();
   });
 
+  it('renders_caller_controlled_extra_fields_without_changing_reason_validation', () => {
+    const onConfirm = vi.fn();
+    function Harness({ target }: { target: string }) {
+      const [fieldValue, setFieldValue] = React.useState('initial value');
+      return <ReasonDialog
+        {...base}
+        target={target}
+        onConfirm={onConfirm}
+        reasonHint="Include the approved request reference."
+        extraFields={<label>Additional detail<input aria-label="Additional detail" value={fieldValue} onChange={event => setFieldValue(event.target.value)} /></label>}
+      />;
+    }
+    const { rerender } = render(<Harness target={base.target} />);
+    const extraField = screen.getByRole('textbox', { name: 'Additional detail' }) as HTMLInputElement;
+    const reason = screen.getByRole('textbox', { name: 'Reason' }) as HTMLTextAreaElement;
+    const confirm = screen.getByRole('button', { name: 'Disable user' }) as HTMLButtonElement;
+
+    expect(extraField.value).toBe('initial value');
+    fireEvent.change(extraField, { target: { value: 'owner-controlled value' } });
+    expect(extraField.value).toBe('owner-controlled value');
+    fireEvent.change(reason, { target: { value: '   ' } });
+    fireEvent.click(screen.getByRole('checkbox'));
+    expect(confirm.disabled).toBe(true);
+    expect(screen.getByText('This action will be written to the platform audit stream without secrets.')).toBeTruthy();
+
+    rerender(<Harness target="Jordan Lee" />);
+    expect((screen.getByRole('textbox', { name: 'Additional detail' }) as HTMLInputElement).value).toBe('owner-controlled value');
+    expect((screen.getByRole('textbox', { name: 'Reason' }) as HTMLTextAreaElement).value).toBe('');
+    fireEvent.change(screen.getByRole('textbox', { name: 'Reason' }), { target: { value: '  Approved for Jordan  ' } });
+    fireEvent.click(screen.getByRole('checkbox'));
+    expect(confirm.disabled).toBe(false);
+    fireEvent.click(confirm);
+    expect(onConfirm).toHaveBeenCalledWith('Approved for Jordan');
+  });
+
   it('traps keyboard focus and restores it after cancel', () => {
     const onConfirm = vi.fn();
     function DialogHarness() {

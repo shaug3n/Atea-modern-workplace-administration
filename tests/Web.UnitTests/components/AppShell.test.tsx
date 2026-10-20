@@ -82,6 +82,48 @@ describe('AppShell', () => {
     expect(screen.getByText('Alex Morgan')).toBeTruthy();
   });
 
+  it('names the main landmark independently of the routed heading id and preserves the skip target', () => {
+    render(<ThemeProvider systemTheme={() => 'light'}><AppShell capabilities={allowedCapabilities} currentPath="/settings/general" session={session}><h2 id="general-title">General</h2></AppShell></ThemeProvider>);
+
+    expect(screen.getByRole('main', { name: 'Main content' }).id).toBe('main-content');
+    expect(screen.getByRole('link', { name: 'Skip to main content' }).getAttribute('href')).toBe('#main-content');
+  });
+
+  it('leaves modified activation native for brand, build chip and linkable breadcrumbs', () => {
+    const navigate = vi.fn();
+    const capabilities: CapabilitySnapshot = {
+      ...allowedCapabilities,
+      capabilities: [...allowedCapabilities.capabilities, { capability: 'platform.about.view', state: 'allowed', reasonCode: 'workspace_member' }],
+    };
+    render(<ThemeProvider systemTheme={() => 'light'}><AppShell capabilities={capabilities} currentPath="/users/user-123" session={session} onNavigate={navigate} canViewAbout><h1>User details</h1></AppShell></ThemeProvider>);
+
+    const links = [
+      screen.getByRole('link', { name: 'Atea Unified Workplace home' }),
+      screen.getByRole('link', { name: /System versions/i }),
+      screen.getByRole('navigation', { name: 'Breadcrumbs' }).querySelector('a[href="/users"]')!,
+    ];
+    for (const link of links) {
+      for (const modifiers of [{ ctrlKey: true }, { metaKey: true }, { shiftKey: true }, { altKey: true }, { button: 1 }]) {
+        let preventedByShell = false;
+        const stopNavigation = (event: MouseEvent) => {
+          preventedByShell = event.defaultPrevented;
+          event.preventDefault();
+        };
+        document.addEventListener('click', stopNavigation);
+        try {
+          fireEvent.click(link, modifiers);
+        } finally {
+          document.removeEventListener('click', stopNavigation);
+        }
+        expect(preventedByShell).toBe(false);
+        expect(navigate).not.toHaveBeenCalled();
+      }
+      expect(fireEvent.click(link)).toBe(false);
+      expect(navigate).toHaveBeenCalledOnce();
+      navigate.mockClear();
+    }
+  });
+
   it('keeps the authorized build chip and feedback launcher separate from the account slot', () => {
     const openFeedback = vi.fn();
     const navigate = vi.fn();
@@ -434,13 +476,13 @@ describe('AppShell', () => {
     expect(container.querySelector('.account-summary__avatar')?.textContent).toBe('Z');
   });
 
-  it('uses generic Details crumbs for ids, links registered parents and labels main by the page title', () => {
+  it('uses generic Details crumbs for ids, links registered parents and names main content', () => {
     const { container } = render(<ThemeProvider systemTheme={() => 'light'}><AppShell capabilities={allowedCapabilities} currentPath="/devices/3f2b8c1e-aaaa-bbbb-cccc-123456789abc" session={session}><h1 id="page-title">Laptop</h1></AppShell></ThemeProvider>);
     const crumbs = screen.getByRole('navigation', { name: 'Breadcrumbs' });
     expect(crumbs.textContent).toContain('Details');
     expect(document.body.textContent).not.toContain('3f2b8c1e');
     expect(crumbs.querySelector('a')?.getAttribute('href')).toBe('/devices');
-    expect(container.querySelector('main')?.getAttribute('aria-labelledby')).toBe('page-title');
+    expect(container.querySelector('main')?.getAttribute('aria-label')).toBe('Main content');
   });
 
   it('puts the dark mode row and account in the mobile drawer, leaving one switch at a time, and closes on Escape', () => {

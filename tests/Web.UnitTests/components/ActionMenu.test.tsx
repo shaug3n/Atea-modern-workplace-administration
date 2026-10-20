@@ -18,6 +18,93 @@ describe('ActionMenu', () => {
     expect(document.activeElement).toBe(trigger);
   });
 
+  it('focuses_first_non_busy_item_when_opened', () => {
+    render(<ActionMenu label="Actions" items={[
+      { label: 'Loading action', onSelect: vi.fn(), busy: true },
+      { label: 'First available', onSelect: vi.fn() },
+    ]} />);
+    const trigger = screen.getByRole('button', { name: 'Actions' });
+    fireEvent.click(trigger);
+    expect(document.activeElement).toBe(screen.getByRole('menuitem', { name: 'First available' }));
+  });
+
+  it('opens_from_trigger_arrow_keys', () => {
+    const items = [{ label: 'First', onSelect: vi.fn() }, { label: 'Last', onSelect: vi.fn() }];
+    const { unmount } = render(<ActionMenu label="Actions" items={items} />);
+    const trigger = screen.getByRole('button', { name: 'Actions' });
+    fireEvent.keyDown(trigger, { key: 'ArrowDown' });
+    expect(document.activeElement).toBe(screen.getByRole('menuitem', { name: 'First' }));
+    unmount();
+
+    render(<ActionMenu label="Actions" items={items} />);
+    fireEvent.keyDown(screen.getByRole('button', { name: 'Actions' }), { key: 'ArrowUp' });
+    expect(document.activeElement).toBe(screen.getByRole('menuitem', { name: 'Last' }));
+  });
+
+  it('wraps_arrow_navigation_and_supports_home_end', () => {
+    render(<ActionMenu label="Actions" items={[
+      { label: 'First', onSelect: vi.fn() },
+      { label: 'Busy', onSelect: vi.fn(), busy: true },
+      { label: 'Unavailable', onSelect: vi.fn(), disabled: true },
+      { label: 'Last', onSelect: vi.fn() },
+    ]} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Actions' }));
+    const first = screen.getByRole('menuitem', { name: 'First' });
+    const unavailable = screen.getByRole('menuitem', { name: 'Unavailable' });
+    const last = screen.getByRole('menuitem', { name: 'Last' });
+
+    expect(document.activeElement).toBe(first);
+    expect(fireEvent.keyDown(first, { key: 'ArrowDown' })).toBe(false);
+    expect(document.activeElement).toBe(unavailable);
+    fireEvent.keyDown(unavailable, { key: 'ArrowDown' });
+    expect(document.activeElement).toBe(last);
+    fireEvent.keyDown(last, { key: 'ArrowDown' });
+    expect(document.activeElement).toBe(first);
+    fireEvent.keyDown(first, { key: 'ArrowUp' });
+    expect(document.activeElement).toBe(last);
+    fireEvent.keyDown(last, { key: 'Home' });
+    expect(document.activeElement).toBe(first);
+    fireEvent.keyDown(first, { key: 'End' });
+    expect(document.activeElement).toBe(last);
+  });
+
+  it('keeps_disabled_items_inert_and_handles_empty_and_all_busy_menus', () => {
+    const onSelect = vi.fn();
+    render(<ActionMenu label="Actions" items={[
+      { label: 'Unavailable', onSelect, disabled: true },
+      { label: 'Busy', onSelect, busy: true },
+    ]} />);
+    const trigger = screen.getByRole('button', { name: 'Actions' });
+    fireEvent.click(trigger);
+    const unavailable = screen.getByRole('menuitem', { name: 'Unavailable' });
+    expect(document.activeElement).toBe(unavailable);
+    fireEvent.click(unavailable);
+    expect(onSelect).not.toHaveBeenCalled();
+    fireEvent.keyDown(screen.getByRole('menu'), { key: 'Escape' });
+    expect(screen.queryByRole('menu')).toBeNull();
+    expect(document.activeElement).toBe(trigger);
+
+    const busyMenu = render(<ActionMenu label="Busy actions" items={[{ label: 'Loading action', onSelect, busy: true }]} />);
+    const busyTrigger = screen.getByRole('button', { name: 'Busy actions' });
+    fireEvent.click(busyTrigger);
+    expect(screen.getByRole('menu', { name: 'Busy actions' })).toBeTruthy();
+    expect(document.activeElement).toBe(busyTrigger);
+    fireEvent.keyDown(screen.getByRole('menu', { name: 'Busy actions' }), { key: 'Escape' });
+    expect(screen.queryByRole('menu', { name: 'Busy actions' })).toBeNull();
+    expect(document.activeElement).toBe(busyTrigger);
+    busyMenu.unmount();
+
+    const { unmount } = render(<ActionMenu label="Empty actions" items={[]} />);
+    const emptyTrigger = screen.getByRole('button', { name: 'Empty actions' });
+    fireEvent.click(emptyTrigger);
+    expect(screen.getByRole('menu')).toBeTruthy();
+    expect(document.activeElement).toBe(emptyTrigger);
+    fireEvent.keyDown(screen.getByRole('menu'), { key: 'Escape' });
+    expect(screen.queryByRole('menu')).toBeNull();
+    expect(document.activeElement).toBe(emptyTrigger);
+    unmount();
+  });
+
   it('closes after invoking an action and only disables its busy item', () => {
     const onSelect = vi.fn();
     render(<ActionMenu label="Actions" items={[

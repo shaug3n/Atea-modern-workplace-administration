@@ -16,7 +16,7 @@ export const messages = {
   ...licenseHygieneMessages,
   appTitle: 'Atea Unified Workplace',
   devicesNotProvisionedTitle: 'Intune is not provisioned for this tenant',
-  homeLinkLabel: 'Atea Unified Workplace home', skipToContent: 'Skip to main content', shellLoading: 'Loading workspace shell…', shellUnavailable: 'Workspace shell is unavailable. Try again later.',
+  homeLinkLabel: 'Atea Unified Workplace home', skipToContent: 'Skip to main content', mainLandmarkLabel: 'Main content', shellLoading: 'Loading workspace shell…', shellUnavailable: 'Workspace shell is unavailable. Try again later.',
   primaryNavigationLabel: 'Primary navigation', tenantContextLabel: 'Current workspace and signed-in user', workspaceLabel: 'Workspace', signedInUserLabel: 'Signed-in user', signedInAs: 'Signed in as', unknownUser: 'Unknown user',
   navOverview: 'Overview', navOnboarding: 'Workspace setup', navWorkspaceAccess: 'Workspace access', navUsers: 'Users', navLicenses: 'Licenses', navDevices: 'Devices', navIdentity: 'Identity and security', navAudit: 'Audit activity', navWorkspaceSettings: 'Workspace settings',
   navGroupOverview: 'Overview', navGroupIdentityAccess: 'Identity & Access', navGroupDevices: 'Devices', navGroupLicenses: 'Licenses', navGroupServices: 'Services', navGroupOperations: 'Operations', navGroupPlatform: 'Platform',

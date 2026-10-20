@@ -13,24 +13,26 @@ describe('route navigation metadata', () => {
 
   it('marks only current navigation destinations and keeps details out of navigation', () => {
     const navigationRoutes = appRoutes.filter((route) => route.navigation);
-    const destinations = navigationRoutes.map(({ path, navigation }) => ({
+    const destinations = navigationRoutes.map(({ path, label, navigation }) => ({
       path,
+      label,
       group: navigation?.group,
+      order: navigation?.order,
       visibility: navigation?.visibility,
       icon: navigation?.icon,
     }));
 
     expect(destinations).toEqual([
-      { path: '/settings', group: 'platform', visibility: 'workspace-manager', icon: 'settings' },
-      { path: '/about', group: 'platform', visibility: 'module', icon: 'overview' },
-      { path: '/feedback', group: 'platform', visibility: 'module', icon: 'activity' },
-      { path: '/overview', group: 'overview', visibility: 'always', icon: 'overview' },
-      { path: '/users', group: 'identity-access', visibility: 'module', icon: 'users' },
-      { path: '/authentication-campaigns', group: 'identity-access', visibility: 'module', icon: 'lock' },
-      { path: '/licenses', group: 'licenses', visibility: 'module', icon: 'licenses' },
-      { path: '/activity', group: 'operations', visibility: 'audit-not-hidden', icon: 'activity' },
-      { path: '/devices', group: 'devices', visibility: 'device-module-or-settings-manager', icon: 'devices' },
-      { path: '/services/exchange', group: 'services', visibility: 'module', icon: 'mail' },
+      { path: '/settings', label: 'Workspace Settings', group: 'platform', order: 0, visibility: 'workspace-manager', icon: 'settings' },
+      { path: '/about', label: 'About', group: 'platform', order: 1, visibility: 'module', icon: 'overview' },
+      { path: '/feedback', label: 'Feedback', group: 'platform', order: 2, visibility: 'module', icon: 'activity' },
+      { path: '/overview', label: 'Overview', group: 'overview', order: 0, visibility: 'always', icon: 'overview' },
+      { path: '/users', label: 'Users', group: 'identity-access', order: 0, visibility: 'module', icon: 'users' },
+      { path: '/authentication-campaigns', label: 'Authentication campaigns', group: 'identity-access', order: 1, visibility: 'module', icon: 'lock' },
+      { path: '/licenses', label: 'Licenses', group: 'licenses', order: 0, visibility: 'module', icon: 'licenses' },
+      { path: '/activity', label: 'Activity', group: 'operations', order: 0, visibility: 'audit-not-hidden', icon: 'activity' },
+      { path: '/devices', label: 'Devices', group: 'devices', order: 0, visibility: 'device-module-or-settings-manager', icon: 'devices' },
+      { path: '/services/exchange', label: 'Exchange', group: 'services', order: 0, visibility: 'module', icon: 'mail' },
     ]);
 
     const groupOrder: NavigationGroup[] = ['overview', 'identity-access', 'devices', 'licenses', 'services', 'operations', 'platform'];

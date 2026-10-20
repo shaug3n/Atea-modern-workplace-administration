@@ -37,6 +37,16 @@ test('theme defines semantic action and spacious detail card classes', async () 
   assert.match(css, /\.detail-card/);
 });
 
+test('mutation modal contains overscroll chaining while keeping both surfaces scrollable', async () => {
+  const css = await readFile('../../src/Web/src/styles/theme.css', 'utf8');
+  const backdrop = css.match(/\.modal-backdrop\s*\{([^}]*)\}/)?.[1] ?? '';
+  const dialog = css.match(/\.mutation-dialog\s*\{([^}]*)\}/)?.[1] ?? '';
+  assert.match(backdrop, /overscroll-behavior:\s*contain/);
+  assert.match(dialog, /overscroll-behavior:\s*contain/);
+  assert.match(backdrop, /overflow:\s*auto/);
+  assert.match(dialog, /overflow:\s*auto/);
+});
+
 test('foundations and components layers load after theme and define shared tokens', async () => {
   const main = await readFile('../../src/Web/src/main.tsx', 'utf8');
   const foundations = await readFile('../../src/Web/src/styles/foundations.css', 'utf8');

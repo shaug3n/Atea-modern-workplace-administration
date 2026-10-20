@@ -157,6 +157,31 @@ describe('UserMutationDialogs', () => {
     expect(screen.getByText('The user must change this password at next sign-in.')).toBeTruthy();
   });
 
+  it('blocks_create_for_blank_display_name_or_malformed_upn_without_a_request', () => {
+    const cases = [
+      { name: '   ', upn: 'ada@example.com', label: 'Name', error: 'Enter a display name.' },
+      { name: 'Ada Lovelace', upn: '', label: 'User principal name', error: 'Enter a user principal name.' },
+      { name: 'Ada Lovelace', upn: 'not-an-email', label: 'User principal name', error: 'Enter a valid user principal name.' },
+    ];
+    for (const scenario of cases) {
+      apiMock.mockReset();
+      render(<UserCreateDialog />);
+      fireEvent.change(screen.getByLabelText('Name'), { target: { value: scenario.name } });
+      fireEvent.change(screen.getByLabelText('User principal name'), { target: { value: scenario.upn } });
+      fireEvent.change(screen.getByLabelText('Reason'), { target: { value: 'Approved request' } });
+      fireEvent.click(screen.getByLabelText('I reviewed the target, change and required capability.'));
+      fireEvent.click(screen.getByRole('button', { name: 'Create user' }));
+
+      const field = screen.getByLabelText(scenario.label);
+      expect(field.getAttribute('aria-invalid')).toBe('true');
+      const errorId = field.getAttribute('aria-describedby');
+      expect(errorId).toBeTruthy();
+      expect(document.getElementById(errorId!)?.textContent).toBe(scenario.error);
+      expect(apiMock).not.toHaveBeenCalled();
+      cleanup();
+    }
+  });
+
   it('keeps the entire create form inside the keyboard-contained confirmation dialog', () => {
     render(<UserCreateDialog />);
 
