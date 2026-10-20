@@ -1,13 +1,15 @@
 import React, { useEffect, useId, useState } from 'react';
+import type { ReactNode } from 'react';
 import { messages } from '../app/messages';
 import { ConfirmationDialog, type ConfirmationDialogProps } from './ConfirmationDialog';
 
 export type ReasonDialogProps = Omit<ConfirmationDialogProps, 'onConfirm' | 'children' | 'confirmBlocked'> & {
   onConfirm: (reason: string) => void;
   reasonHint?: string;
+  extraFields?: ReactNode;
 };
 
-export function ReasonDialog({ onConfirm, reasonHint, ...props }: ReasonDialogProps) {
+export function ReasonDialog({ onConfirm, reasonHint, extraFields, ...props }: ReasonDialogProps) {
   const [reason, setReason] = useState('');
   const reasonId = useId();
   const requiredId = useId();
@@ -24,6 +26,7 @@ export function ReasonDialog({ onConfirm, reasonHint, ...props }: ReasonDialogPr
       confirmBlocked={!trimmedReason}
       onConfirm={() => onConfirm(trimmedReason)}
     >
+      {extraFields}
       <div className="mutation-phrase">
         <label htmlFor={reasonId}>{messages.reasonFieldLabel}</label>
         <textarea
