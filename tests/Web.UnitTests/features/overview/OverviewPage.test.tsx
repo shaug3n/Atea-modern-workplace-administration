@@ -78,19 +78,21 @@ describe('OverviewPage', () => {
     const navigate = vi.fn();
     render(<OverviewPage loadOverview={async () => completeOverview} session={session} onNavigate={navigate} />);
     const users = await screen.findByRole('link', { name: 'Users: 42, open Users page' });
-    let defaultPreventedByOverview = false;
-    const stopNavigation = (event: MouseEvent) => {
-      defaultPreventedByOverview = event.defaultPrevented;
-      event.preventDefault();
-    };
-    document.addEventListener('click', stopNavigation);
-    try {
-      fireEvent.click(users, { ctrlKey: true });
-    } finally {
-      document.removeEventListener('click', stopNavigation);
+    for (const modifiers of [{ ctrlKey: true }, { metaKey: true }, { shiftKey: true }, { altKey: true }, { button: 1 }]) {
+      let defaultPreventedByOverview = false;
+      const stopNavigation = (event: MouseEvent) => {
+        defaultPreventedByOverview = event.defaultPrevented;
+        event.preventDefault();
+      };
+      document.addEventListener('click', stopNavigation);
+      try {
+        fireEvent.click(users, modifiers);
+      } finally {
+        document.removeEventListener('click', stopNavigation);
+      }
+      expect(defaultPreventedByOverview).toBe(false);
+      expect(navigate).not.toHaveBeenCalled();
     }
-    expect(defaultPreventedByOverview).toBe(false);
-    expect(navigate).not.toHaveBeenCalled();
   });
 
   it('does_not_render_links_or_numbers_for_restricted_sections', async () => {

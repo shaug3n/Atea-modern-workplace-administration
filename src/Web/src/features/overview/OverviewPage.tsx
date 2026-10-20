@@ -10,6 +10,7 @@ import { InfoTip } from '../../components/InfoTip';
 import { WorkspaceDataState } from '../../components/WorkspaceDataState';
 import { DateTime } from '../../components/DateTime';
 import { useWorkspaceIssueReporter } from '../../notifications/WorkspaceNotifications';
+import { KpiFilterTile } from '../../components/KpiFilterTile';
 
 export type ConnectionHealth = { status: ConnectionState; lastVerifiedAt: string | null };
 export type ConsentDescriptor = { authorizationUrl: string };
@@ -282,12 +283,21 @@ function LoadedOverviewMetrics({ loadOverview, session, onNavigate }: { loadOver
         {licensesHaveCurrentData && <InfoTip label={overviewMessages.overviewLicenseInfoLabel} content={overviewMessages.overviewLicenseInfo} />}
       </div>
       <div className="metric-grid">
-        {usersHaveCurrentData && <a className="metric-card metric-card--filter metric-card__link" href="/users" aria-label={kpiLinkLabel(overviewMessages.overviewUsers, overview.users.data!.totalUsers, overviewMessages.overviewUsersDestination)} onClick={navigateKpi('/users')}>
-          <span className="metric-card__content"><span className="metric-card__label">{overviewMessages.overviewUsers}</span><strong className="metric-card__value">{overview.users.data!.totalUsers}</strong></span>
-        </a>}
-        {licensesHaveCurrentData && <a className="metric-card metric-card--filter metric-card__link" href="/licenses" aria-label={kpiLinkLabel(overviewMessages.overviewLicenseCoverage, `${overview.licenseCoverage.data!.assignedUsers} of ${overview.licenseCoverage.data!.totalUsers}`, overviewMessages.overviewLicensesDestination)} onClick={navigateKpi('/licenses')}>
-          <span className="metric-card__content"><span className="metric-card__label">{overviewMessages.overviewLicenseCoverage}</span><strong className="metric-card__value">{overview.licenseCoverage.data!.assignedUsers} of {overview.licenseCoverage.data!.totalUsers}</strong><span className="metric-card__detail">{overviewMessages.overviewAssignedUsersOfTotal}</span></span>
-        </a>}
+        {usersHaveCurrentData && <KpiFilterTile
+          label={overviewMessages.overviewUsers}
+          value={overview.users.data!.totalUsers}
+          href="/users"
+          linkLabel={kpiLinkLabel(overviewMessages.overviewUsers, overview.users.data!.totalUsers, overviewMessages.overviewUsersDestination)}
+          onClick={navigateKpi('/users')}
+        />}
+        {licensesHaveCurrentData && <KpiFilterTile
+          label={overviewMessages.overviewLicenseCoverage}
+          value={`${overview.licenseCoverage.data!.assignedUsers} of ${overview.licenseCoverage.data!.totalUsers}`}
+          detail={overviewMessages.overviewAssignedUsersOfTotal}
+          href="/licenses"
+          linkLabel={kpiLinkLabel(overviewMessages.overviewLicenseCoverage, `${overview.licenseCoverage.data!.assignedUsers} of ${overview.licenseCoverage.data!.totalUsers}`, overviewMessages.overviewLicensesDestination)}
+          onClick={navigateKpi('/licenses')}
+        />}
       </div>
       {!usersHaveCurrentData && <WorkspaceDataState kind={metricStateKind(overview.users, usersAllowed, usersScopeVerified)} compact title={overviewMessages.overviewUsers} message={metricStateMessage(overview.users, overviewMessages.overviewUsers, usersAllowed, usersScopeVerified)} onRetry={usersAllowed && (overview.users.state === 'stale' || overview.users.state === 'unavailable' || !supportedFreshness.has(overview.users.state) || (usersScopeVerified && !usersDataValid)) ? retryOverview : undefined} />}
       {!licensesHaveCurrentData && <WorkspaceDataState kind={metricStateKind(overview.licenseCoverage, licensesAllowed, licensesScopeVerified)} compact title={overviewMessages.overviewLicenseCoverage} message={metricStateMessage(overview.licenseCoverage, overviewMessages.overviewLicenseCoverage, licensesAllowed, licensesScopeVerified)} onRetry={licensesAllowed && (overview.licenseCoverage.state === 'stale' || overview.licenseCoverage.state === 'unavailable' || !supportedFreshness.has(overview.licenseCoverage.state) || (licensesScopeVerified && !licensesDataValid)) ? retryOverview : undefined} />}
